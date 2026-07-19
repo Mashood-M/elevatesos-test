@@ -141,8 +141,34 @@ export function FormSummary({ form }: { form: FormDefinition }) {
             <TerminalPanel key={q.id} title={q.title} meta={q.type}>
               {q.type === "multiple_choice" ||
               q.type === "dropdown" ||
-              q.type === "checkboxes" ? (
-                <OptionSummary question={q} answers={answers} />
+              q.type === "checkboxes" ||
+              q.type === "representative" ? (
+                <OptionSummary
+                  question={{
+                    ...q,
+                    options:
+                      q.type === "representative"
+                        ? answers.map((a) => {
+                            const id = String(a ?? "");
+                            return (
+                              store.profiles.find((p) => p.id === id)
+                                ?.fullName ?? id
+                            );
+                          }).filter(Boolean)
+                        : q.options,
+                  }}
+                  answers={
+                    q.type === "representative"
+                      ? answers.map((a) => {
+                          const id = String(a ?? "");
+                          return (
+                            store.profiles.find((p) => p.id === id)?.fullName ??
+                            id
+                          );
+                        })
+                      : answers
+                  }
+                />
               ) : q.type === "linear_scale" || q.type === "rating" ? (
                 <ScaleSummary question={q} answers={answers} />
               ) : q.type === "short_text" || q.type === "paragraph" ? (

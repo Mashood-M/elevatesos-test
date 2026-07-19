@@ -22,6 +22,7 @@ const ADD_TYPES: FormQuestionType[] = [
   "multiple_choice",
   "checkboxes",
   "dropdown",
+  "representative",
   "linear_scale",
   "rating",
   "date",
@@ -35,7 +36,16 @@ function newQuestion(type: FormQuestionType): FormQuestion {
   const base: FormQuestion = {
     id,
     type,
-    title: type === "section_header" ? "Untitled section" : "Untitled question",
+    title:
+      type === "section_header"
+        ? "Untitled section"
+        : type === "representative"
+          ? "Class representative"
+          : "Untitled question",
+    description:
+      type === "representative"
+        ? "Students pick their CR from the chapter list at fill time."
+        : undefined,
     required: type !== "section_header",
   };
   if (
@@ -479,6 +489,13 @@ export function GoogleFormBuilder({
                     <option value="10">10</option>
                   </Select>
                 </div>
+              ) : null}
+
+              {selected.type === "representative" ? (
+                <p className="text-[12px] text-text-dim">
+                  At fill time students only see the boy and girl representatives
+                  for their class (department + year + section on their profile).
+                </p>
               ) : null}
 
               <div className="flex flex-wrap gap-2 pt-2">

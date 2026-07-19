@@ -6,12 +6,19 @@ import { FieldLabel, Input } from "@/components/ui/input";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { answerableQuestions } from "@/lib/forms/helpers";
-import type { FormDefinition } from "@/types";
+import type { ElevatesStore, FormDefinition, FormQuestion } from "@/types";
 
-function formatAnswer(v: unknown): string {
+function formatAnswer(
+  v: unknown,
+  question: FormQuestion | undefined,
+  store: ElevatesStore,
+): string {
   if (v === undefined || v === null) return "";
   if (Array.isArray(v)) return v.join("; ");
   if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (question?.type === "representative" && typeof v === "string") {
+    return store.profiles.find((p) => p.id === v)?.fullName ?? v;
+  }
   return String(v);
 }
 
@@ -48,7 +55,7 @@ export function FormResponses({
         row.submittedAt,
         user?.fullName ?? row.userId,
         ...cols.map((c) => {
-          const raw = formatAnswer(row.answers[c.id]);
+          const raw = formatAnswer(row.answers[c.id], c, store);
           return `"${raw.replace(/"/g, '""')}"`;
         }),
       ];
@@ -119,7 +126,7 @@ export function FormResponses({
                     </td>
                     {cols.map((c) => (
                       <td key={c.id} className="max-w-[220px] truncate px-2 py-2">
-                        {formatAnswer(row.answers[c.id])}
+                        {formatAnswer(row.answers[c.id], c, store)}
                       </td>
                     ))}
                     {canManage ? (

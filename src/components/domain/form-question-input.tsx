@@ -11,11 +11,14 @@ export function FormQuestionInput({
   value,
   onChange,
   disabled,
+  representativeOptions,
 }: {
   question: FormQuestion;
   value: AnswerValue | undefined;
   onChange: (v: AnswerValue) => void;
   disabled?: boolean;
+  /** Dynamic options for type === "representative" ({ id, label }) */
+  representativeOptions?: { id: string; label: string }[];
 }) {
   if (question.type === "section_header") {
     return (
@@ -113,22 +116,41 @@ export function FormQuestionInput({
     );
   }
 
-  if (question.type === "dropdown") {
+  if (question.type === "dropdown" || question.type === "representative") {
+    const reps = representativeOptions ?? [];
     return (
       <div>
         {label}
+        {question.description ? (
+          <p className="mb-1 text-[11px] text-text-dim">{question.description}</p>
+        ) : null}
         <Select
           disabled={disabled}
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
         >
-          <option value="">Select…</option>
-          {(question.options ?? []).map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
+          <option value="">
+            {question.type === "representative"
+              ? "Select your representative…"
+              : "Select…"}
+          </option>
+          {question.type === "representative"
+            ? reps.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.label}
+                </option>
+              ))
+            : (question.options ?? []).map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
         </Select>
+        {question.type === "representative" && !reps.length ? (
+          <p className="mt-1 text-[11px] text-[var(--accent)]">
+            No class representatives listed for this chapter yet.
+          </p>
+        ) : null}
       </div>
     );
   }

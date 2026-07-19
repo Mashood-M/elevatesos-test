@@ -35,6 +35,11 @@ export function isHqRole(roleKey: RoleKey) {
   return roleKey === "founder" || roleKey === "hq_admin" || roleKey === "hq_mentor";
 }
 
+/** Founder + HQ Admin — org-wide user management */
+export function isSuperAdmin(roleKey: RoleKey) {
+  return roleKey === "founder" || roleKey === "hq_admin";
+}
+
 export function healthLabel(score: number) {
   if (score >= 90) return "Excellent";
   if (score >= 75) return "Strong";

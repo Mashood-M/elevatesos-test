@@ -30,6 +30,7 @@ const permissionDefs: { key: PermissionKey; name: string; description: string }[
   { key: "chapter.create", name: "Create Chapter", description: "Spin up new chapters" },
   { key: "chapter.manage", name: "Manage Chapter", description: "Edit chapter settings" },
   { key: "leadership.manage", name: "Manage Leadership", description: "Leadership cycles" },
+  { key: "class.manage", name: "Manage Classes", description: "Class divisions and boy/girl CRs" },
   { key: "roles.manage", name: "Manage Roles", description: "Assign roles & permissions" },
   { key: "event.create", name: "Create Event", description: "Draft & publish events" },
   { key: "event.approve", name: "Approve Event", description: "Faculty/HQ event approval" },
@@ -76,6 +77,7 @@ const roleAllow: Record<RoleKey, PermissionKey[]> = {
   chairman: [
     "chapter.manage",
     "leadership.manage",
+    "class.manage",
     "event.create",
     "event.manage",
     "event.approve",
@@ -90,6 +92,7 @@ const roleAllow: Record<RoleKey, PermissionKey[]> = {
   ],
   vice_chairman: [
     "chapter.manage",
+    "class.manage",
     "event.create",
     "event.manage",
     "registration.approve",
@@ -99,6 +102,7 @@ const roleAllow: Record<RoleKey, PermissionKey[]> = {
     "announcement.publish",
   ],
   secretary: [
+    "class.manage",
     "event.create",
     "event.manage",
     "registration.approve",
@@ -117,6 +121,7 @@ const roleAllow: Record<RoleKey, PermissionKey[]> = {
     "announcement.publish",
   ],
   elevates_coordinator: [
+    "class.manage",
     "event.manage",
     "registration.review",
     "attendance.verify",
@@ -417,15 +422,45 @@ export function createSeedStore(): ElevatesStore {
       { id: "ur-9", userId: "u-student-2", roleId: "r-student", chapterId: "ch-ekc" },
       { id: "ur-10", userId: "u-mes-chair", roleId: "r-chairman", chapterId: "ch-mes", leadershipTermId: "lt-mes-2026" },
     ],
+    departments: [
+      { id: "dept-common", chapterId: "ch-ekc", name: "Common" },
+      { id: "dept-cse", chapterId: "ch-ekc", name: "CSE" },
+      { id: "dept-ece", chapterId: "ch-ekc", name: "ECE" },
+      { id: "dept-eee", chapterId: "ch-ekc", name: "EEE" },
+    ],
     classCohorts: [
+      {
+        id: "cc-fy-t1",
+        chapterId: "ch-ekc",
+        department: "Common",
+        year: "1st",
+        section: "T1",
+        repIds: ["u-cr-cse-boy", "u-cr"],
+      },
+      {
+        id: "cc-fy-t2",
+        chapterId: "ch-ekc",
+        department: "Common",
+        year: "1st",
+        section: "T2",
+        repIds: ["u-cr-ece", "u-cr-ece-girl"],
+      },
+      {
+        id: "cc-fy-t3",
+        chapterId: "ch-ekc",
+        department: "Common",
+        year: "1st",
+        section: "T3",
+        // Single-rep example (smaller batch / one CR)
+        repIds: ["u-cr-eee-boy"],
+      },
       {
         id: "cc-cse-2a",
         chapterId: "ch-ekc",
         department: "CSE",
         year: "2nd",
         section: "A",
-        boyRepId: "u-cr-cse-boy",
-        girlRepId: "u-cr",
+        repIds: ["u-cr-cse-boy", "u-cr"],
       },
       {
         id: "cc-ece-2a",
@@ -433,8 +468,7 @@ export function createSeedStore(): ElevatesStore {
         department: "ECE",
         year: "2nd",
         section: "A",
-        boyRepId: "u-cr-ece",
-        girlRepId: "u-cr-ece-girl",
+        repIds: ["u-cr-ece", "u-cr-ece-girl"],
       },
       {
         id: "cc-eee-3a",
@@ -442,8 +476,7 @@ export function createSeedStore(): ElevatesStore {
         department: "EEE",
         year: "3rd",
         section: "A",
-        boyRepId: "u-cr-eee-boy",
-        girlRepId: "u-cr-eee",
+        repIds: ["u-cr-eee-boy", "u-cr-eee"],
       },
     ],
     leadershipTerms: [
@@ -668,7 +701,7 @@ export function createSeedStore(): ElevatesStore {
             type: "representative",
             title: "Class representative",
             description:
-              "Choose your boy or girl representative for your class (set on your profile).",
+              "Choose your class representative (assigned for your class on your profile).",
             required: true,
           },
           { id: "f1", type: "short_text", title: "Full name", required: true },

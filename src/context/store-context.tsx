@@ -16,6 +16,7 @@ import {
 } from "@/lib/data/supabase-bootstrap";
 import {
   answerableQuestions,
+  cohortRepIds,
   defaultFormsForEvent,
   emptyForm,
   fieldToQuestion,
@@ -23,12 +24,18 @@ import {
   normalizeStore,
   questionToField,
 } from "@/lib/forms/helpers";
+import {
+  isAssignableLeadershipRole,
+  isSingletonLeadershipRole,
+} from "@/lib/leadership";
 import { isDemoMode } from "@/lib/mode";
 import type {
   Announcement,
   AttendanceStatus,
   Chapter,
+  ClassCohort,
   Cluster,
+  Department,
   ElevatesStore,
   EventItem,
   EventRegistration,
@@ -38,12 +45,17 @@ import type {
   FormQuestion,
   FormResponse,
   FormStatus,
+  LeadershipAssignment,
+  LeadershipStatus,
+  LeadershipTerm,
   Profile,
   RegistrationStatus,
   Report,
   ReportType,
   RoleKey,
   TaskStatus,
+  UserRole,
+  UserRoleAssignmentInput,
 } from "@/types";
 
 type CheckInResult = { ok: true } | { ok: false; message: string };
@@ -130,6 +142,73 @@ type StoreContextValue = {
       >
     >,
   ) => void;
+  createUser: (input: {
+    fullName: string;
+    email: string;
+    chapterId?: string;
+    roleKey: RoleKey;
+    organizationId?: string;
+  }) => Profile | null;
+  updateUser: (
+    id: string,
+    patch: Partial<
+      Pick<Profile, "fullName" | "email" | "chapterId" | "status" | "bio">
+    >,
+  ) => boolean;
+  setUserRoles: (
+    userId: string,
+    assignments: UserRoleAssignmentInput[],
+  ) => boolean;
+  createDepartment: (input: {
+    chapterId: string;
+    name: string;
+    id?: string;
+  }) => Department | null;
+  updateDepartment: (id: string, patch: { name: string }) => boolean;
+  deleteDepartment: (id: string) => boolean;
+  createClassCohort: (
+    input: Omit<ClassCohort, "id"> & { id?: string },
+  ) => ClassCohort | null;
+  updateClassCohort: (
+    id: string,
+    patch: Partial<Omit<ClassCohort, "id" | "chapterId">>,
+  ) => boolean;
+  deleteClassCohort: (id: string) => void;
+  createLeadershipTerm: (input: {
+    chapterId: string;
+    academicYear: string;
+    title: string;
+    startDate: string;
+    endDate: string;
+    status?: "upcoming" | "active";
+    handoverNotes?: string;
+  }) => LeadershipTerm | null;
+  updateLeadershipTerm: (
+    id: string,
+    patch: Partial<
+      Pick<
+        LeadershipTerm,
+        | "academicYear"
+        | "title"
+        | "startDate"
+        | "endDate"
+        | "status"
+        | "handoverNotes"
+      >
+    >,
+  ) => boolean;
+  archiveLeadershipTerm: (id: string) => boolean;
+  addLeadershipAssignment: (input: {
+    termId: string;
+    userId: string;
+    roleKey: RoleKey;
+    title: string;
+  }) => LeadershipAssignment | null;
+  updateLeadershipAssignment: (
+    id: string,
+    patch: Partial<Pick<LeadershipAssignment, "userId" | "roleKey" | "title">>,
+  ) => boolean;
+  removeLeadershipAssignment: (id: string) => boolean;
   createCluster: (
     input: Pick<Cluster, "chapterId" | "name" | "slug" | "description"> & {
       leaderId?: string;
@@ -178,6 +257,65 @@ function log(
     entityId,
     createdAt: new Date().toISOString(),
   };
+}
+
+function removeUserRoleForAssignment(
+  s: ElevatesStore,
+  assignment: LeadershipAssignment,
+): UserRole[] {
+  const role = s.roles.find((r) => r.key === assignment.roleKey);
+  if (!role) return s.userRoles;
+  return s.userRoles.filter(
+    (ur) =>
+      !(
+        ur.leadershipTermId === assignment.termId &&
+        ur.userId === assignment.userId &&
+        ur.roleId === role.id
+      ),
+  );
+}
+
+function upsertUserRoleForAssignment(
+  s: ElevatesStore,
+  term: LeadershipTerm,
+  assignment: LeadershipAssignment,
+): UserRole[] {
+  const role = s.roles.find((r) => r.key === assignment.roleKey);
+  if (!role) return s.userRoles;
+  const without = removeUserRoleForAssignment(s, assignment);
+  const exists = without.some(
+    (ur) =>
+      ur.userId === assignment.userId &&
+      ur.roleId === role.id &&
+      ur.chapterId === term.chapterId &&
+      ur.leadershipTermId === term.id,
+  );
+  if (exists) return without;
+  const ur: UserRole = {
+    id: `ur-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    userId: assignment.userId,
+    roleId: role.id,
+    chapterId: term.chapterId,
+    leadershipTermId: term.id,
+  };
+  return [...without, ur];
+}
+
+function syncActiveTermUserRoles(
+  s: ElevatesStore,
+  term: LeadershipTerm,
+  assignments: LeadershipAssignment[],
+): UserRole[] {
+  let userRoles = s.userRoles.filter((ur) => ur.leadershipTermId !== term.id);
+  const base = { ...s, userRoles };
+  for (const a of assignments) {
+    userRoles = upsertUserRoleForAssignment(
+      { ...base, userRoles },
+      term,
+      a,
+    );
+  }
+  return userRoles;
 }
 
 function maybeIssueCert(
@@ -783,6 +921,598 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             p.id === id ? { ...p, ...patch } : p,
           ),
         }));
+      },
+      createUser: (input) => {
+        const fullName = input.fullName.trim();
+        const email = input.email.trim().toLowerCase();
+        if (!fullName || !email) return null;
+        const role = store.roles.find((r) => r.key === input.roleKey);
+        if (!role) return null;
+        if (store.profiles.some((p) => p.email.toLowerCase() === email)) {
+          return null;
+        }
+        const isHq = role.scope === "hq";
+        if (!isHq && !input.chapterId) return null;
+        if (input.chapterId && !store.chapters.some((c) => c.id === input.chapterId)) {
+          return null;
+        }
+        const id = `u-${Date.now()}`;
+        const profile: Profile = {
+          id,
+          email,
+          fullName,
+          chapterId: isHq ? undefined : input.chapterId,
+          status: "active",
+          skills: [],
+          interests: [],
+          points: 0,
+          badges: [],
+        };
+        const orgId = input.organizationId ?? store.organization.id;
+        const userRole: UserRole = {
+          id: `ur-${Date.now()}`,
+          userId: id,
+          roleId: role.id,
+          chapterId: isHq ? undefined : input.chapterId,
+          organizationId: isHq ? orgId : undefined,
+        };
+        setStore((s) => ({
+          ...s,
+          profiles: [profile, ...s.profiles],
+          userRoles: [...s.userRoles, userRole],
+          chapters: s.chapters.map((c) =>
+            c.id === input.chapterId
+              ? { ...c, memberCount: c.memberCount + 1 }
+              : c,
+          ),
+          activityLogs: [
+            log(s.session.userId, "user_created", "profile", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return profile;
+      },
+      updateUser: (id, patch) => {
+        const existing = store.profiles.find((p) => p.id === id);
+        if (!existing) return false;
+        if (patch.email !== undefined) {
+          const email = patch.email.trim().toLowerCase();
+          if (!email) return false;
+          if (
+            store.profiles.some(
+              (p) => p.id !== id && p.email.toLowerCase() === email,
+            )
+          ) {
+            return false;
+          }
+        }
+        if (
+          patch.chapterId !== undefined &&
+          patch.chapterId &&
+          !store.chapters.some((c) => c.id === patch.chapterId)
+        ) {
+          return false;
+        }
+        setStore((s) => {
+          const prev = s.profiles.find((p) => p.id === id);
+          const nextChapter =
+            patch.chapterId !== undefined ? patch.chapterId : prev?.chapterId;
+          let chapters = s.chapters;
+          if (prev && patch.chapterId !== undefined && prev.chapterId !== nextChapter) {
+            chapters = s.chapters.map((c) => {
+              if (c.id === prev.chapterId) {
+                return { ...c, memberCount: Math.max(0, c.memberCount - 1) };
+              }
+              if (c.id === nextChapter) {
+                return { ...c, memberCount: c.memberCount + 1 };
+              }
+              return c;
+            });
+          }
+          return {
+            ...s,
+            chapters,
+            profiles: s.profiles.map((p) => {
+              if (p.id !== id) return p;
+              return {
+                ...p,
+                ...(patch.fullName !== undefined
+                  ? { fullName: patch.fullName.trim() }
+                  : {}),
+                ...(patch.email !== undefined
+                  ? { email: patch.email.trim().toLowerCase() }
+                  : {}),
+                ...(patch.chapterId !== undefined
+                  ? { chapterId: patch.chapterId || undefined }
+                  : {}),
+                ...(patch.status !== undefined ? { status: patch.status } : {}),
+                ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+              };
+            }),
+            activityLogs: [
+              log(s.session.userId, "user_updated", "profile", id),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
+      },
+      setUserRoles: (userId, assignments) => {
+        if (!store.profiles.some((p) => p.id === userId)) return false;
+        const built: UserRole[] = [];
+        for (const a of assignments) {
+          const role = store.roles.find((r) => r.key === a.roleKey);
+          if (!role) return false;
+          if (role.scope === "hq") {
+            built.push({
+              id: `ur-${Date.now()}-${built.length}`,
+              userId,
+              roleId: role.id,
+              organizationId: a.organizationId ?? store.organization.id,
+            });
+          } else {
+            if (!a.chapterId) return false;
+            if (!store.chapters.some((c) => c.id === a.chapterId)) return false;
+            built.push({
+              id: `ur-${Date.now()}-${built.length}`,
+              userId,
+              roleId: role.id,
+              chapterId: a.chapterId,
+              leadershipTermId: undefined,
+            });
+          }
+        }
+        setStore((s) => {
+          const others = s.userRoles.filter((ur) => ur.userId !== userId);
+          const leadershipLinked = s.userRoles.filter(
+            (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
+          );
+          return {
+            ...s,
+            userRoles: [...others, ...built, ...leadershipLinked],
+            activityLogs: [
+              log(s.session.userId, "user_roles_set", "profile", userId),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
+      },
+      createDepartment: (input) => {
+        const name = input.name.trim();
+        if (!name) return null;
+        const dup = (store.departments ?? []).some(
+          (d) =>
+            d.chapterId === input.chapterId &&
+            d.name.trim().toUpperCase() === name.toUpperCase(),
+        );
+        if (dup) return null;
+        const department: Department = {
+          id: input.id ?? `dept-${Date.now()}`,
+          chapterId: input.chapterId,
+          name,
+        };
+        setStore((s) => ({
+          ...s,
+          departments: [department, ...(s.departments ?? [])],
+          activityLogs: [
+            log(s.session.userId, "department_created", "department", department.id),
+            ...s.activityLogs,
+          ],
+        }));
+        return department;
+      },
+      updateDepartment: (id, patch) => {
+        const existing = store.departments?.find((d) => d.id === id);
+        if (!existing) return false;
+        const name = patch.name.trim();
+        if (!name) return false;
+        const dup = (store.departments ?? []).some(
+          (d) =>
+            d.id !== id &&
+            d.chapterId === existing.chapterId &&
+            d.name.trim().toUpperCase() === name.toUpperCase(),
+        );
+        if (dup) return false;
+        const oldName = existing.name;
+        setStore((s) => ({
+          ...s,
+          departments: (s.departments ?? []).map((d) =>
+            d.id === id ? { ...d, name } : d,
+          ),
+          classCohorts: (s.classCohorts ?? []).map((c) =>
+            c.chapterId === existing.chapterId &&
+            c.department.trim().toUpperCase() === oldName.trim().toUpperCase()
+              ? { ...c, department: name }
+              : c,
+          ),
+          profiles: s.profiles.map((p) =>
+            p.chapterId === existing.chapterId &&
+            (p.department ?? "").trim().toUpperCase() ===
+              oldName.trim().toUpperCase()
+              ? { ...p, department: name }
+              : p,
+          ),
+          activityLogs: [
+            log(s.session.userId, "department_updated", "department", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      deleteDepartment: (id) => {
+        const existing = store.departments?.find((d) => d.id === id);
+        if (!existing) return false;
+        const inUse = (store.classCohorts ?? []).some(
+          (c) =>
+            c.chapterId === existing.chapterId &&
+            c.department.trim().toUpperCase() ===
+              existing.name.trim().toUpperCase(),
+        );
+        if (inUse) return false;
+        setStore((s) => ({
+          ...s,
+          departments: (s.departments ?? []).filter((d) => d.id !== id),
+          activityLogs: [
+            log(s.session.userId, "department_deleted", "department", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      createClassCohort: (input) => {
+        const department = input.department.trim();
+        const year = input.year.trim();
+        const section = input.section.trim();
+        const repIds = [
+          ...new Set(
+            (input.repIds ?? [])
+              .map((id) => id.trim())
+              .filter(Boolean),
+          ),
+        ].slice(0, 2);
+        if (!department || !year || !section || repIds.length < 1) {
+          return null;
+        }
+        const deptOk = (store.departments ?? []).some(
+          (d) =>
+            d.chapterId === input.chapterId &&
+            d.name.trim().toUpperCase() === department.toUpperCase(),
+        );
+        if (!deptOk) return null;
+        const dup = (store.classCohorts ?? []).some(
+          (c) =>
+            c.chapterId === input.chapterId &&
+            c.department.trim().toUpperCase() === department.toUpperCase() &&
+            c.year.trim().toLowerCase() === year.toLowerCase() &&
+            c.section.trim().toUpperCase() === section.toUpperCase(),
+        );
+        if (dup) return null;
+        const repsOk = repIds.every((id) =>
+          store.profiles.some(
+            (p) => p.id === id && p.chapterId === input.chapterId,
+          ),
+        );
+        if (!repsOk) return null;
+        const cohort: ClassCohort = {
+          id: input.id ?? `cc-${Date.now()}`,
+          chapterId: input.chapterId,
+          department,
+          year,
+          section,
+          repIds,
+        };
+        setStore((s) => ({
+          ...s,
+          classCohorts: [cohort, ...(s.classCohorts ?? [])],
+          activityLogs: [
+            log(s.session.userId, "class_cohort_created", "class_cohort", cohort.id),
+            ...s.activityLogs,
+          ],
+        }));
+        return cohort;
+      },
+      updateClassCohort: (id, patch) => {
+        const existing = store.classCohorts?.find((c) => c.id === id);
+        if (!existing) return false;
+        const repIds = [
+          ...new Set(
+            (patch.repIds ?? cohortRepIds(existing))
+              .map((rid) => rid.trim())
+              .filter(Boolean),
+          ),
+        ].slice(0, 2);
+        const next: ClassCohort = {
+          id: existing.id,
+          chapterId: existing.chapterId,
+          department: (patch.department ?? existing.department).trim(),
+          year: (patch.year ?? existing.year).trim(),
+          section: (patch.section ?? existing.section).trim(),
+          repIds,
+        };
+        if (!next.department || !next.year || !next.section) return false;
+        if (next.repIds.length < 1) return false;
+        const deptOk = (store.departments ?? []).some(
+          (d) =>
+            d.chapterId === next.chapterId &&
+            d.name.trim().toUpperCase() === next.department.toUpperCase(),
+        );
+        if (!deptOk) return false;
+        const dup = (store.classCohorts ?? []).some(
+          (c) =>
+            c.id !== id &&
+            c.chapterId === next.chapterId &&
+            c.department.trim().toUpperCase() === next.department.toUpperCase() &&
+            c.year.trim().toLowerCase() === next.year.toLowerCase() &&
+            c.section.trim().toUpperCase() === next.section.toUpperCase(),
+        );
+        if (dup) return false;
+        const repsOk = next.repIds.every((rid) =>
+          store.profiles.some(
+            (p) => p.id === rid && p.chapterId === next.chapterId,
+          ),
+        );
+        if (!repsOk) return false;
+        setStore((s) => ({
+          ...s,
+          classCohorts: (s.classCohorts ?? []).map((c) =>
+            c.id === id ? next : c,
+          ),
+          activityLogs: [
+            log(s.session.userId, "class_cohort_updated", "class_cohort", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      deleteClassCohort: (id) => {
+        setStore((s) => ({
+          ...s,
+          classCohorts: (s.classCohorts ?? []).filter((c) => c.id !== id),
+          activityLogs: [
+            log(s.session.userId, "class_cohort_deleted", "class_cohort", id),
+            ...s.activityLogs,
+          ],
+        }));
+      },
+      createLeadershipTerm: (input) => {
+        const academicYear = input.academicYear.trim();
+        const title = input.title.trim();
+        const startDate = input.startDate.trim();
+        const endDate = input.endDate.trim();
+        if (!input.chapterId || !academicYear || !title || !startDate || !endDate) {
+          return null;
+        }
+        const status: LeadershipStatus = input.status ?? "upcoming";
+        const term: LeadershipTerm = {
+          id: `lt-${Date.now()}`,
+          chapterId: input.chapterId,
+          academicYear,
+          title,
+          startDate,
+          endDate,
+          status,
+          handoverNotes: input.handoverNotes?.trim() || undefined,
+        };
+        setStore((s) => {
+          let terms = [...s.leadershipTerms, term];
+          let userRoles = s.userRoles;
+          if (status === "active") {
+            terms = terms.map((t) =>
+              t.chapterId === input.chapterId &&
+              t.id !== term.id &&
+              t.status === "active"
+                ? { ...t, status: "archived" as const }
+                : t,
+            );
+          }
+          return {
+            ...s,
+            leadershipTerms: terms,
+            userRoles,
+            activityLogs: [
+              log(s.session.userId, "leadership_term_created", "leadership_term", term.id),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return term;
+      },
+      updateLeadershipTerm: (id, patch) => {
+        const existing = store.leadershipTerms.find((t) => t.id === id);
+        if (!existing) return false;
+        const next: LeadershipTerm = {
+          ...existing,
+          academicYear: (patch.academicYear ?? existing.academicYear).trim(),
+          title: (patch.title ?? existing.title).trim(),
+          startDate: (patch.startDate ?? existing.startDate).trim(),
+          endDate: (patch.endDate ?? existing.endDate).trim(),
+          status: patch.status ?? existing.status,
+          handoverNotes:
+            patch.handoverNotes !== undefined
+              ? patch.handoverNotes.trim() || undefined
+              : existing.handoverNotes,
+        };
+        if (!next.academicYear || !next.title || !next.startDate || !next.endDate) {
+          return false;
+        }
+        setStore((s) => {
+          let terms = s.leadershipTerms.map((t) => (t.id === id ? next : t));
+          let userRoles = s.userRoles;
+          if (next.status === "active") {
+            terms = terms.map((t) =>
+              t.chapterId === next.chapterId &&
+              t.id !== id &&
+              t.status === "active"
+                ? { ...t, status: "archived" as const }
+                : t,
+            );
+            const assignments = s.leadershipAssignments.filter(
+              (a) => a.termId === id,
+            );
+            userRoles = syncActiveTermUserRoles(s, next, assignments);
+          } else if (existing.status === "active") {
+            // Demoted from active → clear term-linked demo roles
+            userRoles = s.userRoles.filter(
+              (ur) => ur.leadershipTermId !== id,
+            );
+          }
+          return {
+            ...s,
+            leadershipTerms: terms,
+            userRoles,
+            activityLogs: [
+              log(s.session.userId, "leadership_term_updated", "leadership_term", id),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
+      },
+      archiveLeadershipTerm: (id) => {
+        const existing = store.leadershipTerms.find((t) => t.id === id);
+        if (!existing || existing.status === "archived") return false;
+        setStore((s) => ({
+          ...s,
+          leadershipTerms: s.leadershipTerms.map((t) =>
+            t.id === id ? { ...t, status: "archived" as const } : t,
+          ),
+          userRoles: s.userRoles.filter((ur) => ur.leadershipTermId !== id),
+          activityLogs: [
+            log(s.session.userId, "leadership_term_archived", "leadership_term", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      addLeadershipAssignment: (input) => {
+        const term = store.leadershipTerms.find((t) => t.id === input.termId);
+        if (!term) return null;
+        const title = input.title.trim();
+        if (!title || !input.userId) return null;
+        if (!isAssignableLeadershipRole(input.roleKey)) return null;
+        const memberOk = store.profiles.some(
+          (p) => p.id === input.userId && p.chapterId === term.chapterId,
+        );
+        if (!memberOk) return null;
+        if (isSingletonLeadershipRole(input.roleKey)) {
+          const taken = store.leadershipAssignments.some(
+            (a) => a.termId === input.termId && a.roleKey === input.roleKey,
+          );
+          if (taken) return null;
+        }
+        const assignment: LeadershipAssignment = {
+          id: `la-${Date.now()}`,
+          termId: input.termId,
+          userId: input.userId,
+          roleKey: input.roleKey,
+          title,
+        };
+        setStore((s) => {
+          let userRoles = s.userRoles;
+          if (term.status === "active") {
+            userRoles = upsertUserRoleForAssignment(s, term, assignment);
+          }
+          return {
+            ...s,
+            leadershipAssignments: [...s.leadershipAssignments, assignment],
+            userRoles,
+            activityLogs: [
+              log(
+                s.session.userId,
+                "leadership_assignment_added",
+                "leadership_assignment",
+                assignment.id,
+              ),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return assignment;
+      },
+      updateLeadershipAssignment: (id, patch) => {
+        const existing = store.leadershipAssignments.find((a) => a.id === id);
+        if (!existing) return false;
+        const term = store.leadershipTerms.find((t) => t.id === existing.termId);
+        if (!term) return false;
+        const next: LeadershipAssignment = {
+          ...existing,
+          userId: patch.userId ?? existing.userId,
+          roleKey: patch.roleKey ?? existing.roleKey,
+          title: (patch.title ?? existing.title).trim(),
+        };
+        if (!next.title) return false;
+        if (!isAssignableLeadershipRole(next.roleKey)) return false;
+        const memberOk = store.profiles.some(
+          (p) => p.id === next.userId && p.chapterId === term.chapterId,
+        );
+        if (!memberOk) return false;
+        if (isSingletonLeadershipRole(next.roleKey)) {
+          const taken = store.leadershipAssignments.some(
+            (a) =>
+              a.id !== id &&
+              a.termId === next.termId &&
+              a.roleKey === next.roleKey,
+          );
+          if (taken) return false;
+        }
+        setStore((s) => {
+          let userRoles = s.userRoles;
+          if (term.status === "active") {
+            userRoles = removeUserRoleForAssignment(s, existing);
+            const withRemoval = { ...s, userRoles };
+            userRoles = upsertUserRoleForAssignment(
+              withRemoval,
+              term,
+              next,
+            );
+          }
+          return {
+            ...s,
+            leadershipAssignments: s.leadershipAssignments.map((a) =>
+              a.id === id ? next : a,
+            ),
+            userRoles,
+            activityLogs: [
+              log(
+                s.session.userId,
+                "leadership_assignment_updated",
+                "leadership_assignment",
+                id,
+              ),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
+      },
+      removeLeadershipAssignment: (id) => {
+        const existing = store.leadershipAssignments.find((a) => a.id === id);
+        if (!existing) return false;
+        const term = store.leadershipTerms.find((t) => t.id === existing.termId);
+        setStore((s) => {
+          let userRoles = s.userRoles;
+          if (term?.status === "active") {
+            userRoles = removeUserRoleForAssignment(s, existing);
+          }
+          return {
+            ...s,
+            leadershipAssignments: s.leadershipAssignments.filter(
+              (a) => a.id !== id,
+            ),
+            userRoles,
+            activityLogs: [
+              log(
+                s.session.userId,
+                "leadership_assignment_removed",
+                "leadership_assignment",
+                id,
+              ),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
       },
       createCluster: (input) => {
         const cluster: Cluster = {

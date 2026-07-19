@@ -23,6 +23,7 @@ export type PermissionKey =
   | "chapter.create"
   | "chapter.manage"
   | "leadership.manage"
+  | "class.manage"
   | "roles.manage"
   | "event.create"
   | "event.approve"
@@ -123,6 +124,8 @@ export interface Profile {
   /** Class section within department + year (e.g. A, B) */
   section?: string;
   chapterId?: string;
+  /** Soft disable for HQ user management; default active */
+  status?: "active" | "disabled";
   skills: string[];
   interests: string[];
   portfolioUrl?: string;
@@ -134,15 +137,29 @@ export interface Profile {
   bio?: string;
 }
 
-/** Class order with fixed boy + girl class representatives */
+export type UserRoleAssignmentInput = {
+  roleKey: RoleKey;
+  chapterId?: string;
+  organizationId?: string;
+};
+
+/** Chapter-scoped academic department (exec-created) */
+export interface Department {
+  id: string;
+  chapterId: string;
+  name: string;
+}
+
+/** Class order with 1–2 class representatives (any gender; depends on class strength) */
 export interface ClassCohort {
   id: string;
   chapterId: string;
+  /** Department name (must match a Department in the chapter) */
   department: string;
   year: string;
   section: string;
-  boyRepId: string;
-  girlRepId: string;
+  /** One or two distinct chapter member ids — minimum 1 */
+  repIds: string[];
 }
 
 export interface Role {
@@ -452,6 +469,7 @@ export interface ElevatesStore {
   organization: Organization;
   chapters: Chapter[];
   profiles: Profile[];
+  departments: Department[];
   classCohorts: ClassCohort[];
   roles: Role[];
   permissions: Permission[];

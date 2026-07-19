@@ -13,8 +13,24 @@ import type {
 export type RepresentativeOption = {
   id: string;
   label: string;
-  role?: "boy" | "girl";
 };
+
+/** Normalize cohort reps (supports legacy boyRepId/girlRepId). */
+export function cohortRepIds(c: ClassCohort & {
+  boyRepId?: string;
+  girlRepId?: string;
+}): string[] {
+  if (Array.isArray(c.repIds) && c.repIds.length) {
+    return [...new Set(c.repIds.map((id) => id.trim()).filter(Boolean))].slice(
+      0,
+      2,
+    );
+  }
+  const legacy = [c.boyRepId, c.girlRepId]
+    .map((id) => (id ?? "").trim())
+    .filter(Boolean);
+  return [...new Set(legacy)].slice(0, 2);
+}
 
 export function normalizeClassYear(year?: string): string {
   if (!year) return "";
@@ -24,6 +40,10 @@ export function normalizeClassYear(year?: string): string {
   if (t.startsWith("3")) return "3rd";
   if (t.startsWith("4")) return "4th";
   return year.trim();
+}
+
+export function cohortLabel(c: ClassCohort): string {
+  return `${c.department} · ${c.year} · ${c.section}`;
 }
 
 export function findClassCohort(
@@ -55,7 +75,7 @@ export function studentHasClassSet(profile?: Profile | null): boolean {
   );
 }
 
-/** Boy + girl CRs for the student’s class order (0–2 options). */
+/** Class CRs for the student’s class order (1–2 options). */
 export function listStudentRepresentatives(
   store: ElevatesStore,
   profile?: Profile | null,
@@ -69,16 +89,15 @@ export function listStudentRepresentatives(
     profile.section,
   );
   if (!cohort) return [];
-  const out: RepresentativeOption[] = [];
-  const boy = store.profiles.find((p) => p.id === cohort.boyRepId);
-  const girl = store.profiles.find((p) => p.id === cohort.girlRepId);
-  if (boy) {
-    out.push({ id: boy.id, label: `Boy — ${boy.fullName}`, role: "boy" });
-  }
-  if (girl) {
-    out.push({ id: girl.id, label: `Girl — ${girl.fullName}`, role: "girl" });
-  }
-  return out;
+  return cohortRepIds(cohort)
+    .map((id, index) => {
+      const p = store.profiles.find((x) => x.id === id);
+      if (!p) return null;
+      const n = cohortRepIds(cohort).length;
+      const prefix = n > 1 ? `Rep ${index + 1} — ` : "";
+      return { id: p.id, label: `${prefix}${p.fullName}` };
+    })
+    .filter((x): x is RepresentativeOption => Boolean(x));
 }
 
 /** @deprecated prefer listStudentRepresentatives — chapter-wide list */
@@ -89,9 +108,7 @@ export function listChapterRepresentatives(
   const cohorts = (store.classCohorts ?? []).filter(
     (c) => c.chapterId === chapterId,
   );
-  const ids = [
-    ...new Set(cohorts.flatMap((c) => [c.boyRepId, c.girlRepId])),
-  ];
+  const ids = [...new Set(cohorts.flatMap((c) => cohortRepIds(c)))];
   return ids
     .map((id) => {
       const profile = store.profiles.find((p) => p.id === id);
@@ -110,7 +127,7 @@ export const REPRESENTATIVE_QUESTION: FormQuestion = {
   type: "representative",
   title: "Class representative",
   description:
-    "Choose your boy or girl representative for your class (set on your profile).",
+    "Choose your class representative (assigned for your class on your profile).",
   required: true,
 };
 
@@ -339,9 +356,21 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
       ),
     );
   }
+  const classCohorts = (store.classCohorts ?? []).map((c) => {
+    const { boyRepId: _b, girlRepId: _g, ...rest } = c as ClassCohort & {
+      boyRepId?: string;
+      girlRepId?: string;
+    };
+    return {
+      ...rest,
+      repIds: cohortRepIds(c),
+    };
+  });
+
   return {
     ...store,
-    classCohorts: store.classCohorts ?? [],
+    departments: store.departments ?? [],
+    classCohorts,
     forms,
     formResponses,
   };

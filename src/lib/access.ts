@@ -1,4 +1,4 @@
-import { isHqRole } from "@/lib/permissions";
+import { isHqRole, isSuperAdmin } from "@/lib/permissions";
 import type { RoleKey } from "@/types";
 
 const EXECUTIVE_ROLES: RoleKey[] = [
@@ -81,6 +81,12 @@ export function navItemsForRole(roleKey: RoleKey) {
     { title: "HQ Dashboard", subtitle: "Organization control", href: "/hq", access: "hq" },
     { title: "Chapters", subtitle: "Chapter management", href: "/hq/chapters", access: "hq" },
     {
+      title: "Users",
+      subtitle: "Super-admin user management",
+      href: "/hq/users",
+      access: "hq",
+    },
+    {
       title: "Chapter settings",
       subtitle: "Individual chapter management",
       href: "/chapter/ekc/settings",
@@ -105,6 +111,7 @@ export function navItemsForRole(roleKey: RoleKey) {
   ];
 
   return all.filter((item) => {
+    if (item.href === "/hq/users") return isSuperAdmin(roleKey);
     if (item.access === "shared") return true;
     if (item.access === "hq") return isHqRole(roleKey);
     if (item.access === "faculty") return isFacultyRole(roleKey) || isHqRole(roleKey);

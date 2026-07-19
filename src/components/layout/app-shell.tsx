@@ -63,6 +63,7 @@ function navGroups(roleKey: RoleKey, chapterSlug?: string): NavGroup[] {
   };
 
   if (isHqRole(roleKey)) {
+    const superAdmin = roleKey === "founder" || roleKey === "hq_admin";
     return [
       {
         label: "Overview",
@@ -76,6 +77,9 @@ function navGroups(roleKey: RoleKey, chapterSlug?: string): NavGroup[] {
         label: "Organization",
         items: [
           { href: "/hq/chapters", label: "Chapters", icon: i.users },
+          ...(superAdmin
+            ? [{ href: "/hq/users", label: "Users", icon: i.users }]
+            : []),
           { href: "/hq/leadership", label: "Leadership", icon: i.grad },
           { href: "/hq/permissions", label: "Roles", icon: i.shield },
           { href: "/hq/reports", label: "Reports", icon: i.clipboard },
@@ -113,6 +117,7 @@ function navGroups(roleKey: RoleKey, chapterSlug?: string): NavGroup[] {
           { href: `${base}/settings`, label: "Manage", icon: i.settings },
           { href: `${base}/events`, label: "Events", icon: i.cal },
           { href: `${base}/forms`, label: "Forms", icon: i.clipboard },
+          { href: `${base}/classes`, label: "Classes", icon: i.grad },
           { href: `${base}/reports`, label: "Reports", icon: i.clipboard },
           { href: `${base}/students`, label: "Students", icon: i.grad },
           { href: `${base}/analytics`, label: "Analytics", icon: i.chart },
@@ -139,6 +144,7 @@ function navGroups(roleKey: RoleKey, chapterSlug?: string): NavGroup[] {
         items: [
           { href: `${base}/events`, label: "Events", icon: i.cal },
           { href: `${base}/forms`, label: "Forms", icon: i.clipboard },
+          { href: `${base}/classes`, label: "Classes", icon: i.grad },
           { href: `${base}/attendance`, label: "Attendance", icon: i.clipboard },
           { href: `${base}/clusters`, label: "Clusters", icon: i.spark },
           { href: `${base}/projects`, label: "Projects", icon: i.folder },

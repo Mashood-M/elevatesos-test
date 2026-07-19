@@ -38,8 +38,14 @@ const personas: {
     chapterId: "ch-ekc",
   },
   {
-    label: "Class Rep · EKC",
+    label: "Class Rep · CSE Girl",
     userId: "u-cr",
+    roleKey: "class_representative",
+    chapterId: "ch-ekc",
+  },
+  {
+    label: "Class Rep · CSE Boy",
+    userId: "u-cr-cse-boy",
     roleKey: "class_representative",
     chapterId: "ch-ekc",
   },

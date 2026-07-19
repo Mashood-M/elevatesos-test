@@ -655,14 +655,24 @@ export default function EventDetailPage({
           <ul className="divide-y divide-border">
             {regs.map((reg) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
+              const rep = reg.representativeId
+                ? store.profiles.find((p) => p.id === reg.representativeId)
+                : undefined;
               return (
                 <li
                   key={reg.id}
                   className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
                 >
-                  <span className="font-medium">
-                    {user?.fullName ?? reg.userId}
-                  </span>
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      {user?.fullName ?? reg.userId}
+                    </p>
+                    {rep ? (
+                      <p className="text-[11px] text-text-dim">
+                        Rep: {rep.fullName}
+                      </p>
+                    ) : null}
+                  </div>
                   <Badge
                     tone={
                       reg.status === "approved"

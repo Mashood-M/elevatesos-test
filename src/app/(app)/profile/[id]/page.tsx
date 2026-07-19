@@ -10,16 +10,13 @@ import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
+  cohortLabel,
   findClassCohort,
   listStudentRepresentatives,
   studentHasClassSet,
 } from "@/lib/forms/helpers";
-import { executiveScore } from "@/lib/permissions";
+import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
-
-const DEPARTMENTS = ["CSE", "ECE", "EEE", "ME", "CE", "IT", "Other"];
-const YEARS = ["1st", "2nd", "3rd", "4th"];
-const SECTIONS = ["A", "B", "C", "D"];
 
 export default function ProfilePage({
   params,
@@ -31,44 +28,45 @@ export default function ProfilePage({
   const { session } = useCurrentUser();
   const profile = store.profiles.find((p) => p.id === id);
 
-  const [draft, setDraft] = useState({
-    department: "",
-    year: "",
-    section: "",
-  });
+  const [cohortId, setCohortId] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
 
+  const chapterCohorts = useMemo(() => {
+    if (!profile?.chapterId) return [];
+    return (store.classCohorts ?? [])
+      .filter((c) => c.chapterId === profile.chapterId)
+      .slice()
+      .sort((a, b) => cohortLabel(a).localeCompare(cohortLabel(b)));
+  }, [store.classCohorts, profile?.chapterId]);
+
   useEffect(() => {
-    if (!profile) return;
-    setDraft({
-      department: profile.department ?? "",
-      year: profile.year?.replace(/\s*Year$/i, "") ?? "",
-      section: profile.section ?? "",
-    });
-  }, [profile]);
-
-  const isOwn = session.userId === id;
-
-  const previewCohort = useMemo(() => {
-    if (!profile?.chapterId) return undefined;
-    return findClassCohort(
+    if (!profile?.chapterId) return;
+    const match = findClassCohort(
       store,
       profile.chapterId,
-      draft.department,
-      draft.year,
-      draft.section,
+      profile.department,
+      profile.year,
+      profile.section,
     );
-  }, [store, profile?.chapterId, draft]);
+    setCohortId(match?.id ?? "");
+  }, [profile, store]);
+
+  const isOwn = session.userId === id;
+  const selectedCohort = chapterCohorts.find((c) => c.id === cohortId);
 
   const assignedReps = useMemo(() => {
-    if (!profile) return [];
+    if (!profile || !selectedCohort) return [];
     return listStudentRepresentatives(store, {
       ...profile,
-      department: draft.department || profile.department,
-      year: draft.year || profile.year,
-      section: draft.section || profile.section,
+      department: selectedCohort.department,
+      year: selectedCohort.year,
+      section: selectedCohort.section,
     });
-  }, [store, profile, draft]);
+  }, [store, profile, selectedCohort]);
+
+  const canSeeClassesLink =
+    isHqRole(session.roleKey) ||
+    hasPermission(store, session.roleKey, "class.manage");
 
   if (!profile) {
     return (
@@ -96,11 +94,11 @@ export default function ProfilePage({
     .join(" · ");
 
   function saveClass() {
-    if (!draft.department || !draft.year || !draft.section) return;
+    if (!selectedCohort) return;
     updateProfile(id, {
-      department: draft.department,
-      year: draft.year,
-      section: draft.section,
+      department: selectedCohort.department,
+      year: selectedCohort.year,
+      section: selectedCohort.section,
     });
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1400);
@@ -175,99 +173,84 @@ export default function ProfilePage({
             className="xl:col-span-2"
           >
             <p className="mb-4 text-[13px] text-text-dim">
-              Set your class (department, year, section). Your boy and girl class
-              representatives are assigned from that class — you pick between
-              those two when registering for events.
+              Pick your class from the list set by chapter executives. That class
+              has one or two representatives — pick one of them when registering
+              for events.
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div>
-                <FieldLabel>Department</FieldLabel>
-                <Select
-                  value={draft.department}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, department: e.target.value }))
-                  }
-                >
-                  <option value="">Select…</option>
-                  {DEPARTMENTS.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Year</FieldLabel>
-                <Select
-                  value={draft.year}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, year: e.target.value }))
-                  }
-                >
-                  <option value="">Select…</option>
-                  {YEARS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Section</FieldLabel>
-                <Select
-                  value={draft.section}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, section: e.target.value }))
-                  }
-                >
-                  <option value="">Select…</option>
-                  {SECTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button
-                variant="primary"
-                onClick={saveClass}
-                disabled={!draft.department || !draft.year || !draft.section}
-              >
-                Save class
-              </Button>
-              {savedFlash ? (
-                <span className="text-[12px] text-[var(--accent)]">Saved</span>
-              ) : null}
-            </div>
+            {!chapterCohorts.length ? (
+              <p className="text-[13px] text-[var(--accent)]">
+                No classes set up yet. Ask your chapter exec to create divisions
+                (e.g. Common · 1st · T1, CSE · 2nd · A).
+                {canSeeClassesLink && chapter ? (
+                  <>
+                    {" "}
+                    <Link
+                      href={`/chapter/${chapter.slug}/classes`}
+                      className="underline"
+                    >
+                      Open Classes
+                    </Link>
+                  </>
+                ) : null}
+              </p>
+            ) : (
+              <>
+                <div className="max-w-xl">
+                  <FieldLabel>Your class</FieldLabel>
+                  <Select
+                    value={cohortId}
+                    onChange={(e) => setCohortId(e.target.value)}
+                  >
+                    <option value="">Select class…</option>
+                    {chapterCohorts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {cohortLabel(c)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="primary"
+                    onClick={saveClass}
+                    disabled={!selectedCohort}
+                  >
+                    Save class
+                  </Button>
+                  {savedFlash ? (
+                    <span className="text-[12px] text-[var(--accent)]">
+                      Saved
+                    </span>
+                  ) : null}
+                  {canSeeClassesLink && chapter ? (
+                    <Link href={`/chapter/${chapter.slug}/classes`}>
+                      <Button variant="ghost">Manage classes</Button>
+                    </Link>
+                  ) : null}
+                </div>
+              </>
+            )}
             <div className="mt-5 border-t border-border pt-4">
               <p className="text-[10px] uppercase tracking-wider text-text-dim">
                 Assigned representatives
               </p>
-              {assignedReps.length === 2 ? (
+              {assignedReps.length >= 1 ? (
                 <ul className="mt-2 space-y-2">
-                  {assignedReps.map((r) => (
+                  {assignedReps.map((r, i) => (
                     <li
                       key={r.id}
                       className="flex items-center justify-between border border-border px-3 py-2 text-sm"
                     >
                       <span className="font-medium">{r.label}</span>
-                      <Badge tone={r.role === "boy" ? "cyan" : "magenta"}>
-                        {r.role}
+                      <Badge tone={i === 0 ? "cyan" : "magenta"}>
+                        rep {i + 1}
                       </Badge>
                     </li>
                   ))}
                 </ul>
-              ) : draft.department && draft.year && draft.section ? (
-                <p className="mt-2 text-[13px] text-[var(--accent)]">
-                  {previewCohort
-                    ? "Representatives incomplete for this class."
-                    : "No representatives configured for this class — ask your chapter exec."}
-                </p>
               ) : (
                 <p className="mt-2 text-[13px] text-text-dim">
-                  Choose department, year, and section to see your two reps.
+                  Select a class above to see your representative(s).
                 </p>
               )}
             </div>

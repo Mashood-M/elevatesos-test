@@ -493,7 +493,7 @@ export function GoogleFormBuilder({
 
               {selected.type === "representative" ? (
                 <p className="text-[12px] text-text-dim">
-                  At fill time students only see the boy and girl representatives
+                  At fill time students only see the 1–2 representatives
                   for their class (department + year + section on their profile).
                 </p>
               ) : null}

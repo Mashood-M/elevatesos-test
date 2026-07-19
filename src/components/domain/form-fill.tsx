@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -13,40 +13,98 @@ import {
   answerableQuestions,
   ensureRepresentativeQuestion,
   listStudentRepresentatives,
+  migrateForm,
   studentHasClassSet,
 } from "@/lib/forms/helpers";
 import type { FormDefinition } from "@/types";
 
+function pickAnswerString(
+  answers: Record<string, AnswerValue>,
+  ...keys: string[]
+): string {
+  for (const key of keys) {
+    const v = answers[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  for (const v of Object.values(answers)) {
+    if (typeof v === "string" && v.includes("@")) return v.trim();
+  }
+  return "";
+}
+
 export function FormFill({
   form,
   preview,
+  publicMode,
 }: {
   form: FormDefinition;
   preview?: boolean;
+  /** Public share link — allows guest registrants without a logged-in class */
+  publicMode?: boolean;
 }) {
-  const { store, submitFormResponse, registerForEvent } = useStore();
+  const { store, submitFormResponse, registerForEvent, createUser } = useStore();
   const { session, profile } = useCurrentUser();
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
-  const resolvedForm = useMemo(
-    () => ensureRepresentativeQuestion(form),
-    [form],
-  );
-  const isRegistration = resolvedForm.purpose === "registration";
   const classReady = studentHasClassSet(profile);
+  const useClassReps = !publicMode || classReady;
+
+  const resolvedForm = useMemo(() => {
+    const base = migrateForm(form);
+    if (useClassReps) return ensureRepresentativeQuestion(base);
+    return {
+      ...base,
+      questions: base.questions.filter((q) => q.type !== "representative"),
+    };
+  }, [form, useClassReps]);
+
+  const isRegistration = resolvedForm.purpose === "registration";
   const reps = useMemo(
-    () => listStudentRepresentatives(store, profile),
-    [store, profile],
+    () => (useClassReps ? listStudentRepresentatives(store, profile) : []),
+    [store, profile, useClassReps],
   );
   const answerable = useMemo(
     () => answerableQuestions(resolvedForm),
     [resolvedForm],
   );
 
+  useEffect(() => {
+    if (reps.length !== 1) return;
+    const repQ = resolvedForm.questions.find((q) => q.type === "representative");
+    if (!repQ) return;
+    setAnswers((a) =>
+      a[repQ.id] === reps[0].id ? a : { ...a, [repQ.id]: reps[0].id },
+    );
+  }, [reps, resolvedForm.questions]);
+
   function setAnswer(id: string, v: AnswerValue) {
     setAnswers((a) => ({ ...a, [id]: v }));
+  }
+
+  function resolveSubmitUserId(): string | null {
+    if (!publicMode || (profile && session.userId)) {
+      return session.userId;
+    }
+    const fullName =
+      pickAnswerString(answers, "f-name", "f1", "name") || "Guest Registrant";
+    let email = pickAnswerString(answers, "f-email", "email", "f2");
+    if (!email) {
+      email = `guest+${Date.now()}@elevates.live`;
+    }
+    const existing = store.profiles.find(
+      (p) => p.email.toLowerCase() === email.toLowerCase(),
+    );
+    if (existing) return existing.id;
+    if (!resolvedForm.chapterId) return null;
+    const created = createUser({
+      fullName,
+      email,
+      chapterId: resolvedForm.chapterId,
+      roleKey: "student",
+    });
+    return created?.id ?? null;
   }
 
   function submit() {
@@ -60,14 +118,14 @@ export function FormFill({
       return;
     }
 
-    if (isRegistration) {
+    if (isRegistration && !publicMode) {
       if (!classReady) {
         setError("Set your class on your profile before registering.");
         return;
       }
-      if (reps.length < 2) {
+      if (reps.length < 1) {
         setError(
-          "No boy/girl representatives configured for your class. Ask your chapter exec.",
+          "No representatives configured for your class. Ask your chapter exec.",
         );
         return;
       }
@@ -90,27 +148,33 @@ export function FormFill({
         ? String(answers[repQuestion.id])
         : undefined;
 
-    if (isRegistration && repQuestion) {
+    if (isRegistration && repQuestion && useClassReps) {
       if (
         !representativeId ||
         !reps.some((r) => r.id === representativeId)
       ) {
-        setError("Select your boy or girl class representative.");
+        setError("Select your class representative.");
         return;
       }
+    }
+
+    const userId = resolveSubmitUserId();
+    if (!userId) {
+      setError("Could not create guest registrant. Add a name and email.");
+      return;
     }
 
     if (isRegistration && resolvedForm.eventId) {
       registerForEvent({
         id: `reg-${Date.now()}`,
         eventId: resolvedForm.eventId,
-        userId: session.userId,
+        userId,
         status: "pending",
         representativeId,
         answers: {
           name:
             profile?.fullName ??
-            String(answers.f1 ?? answers["f-name"] ?? ""),
+            (pickAnswerString(answers, "f-name", "f1", "name") || "Guest"),
           ...answers,
         },
         qrCode: "",
@@ -120,7 +184,7 @@ export function FormFill({
 
     const res = submitFormResponse({
       formId: resolvedForm.id,
-      userId: session.userId,
+      userId,
       eventId: resolvedForm.eventId,
       answers,
     });
@@ -154,11 +218,14 @@ export function FormFill({
   }
 
   const blockRegistration =
-    isRegistration && !preview && (!classReady || reps.length < 2);
+    isRegistration &&
+    !preview &&
+    !publicMode &&
+    (!classReady || reps.length < 1);
 
   return (
     <TerminalPanel
-      title={preview ? "preview.fill" : "fill.form"}
+      title={preview ? "preview.fill" : publicMode ? "public.fill" : "fill.form"}
       meta={resolvedForm.status}
       accent="orange"
     >
@@ -167,10 +234,16 @@ export function FormFill({
         {resolvedForm.description ? (
           <p className="mt-1 text-sm text-text-dim">{resolvedForm.description}</p>
         ) : null}
-        {isRegistration ? (
+        {isRegistration && useClassReps ? (
           <p className="mt-2 text-[12px] text-text-dim">
-            Your class order assigns two representatives (boy and girl). Pick
-            one of those two to register.
+            Your class has one or two assigned representatives. Pick one to
+            register.
+          </p>
+        ) : null}
+        {publicMode && isRegistration && !classReady ? (
+          <p className="mt-2 text-[12px] text-text-dim">
+            Public registration — enter your details below. Class representative
+            selection applies when you register while signed in with a class set.
           </p>
         ) : null}
         {preview ? (
@@ -186,9 +259,8 @@ export function FormFill({
             <>
               <p className="text-sm font-semibold">Set your class first</p>
               <p className="mt-1 text-[13px] text-text-dim">
-                Open your profile and choose department, year, and section. Your
-                boy and girl class representatives will be assigned from that
-                class.
+                Open your profile and choose your class. Your class
+                representatives will be assigned from that division.
               </p>
               {profile ? (
                 <Link href={`/profile/${profile.id}`} className="mt-3 inline-block">
@@ -202,7 +274,7 @@ export function FormFill({
                 No representatives for your class
               </p>
               <p className="mt-1 text-[13px] text-text-dim">
-                Ask your chapter exec to configure boy and girl reps for{" "}
+                Ask your chapter exec to assign at least one representative for{" "}
                 {[profile?.department, profile?.year, profile?.section]
                   .filter(Boolean)
                   .join(" · ")}
@@ -235,8 +307,7 @@ export function FormFill({
                 q.type === "representative"
                   ? {
                       ...q,
-                      description:
-                        "Choose your boy or girl class representative.",
+                      description: "Choose your class representative.",
                     }
                   : q
               }

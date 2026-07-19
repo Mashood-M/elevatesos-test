@@ -12,6 +12,13 @@ Multi-tenant platform: Elevates HQ → Chapters (EKC, MES, CUSAT, …) → Stude
 - Supabase (Auth, Postgres, RLS) — migrations in `supabase/migrations`
 - Demo store with seeded chapter data (default; works without Supabase)
 
+## Requirements
+
+- **Node.js 20+** on macOS, Linux, or Windows (x64 or arm64)
+- npm (ships with Node)
+
+Native Next.js / Tailwind binaries are installed automatically for your OS — do not add platform packages like `@next/swc-darwin-arm64` as direct dependencies.
+
 ## Quick start (demo)
 
 ```bash

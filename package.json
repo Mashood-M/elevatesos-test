@@ -8,9 +8,11 @@
     "start": "next start",
     "lint": "eslint"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
-    "@next/swc-darwin-arm64": "^16.2.10",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "clsx": "^2.1.1",

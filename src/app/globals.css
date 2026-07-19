@@ -1,0 +1,173 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap");
+@import "tailwindcss";
+
+/*
+  Elevates OS tokens
+  Brand: elevates.live orange + charcoal
+  Anti-slop: cool white canvas (NOT cream paper), one accent, restrained
+*/
+:root {
+  /* Primitive */
+  --orange-500: #f26430;
+  --orange-600: #e05522;
+  --charcoal-900: #2d2d34;
+  --charcoal-800: #3a3a42;
+  --indigo-700: #414066;
+  --sage-600: #5f7560;
+  --white: #ffffff;
+  --neutral-50: #f4f4f5;
+  --neutral-100: #ececee;
+  --neutral-200: #e2e2e6;
+  --neutral-500: #71717a;
+  --neutral-600: #52525b;
+  --red-600: #c24141;
+
+  /* Semantic */
+  --bg: var(--neutral-50);
+  --bg-elevated: var(--white);
+  --bg-panel: var(--white);
+  --bg-hover: var(--neutral-100);
+  --border: var(--neutral-200);
+  --border-strong: #d4d4d8;
+  --text: var(--charcoal-900);
+  --text-dim: var(--neutral-600);
+  --text-mute: var(--neutral-500);
+  --accent: var(--orange-500);
+  --accent-hover: var(--orange-600);
+  --accent-soft: color-mix(in srgb, var(--orange-500) 12%, white);
+  --success: var(--sage-600);
+  --success-soft: color-mix(in srgb, var(--sage-600) 12%, white);
+  --secondary: var(--indigo-700);
+  --secondary-soft: color-mix(in srgb, var(--indigo-700) 10%, white);
+  --danger: var(--red-600);
+  --rail: var(--charcoal-900);
+  --rail-fg: #fafafa;
+  --rail-mute: rgba(250, 250, 250, 0.45);
+  --rail-hover: rgba(250, 250, 250, 0.08);
+  --rail-active: color-mix(in srgb, var(--orange-500) 22%, transparent);
+
+  /* Legacy aliases used across the app */
+  --cyan: var(--accent);
+  --magenta: var(--secondary);
+  --green: var(--success);
+  --orange: var(--accent);
+  --sage-soft: var(--success-soft);
+  --indigo-soft: var(--secondary-soft);
+  --yellow: #b45309;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --shadow: 0 1px 2px rgba(45, 45, 52, 0.04);
+  --font-display: "Syne", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --z-sticky: 20;
+  --z-overlay: 40;
+  --z-modal: 80;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-hover: var(--bg-hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-text-mute: var(--text-mute);
+  --color-cyan: var(--cyan);
+  --color-magenta: var(--magenta);
+  --color-green: var(--green);
+  --color-orange: var(--orange);
+  --color-yellow: var(--yellow);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  overflow-x: clip;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  font-style: normal;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, white);
+  color: var(--text);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease,
+    transform 160ms ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+/* Legacy no-ops */
+.glitch-hover,
+.animate-neon,
+.scanlines::after,
+.ticket-notch,
+.cursor-blink::after {
+  content: none;
+}

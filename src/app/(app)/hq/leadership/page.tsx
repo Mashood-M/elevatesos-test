@@ -4,6 +4,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
 import { formatDate } from "@/lib/utils";
@@ -45,6 +46,11 @@ export default function HqLeadershipPage() {
               meta={chapter.name}
               accent="cyan"
             >
+              <div className="mb-4">
+                <Link href={`/chapter/${chapter.slug}/leadership`}>
+                  <Button variant="primary">Manage executive team</Button>
+                </Link>
+              </div>
               <div className="relative ml-4 border-l border-dashed border-cyan/30 pl-6">
                 {terms.map((term, idx) => {
                   const termAssignments = assignments.filter((a) => a.termId === term.id);

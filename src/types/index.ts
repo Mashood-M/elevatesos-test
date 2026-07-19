@@ -120,6 +120,8 @@ export interface Profile {
   avatarUrl?: string;
   department?: string;
   year?: string;
+  /** Class section within department + year (e.g. A, B) */
+  section?: string;
   chapterId?: string;
   skills: string[];
   interests: string[];
@@ -130,6 +132,17 @@ export interface Profile {
   points: number;
   badges: string[];
   bio?: string;
+}
+
+/** Class order with fixed boy + girl class representatives */
+export interface ClassCohort {
+  id: string;
+  chapterId: string;
+  department: string;
+  year: string;
+  section: string;
+  boyRepId: string;
+  girlRepId: string;
 }
 
 export interface Role {
@@ -245,6 +258,7 @@ export type FormQuestionType =
   | "date"
   | "time"
   | "file_upload"
+  | "representative"
   | "section_header";
 
 export type FormStatus = "draft" | "open" | "closed";
@@ -292,6 +306,8 @@ export interface EventRegistration {
   eventId: string;
   userId: string;
   status: RegistrationStatus;
+  /** Selected class representative (user id) at registration time */
+  representativeId?: string;
   answers: Record<string, string | string[] | number | boolean>;
   qrCode: string;
   createdAt: string;
@@ -436,6 +452,7 @@ export interface ElevatesStore {
   organization: Organization;
   chapters: Chapter[];
   profiles: Profile[];
+  classCohorts: ClassCohort[];
   roles: Role[];
   permissions: Permission[];
   rolePermissions: RolePermission[];

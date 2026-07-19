@@ -38,6 +38,7 @@ import type {
   FormQuestion,
   FormResponse,
   FormStatus,
+  Profile,
   RegistrationStatus,
   Report,
   ReportType,
@@ -109,6 +110,23 @@ type StoreContextValue = {
         | "facultyId"
         | "notes"
         | "healthScore"
+      >
+    >,
+  ) => void;
+  updateProfile: (
+    id: string,
+    patch: Partial<
+      Pick<
+        Profile,
+        | "department"
+        | "year"
+        | "section"
+        | "bio"
+        | "skills"
+        | "interests"
+        | "githubUrl"
+        | "linkedinUrl"
+        | "portfolioUrl"
       >
     >,
   ) => void;
@@ -756,6 +774,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             log(s.session.userId, "chapter_updated", "chapter", id),
             ...s.activityLogs,
           ],
+        }));
+      },
+      updateProfile: (id, patch) => {
+        setStore((s) => ({
+          ...s,
+          profiles: s.profiles.map((p) =>
+            p.id === id ? { ...p, ...patch } : p,
+          ),
         }));
       },
       createCluster: (input) => {

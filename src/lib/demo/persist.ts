@@ -1,6 +1,6 @@
 import type { ElevatesStore } from "@/types";
 
-const KEY = "elevates-os-demo-v3";
+const KEY = "elevates-os-demo-v5";
 
 export function loadDemoStore(): ElevatesStore | null {
   if (typeof window === "undefined") return null;

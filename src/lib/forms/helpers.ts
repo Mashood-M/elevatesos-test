@@ -1,4 +1,5 @@
 import type {
+  ClassCohort,
   ElevatesStore,
   FormDefinition,
   FormField,
@@ -6,7 +7,126 @@ import type {
   FormPurpose,
   FormQuestion,
   FormQuestionType,
+  Profile,
 } from "@/types";
+
+export type RepresentativeOption = {
+  id: string;
+  label: string;
+  role?: "boy" | "girl";
+};
+
+export function normalizeClassYear(year?: string): string {
+  if (!year) return "";
+  const t = year.trim().toLowerCase();
+  if (t.startsWith("1")) return "1st";
+  if (t.startsWith("2")) return "2nd";
+  if (t.startsWith("3")) return "3rd";
+  if (t.startsWith("4")) return "4th";
+  return year.trim();
+}
+
+export function findClassCohort(
+  store: ElevatesStore,
+  chapterId: string,
+  department?: string,
+  year?: string,
+  section?: string,
+): ClassCohort | undefined {
+  if (!department || !year || !section) return undefined;
+  const y = normalizeClassYear(year);
+  const d = department.trim().toUpperCase();
+  const s = section.trim().toUpperCase();
+  return (store.classCohorts ?? []).find(
+    (c) =>
+      c.chapterId === chapterId &&
+      c.department.trim().toUpperCase() === d &&
+      normalizeClassYear(c.year) === y &&
+      c.section.trim().toUpperCase() === s,
+  );
+}
+
+export function studentHasClassSet(profile?: Profile | null): boolean {
+  return Boolean(
+    profile?.chapterId &&
+      profile.department?.trim() &&
+      profile.year?.trim() &&
+      profile.section?.trim(),
+  );
+}
+
+/** Boy + girl CRs for the student’s class order (0–2 options). */
+export function listStudentRepresentatives(
+  store: ElevatesStore,
+  profile?: Profile | null,
+): RepresentativeOption[] {
+  if (!profile?.chapterId || !studentHasClassSet(profile)) return [];
+  const cohort = findClassCohort(
+    store,
+    profile.chapterId,
+    profile.department,
+    profile.year,
+    profile.section,
+  );
+  if (!cohort) return [];
+  const out: RepresentativeOption[] = [];
+  const boy = store.profiles.find((p) => p.id === cohort.boyRepId);
+  const girl = store.profiles.find((p) => p.id === cohort.girlRepId);
+  if (boy) {
+    out.push({ id: boy.id, label: `Boy — ${boy.fullName}`, role: "boy" });
+  }
+  if (girl) {
+    out.push({ id: girl.id, label: `Girl — ${girl.fullName}`, role: "girl" });
+  }
+  return out;
+}
+
+/** @deprecated prefer listStudentRepresentatives — chapter-wide list */
+export function listChapterRepresentatives(
+  store: ElevatesStore,
+  chapterId: string,
+): RepresentativeOption[] {
+  const cohorts = (store.classCohorts ?? []).filter(
+    (c) => c.chapterId === chapterId,
+  );
+  const ids = [
+    ...new Set(cohorts.flatMap((c) => [c.boyRepId, c.girlRepId])),
+  ];
+  return ids
+    .map((id) => {
+      const profile = store.profiles.find((p) => p.id === id);
+      if (!profile) return null;
+      return {
+        id,
+        label: `${profile.fullName}${profile.department ? ` (${profile.department})` : ""}`,
+      };
+    })
+    .filter((x): x is RepresentativeOption => Boolean(x))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export const REPRESENTATIVE_QUESTION: FormQuestion = {
+  id: "f-representative",
+  type: "representative",
+  title: "Class representative",
+  description:
+    "Choose your boy or girl representative for your class (set on your profile).",
+  required: true,
+};
+
+export function ensureRepresentativeQuestion(
+  form: FormDefinition,
+): FormDefinition {
+  if (form.purpose !== "registration") return form;
+  if (form.questions.some((q) => q.type === "representative")) return form;
+  const basicsIdx = form.questions.findIndex(
+    (q) => q.type === "section_header" && /you|basic/i.test(q.title),
+  );
+  const insertAt = basicsIdx >= 0 ? basicsIdx + 1 : 0;
+  const questions = [...form.questions];
+  questions.splice(insertAt, 0, { ...REPRESENTATIVE_QUESTION });
+  return { ...form, questions };
+}
 
 const FIELD_TO_QUESTION: Record<FormFieldType, FormQuestionType> = {
   text: "short_text",
@@ -81,7 +201,7 @@ export function getEventForm(
   const form = store.forms?.find(
     (f) => f.eventId === eventId && f.purpose === purpose,
   );
-  return form ? migrateForm(form) : undefined;
+  return form ? ensureRepresentativeQuestion(migrateForm(form)) : undefined;
 }
 
 export function registrationFields(
@@ -99,6 +219,7 @@ export function mintQrCode(eventId: string, userId: string) {
 }
 
 const DEFAULT_REG_QUESTIONS: FormQuestion[] = [
+  { ...REPRESENTATIVE_QUESTION },
   { id: "f-name", type: "short_text", title: "Full name", required: true },
   { id: "f-phone", type: "short_text", title: "Phone", required: true },
   { id: "f-dept", type: "short_text", title: "Department", required: true },
@@ -196,25 +317,34 @@ export function emptyForm(
 }
 
 export function normalizeStore(store: ElevatesStore): ElevatesStore {
-  let forms = (store.forms ?? []).map((f) => migrateForm(f as FormDefinition));
+  let forms = (store.forms ?? []).map((f) =>
+    ensureRepresentativeQuestion(migrateForm(f as FormDefinition)),
+  );
   const formResponses = store.formResponses ?? [];
   if (!forms.length && store.eventForms?.length) {
     const now = new Date().toISOString();
     forms = store.eventForms.map((ef) =>
-      migrateForm({
-        id: `form-reg-${ef.eventId}`,
-        purpose: "registration",
-        title: "Registration",
-        chapterId: "ch-ekc",
-        eventId: ef.eventId,
-        status: "open",
-        questions: ef.fields.map(fieldToQuestion),
-        createdAt: now,
-        updatedAt: now,
-      }),
+      ensureRepresentativeQuestion(
+        migrateForm({
+          id: `form-reg-${ef.eventId}`,
+          purpose: "registration",
+          title: "Registration",
+          chapterId: "ch-ekc",
+          eventId: ef.eventId,
+          status: "open",
+          questions: ef.fields.map(fieldToQuestion),
+          createdAt: now,
+          updatedAt: now,
+        }),
+      ),
     );
   }
-  return { ...store, forms, formResponses };
+  return {
+    ...store,
+    classCohorts: store.classCohorts ?? [],
+    forms,
+    formResponses,
+  };
 }
 
 export function answerableQuestions(form: FormDefinition): FormQuestion[] {
@@ -232,5 +362,6 @@ export const QUESTION_TYPE_LABELS: Record<FormQuestionType, string> = {
   date: "Date",
   time: "Time",
   file_upload: "File upload",
+  representative: "Class representative",
   section_header: "Section",
 };

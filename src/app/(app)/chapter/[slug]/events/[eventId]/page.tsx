@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FormSharePanel } from "@/components/domain/form-share-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
@@ -241,7 +242,7 @@ export default function EventDetailPage({
             {!alreadyRegistered &&
             event.status === "registration_open" &&
             regForm?.status === "open" ? (
-              <Link href={`/chapter/${slug}/forms/${regForm.id}/fill`}>
+              <Link href={`/f/${regForm.id}`}>
                 <Button variant="orange">Register</Button>
               </Link>
             ) : null}
@@ -542,8 +543,8 @@ export default function EventDetailPage({
                   </Button>
                 ) : null}
                 {regForm?.status === "open" ? (
-                  <Link href={`/chapter/${slug}/forms/${regForm.id}/fill`}>
-                    <Button variant="ghost">Fill</Button>
+                  <Link href={`/f/${regForm.id}`}>
+                    <Button variant="ghost">Public fill</Button>
                   </Link>
                 ) : null}
                 {canManage && regForm ? (
@@ -561,6 +562,10 @@ export default function EventDetailPage({
                 ) : null}
               </div>
             </div>
+
+            {regForm?.status === "open" ? (
+              <FormSharePanel formId={regForm.id} title="Registration link" />
+            ) : null}
 
             <div className="flex flex-wrap items-center justify-between gap-2 border border-border p-3">
               <div>
@@ -581,12 +586,16 @@ export default function EventDetailPage({
                   </Button>
                 ) : null}
                 {fbForm?.status === "open" ? (
-                  <Link href={`/chapter/${slug}/forms/${fbForm.id}/fill`}>
-                    <Button variant="ghost">Fill</Button>
+                  <Link href={`/f/${fbForm.id}`}>
+                    <Button variant="ghost">Public fill</Button>
                   </Link>
                 ) : null}
               </div>
             </div>
+
+            {fbForm?.status === "open" ? (
+              <FormSharePanel formId={fbForm.id} title="Feedback link" />
+            ) : null}
 
             <Link href={`/chapter/${slug}/forms`}>
               <Button variant="ghost" className="w-full">

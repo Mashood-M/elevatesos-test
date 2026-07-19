@@ -4,6 +4,7 @@ import { use, useState } from "react";
 import Link from "next/link";
 import { FormFill } from "@/components/domain/form-fill";
 import { FormResponses } from "@/components/domain/form-responses";
+import { FormSharePanel } from "@/components/domain/form-share-panel";
 import { FormSummary } from "@/components/domain/form-summary";
 import { GoogleFormBuilder } from "@/components/domain/google-form-builder";
 import { Button } from "@/components/ui/button";
@@ -76,13 +77,24 @@ export default function FormWorkspacePage({
               </Link>
             ) : null}
             {form.status === "open" ? (
-              <Link href={`/chapter/${slug}/forms/${form.id}/fill`}>
-                <Button variant="orange">Open fill link</Button>
-              </Link>
+              <>
+                <Link href={`/f/${form.id}`}>
+                  <Button variant="orange">Public fill</Button>
+                </Link>
+                <Link href={`/chapter/${slug}/forms/${form.id}/fill`}>
+                  <Button variant="ghost">In-app fill</Button>
+                </Link>
+              </>
             ) : null}
           </div>
         }
       />
+
+      {form.status === "open" ? (
+        <div className="mb-6">
+          <FormSharePanel formId={form.id} title={form.title} />
+        </div>
+      ) : null}
 
       <div className="mb-6 flex flex-wrap gap-2">
         {visibleTabs.map((t) => (

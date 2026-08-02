@@ -5,7 +5,7 @@ const tones = {
   magenta: "bg-[var(--secondary-soft)] text-[var(--secondary)]",
   green: "bg-[var(--success-soft)] text-[var(--success)]",
   orange: "bg-[var(--accent-soft)] text-[var(--accent-hover)]",
-  mute: "bg-bg-hover text-text-dim",
+  mute: "bg-bg text-text-mute",
 };
 
 export function Badge({
@@ -20,7 +20,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-[var(--radius-sm)] px-2 py-0.5 text-[11px] font-semibold capitalize",
+        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-[-0.01em]",
         tones[tone],
         className,
       )}

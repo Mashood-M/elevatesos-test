@@ -1,64 +1,53 @@
-# Elevates OS — Design System
-
-Synthesized from:
-- [ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) — token layers
-- [taste-skill](https://github.com/Leonxlnx/taste-skill) — redesign + minimalist protocols
-- [hallmark](https://github.com/nutlope/hallmark) — anti-slop, token lock, restraint
-- [unslop-ui](https://github.com/JCarterJohnson/vibecoded-design-tells) — vibe-coded tells catalog
-- [impeccable](https://github.com/pbakaus/impeccable) — product register, absolute bans
+# Elevates OS — Design System (Finexy-light ERP)
 
 ## Brand anchor (elevates.live)
 
 | Role | Value | Notes |
 |------|-------|-------|
-| Accent | `#f26430` | Sole brand accent |
-| Ink | `#2d2d34` | Charcoal text + chrome |
+| Accent | `#f26430` | Sole brand accent · active nav · CTAs |
+| Ink | `#2d2d34` | Text + primary charcoal buttons |
 | Indigo | `#414066` | Secondary semantic only |
-| Sage | `#758173` | Success/health only — never primary |
+| Sage | `#5f7560` | Success / health |
 
-## Escape the 2026 “tasteful default”
+## Product chrome (authenticated)
 
-Unslop tell #0: cream + serif + sage. We **do not** use warm cream page backgrounds or serif display fonts.
-Canvas is cool/neutral white. Warmth comes from orange accent + imagery, not body tint.
+Finexy / ClickUp–inspired light ERP:
 
-## Color strategy (impeccable): Restrained
+- Soft gray canvas `#f3f4f6` (cool — not cream paper)
+- **Light icon rail** (white) + orange active state
+- Top bar: Elevates wordmark · pill search · alerts · profile chip
+- Floating white cards: soft shadow (`--shadow`), radius 18–22px
+- Pill / near-pill action buttons for primary CTAs
+- One accent-tinted stat card allowed per dashboard
 
-Tinted neutrals + one accent ≤10% of surface. Product default.
+## Marketing surfaces
 
-## Absolute bans applied
+Landing, `/eos`, `/join` keep charcoal brand heroes. Login splits charcoal brand panel + light form card.
 
-- No cream/sand page bg as the identity
+## Absolute bans
+
+- No cream/sand page bg as identity
 - No purple/indigo primary
-- No gradient text, neon glow, glassmorphism default
-- No side-stripe accent borders on cards
-- No border + large soft shadow on the same element
-- No `rounded-full` on large containers; cards ≤12px radius
-- No Lucide-as-identity (icons stay functional, thin secondary)
-- No identical 3-column feature card grids on marketing
-- No tiny uppercase tracked eyebrow on every section
-- No AI copy clichés (“seamless”, “unleash”, “next-gen”)
+- No neon glow / glassmorphism default
+- No AI copy clichés
+- Accent ≤10% of surface outside intentional highlight cards
 
 ## Typography
 
-- Display: Syne (geometric, not serif)
-- Body/UI: IBM Plex Sans
-- Mono/meta: IBM Plex Mono (tabular nums for stats)
-- Sentence case headings; `text-wrap: balance` on h1–h3
-- Display tracking ≥ -0.03em (floor -0.04em)
+- Display/headings: Syne (brand display)
+- Body/UI: Plus Jakarta Sans (soft product sans for Finexy-light ERP)
+- Mono/meta: IBM Plex Mono (ticket IDs, timestamps, tabular meta)
+- Sentence case headings; `text-wrap: balance`
 
 ## Layout
 
-- Icon rail (64px charcoal) + white canvas — not a fat cream sidebar
-- Max content width ~1200px
-- Cards: hairline border OR soft shadow, never both
-- Nested cards forbidden
+- Structural labeled sidebar `--rail-width: 248px` (icon + label, section headers, brand + user footer)
+- Sticky top bar: search · alerts · profile (logo lives in sidebar)
+- Content max ~1360px; generous card padding
+- Cards: soft shadow (prefer over heavy borders)
+- Nested cards discouraged
 
 ## Motion
 
-- 180–240ms ease-out on hover/active only
+- 180–240ms ease-out on hover/active
 - `prefers-reduced-motion` respected
-- No staggered section entrances on every block
-
-## Hallmark critique target
-
-P≥4 H≥4 E≥4 S≥4 R≥4 V≥3 — restraint over decoration.

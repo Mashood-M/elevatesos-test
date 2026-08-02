@@ -19,25 +19,22 @@ export default function DesignSystemPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="More"
         title="Design system"
-        description="Restrained product UI: cool canvas, charcoal ink, Elevates orange accent. See DESIGN.md."
+        description="Finexy-light ERP kit — soft floating cards, light rail, Elevates orange accent."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Components" value={12} hint="Core UI kit" />
-        <Stat
-          label="Brand colors"
-          value={4}
-          hint="orange · charcoal · sage · indigo"
-        />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Components" value={12} hint="Core UI kit" accent="orange" />
+        <Stat label="Brand colors" value={4} hint="orange · charcoal · sage · indigo" />
         <Stat label="Ticket events" value={store.events.length} />
         <Stat label="Health target" value="90+" hint="Chapter excellence" />
       </div>
 
-      <div className="mt-6 grid gap-4 xl:grid-cols-2">
+      <div className="mt-8 grid gap-5 xl:grid-cols-2">
         <TerminalPanel title="Buttons">
           <p className="mb-4 text-[13px] text-text-dim">
-            Charcoal for primary product actions. Orange for brand CTAs.
+            Pill actions — charcoal primary, orange brand CTAs.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="primary">Primary</Button>
@@ -104,28 +101,22 @@ export default function DesignSystemPage() {
               — accent
             </li>
             <li>
-              <span className="font-semibold text-[var(--secondary)]">
-                #414066
-              </span>{" "}
-              — indigo secondary
-            </li>
-            <li>
-              <span className="font-semibold text-[var(--success)]">#758173</span>{" "}
-              — sage success
-            </li>
-            <li>
               <span className="font-semibold text-text">#2d2d34</span> — charcoal
             </li>
+            <li>
+              <span className="font-semibold text-[var(--success)]">#5f7560</span>{" "}
+              — sage
+            </li>
             <li className="pt-1 text-text-mute">
-              Canvas cool zinc · Syne + IBM Plex · border-only cards
+              Light rail · soft shadow cards · radius 18px
             </li>
           </ul>
         </TerminalPanel>
       </div>
 
       {sampleEvent ? (
-        <div className="mt-4">
-          <TerminalPanel title="Ticket card" meta="store.events[0]">
+        <div className="mt-5">
+          <TerminalPanel title="Ticket card">
             <TicketCard event={sampleEvent} />
           </TerminalPanel>
         </div>

@@ -1,13 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap");
 @import "tailwindcss";
 
 /*
-  Elevates OS tokens
-  Brand: elevates.live orange + charcoal
-  Anti-slop: cool white canvas (NOT cream paper), one accent, restrained
+  Elevates OS — Finexy-light ERP tokens
+  Brand accent #f26430 · charcoal ink #2d2d34
 */
 :root {
-  /* Primitive */
+  /* Primitive — locked brand palette */
   --orange-500: #f26430;
   --orange-600: #e05522;
   --charcoal-900: #2d2d34;
@@ -15,38 +14,41 @@
   --indigo-700: #414066;
   --sage-600: #5f7560;
   --white: #ffffff;
-  --neutral-50: #f4f4f5;
-  --neutral-100: #ececee;
-  --neutral-200: #e2e2e6;
-  --neutral-500: #71717a;
-  --neutral-600: #52525b;
+  --neutral-50: #f3f4f6;
+  --neutral-100: #eceef2;
+  --neutral-200: #e2e5eb;
+  --neutral-500: #6b7280;
+  --neutral-600: #4b5563;
   --red-600: #c24141;
 
   /* Semantic */
-  --bg: var(--neutral-50);
+  --bg: #f3f4f6;
   --bg-elevated: var(--white);
   --bg-panel: var(--white);
   --bg-hover: var(--neutral-100);
   --border: var(--neutral-200);
-  --border-strong: #d4d4d8;
+  --border-strong: #d1d5db;
   --text: var(--charcoal-900);
   --text-dim: var(--neutral-600);
   --text-mute: var(--neutral-500);
   --accent: var(--orange-500);
   --accent-hover: var(--orange-600);
-  --accent-soft: color-mix(in srgb, var(--orange-500) 12%, white);
+  --accent-soft: color-mix(in srgb, var(--orange-500) 14%, white);
   --success: var(--sage-600);
-  --success-soft: color-mix(in srgb, var(--sage-600) 12%, white);
+  --success-soft: color-mix(in srgb, var(--sage-600) 14%, white);
   --secondary: var(--indigo-700);
-  --secondary-soft: color-mix(in srgb, var(--indigo-700) 10%, white);
+  --secondary-soft: color-mix(in srgb, var(--indigo-700) 12%, white);
   --danger: var(--red-600);
-  --rail: var(--charcoal-900);
-  --rail-fg: #fafafa;
-  --rail-mute: rgba(250, 250, 250, 0.45);
-  --rail-hover: rgba(250, 250, 250, 0.08);
-  --rail-active: color-mix(in srgb, var(--orange-500) 22%, transparent);
 
-  /* Legacy aliases used across the app */
+  /* Light Finexy rail */
+  --rail: #ffffff;
+  --rail-fg: var(--charcoal-900);
+  --rail-mute: #9ca3af;
+  --rail-hover: #f3f4f6;
+  --rail-active: color-mix(in srgb, var(--orange-500) 14%, white);
+  --rail-border: #eef0f4;
+
+  /* Legacy aliases */
   --cyan: var(--accent);
   --magenta: var(--secondary);
   --green: var(--success);
@@ -55,12 +57,23 @@
   --indigo-soft: var(--secondary-soft);
   --yellow: #b45309;
 
-  --radius: 10px;
-  --radius-sm: 6px;
-  --radius-lg: 12px;
-  --shadow: 0 1px 2px rgba(45, 45, 52, 0.04);
-  --font-display: "Syne", system-ui, sans-serif;
-  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  /* Finexy density */
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-lg: 22px;
+  --radius-pill: 999px;
+  --shadow: 0 4px 24px rgba(45, 45, 52, 0.06);
+  --shadow-sm: 0 1px 3px rgba(45, 45, 52, 0.05);
+  --rail-width: 248px;
+  --rail-width-mobile: 280px;
+  --sidebar-pad: 0.875rem;
+  --content-max: 1360px;
+  --content-pad-x: 1.75rem;
+  --content-pad-y: 1.75rem;
+  --header-height: 4rem;
+  /* Headlines use the same family as product UI for a consistent system look */
+  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --z-sticky: 20;
   --z-overlay: 40;
@@ -101,7 +114,8 @@ body {
   color: var(--text);
   font-family: var(--font-body);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow-x: clip;
@@ -130,11 +144,12 @@ input,
 select,
 textarea {
   transition:
-    background-color 180ms ease,
-    border-color 180ms ease,
-    color 180ms ease,
-    opacity 180ms ease,
-    transform 160ms ease;
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    opacity 200ms ease-out,
+    box-shadow 200ms ease-out,
+    transform 160ms ease-out;
 }
 
 button:active:not(:disabled) {
@@ -156,14 +171,20 @@ button:active:not(:disabled) {
 }
 
 .scrollbar-thin::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(45, 45, 52, 0.12);
   border-radius: 999px;
 }
 
-/* Legacy no-ops */
+/* Soft card utility for ad-hoc page chrome */
+.erp-card {
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow);
+}
+
 .glitch-hover,
 .animate-neon,
 .scanlines::after,

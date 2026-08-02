@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 120" role="img" aria-label="Elevates">
+  <rect width="480" height="120" fill="#ffffff"/>
+  <rect x="24" y="28" width="64" height="64" rx="16" fill="#f26430"/>
+  <path d="M40 56h32M40 70h22" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <text x="108" y="78" font-family="Syne, 'Plus Jakarta Sans', system-ui, sans-serif" font-size="48" font-weight="800" letter-spacing="-1.5" fill="#2d2d34">Elevates</text>
+</svg>

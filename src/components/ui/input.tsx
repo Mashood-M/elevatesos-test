@@ -7,14 +7,14 @@ import type {
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="mb-1.5 block text-[12px] font-semibold text-text-dim">
+    <label className="mb-1.5 block text-[12px] font-medium text-text-dim">
       {children}
     </label>
   );
 }
 
 const field =
-  "w-full rounded-[var(--radius-sm)] border border-border bg-bg-elevated px-3 py-2 text-[13px] text-text outline-none placeholder:text-text-mute focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-soft)]";
+  "w-full h-11 rounded-full border-0 bg-bg px-4 text-[13px] text-text outline-none shadow-[var(--shadow-sm)] placeholder:text-text-mute focus:ring-2 focus:ring-[var(--accent-soft)]";
 
 export function Input({
   className,
@@ -27,7 +27,16 @@ export function TextArea({
   className,
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(field, className)} {...props} />;
+  return (
+    <textarea
+      className={cn(
+        field,
+        "h-auto min-h-[104px] rounded-[var(--radius-sm)] py-3",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function Select({
@@ -36,7 +45,7 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cn(field, className)} {...props}>
+    <select className={cn(field, "pr-8", className)} {...props}>
       {children}
     </select>
   );

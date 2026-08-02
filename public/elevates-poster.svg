@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 840" role="img" aria-label="Elevates event poster template">
+  <rect width="600" height="840" fill="#f3f4f6"/>
+  <rect x="0" y="0" width="600" height="280" fill="#2d2d34"/>
+  <rect x="40" y="48" width="56" height="56" rx="14" fill="#f26430"/>
+  <path d="M54 72h28M54 84h18" stroke="#ffffff" stroke-width="4" stroke-linecap="round"/>
+  <text x="112" y="88" font-family="Syne, 'Plus Jakarta Sans', system-ui, sans-serif" font-size="36" font-weight="800" fill="#ffffff">Elevates</text>
+  <text x="40" y="180" font-family="Syne, 'Plus Jakarta Sans', system-ui, sans-serif" font-size="52" font-weight="800" letter-spacing="-1.5" fill="#ffffff">Learn. Build.</text>
+  <text x="40" y="236" font-family="Syne, 'Plus Jakarta Sans', system-ui, sans-serif" font-size="52" font-weight="800" letter-spacing="-1.5" fill="#f26430">Grow. Ship.</text>
+  <text x="40" y="360" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="22" font-weight="600" fill="#2d2d34">Chapter event poster template</text>
+  <text x="40" y="400" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="16" fill="#4b5563">Replace headline · date · venue · QR</text>
+  <rect x="40" y="460" width="520" height="220" rx="20" fill="#ffffff" stroke="#e2e5eb"/>
+  <text x="72" y="530" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="18" fill="#6b7280">Accent orange ≤10% of surface</text>
+  <text x="72" y="570" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="18" fill="#6b7280">Syne display · Plus Jakarta body</text>
+  <text x="72" y="610" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="18" fill="#6b7280">Keep clear space around the mark</text>
+  <rect x="40" y="740" width="200" height="48" rx="24" fill="#f26430"/>
+  <text x="78" y="770" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Register now</text>
+</svg>

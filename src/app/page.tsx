@@ -4,72 +4,62 @@ import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-dvh bg-[var(--charcoal-900)] text-white">
-      <header className="mx-auto flex max-w-[1080px] items-center justify-between px-5 py-5">
-        <p className="font-[family-name:var(--font-display)] text-[18px] font-extrabold tracking-[-0.03em]">
+    <div className="relative min-h-dvh overflow-hidden bg-[var(--charcoal-900)] text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-40"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 50% at 20% -10%, color-mix(in srgb, var(--accent) 35%, transparent), transparent 55%)",
+        }}
+      />
+
+      <header className="relative mx-auto flex max-w-[var(--content-max)] items-center justify-between px-6 py-6">
+        <p className="font-[family-name:var(--font-display)] text-[20px] font-extrabold tracking-[-0.04em]">
           Elevates
         </p>
-        <Link href="/login">
-          <Button variant="orange" className="h-8">
-            Open app
-          </Button>
-        </Link>
+        <nav className="flex items-center gap-4">
+          <Link
+            href="/eos"
+            className="hidden text-[13px] text-white/55 hover:text-white sm:inline"
+          >
+            Playbook
+          </Link>
+          <Link href="/login">
+            <Button variant="orange" className="h-9">
+              Open app
+            </Button>
+          </Link>
+        </nav>
       </header>
 
-      <main className="mx-auto max-w-[1080px] px-5 pb-20 pt-16 md:pt-24">
-        <p className="text-[13px] font-medium text-[var(--accent)]">
-          Operating system for student builders
-        </p>
-        <h1 className="mt-4 max-w-[16ch] font-[family-name:var(--font-display)] text-[clamp(2.5rem,6vw,4.25rem)] font-extrabold leading-[1.05] tracking-[-0.03em]">
-          One HQ. Many chapters. Real work.
+      <main className="relative mx-auto flex min-h-[calc(100dvh-5.5rem)] max-w-[var(--content-max)] flex-col justify-center px-6 pb-20 pt-10">
+        <h1 className="max-w-[14ch] font-[family-name:var(--font-display)] text-[clamp(2.75rem,7vw,4.5rem)] font-extrabold leading-[1.02] tracking-[-0.04em]">
+          Elevates
         </h1>
-        <p className="mt-5 max-w-[48ch] text-[15px] leading-relaxed text-white/60">
-          Manage events, leadership cycles, clusters, and chapter health across
-          colleges — without duct-taping spreadsheets and Google Forms.
+        <p className="mt-5 max-w-[36ch] font-[family-name:var(--font-display)] text-[clamp(1.25rem,2.5vw,1.75rem)] font-semibold leading-snug tracking-[-0.03em] text-white/85">
+          The operating system for student builders.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <p className="mt-4 max-w-[42ch] text-[15px] leading-relaxed text-white/50">
+          Chapters, workshops, clusters, and leadership — one playbook, earned
+          progression, faculty optional.
+        </p>
+        <div className="mt-10 flex flex-wrap gap-3">
           <Link href="/login">
-            <Button variant="orange" className="h-10 px-4">
+            <Button variant="orange" className="h-11 px-5">
               Enter workspace
               <ArrowRight size={16} />
             </Button>
           </Link>
-          <Link href="/workflows">
+          <Link href="/join">
             <Button
               variant="ghost"
-              className="h-10 border-white/20 px-4 text-white hover:bg-white/10"
+              className="h-11 border-white/15 px-5 text-white hover:bg-white/8"
             >
-              View workflows
+              Join a chapter
             </Button>
           </Link>
         </div>
-
-        <dl className="mt-16 grid gap-6 border-t border-white/10 pt-10 sm:grid-cols-3">
-          <div>
-            <dt className="font-[family-name:var(--font-mono)] text-[12px] text-white/40">
-              Structure
-            </dt>
-            <dd className="mt-2 text-[15px] font-medium text-white/85">
-              HQ → chapters → students, events, projects
-            </dd>
-          </div>
-          <div>
-            <dt className="font-[family-name:var(--font-mono)] text-[12px] text-white/40">
-              Event loop
-            </dt>
-            <dd className="mt-2 text-[15px] font-medium text-white/85">
-              Register → approve → attend → certificate
-            </dd>
-          </div>
-          <div>
-            <dt className="font-[family-name:var(--font-mono)] text-[12px] text-white/40">
-              Brand
-            </dt>
-            <dd className="mt-2 text-[15px] font-medium text-white/85">
-              Orange accent from elevates.live · charcoal ink
-            </dd>
-          </div>
-        </dl>
       </main>
     </div>
   );

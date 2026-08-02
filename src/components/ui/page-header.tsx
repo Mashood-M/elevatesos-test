@@ -9,11 +9,10 @@ export function PageHeader({
 }: {
   eyebrow?: string;
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
 }) {
-  // Avoid AI "eyebrow on every section" — only show if meaningful, sentence case
   const label = eyebrow
     ?.replace(/^\/\/\s*/, "")
     .replace(/\./g, " · ")
@@ -22,27 +21,29 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between",
+        "mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between",
         className,
       )}
     >
       <div className="min-w-0 max-w-2xl">
         {label ? (
-          <p className="mb-1.5 text-[12px] font-medium text-[var(--accent)]">
+          <p className="mb-2 text-[12px] font-medium text-[var(--accent)]">
             {label}
           </p>
         ) : null}
-        <h1 className="font-[family-name:var(--font-display)] text-[1.75rem] font-bold leading-[1.15] tracking-[-0.03em] text-text sm:text-[2rem]">
+        <h1 className="font-[family-name:var(--font-display)] text-[1.875rem] font-extrabold leading-[1.1] tracking-[-0.04em] text-text sm:text-[2.25rem]">
           {title}
         </h1>
         {description ? (
-          <p className="mt-2 max-w-[65ch] text-[14px] leading-relaxed text-text-dim">
+          <div className="mt-2.5 max-w-[56ch] text-[14px] leading-relaxed text-text-dim">
             {description}
-          </p>
+          </div>
         ) : null}
       </div>
       {actions ? (
-        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-3">
+          {actions}
+        </div>
       ) : null}
     </div>
   );

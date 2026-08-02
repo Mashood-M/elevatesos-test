@@ -1,7 +1,8 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import type { EventItem } from "@/types";
-import { formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 const statusTone: Record<
   string,
@@ -19,36 +20,65 @@ const statusTone: Record<
 export function TicketCard({
   event,
   href,
+  meta,
+  footer,
+  className,
 }: {
   event: EventItem;
   href?: string;
+  /** Extra line under venue/date (e.g. approved counts) */
+  meta?: ReactNode;
+  /** Actions below the ticket body — keep outside the title link */
+  footer?: ReactNode;
+  className?: string;
 }) {
   const body = (
-    <article className="rounded-[var(--radius)] border border-border bg-bg-panel p-4 transition hover:border-[var(--border-strong)]">
+    <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
             {event.ticketNo}
           </p>
-          <h3 className="mt-1 font-[family-name:var(--font-display)] text-[17px] font-bold tracking-[-0.02em]">
+          <h3 className="mt-1 font-[family-name:var(--font-display)] text-[15px] font-bold tracking-[-0.03em]">
             {event.title}
           </h3>
-          <p className="mt-1 text-[13px] text-[var(--accent)]">{event.category}</p>
+          <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>
         </div>
         <Badge tone={statusTone[event.status] ?? "mute"}>
           {event.status.replaceAll("_", " ")}
         </Badge>
       </div>
-      <div className="mt-3 grid gap-1 text-[13px] text-text-dim sm:grid-cols-2">
+      <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-text-dim">
         <p>{event.venue}</p>
         <p>{formatDateTime(event.startsAt)}</p>
         <p>
-          {event.capacity} seats · waitlist {event.waitlistCapacity}
+          {event.capacity} seats
+          {event.waitlistCapacity ? ` · wl ${event.waitlistCapacity}` : ""}
         </p>
-        <p className="capitalize">{event.visibility.replaceAll("_", " ")}</p>
       </div>
-    </article>
+      {meta ? (
+        <p className="mt-1.5 text-[11px] text-text-mute">{meta}</p>
+      ) : null}
+    </>
   );
 
-  return href ? <Link href={href}>{body}</Link> : body;
+  return (
+    <article
+      className={cn(
+        "rounded-[var(--radius)] bg-bg-panel p-4 shadow-[var(--shadow)] transition hover:shadow-[0_8px_28px_rgba(45,45,52,0.08)]",
+        className,
+      )}
+    >
+      {href ? (
+        <Link href={href} className="block hover:text-[var(--accent)]">
+          {body}
+        </Link>
+      ) : (
+        body
+      )}
+      {footer ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">{footer}</div>
+      ) : null}
+    </article>
+  );
 }

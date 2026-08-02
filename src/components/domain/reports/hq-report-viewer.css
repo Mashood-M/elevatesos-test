@@ -1,0 +1,101 @@
+/* PDF-style read-only report sheet for HQ review */
+
+.hq-report-viewer-page {
+  width: min(816px, 100%);
+  min-height: 1056px;
+  margin: 0 auto;
+  padding: 72px 64px;
+  background: #fff;
+  color: #1f1f1f;
+  font-size: 15px;
+  line-height: 1.7;
+  box-shadow: 0 8px 40px rgba(45, 45, 52, 0.14);
+}
+
+.hq-report-viewer-page h1 {
+  margin: 0 0 1rem;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.hq-report-viewer-page h2 {
+  margin: 1.75rem 0 0.75rem;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.hq-report-viewer-page h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hq-report-viewer-page p {
+  margin: 0 0 0.75rem;
+}
+
+.hq-report-viewer-page ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+  list-style: disc;
+}
+
+.hq-report-viewer-page ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+  list-style: decimal;
+}
+
+.hq-report-viewer-page li {
+  margin: 0.15rem 0;
+}
+
+.hq-report-viewer-page img {
+  max-width: 100%;
+  height: auto;
+}
+
+.hq-report-viewer-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.hq-report-viewer-page td,
+.hq-report-viewer-page th {
+  border: 1px solid #d4d0c8;
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+}
+
+.hq-report-viewer-page th {
+  background: #f3f0ea;
+  text-align: left;
+}
+
+.hq-report-viewer-page blockquote {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 3px solid #f26430;
+  color: #4b5563;
+}
+
+.hq-report-viewer-page .doc-page-break-view,
+.hq-report-viewer-page .doc-page-break-label,
+.hq-report-viewer-page .doc-page-num,
+.hq-report-viewer-page .doc-page-sheet-end,
+.hq-report-viewer-page .doc-page-sheet-start,
+.hq-report-viewer-page .doc-page-gap {
+  display: none !important;
+}
+
+.hq-report-viewer-page .react-renderer.node-pageBreak {
+  display: block;
+  break-before: page;
+  page-break-before: always;
+  height: 0;
+  margin: 2rem 0;
+  border-top: 1px dashed #cfc9be;
+}

@@ -1,0 +1,393 @@
+/* Scoped Word-like ProseMirror styles for the report Document Editor */
+
+.document-editor {
+  --doc-margin: 96px;
+  --doc-page-w: 816px;
+  --doc-page-h: 1056px;
+  --doc-page-bg: #ffffff;
+}
+
+.document-editor .doc-canvas-column {
+  width: var(--doc-page-w);
+  background: transparent;
+}
+
+.document-editor .doc-page {
+  position: relative;
+  outline: none;
+  overflow: visible;
+  min-height: var(--doc-page-h);
+  padding: var(--doc-margin);
+  font-size: 15px;
+  line-height: 1.7;
+  color: #1f1f1f;
+  /* Paper fill only — per-page edge shadows live on sheet-end/start */
+  background: var(--doc-page-bg);
+  box-shadow: none;
+}
+
+.document-editor .doc-page.doc-columns-2 {
+  column-count: 2;
+  column-gap: 2rem;
+}
+
+.document-editor .doc-page.doc-line-numbers {
+  counter-reset: doc-line;
+}
+
+.document-editor .doc-page.doc-line-numbers > p {
+  position: relative;
+}
+
+.document-editor .doc-page.doc-line-numbers > p::before {
+  counter-increment: doc-line;
+  content: counter(doc-line);
+  position: absolute;
+  left: calc(-1 * var(--doc-margin) + 6px);
+  top: 0.15em;
+  width: calc(var(--doc-margin) - 12px);
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #9ca3af;
+  user-select: none;
+  pointer-events: none;
+}
+
+.document-editor .doc-page.doc-border-thin {
+  box-shadow:
+    inset 0 0 0 1px #1f1f1f,
+    0 8px 40px rgba(45, 45, 52, 0.14);
+}
+
+.document-editor .doc-page.doc-border-thick {
+  box-shadow:
+    inset 0 0 0 3px #1f1f1f,
+    0 8px 40px rgba(45, 45, 52, 0.14);
+}
+
+.document-editor .doc-page.doc-border-thin:has(.doc-page-break-view),
+.document-editor .doc-page.doc-border-thick:has(.doc-page-break-view) {
+  /* Multi-page: keep inset border only; sheet edges carry outer shadow */
+  box-shadow: inset 0 0 0 1px #1f1f1f;
+}
+
+.document-editor .doc-page.doc-border-thick:has(.doc-page-break-view) {
+  box-shadow: inset 0 0 0 3px #1f1f1f;
+}
+
+.document-editor .doc-page:not(:has(.doc-page-break-view)) {
+  box-shadow: 0 8px 40px rgba(45, 45, 52, 0.14);
+}
+
+.document-editor .doc-page:has(.doc-page-break-view) {
+  min-height: 0;
+}
+
+.document-editor .doc-page h1 {
+  margin: 0 0 1rem;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.document-editor .doc-page h2 {
+  margin: 1.75rem 0 0.75rem;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.document-editor .doc-page h3 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.document-editor .doc-page h4 {
+  margin: 1rem 0 0.4rem;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.document-editor .doc-page h5,
+.document-editor .doc-page h6 {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.document-editor .doc-page p {
+  /* Spacing comes from StyledParagraph attrs (default after 8pt) */
+  margin: 0;
+}
+
+.document-editor .doc-page ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+  list-style-type: disc;
+  list-style-position: outside;
+}
+
+.document-editor .doc-page ul ul {
+  list-style-type: circle;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.document-editor .doc-page ul ul ul {
+  list-style-type: square;
+}
+
+.document-editor .doc-page ol {
+  margin: 0 0 0.75rem;
+  padding-left: 1.5rem;
+  list-style-type: decimal;
+  list-style-position: outside;
+}
+
+.document-editor .doc-page ol ol {
+  list-style-type: lower-alpha;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.document-editor .doc-page ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.document-editor .doc-page li {
+  margin: 0.15rem 0;
+  display: list-item;
+}
+
+.document-editor .doc-page li p {
+  margin: 0;
+}
+
+.document-editor .doc-page ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+
+.document-editor .doc-page ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.document-editor .doc-page ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+  user-select: none;
+}
+
+.document-editor .doc-page ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+}
+
+.document-editor .doc-page ul[data-type="taskList"] input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.document-editor .doc-page blockquote {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 3px solid var(--accent);
+  color: #4b5563;
+  background: color-mix(in srgb, var(--accent) 6%, white);
+}
+
+.document-editor .doc-page blockquote[data-callout] {
+  border-radius: 8px;
+  border-left-width: 4px;
+  padding: 0.75rem 1rem;
+}
+
+.document-editor .doc-page blockquote[data-callout="info"] {
+  border-left-color: var(--secondary);
+  background: var(--secondary-soft);
+}
+
+.document-editor .doc-page blockquote[data-callout="warning"] {
+  border-left-color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 12%, white);
+}
+
+.document-editor .doc-page blockquote[data-callout="success"] {
+  border-left-color: var(--success);
+  background: var(--success-soft);
+}
+
+.document-editor .doc-page blockquote[data-callout="error"] {
+  border-left-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, white);
+}
+
+.document-editor .doc-page code {
+  border-radius: 4px;
+  background: #f3f0ea;
+  padding: 0.1em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+.document-editor .doc-page pre {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  border-radius: 8px;
+  background: #2d2d34;
+  color: #f3f4f6;
+  padding: 0.85rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.document-editor .doc-page pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.document-editor .doc-page hr {
+  margin: 1.5rem 0;
+  border: none;
+  border-top: 1px solid #d4d0c8;
+}
+
+.document-editor .doc-page img {
+  margin: 1rem 0;
+  max-width: 100%;
+  border-radius: 2px;
+}
+
+.document-editor .doc-page a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.document-editor .doc-page table {
+  margin: 1rem 0;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.document-editor .doc-page td,
+.document-editor .doc-page th {
+  border: 1px solid #d4d0c8;
+  padding: 0.35rem 0.5rem;
+  vertical-align: top;
+  min-width: 60px;
+}
+
+.document-editor .doc-page th {
+  background: #f3f0ea;
+  text-align: left;
+  font-weight: 600;
+}
+
+.document-editor .doc-page mark {
+  border-radius: 2px;
+  background: #fde68a;
+  padding: 0.05em 0.15em;
+}
+
+.document-editor .doc-page s {
+  text-decoration: line-through;
+}
+
+/* TipTap wraps NodeView; bleed the outer renderer through page margins */
+.document-editor .doc-page .react-renderer.node-pageBreak {
+  position: relative;
+  display: block;
+  margin-left: calc(-1 * var(--doc-margin));
+  margin-right: calc(-1 * var(--doc-margin));
+  width: calc(100% + 2 * var(--doc-margin));
+  max-width: none;
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.document-editor .doc-page-break-view {
+  position: relative;
+  display: block;
+  width: 100%;
+  user-select: none;
+  outline: none !important;
+}
+
+.document-editor .doc-page-break-view-selected .doc-page-gap {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.document-editor .doc-page-pad {
+  width: 100%;
+  background: #fff;
+}
+
+.document-editor .doc-page-sheet-end {
+  position: relative;
+  height: 14px;
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(45, 45, 52, 0.18);
+}
+
+.document-editor .doc-page-gap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
+  background: #d8d4cc;
+}
+
+.document-editor .doc-page-break-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.document-editor .doc-page-sheet-start {
+  position: relative;
+  height: 14px;
+  background: #fff;
+  box-shadow: 0 -12px 32px rgba(45, 45, 52, 0.16);
+}
+
+.document-editor .doc-page-num {
+  position: absolute;
+  right: 16px;
+  bottom: 2px;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.document-editor .doc-page-num-start {
+  top: 2px;
+  bottom: auto;
+}
+
+.document-editor .doc-page[data-last-page]::after {
+  content: attr(data-last-page);
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  font-size: 11px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+/* Print/HTML serialization fallback (no NodeView) */
+.document-editor .doc-page .doc-page-break:not(.doc-page-break-view) {
+  break-before: page;
+}

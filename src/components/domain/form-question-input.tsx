@@ -225,6 +225,9 @@ export function FormQuestionInput({
     return (
       <div>
         {label}
+        {question.description ? (
+          <p className="mb-1 text-[11px] text-text-dim">{question.description}</p>
+        ) : null}
         <Input
           type={question.type}
           disabled={disabled}
@@ -236,6 +239,16 @@ export function FormQuestionInput({
   }
 
   if (question.type === "file_upload") {
+    let fileLabel = "";
+    if (typeof value === "string" && value) {
+      try {
+        const parsed = JSON.parse(value) as { name?: string };
+        fileLabel = parsed.name || value;
+      } catch {
+        fileLabel = value;
+      }
+    }
+    const maxMb = question.fileMaxMb ?? 2;
     return (
       <div>
         {label}
@@ -245,13 +258,38 @@ export function FormQuestionInput({
         <Input
           type="file"
           disabled={disabled}
+          accept={question.fileAccept || undefined}
           onChange={(e) => {
             const file = e.target.files?.[0];
-            onChange(file ? file.name : "");
+            if (!file) {
+              onChange("");
+              return;
+            }
+            if (file.size > maxMb * 1024 * 1024) {
+              onChange("");
+              e.target.value = "";
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              onChange(
+                JSON.stringify({
+                  name: file.name,
+                  mime: file.type || "application/octet-stream",
+                  size: file.size,
+                  dataUrl: String(reader.result || ""),
+                }),
+              );
+            };
+            reader.readAsDataURL(file);
           }}
         />
-        {typeof value === "string" && value ? (
-          <p className="mt-1 text-[11px] text-text-dim">Selected: {value}</p>
+        <p className="mt-1 text-[11px] text-text-mute">
+          Max {maxMb} MB
+          {question.fileAccept ? ` · ${question.fileAccept}` : ""}
+        </p>
+        {fileLabel ? (
+          <p className="mt-1 text-[11px] text-text-dim">Selected: {fileLabel}</p>
         ) : null}
       </div>
     );

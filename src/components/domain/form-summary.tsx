@@ -123,67 +123,75 @@ export function FormSummary({ form }: { form: FormDefinition }) {
   );
   const questions = useMemo(() => answerableQuestions(form), [form]);
 
+  if (!responses.length) {
+    return (
+      <TerminalPanel title="summary" meta="0 responses">
+        <p className="py-6 text-center text-[14px] text-text-dim">
+          No responses to summarize.
+        </p>
+      </TerminalPanel>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <TerminalPanel title="summary" meta={`${responses.length} responses`}>
-        <p className="text-sm text-text-dim">
-          Aggregate view by question — choice bars, scale averages, and recent
-          text.
+      <TerminalPanel
+        title="summary"
+        meta={`${responses.length} response${responses.length === 1 ? "" : "s"}`}
+      >
+        <p className="text-[14px] text-text-dim">
+          Aggregated answers across the chapter form.
         </p>
       </TerminalPanel>
 
-      {!responses.length ? (
-        <p className="text-sm text-text-dim">No responses to summarize.</p>
-      ) : (
-        questions.map((q) => {
-          const answers = responses.map((r) => r.answers[q.id]);
-          return (
-            <TerminalPanel key={q.id} title={q.title} meta={q.type}>
-              {q.type === "multiple_choice" ||
-              q.type === "dropdown" ||
-              q.type === "checkboxes" ||
-              q.type === "representative" ? (
-                <OptionSummary
-                  question={{
-                    ...q,
-                    options:
-                      q.type === "representative"
-                        ? answers.map((a) => {
+      {questions.map((q) => {
+        const answers = responses.map((r) => r.answers[q.id]);
+        return (
+          <TerminalPanel key={q.id} title={q.title} meta={q.type}>
+            {q.type === "multiple_choice" ||
+            q.type === "dropdown" ||
+            q.type === "checkboxes" ||
+            q.type === "representative" ? (
+              <OptionSummary
+                question={{
+                  ...q,
+                  options:
+                    q.type === "representative"
+                      ? answers
+                          .map((a) => {
                             const id = String(a ?? "");
                             return (
                               store.profiles.find((p) => p.id === id)
                                 ?.fullName ?? id
                             );
-                          }).filter(Boolean)
-                        : q.options,
-                  }}
-                  answers={
-                    q.type === "representative"
-                      ? answers.map((a) => {
-                          const id = String(a ?? "");
-                          return (
-                            store.profiles.find((p) => p.id === id)?.fullName ??
-                            id
-                          );
-                        })
-                      : answers
-                  }
-                />
-              ) : q.type === "linear_scale" || q.type === "rating" ? (
-                <ScaleSummary question={q} answers={answers} />
-              ) : q.type === "short_text" || q.type === "paragraph" ? (
-                <TextSummary answers={answers} />
-              ) : (
-                <TextSummary
-                  answers={answers.map((a) =>
-                    a === undefined || a === null ? "" : String(a),
-                  )}
-                />
-              )}
-            </TerminalPanel>
-          );
-        })
-      )}
+                          })
+                          .filter(Boolean)
+                      : q.options,
+                }}
+                answers={
+                  q.type === "representative"
+                    ? answers.map((a) => {
+                        const id = String(a ?? "");
+                        return (
+                          store.profiles.find((p) => p.id === id)?.fullName ??
+                          id
+                        );
+                      })
+                    : answers
+                }
+              />
+            ) : q.type === "linear_scale" || q.type === "rating" ? (
+              <ScaleSummary question={q} answers={answers} />
+            ) : (
+              <TextSummary
+                answers={answers.map((a) =>
+                  a === undefined || a === null ? "" : String(a),
+                )}
+              />
+            )}
+          </TerminalPanel>
+        );
+      })}
     </div>
   );
 }

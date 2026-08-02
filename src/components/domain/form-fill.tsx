@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -10,12 +10,18 @@ import {
 } from "@/components/domain/form-question-input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
-  answerableQuestions,
   ensureRepresentativeQuestion,
   listStudentRepresentatives,
   migrateForm,
+  splitFormSections,
   studentHasClassSet,
 } from "@/lib/forms/helpers";
+import {
+  runFormLogic,
+  computeHiddenQuestionIds,
+  type FormLogicEventName,
+} from "@/lib/forms/script-runtime";
+import { validateQuestions } from "@/lib/forms/validation";
 import type { FormDefinition } from "@/types";
 
 function pickAnswerString(
@@ -39,7 +45,6 @@ export function FormFill({
 }: {
   form: FormDefinition;
   preview?: boolean;
-  /** Public share link — allows guest registrants without a logged-in class */
   publicMode?: boolean;
 }) {
   const { store, submitFormResponse, registerForEvent, createUser } = useStore();
@@ -47,6 +52,7 @@ export function FormFill({
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [sectionIndex, setSectionIndex] = useState(0);
 
   const classReady = studentHasClassSet(profile);
   const useClassReps = !publicMode || classReady;
@@ -60,15 +66,98 @@ export function FormFill({
     };
   }, [form, useClassReps]);
 
+  const sections = useMemo(
+    () => splitFormSections(resolvedForm),
+    [resolvedForm],
+  );
+
+  const hiddenIds = useMemo(
+    () =>
+      computeHiddenQuestionIds(
+        resolvedForm.logicRules,
+        resolvedForm.logicEnabled,
+        answers as Record<string, string | string[] | number | boolean>,
+      ),
+    [resolvedForm.logicRules, resolvedForm.logicEnabled, answers],
+  );
+
+  useEffect(() => {
+    if (!hiddenIds.size) return;
+    setAnswers((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of hiddenIds) {
+        if (next[id] !== undefined && next[id] !== "") {
+          delete next[id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [hiddenIds]);
+
   const isRegistration = resolvedForm.purpose === "registration";
   const reps = useMemo(
     () => (useClassReps ? listStudentRepresentatives(store, profile) : []),
     [store, profile, useClassReps],
   );
-  const answerable = useMemo(
-    () => answerableQuestions(resolvedForm),
-    [resolvedForm],
+
+  const chapter = resolvedForm.chapterId
+    ? store.chapters.find((c) => c.id === resolvedForm.chapterId)
+    : undefined;
+
+  const safeIndex = Math.min(
+    Math.max(0, sectionIndex),
+    Math.max(0, sections.length - 1),
   );
+  const current = sections[safeIndex] ?? sections[0];
+  const isLast = safeIndex >= sections.length - 1;
+  const isFirst = safeIndex <= 0;
+
+  const answersRef = useRef(answers);
+  const sectionRef = useRef(safeIndex);
+  answersRef.current = answers;
+  sectionRef.current = safeIndex;
+
+  function logicHost() {
+    return {
+      getAnswers: () =>
+        answersRef.current as Record<
+          string,
+          string | string[] | number | boolean
+        >,
+      setAnswer: (questionId: string, value: AnswerValue) => {
+        setAnswers((a) => ({ ...a, [questionId]: value }));
+      },
+      getSectionIndex: () => sectionRef.current,
+      setSectionIndex: (index: number) => {
+        setSectionIndex(index);
+        setError("");
+      },
+      sectionCount: () => sections.length,
+      questions: resolvedForm.questions,
+      setError: (message: string) => setError(message),
+    };
+  }
+
+  function runHook(
+    name: FormLogicEventName,
+    detail?: { questionId?: string },
+  ) {
+    return runFormLogic(
+      resolvedForm.logicRules,
+      resolvedForm.logicEnabled,
+      logicHost(),
+      name,
+      detail,
+    );
+  }
+
+  useEffect(() => {
+    setSectionIndex(0);
+    setDone(false);
+    setError("");
+  }, [resolvedForm.id]);
 
   useEffect(() => {
     if (reps.length !== 1) return;
@@ -81,6 +170,9 @@ export function FormFill({
 
   function setAnswer(id: string, v: AnswerValue) {
     setAnswers((a) => ({ ...a, [id]: v }));
+    queueMicrotask(() => {
+      runHook("onAnswerChange", { questionId: id });
+    });
   }
 
   function resolveSubmitUserId(): string | null {
@@ -107,8 +199,34 @@ export function FormFill({
     return created?.id ?? null;
   }
 
+  function validateCurrentPage(): boolean {
+    const visible = (current?.questions ?? []).filter((q) => !hiddenIds.has(q.id));
+    const miss = validateQuestions(visible, answers, hiddenIds);
+    if (miss) {
+      setError(miss);
+      return false;
+    }
+    return true;
+  }
+
+  function goNext() {
+    setError("");
+    if (!validateCurrentPage()) return;
+    if (!runHook("onBeforeNext")) return;
+    if (!isLast) setSectionIndex((i) => i + 1);
+  }
+
+  function goBack() {
+    setError("");
+    if (!isFirst) setSectionIndex((i) => Math.max(0, i - 1));
+  }
+
   function submit() {
     setError("");
+    if (!validateCurrentPage()) return;
+
+    if (!runHook("onBeforeSubmit")) return;
+
     if (preview) {
       setDone(true);
       return;
@@ -131,13 +249,12 @@ export function FormFill({
       }
     }
 
-    for (const q of answerable) {
-      if (!q.required) continue;
-      const v = answers[q.id];
-      if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) {
-        setError(`Missing: ${q.title}`);
-        return;
-      }
+    // Final pass: all visible answerable across sections
+    const allQs = sections.flatMap((s) => s.questions);
+    const miss = validateQuestions(allQs, answers, hiddenIds);
+    if (miss) {
+      setError(miss);
+      return;
     }
 
     const repQuestion = resolvedForm.questions.find(
@@ -165,7 +282,7 @@ export function FormFill({
     }
 
     if (isRegistration && resolvedForm.eventId) {
-      registerForEvent({
+      const regResult = registerForEvent({
         id: `reg-${Date.now()}`,
         eventId: resolvedForm.eventId,
         userId,
@@ -180,6 +297,10 @@ export function FormFill({
         qrCode: "",
         createdAt: new Date().toISOString(),
       });
+      if (!regResult.ok) {
+        setError(regResult.message);
+        return;
+      }
     }
 
     const res = submitFormResponse({
@@ -188,32 +309,65 @@ export function FormFill({
       eventId: resolvedForm.eventId,
       answers,
     });
-    if (!res && !isRegistration) {
+    if (!res) {
       setError("Could not submit — already submitted or form closed.");
       return;
     }
     setDone(true);
   }
 
+  const eventForLink = resolvedForm.eventId
+    ? store.events.find((e) => e.id === resolvedForm.eventId)
+    : undefined;
+  const chapterForLink = eventForLink
+    ? store.chapters.find((c) => c.id === eventForLink.chapterId)
+    : chapter;
+
   if (done) {
     return (
-      <TerminalPanel title="submitted" accent="green">
-        <p className="font-semibold">
-          {preview ? "Preview complete (not saved)." : "Response recorded."}
-        </p>
-        {preview ? (
-          <Button
-            variant="ghost"
-            className="mt-3"
-            onClick={() => {
-              setDone(false);
-              setAnswers({});
-            }}
-          >
-            Fill again
-          </Button>
-        ) : null}
-      </TerminalPanel>
+      <div className="mx-auto max-w-xl">
+        <TerminalPanel
+          title={preview ? "preview" : "submitted"}
+          meta={chapter?.name}
+          accent="orange"
+        >
+          <h2 className="font-[family-name:var(--font-display)] text-[22px] font-bold tracking-[-0.03em]">
+            {preview
+              ? "Preview complete"
+              : isRegistration
+                ? "Submitted — pending review"
+                : "Got it — thanks"}
+          </h2>
+          <p className="mt-2 text-[14px] text-text-dim">
+            {preview
+              ? "Nothing was saved — this was a preview only."
+              : isRegistration
+                ? "Your registration is with the chapter team for review."
+                : "Your response is in Elevates."}
+          </p>
+          {!preview && isRegistration && chapterForLink && eventForLink ? (
+            <Link
+              href={`/chapter/${chapterForLink.slug}/events/${eventForLink.id}`}
+              className="mt-4 inline-block text-[14px] font-medium text-[var(--accent)] hover:underline"
+            >
+              View {eventForLink.title} →
+            </Link>
+          ) : null}
+          {preview ? (
+            <Button
+              variant="ghost"
+              className="mt-4"
+              onClick={() => {
+                setDone(false);
+                setAnswers({});
+                setSectionIndex(0);
+              }}
+            >
+              Fill again
+            </Button>
+          ) : null}
+        </TerminalPanel>
+      </div>
     );
   }
 
@@ -223,44 +377,51 @@ export function FormFill({
     !publicMode &&
     (!classReady || reps.length < 1);
 
+  const multiSection = sections.length > 1;
+
   return (
-    <TerminalPanel
-      title={preview ? "preview.fill" : publicMode ? "public.fill" : "fill.form"}
-      meta={resolvedForm.status}
-      accent="orange"
-    >
-      <div className="mb-6">
-        <h2 className="font-display text-xl font-bold">{resolvedForm.title}</h2>
-        {resolvedForm.description ? (
-          <p className="mt-1 text-sm text-text-dim">{resolvedForm.description}</p>
-        ) : null}
-        {isRegistration && useClassReps ? (
-          <p className="mt-2 text-[12px] text-text-dim">
-            Your class has one or two assigned representatives. Pick one to
-            register.
-          </p>
-        ) : null}
-        {publicMode && isRegistration && !classReady ? (
-          <p className="mt-2 text-[12px] text-text-dim">
-            Public registration — enter your details below. Class representative
-            selection applies when you register while signed in with a class set.
+    <div className="mx-auto max-w-xl space-y-4">
+      <TerminalPanel
+        title={resolvedForm.title}
+        meta={
+          [
+            chapter?.name,
+            resolvedForm.purpose,
+            preview ? "preview" : null,
+            multiSection
+              ? `section ${safeIndex + 1}/${sections.length}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
+        accent="orange"
+      >
+        {resolvedForm.description && safeIndex === 0 && !current?.header ? (
+          <p className="text-[14px] text-text-dim">
+            {resolvedForm.description}
           </p>
         ) : null}
         {preview ? (
-          <p className="mt-2 text-[11px] text-[var(--accent)]">
-            Preview mode — submissions are not saved.
+          <p className="mt-3 text-[12px] font-medium text-[var(--accent)]">
+            Preview mode — responses are not saved.
           </p>
-        ) : null}
-      </div>
+        ) : (
+          <p className="mt-3 text-[12px] text-text-mute">
+            * Required fields
+            {multiSection ? " on this section" : ""}
+          </p>
+        )}
+      </TerminalPanel>
 
       {blockRegistration ? (
-        <div className="mb-4 rounded-[var(--radius)] border border-[var(--accent)] bg-[var(--accent-soft)] p-4">
+        <TerminalPanel title="before you continue" accent="orange">
           {!classReady ? (
             <>
-              <p className="text-sm font-semibold">Set your class first</p>
+              <p className="font-semibold">Set your class first</p>
               <p className="mt-1 text-[13px] text-text-dim">
-                Open your profile and choose your class. Your class
-                representatives will be assigned from that division.
+                Open your profile and choose your class so representatives can
+                be assigned.
               </p>
               {profile ? (
                 <Link href={`/profile/${profile.id}`} className="mt-3 inline-block">
@@ -270,11 +431,9 @@ export function FormFill({
             </>
           ) : (
             <>
-              <p className="text-sm font-semibold">
-                No representatives for your class
-              </p>
+              <p className="font-semibold">No representatives for your class</p>
               <p className="mt-1 text-[13px] text-text-dim">
-                Ask your chapter exec to assign at least one representative for{" "}
+                Ask your chapter exec to assign representatives for{" "}
                 {[profile?.department, profile?.year, profile?.section]
                   .filter(Boolean)
                   .join(" · ")}
@@ -282,62 +441,93 @@ export function FormFill({
               </p>
             </>
           )}
-        </div>
+        </TerminalPanel>
       ) : null}
 
-      <div className="space-y-5">
-        {resolvedForm.questions.map((q) => {
-          if (q.type === "representative" && blockRegistration) {
-            return (
-              <div key={q.id} className="opacity-50">
-                <FormQuestionInput
-                  question={q}
-                  value={undefined}
-                  onChange={() => {}}
-                  disabled
-                  representativeOptions={[]}
-                />
-              </div>
-            );
-          }
-          return (
-            <FormQuestionInput
-              key={q.id}
-              question={
-                q.type === "representative"
-                  ? {
-                      ...q,
-                      description: "Choose your class representative.",
-                    }
-                  : q
-              }
-              value={answers[q.id]}
-              onChange={(v) => setAnswer(q.id, v)}
-              disabled={q.type === "representative" && blockRegistration}
-              representativeOptions={
-                q.type === "representative" ? reps : undefined
-              }
-            />
-          );
-        })}
-      </div>
+      {current?.header || (multiSection && safeIndex > 0) ? (
+        <section className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow-sm)] md:p-6">
+          <h2 className="font-[family-name:var(--font-display)] text-[17px] font-bold tracking-[-0.02em]">
+            {current.title}
+          </h2>
+          {current.description ? (
+            <p className="mt-1 text-[13px] text-text-dim">
+              {current.description}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {(current?.questions ?? [])
+        .filter((q) => !hiddenIds.has(q.id))
+        .map((q) => (
+        <section
+          key={q.id}
+          className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow-sm)] md:p-6"
+        >
+          <FormQuestionInput
+            question={
+              q.type === "representative"
+                ? {
+                    ...q,
+                    description: "Choose your class representative.",
+                  }
+                : q
+            }
+            value={answers[q.id]}
+            onChange={(v) => setAnswer(q.id, v)}
+            disabled={q.type === "representative" && blockRegistration}
+            representativeOptions={
+              q.type === "representative" ? reps : undefined
+            }
+          />
+        </section>
+      ))}
 
       {error ? (
-        <p className="mt-4 text-sm text-[var(--accent)]">{error}</p>
+        <p className="px-1 text-[13px] text-[var(--accent)]">{error}</p>
       ) : null}
 
-      <Button
-        variant="primary"
-        className="mt-6"
-        onClick={submit}
-        disabled={Boolean(blockRegistration)}
-      >
-        {preview
-          ? "Test submit"
-          : isRegistration
-            ? "Register"
-            : "Submit"}
-      </Button>
-    </TerminalPanel>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1">
+        <div className="flex flex-wrap gap-2">
+          {multiSection && !isFirst ? (
+            <Button variant="ghost" onClick={goBack}>
+              Back
+            </Button>
+          ) : null}
+          {!isLast ? (
+            <Button
+              variant="orange"
+              onClick={goNext}
+              disabled={Boolean(blockRegistration)}
+            >
+              Next
+            </Button>
+          ) : (
+            <Button
+              variant="orange"
+              onClick={submit}
+              disabled={Boolean(blockRegistration)}
+            >
+              {preview
+                ? "Test submit"
+                : isRegistration
+                  ? "Register"
+                  : "Submit"}
+            </Button>
+          )}
+        </div>
+        <button
+          type="button"
+          className="text-[13px] text-text-dim hover:text-[var(--accent)]"
+          onClick={() => {
+            setAnswers({});
+            setSectionIndex(0);
+            setError("");
+          }}
+        >
+          Clear form
+        </button>
+      </div>
+    </div>
   );
 }

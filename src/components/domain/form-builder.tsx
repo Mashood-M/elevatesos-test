@@ -342,7 +342,7 @@ export function FormBuilder({
     }
 
     if (purpose === "registration") {
-      registerForEvent({
+      const regResult = registerForEvent({
         id: `reg-${Date.now()}`,
         eventId,
         userId: session.userId,
@@ -354,6 +354,10 @@ export function FormBuilder({
         qrCode: "",
         createdAt: new Date().toISOString(),
       });
+      if (!regResult.ok) {
+        setError(regResult.message);
+        return;
+      }
       setSubmitted(true);
       return;
     }
@@ -399,7 +403,7 @@ export function FormBuilder({
       {chapterSlug ? (
         <TerminalPanel title="forms.hub" accent="orange">
           <p className="mb-3 text-[12px] text-text-dim">
-            Prefer the Google Forms–style builder with responses and summary charts.
+            Open the Elevates form builder for templates, responses, and summary charts.
           </p>
           <Link href={formsHref}>
             <Button variant="orange">Open in Forms</Button>

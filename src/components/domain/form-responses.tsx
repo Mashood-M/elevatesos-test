@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FieldLabel, Input } from "@/components/ui/input";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { answerableQuestions } from "@/lib/forms/helpers";
@@ -19,7 +19,40 @@ function formatAnswer(
   if (question?.type === "representative" && typeof v === "string") {
     return store.profiles.find((p) => p.id === v)?.fullName ?? v;
   }
+  if (question?.type === "file_upload" && typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v) as { name?: string };
+      return parsed.name || v;
+    } catch {
+      return v;
+    }
+  }
+  if (question?.type === "rating" && typeof v === "number") {
+    const max = question.ratingMax ?? 5;
+    return `${"★".repeat(v)}${"☆".repeat(Math.max(0, max - v))} (${v})`;
+  }
   return String(v);
+}
+
+function FileAnswerLink({ value }: { value: string }) {
+  try {
+    const parsed = JSON.parse(value) as { name?: string; dataUrl?: string };
+    if (parsed.dataUrl && parsed.name) {
+      return (
+        <a
+          href={parsed.dataUrl}
+          download={parsed.name}
+          className="text-[var(--accent)] hover:underline"
+        >
+          {parsed.name}
+        </a>
+      );
+    }
+    if (parsed.name) return <>{parsed.name}</>;
+  } catch {
+    /* plain */
+  }
+  return <>{value}</>;
 }
 
 export function FormResponses({
@@ -30,24 +63,20 @@ export function FormResponses({
   canManage: boolean;
 }) {
   const { store, deleteFormResponse } = useStore();
-  const [fromDate, setFromDate] = useState("");
+  const [index, setIndex] = useState(0);
 
   const cols = useMemo(() => answerableQuestions(form), [form]);
-  const rows = useMemo(() => {
-    let list = (store.formResponses ?? []).filter((r) => r.formId === form.id);
-    if (fromDate) {
-      const start = new Date(fromDate).getTime();
-      list = list.filter((r) => new Date(r.submittedAt).getTime() >= start);
-    }
-    return list;
-  }, [store.formResponses, form.id, fromDate]);
+  const rows = useMemo(
+    () => (store.formResponses ?? []).filter((r) => r.formId === form.id),
+    [store.formResponses, form.id],
+  );
+
+  useEffect(() => {
+    if (index >= rows.length) setIndex(Math.max(0, rows.length - 1));
+  }, [rows.length, index]);
 
   function exportCsv() {
-    const headers = [
-      "Submitted",
-      "Respondent",
-      ...cols.map((c) => c.title),
-    ];
+    const headers = ["Submitted", "Respondent", ...cols.map((c) => c.title)];
     const lines = [headers.join(",")];
     for (const row of rows) {
       const user = store.profiles.find((p) => p.id === row.userId);
@@ -72,80 +101,86 @@ export function FormResponses({
     URL.revokeObjectURL(url);
   }
 
-  return (
-    <TerminalPanel
-      title="responses"
-      meta={`${rows.length} row${rows.length === 1 ? "" : "s"}`}
-    >
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <FieldLabel>From date</FieldLabel>
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-          />
-        </div>
-        <Button variant="ghost" onClick={() => setFromDate("")}>
-          Clear filter
-        </Button>
-        <Button variant="orange" onClick={exportCsv} disabled={!rows.length}>
-          Export CSV
-        </Button>
-      </div>
+  if (!rows.length) {
+    return (
+      <TerminalPanel title="individual" meta="0 responses">
+        <p className="py-6 text-center text-[14px] text-text-dim">
+          No responses yet.
+        </p>
+      </TerminalPanel>
+    );
+  }
 
-      {!rows.length ? (
-        <p className="text-sm text-text-dim">No responses yet.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] border-collapse text-left text-[12px]">
-            <thead>
-              <tr className="border-b border-border text-text-dim">
-                <th className="px-2 py-2 font-medium">Submitted</th>
-                <th className="px-2 py-2 font-medium">Respondent</th>
-                {cols.map((c) => (
-                  <th key={c.id} className="px-2 py-2 font-medium">
-                    {c.title}
-                  </th>
-                ))}
-                {canManage ? (
-                  <th className="px-2 py-2 font-medium"> </th>
-                ) : null}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const user = store.profiles.find((p) => p.id === row.userId);
-                return (
-                  <tr key={row.id} className="border-b border-border/60">
-                    <td className="whitespace-nowrap px-2 py-2 text-text-dim">
-                      {new Date(row.submittedAt).toLocaleString()}
-                    </td>
-                    <td className="px-2 py-2 font-medium">
-                      {user?.fullName ?? row.userId}
-                    </td>
-                    {cols.map((c) => (
-                      <td key={c.id} className="max-w-[220px] truncate px-2 py-2">
-                        {formatAnswer(row.answers[c.id], c, store)}
-                      </td>
-                    ))}
-                    {canManage ? (
-                      <td className="px-2 py-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => deleteFormResponse(row.id)}
-                        >
-                          Delete
-                        </Button>
-                      </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+  const row = rows[index];
+  const user = store.profiles.find((p) => p.id === row.userId);
+
+  return (
+    <div className="space-y-4">
+      <TerminalPanel
+        title="individual"
+        meta={`${index + 1} of ${rows.length}`}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={index <= 0}
+              onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              className="rounded-full p-2 text-text-dim hover:bg-bg disabled:opacity-30"
+              aria-label="Previous"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              disabled={index >= rows.length - 1}
+              onClick={() => setIndex((i) => Math.min(rows.length - 1, i + 1))}
+              className="rounded-full p-2 text-text-dim hover:bg-bg disabled:opacity-30"
+              aria-label="Next"
+            >
+              <ChevronRight size={18} />
+            </button>
+            <Button variant="ghost" className="h-9" onClick={exportCsv}>
+              Export CSV
+            </Button>
+            {canManage ? (
+              <Button
+                variant="danger"
+                className="h-9"
+                onClick={() => {
+                  deleteFormResponse(row.id);
+                }}
+              >
+                Delete
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="mb-4 border-b border-border/80 pb-4">
+          <p className="font-semibold">{user?.fullName ?? row.userId}</p>
+          <p className="mt-0.5 text-[12px] text-text-mute">
+            {new Date(row.submittedAt).toLocaleString()}
+          </p>
         </div>
-      )}
-    </TerminalPanel>
+        <dl className="divide-y divide-border/80">
+          {cols.map((c) => (
+            <div key={c.id} className="py-3 first:pt-0 last:pb-0">
+              <dt className="text-[12px] font-medium text-text-mute">
+                {c.title}
+              </dt>
+              <dd className="mt-1 text-[14px] text-text">
+                {c.type === "file_upload" &&
+                typeof row.answers[c.id] === "string" &&
+                row.answers[c.id] ? (
+                  <FileAnswerLink value={String(row.answers[c.id])} />
+                ) : (
+                  formatAnswer(row.answers[c.id], c, store) || "—"
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </TerminalPanel>
+    </div>
   );
 }

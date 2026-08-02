@@ -4,7 +4,7 @@ import { use } from "react";
 import Link from "next/link";
 import { FormFill } from "@/components/domain/form-fill";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/page-header";
+import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { migrateForm } from "@/lib/forms/helpers";
 
@@ -34,20 +34,22 @@ export default function FormFillPage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <PageHeader
-        title="Respond"
-        description={form.title}
-        actions={
-          <Link href={`/chapter/${slug}/forms/${form.id}`}>
-            <Button variant="ghost">Back to form</Button>
-          </Link>
-        }
-      />
+    <div className="pb-10">
+      <div className="mb-4 flex justify-end">
+        <Link href={`/chapter/${slug}/forms/${form.id}`}>
+          <Button variant="ghost" className="h-9">
+            Back to form
+          </Button>
+        </Link>
+      </div>
       {form.status !== "open" ? (
-        <p className="rounded-[var(--radius)] border border-border p-4 text-sm text-text-dim">
-          This form is {form.status} and is not accepting responses.
-        </p>
+        <div className="mx-auto max-w-xl">
+          <TerminalPanel title={form.title} meta={form.status} accent="orange">
+            <p className="text-sm text-text-dim">
+              This form is {form.status} and is not accepting responses.
+            </p>
+          </TerminalPanel>
+        </div>
       ) : (
         <FormFill form={form} />
       )}

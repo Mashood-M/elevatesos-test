@@ -10,8 +10,31 @@ import { TicketCard } from "@/components/ui/ticket-card";
 import { ProgressBar } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { SectionGrid } from "@/components/layout/page-frame";
-import { useStore } from "@/context/store-context";
+import { useCurrentUser, useStore } from "@/context/store-context";
+import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
+
+const STUDENT_START = [
+  {
+    step: "01",
+    title: "Open the community",
+    detail: "See who belongs and how progression works",
+    href: "community",
+  },
+  {
+    step: "02",
+    title: "Browse events",
+    detail: "Register for workshops and challenges",
+    href: "events",
+  },
+  {
+    step: "03",
+    title: "Explore clusters",
+    detail: "Invite-first tracks for builders",
+    href: "clusters",
+  },
+] as const;
 
 export default function ChapterDashboardPage({
   params,
@@ -20,6 +43,7 @@ export default function ChapterDashboardPage({
 }) {
   const { slug } = use(params);
   const { store } = useStore();
+  const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
   if (!chapter) {
@@ -34,6 +58,13 @@ export default function ChapterDashboardPage({
       </div>
     );
   }
+
+  const showOps =
+    isExecutiveRole(session.roleKey) ||
+    isFacultyRole(session.roleKey) ||
+    isHqRole(session.roleKey);
+  const isStudent = session.roleKey === "student";
+  const canCreateEvent = hasPermission(store, session.roleKey, "event.create");
 
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
   const events = store.events.filter((e) => e.chapterId === chapter.id);
@@ -50,50 +81,132 @@ export default function ChapterDashboardPage({
   return (
     <div>
       <PageHeader
+        eyebrow={
+          isStudent ? "Explore" : chapterEyebrow(session.roleKey, "home")
+        }
         title={chapter.name}
-        description={`${chapter.college} · ${chapter.city}`}
+        description={
+          isStudent
+            ? `${chapter.college} · explore events, clusters, and the community`
+            : `${chapter.college} · ${chapter.city} · lead the chapter from here`
+        }
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href={`/chapter/${slug}/settings`}>
-              <Button variant="orange">Manage chapter</Button>
-            </Link>
-            <Link href={`/chapter/${slug}/events`}>
-              <Button variant="ghost">Events</Button>
-            </Link>
-            <Link href={`/chapter/${slug}/students`}>
-              <Button variant="ghost">Members</Button>
-            </Link>
+            {showOps ? (
+              <>
+                <Link href={`/chapter/${slug}/calendar`}>
+                  <Button variant="orange">Calendar</Button>
+                </Link>
+                <Link
+                  href={
+                    canCreateEvent
+                      ? `/chapter/${slug}/events?create=1`
+                      : `/chapter/${slug}/events`
+                  }
+                >
+                  <Button variant="ghost">
+                    {canCreateEvent ? "Create event" : "Events"}
+                  </Button>
+                </Link>
+                <Link href={`/chapter/${slug}/community`}>
+                  <Button variant="ghost">Community</Button>
+                </Link>
+                <Link href={`/chapter/${slug}/settings`}>
+                  <Button variant="ghost">Settings</Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/eos">
+                  <Button variant="orange">Playbook</Button>
+                </Link>
+                <Link href={`/chapter/${slug}/community`}>
+                  <Button variant="ghost">Community</Button>
+                </Link>
+                <Link href={`/chapter/${slug}/events`}>
+                  <Button variant="ghost">Events</Button>
+                </Link>
+              </>
+            )}
           </div>
         }
       />
 
-      <SectionGrid>
-        <Stat label="Members" value={members.length} />
-        <Stat label="Events" value={events.length} />
-        <Stat label="Clusters" value={clusters.length} />
-        <Stat
-          label="Health"
-          value={`${chapter.healthScore}%`}
-          hint={chapter.status.replaceAll("_", " ")}
-        />
-      </SectionGrid>
+      {showOps ? (
+        <SectionGrid className="mb-6">
+          <Stat
+            label="Health"
+            value={`${chapter.healthScore}%`}
+            hint={chapter.status.replaceAll("_", " ")}
+            accent="orange"
+          />
+          <Stat label="Members" value={members.length} />
+          <Stat label="Events" value={events.length} />
+          <Stat label="Clusters" value={clusters.length} />
+        </SectionGrid>
+      ) : null}
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-        <div className="space-y-4">
+      <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
+        <div className="space-y-5">
+          {isStudent ? (
+            <TerminalPanel title="Start here" meta="Explore">
+              <ol className="divide-y divide-border/80">
+                {STUDENT_START.map((item) => (
+                  <li key={item.step}>
+                    <Link
+                      href={`/chapter/${slug}/${item.href}`}
+                      className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-3.5 hover:text-[var(--accent)]"
+                    >
+                      <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                        {item.step}
+                      </span>
+                      <span className="font-semibold">{item.title}</span>
+                      <span className="text-[12px] text-text-dim">
+                        {item.detail}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </TerminalPanel>
+          ) : (
+            <TerminalPanel title="Playbook" meta="Community path">
+              <p className="mb-3 max-w-[56ch] text-[13px] leading-relaxed text-text-dim">
+                Progression is earned; clusters are invite-first after workshops.
+              </p>
+              <Link href="/eos#foundations">
+                <Button variant="ghost">Read the playbook</Button>
+              </Link>
+            </TerminalPanel>
+          )}
+
           <TerminalPanel
             title="Upcoming events"
             meta={`${upcoming.length} scheduled`}
             action={
               <Link
                 href={`/chapter/${slug}/events`}
-                className="text-[12px] font-medium text-accent hover:underline"
+                className="text-[12px] font-medium text-[var(--accent)] hover:underline"
               >
                 View all
               </Link>
             }
           >
             {upcoming.length === 0 ? (
-              <p className="text-[13px] text-text-dim">No upcoming events.</p>
+              <p className="text-[13px] text-text-dim">
+                No upcoming events.
+                {showOps ? (
+                  <>
+                    {" "}
+                    <Link
+                      href={`/chapter/${slug}/calendar`}
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      Schedule one
+                    </Link>
+                  </>
+                ) : null}
+              </p>
             ) : (
               <div className="space-y-3">
                 {upcoming.slice(0, 3).map((event) => (
@@ -107,76 +220,96 @@ export default function ChapterDashboardPage({
             )}
           </TerminalPanel>
 
-          <TerminalPanel title="Open tasks" meta={`${openTasks.length} active`}>
-            {openTasks.length === 0 ? (
-              <p className="text-[13px] text-text-dim">Inbox zero.</p>
+          {showOps ? (
+            <TerminalPanel
+              title="Open tasks"
+              meta={`${openTasks.length} active`}
+              action={
+                <Link
+                  href={`/chapter/${slug}/tasks`}
+                  className="text-[12px] font-medium text-[var(--accent)] hover:underline"
+                >
+                  Task board
+                </Link>
+              }
+            >
+              {openTasks.length === 0 ? (
+                <p className="text-[13px] text-text-dim">Inbox zero.</p>
+              ) : (
+                <ul className="divide-y divide-border">
+                  {openTasks.slice(0, 5).map((task) => (
+                    <li key={task.id}>
+                      <Link
+                        href={`/chapter/${slug}/tasks`}
+                        className="flex items-center justify-between gap-3 py-3 hover:text-[var(--accent)]"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-semibold">
+                            {task.title}
+                          </p>
+                          <p className="text-[11px] text-text-mute">
+                            Due {formatDate(task.dueDate)}
+                          </p>
+                        </div>
+                        <Badge tone="mute">
+                          {task.category.replaceAll("_", " ")}
+                        </Badge>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </TerminalPanel>
+          ) : null}
+        </div>
+
+        <div className="space-y-5">
+          {showOps ? (
+            <TerminalPanel title="Chapter health">
+              <ProgressBar value={chapter.healthScore} label="Overall score" />
+              <dl className="mt-5 space-y-3 text-[13px]">
+                <div className="flex justify-between">
+                  <dt className="text-text-dim">Status</dt>
+                  <dd className="font-medium capitalize">
+                    {chapter.status.replaceAll("_", " ")}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-text-dim">Established</dt>
+                  <dd className="font-medium">
+                    {new Date(chapter.foundedAt).getFullYear()}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-text-dim">Events YTD</dt>
+                  <dd className="font-medium">{chapter.eventCount}</dd>
+                </div>
+              </dl>
+            </TerminalPanel>
+          ) : null}
+
+          <TerminalPanel title="Clusters">
+            {clusters.length === 0 ? (
+              <p className="text-[13px] text-text-dim">No clusters yet.</p>
             ) : (
               <ul className="divide-y divide-border">
-                {openTasks.slice(0, 5).map((task) => (
-                  <li
-                    key={task.id}
-                    className="flex items-center justify-between gap-3 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold">
-                        {task.title}
-                      </p>
-                      <p className="text-[11px] text-text-mute">
-                        Due {formatDate(task.dueDate)}
-                      </p>
-                    </div>
-                    <Badge tone="mute">{task.category.replaceAll("_", " ")}</Badge>
+                {clusters.map((cluster) => (
+                  <li key={cluster.id}>
+                    <Link
+                      href={`/chapter/${slug}/clusters`}
+                      className="flex items-center justify-between py-2.5 hover:text-[var(--accent)]"
+                    >
+                      <span className="text-[13px] font-semibold">
+                        {cluster.name}
+                      </span>
+                      <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                        {cluster.memberIds.length}
+                      </span>
+                    </Link>
                   </li>
                 ))}
               </ul>
             )}
-          </TerminalPanel>
-        </div>
-
-        <div className="space-y-4">
-          <TerminalPanel title="Chapter health">
-            <ProgressBar
-              value={chapter.healthScore}
-              label="Overall score"
-            />
-            <dl className="mt-4 space-y-2 text-[13px]">
-              <div className="flex justify-between">
-                <dt className="text-text-dim">Status</dt>
-                <dd className="font-medium capitalize">
-                  {chapter.status.replaceAll("_", " ")}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-text-dim">Established</dt>
-                <dd className="font-medium">
-                  {new Date(chapter.foundedAt).getFullYear()}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-text-dim">Events YTD</dt>
-                <dd className="font-medium">{chapter.eventCount}</dd>
-              </div>
-            </dl>
-          </TerminalPanel>
-
-          <TerminalPanel title="Clusters">
-            <ul className="space-y-2">
-              {clusters.map((cluster) => (
-                <li key={cluster.id}>
-                  <Link
-                    href={`/chapter/${slug}/clusters`}
-                    className="flex items-center justify-between rounded-[var(--radius-sm)] px-2 py-2 hover:bg-bg-hover"
-                  >
-                    <span className="text-[13px] font-semibold">
-                      {cluster.name}
-                    </span>
-                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
-                      {cluster.memberIds.length}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
           </TerminalPanel>
         </div>
       </div>

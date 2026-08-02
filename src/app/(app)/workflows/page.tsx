@@ -10,13 +10,13 @@ const demoLoops = [
   {
     id: "event-loop",
     title: "Event loop",
-    persona: "Secretary → Faculty → CR → Attendance",
+    persona: "Secretary → Student → CR → Attendance",
     steps: [
-      { label: "Create event", detail: "Chapter → Events → new draft / pending approval" },
-      { label: "Event detail", detail: "Open a ticket → capacity, close time, roster stats" },
-      { label: "Build form", detail: "Forms hub → Questions tab (Google Forms–style)" },
-      { label: "Register", detail: "Student fills /forms/[id]/fill or Register CTA" },
-      { label: "Review / approve", detail: "CR reviews, secretary approves on event page" },
+      { label: "Create draft", detail: "Chapter → Events → New event (or Calendar create)" },
+      { label: "Publish", detail: "Event detail → Publish opens registration" },
+      { label: "Register", detail: "Student → Register CTA / public form link" },
+      { label: "CR review", detail: "Class rep reviews registrations on the event page" },
+      { label: "Secretary approve", detail: "Secretary approves → QR minted for check-in" },
       { label: "Check-in + cert", detail: "Attendance QR/manual → Issue cert → verify" },
     ],
     href: "/chapter/ekc/events",
@@ -62,6 +62,7 @@ export default function WorkflowsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="More"
         title="Demo loops"
         description="Three flagship paths that mutate the demo store. Switch persona as you go. State persists in this browser tab."
       />

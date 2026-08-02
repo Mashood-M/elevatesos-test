@@ -15,6 +15,11 @@ import {
   listStudentRepresentatives,
   studentHasClassSet,
 } from "@/lib/forms/helpers";
+import {
+  EOS_COMMUNITY_TIERS,
+  EOS_JOURNEY_STAGES,
+} from "@/lib/eos/doctrine";
+import { withDerivedProgression } from "@/lib/eos/progression";
 import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
 
@@ -70,7 +75,7 @@ export default function ProfilePage({
 
   if (!profile) {
     return (
-      <div className="border border-orange p-8 text-center">
+      <div className="rounded-[14px] bg-[var(--accent-soft)] p-8 text-center">
         <p className="text-orange">// profile.not_found · {id}</p>
       </div>
     );
@@ -93,6 +98,8 @@ export default function ProfilePage({
     .filter(Boolean)
     .join(" · ");
 
+  const derived = withDerivedProgression(store, profile);
+
   function saveClass() {
     if (!selectedCohort) return;
     updateProfile(id, {
@@ -106,16 +113,16 @@ export default function ProfilePage({
 
   return (
     <div>
-      <div className="relative mb-6 overflow-hidden rounded-2xl border border-border bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8">
+      <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8">
         <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-2xl font-semibold text-cyan">
+          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[22px] bg-[var(--accent-soft)] text-2xl font-semibold text-[var(--accent)]">
             {initials(profile.fullName)}
           </div>
           <div className="flex-1">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-cyan">
+            <p className="text-[12px] font-medium text-[var(--accent)]">
               Profile
             </p>
-            <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl font-semibold tracking-tight">
+            <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-[-0.04em]">
               {profile.fullName}
             </h1>
             <p className="mt-2 text-sm text-text-dim">
@@ -138,6 +145,16 @@ export default function ProfilePage({
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
+              <Badge tone="cyan">
+                {EOS_COMMUNITY_TIERS.find(
+                  (t) => t.key === derived.engagementTier,
+                )?.label ?? "Everyone"}
+              </Badge>
+              <Badge tone="orange">
+                {EOS_JOURNEY_STAGES.find(
+                  (s) => s.key === derived.journeyStage,
+                )?.label ?? "Awareness"}
+              </Badge>
               {roles.map((r) => (
                 <Badge key={r!.id} tone="magenta">
                   {r!.name}
@@ -239,7 +256,7 @@ export default function ProfilePage({
                   {assignedReps.map((r, i) => (
                     <li
                       key={r.id}
-                      className="flex items-center justify-between border border-border px-3 py-2 text-sm"
+                      className="flex items-center justify-between rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2 text-sm"
                     >
                       <span className="font-medium">{r.label}</span>
                       <Badge tone={i === 0 ? "cyan" : "magenta"}>
@@ -256,6 +273,27 @@ export default function ProfilePage({
             </div>
           </TerminalPanel>
         ) : null}
+
+        <TerminalPanel title="eos.journey" accent="cyan" className="xl:col-span-2">
+          <p className="mb-3 text-[13px] text-text-dim">
+            Progression is earned from activity — attendance, clusters, and
+            leadership — not admin labels.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="cyan">
+              {EOS_COMMUNITY_TIERS.find((t) => t.key === derived.engagementTier)
+                ?.label ?? "Everyone"}
+            </Badge>
+            <Badge tone="orange">
+              {EOS_JOURNEY_STAGES.find((s) => s.key === derived.journeyStage)
+                ?.label ?? "Awareness"}
+            </Badge>
+          </div>
+          <p className="mt-3 text-[12px] text-text-mute">
+            Workshop check-in → Participant · Repeat activity → Active · Cluster
+            invite accepted → Cluster · Leadership term → Campus Lead / Executive
+          </p>
+        </TerminalPanel>
 
         <TerminalPanel title="skills.interests">
           <div className="grid gap-4 md:grid-cols-2">
@@ -336,7 +374,7 @@ export default function ProfilePage({
               {certs.map((c) => {
                 const ev = store.events.find((e) => e.id === c.eventId);
                 return (
-                  <li key={c.id} className="border border-border p-3">
+                  <li key={c.id} className="rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3">
                     <p className="font-mono text-[11px] text-green">
                       {c.certificateId}
                     </p>

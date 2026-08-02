@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
 
 export default function ChapterClustersPage({
@@ -18,6 +19,7 @@ export default function ChapterClustersPage({
 }) {
   const { slug } = use(params);
   const { store, createCluster } = useStore();
+  const roleKey = store.session.roleKey;
   const chapter = store.chapters.find((c) => c.slug === slug);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -73,8 +75,9 @@ export default function ChapterClustersPage({
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(roleKey, "programs")}
         title="Learning clusters"
-        description="Specialized tracks with weekly roadmaps — AI, Web, IoT, Cyber, and more."
+        description="Invite-first talent tracks (default). Nominate after workshops — open join is the exception."
         actions={
           canCreate ? (
             <Button variant="orange" onClick={() => setOpen((v) => !v)}>
@@ -135,6 +138,25 @@ export default function ChapterClustersPage({
                 Create cluster
               </Button>
             </div>
+          </div>
+        </TerminalPanel>
+      ) : null}
+
+      {clusters.length === 0 ? (
+        <TerminalPanel title="No clusters yet" className="mb-4">
+          <p className="text-[13px] text-text-dim">
+            Nominate talent from Community after a workshop, or create a track
+            here.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href={`/chapter/${slug}/community`}>
+              <Button variant="orange">Open community</Button>
+            </Link>
+            {canCreate ? (
+              <Button variant="ghost" onClick={() => setOpen(true)}>
+                Create cluster
+              </Button>
+            ) : null}
           </div>
         </TerminalPanel>
       ) : null}

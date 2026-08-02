@@ -6,6 +6,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import type { TaskStatus } from "@/types";
 
@@ -37,6 +38,7 @@ export default function ChapterTasksPage({
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(store.session.roleKey, "people")}
         title="Task Board"
         description="Event and chapter operations — venue, marketing, registration, certificates, documentation."
       />
@@ -51,7 +53,7 @@ export default function ChapterTasksPage({
                   const assignee = store.profiles.find((p) => p.id === task.assigneeId);
                   const event = store.events.find((e) => e.id === task.eventId);
                   return (
-                    <li key={task.id} className="border border-border bg-bg p-3">
+                    <li key={task.id} className="rounded-[14px] bg-bg-panel shadow-[var(--shadow)] p-3">
                       <p className="font-bold text-[12px]">{task.title}</p>
                       <p className="mt-1 text-[10px] text-text-mute">
                         {task.category} · due {formatDate(task.dueDate)}

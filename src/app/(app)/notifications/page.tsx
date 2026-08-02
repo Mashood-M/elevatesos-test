@@ -22,6 +22,7 @@ export default function NotificationsPage() {
   return (
     <div>
       <PageHeader
+        eyebrow="More"
         title="Notifications"
         description="Alerts for your current session — reports, registrations, approvals, and certificates."
         actions={

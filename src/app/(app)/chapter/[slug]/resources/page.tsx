@@ -6,20 +6,9 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
+import { resourceCategoryLabel } from "@/lib/resources/categories";
 import { formatDateTime } from "@/lib/utils";
-import type { Resource } from "@/types";
-
-const categoryLabels: Record<Resource["category"], string> = {
-  sop: "SOP",
-  workshop_kit: "Workshop Kit",
-  ppt: "Presentation",
-  poster: "Poster",
-  logo: "Logo",
-  certificate: "Certificate",
-  sponsor_deck: "Sponsor Deck",
-  coding: "Coding",
-  recording: "Recording",
-};
 
 export default function ChapterResourcesPage({
   params,
@@ -35,23 +24,52 @@ export default function ChapterResourcesPage({
   return (
     <div>
       <PageHeader
-        title="HQ Resource Access"
+        eyebrow={chapterEyebrow(store.session.roleKey, "people")}
+        title="Resources"
         description="Download SOPs, workshop kits, brand assets, and certificate templates from the central library."
       />
 
-      <TerminalPanel title="hq.library" meta={`${store.resources.length} assets available`}>
+      <TerminalPanel
+        title="hq.library"
+        meta={`${store.resources.length} assets available`}
+      >
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {store.resources.map((res) => {
             const uploader = store.profiles.find((p) => p.id === res.uploadedBy);
             return (
-              <article key={res.id} className="border border-border p-4 hover:border-cyan">
-                <Badge tone="cyan">{categoryLabels[res.category]}</Badge>
+              <article
+                key={res.id}
+                className="rounded-[14px] bg-bg p-4 shadow-[var(--shadow-sm)] hover:border-cyan"
+              >
+                <Badge tone="cyan">
+                  {resourceCategoryLabel(store.resourceCategories, res.category)}
+                </Badge>
                 <h3 className="mt-2 font-bold">{res.title}</h3>
-                <p className="mt-1 text-[11px] text-text-dim">{res.description}</p>
+                <p className="mt-1 text-[11px] text-text-dim">
+                  {res.description}
+                </p>
                 <p className="mt-2 text-[10px] text-text-mute">
                   {uploader?.fullName} · {formatDateTime(res.uploadedAt)}
                 </p>
-                <Button variant="ghost" className="mt-3 w-full">Download</Button>
+                {res.url && res.url !== "#" ? (
+                  <a
+                    href={res.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download={
+                      res.url.startsWith("data:") ? res.title : undefined
+                    }
+                    className="mt-3 block"
+                  >
+                    <Button type="button" variant="ghost" className="w-full">
+                      Download
+                    </Button>
+                  </a>
+                ) : (
+                  <p className="mt-3 text-[11px] text-text-mute">
+                    No file linked
+                  </p>
+                )}
               </article>
             );
           })}

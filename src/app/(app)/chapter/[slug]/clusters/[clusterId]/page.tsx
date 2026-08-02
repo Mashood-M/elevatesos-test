@@ -28,12 +28,17 @@ export default function ClusterDetailPage({
     toggleRoadmapWeek,
     addRoadmapWeek,
     removeRoadmapWeek,
+    inviteToCluster,
+    submitClusterChallenge,
   } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
   const cluster = store.clusters.find((c) => c.id === clusterId);
   const [weekTitle, setWeekTitle] = useState("");
   const [addMemberId, setAddMemberId] = useState("");
+  const [inviteUserId, setInviteUserId] = useState("");
+  const [challengeNote, setChallengeNote] = useState("");
+  const [flash, setFlash] = useState("");
 
   if (!chapter || !cluster || cluster.chapterId !== chapter.id) {
     return (
@@ -70,12 +75,14 @@ export default function ClusterDetailPage({
               <Button variant="ghost">All clusters</Button>
             </Link>
             {!isMember ? (
-              <Button
-                variant="orange"
-                onClick={() => joinCluster(cluster.id, session.userId)}
-              >
-                Join cluster
-              </Button>
+              (cluster.accessMode ?? "invite") === "open" ? (
+                <Button
+                  variant="orange"
+                  onClick={() => joinCluster(cluster.id, session.userId)}
+                >
+                  Join cluster
+                </Button>
+              ) : null
             ) : (
               <Button
                 variant="ghost"
@@ -88,11 +95,118 @@ export default function ClusterDetailPage({
         }
       />
 
+      {flash ? (
+        <p className="mb-4 text-[13px] text-[var(--accent)]">{flash}</p>
+      ) : null}
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Badge tone="cyan">{cluster.accessMode ?? "invite"} access</Badge>
+        {(cluster.responsibilities ?? []).map((r) => (
+          <Badge key={r} tone="magenta">
+            {r}
+          </Badge>
+        ))}
+      </div>
+
+      {!isMember && (cluster.accessMode ?? "invite") === "challenge" ? (
+        <TerminalPanel title="challenge.path" accent="orange" className="mb-4">
+          <p className="text-[13px] text-text-dim">
+            {cluster.challengePrompt ??
+              "Complete a challenge to request cluster access."}
+          </p>
+          <div className="mt-3">
+            <FieldLabel>Your submission note</FieldLabel>
+            <TextArea
+              rows={2}
+              value={challengeNote}
+              onChange={(e) => setChallengeNote(e.target.value)}
+              placeholder="What you built / learned…"
+            />
+          </div>
+          <Button
+            variant="orange"
+            className="mt-3"
+            onClick={() => {
+              const ok = submitClusterChallenge({
+                clusterId: cluster.id,
+                userId: session.userId,
+                note: challengeNote,
+              });
+              setFlash(
+                ok
+                  ? "Challenge submitted — execs will review."
+                  : "Could not submit challenge.",
+              );
+            }}
+          >
+            Submit challenge
+          </Button>
+        </TerminalPanel>
+      ) : null}
+
+      {!isMember && (cluster.accessMode ?? "invite") === "invite" ? (
+        <TerminalPanel title="invite.only" className="mb-4">
+          <p className="text-[13px] text-text-dim">
+            This cluster is invite-only (EOS talent path). Ask a CR or exec after
+            workshops — or wait for a nomination.
+          </p>
+        </TerminalPanel>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <div className="space-y-4">
           {canManage ? (
             <TerminalPanel title="Settings">
               <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Access mode</FieldLabel>
+                  <Select
+                    value={cluster.accessMode ?? "invite"}
+                    onChange={(e) =>
+                      updateCluster(cluster.id, {
+                        accessMode: e.target.value as
+                          | "open"
+                          | "invite"
+                          | "challenge",
+                      })
+                    }
+                  >
+                    <option value="invite">Invite</option>
+                    <option value="challenge">Challenge</option>
+                    <option value="open">Open (discouraged)</option>
+                  </Select>
+                </div>
+                <div>
+                  <FieldLabel>Invite member</FieldLabel>
+                  <div className="flex gap-2">
+                    <Select
+                      value={inviteUserId}
+                      onChange={(e) => setInviteUserId(e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {nonMembers.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        if (!inviteUserId) return;
+                        const ok = inviteToCluster({
+                          clusterId: cluster.id,
+                          userId: inviteUserId,
+                          note: "Talent nomination",
+                        });
+                        setFlash(ok ? "Invite sent" : "Could not invite");
+                        setInviteUserId("");
+                      }}
+                    >
+                      Invite
+                    </Button>
+                  </div>
+                </div>
                 <div>
                   <FieldLabel>Name</FieldLabel>
                   <Input
@@ -169,7 +283,7 @@ export default function ClusterDetailPage({
               {cluster.roadmap.map((week) => (
                 <li
                   key={week.week}
-                  className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-border px-3 py-2"
+                  className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2"
                 >
                   <button
                     type="button"

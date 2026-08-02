@@ -2,6 +2,7 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { hasPermission, healthLabel, isHqRole } from "@/lib/permissions";
-import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import type { Chapter } from "@/types";
 
@@ -21,10 +22,12 @@ export default function ChapterSettingsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
+  const router = useRouter();
   const { store, updateChapter } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
   const [flash, setFlash] = useState("");
+  const [joinCopied, setJoinCopied] = useState(false);
 
   const canManage = useMemo(() => {
     if (!chapter) return false;
@@ -120,15 +123,44 @@ export default function ChapterSettingsPage({
     updateChapter(ch.id, patch);
     setFlash("Saved.");
     window.setTimeout(() => setFlash(""), 1600);
+    if (patch.slug && patch.slug !== slug) {
+      router.replace(`/chapter/${patch.slug}/settings`);
+    }
+  }
+
+  const joinPath = "/join";
+  const joinUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${joinPath}`
+      : joinPath;
+
+  async function copyJoinLink() {
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setJoinCopied(true);
+      window.setTimeout(() => setJoinCopied(false), 1600);
+    } catch {
+      setFlash("Could not copy — use the join page link.");
+    }
   }
 
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(session.roleKey, "people")}
         title="Chapter management"
         description={`${chapter.name} · college profile, faculty, onboarding, and shortcuts.`}
         actions={
           <div className="flex flex-wrap gap-2">
+            <Link href={`/chapter/${slug}/calendar`}>
+              <Button variant="ghost">Calendar</Button>
+            </Link>
+            <Link href={`/chapter/${slug}/community`}>
+              <Button variant="ghost">Community</Button>
+            </Link>
+            <Link href={`/chapter/${slug}/students`}>
+              <Button variant="ghost">Students</Button>
+            </Link>
             <Link href={`/chapter/${slug}`}>
               <Button variant="ghost">Dashboard</Button>
             </Link>
@@ -145,9 +177,26 @@ export default function ChapterSettingsPage({
         <p className="mb-4 text-[13px] text-[var(--accent)]">{flash}</p>
       ) : null}
 
+      <TerminalPanel title="Onboarding" meta="Share with campus" className="mb-4">
+        <p className="text-[13px] text-text-dim">
+          Anyone can open the join page to request chapter membership.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <code className="rounded-[10px] bg-bg px-3 py-2 text-[12px] text-text">
+            {joinPath}
+          </code>
+          <Button type="button" variant="orange" onClick={copyJoinLink}>
+            {joinCopied ? "Copied" : "Copy join link"}
+          </Button>
+          <Link href={joinPath}>
+            <Button variant="ghost">Open join page</Button>
+          </Link>
+        </div>
+      </TerminalPanel>
+
       {!canManage ? (
         <p className="mb-4 text-[13px] text-text-dim">
-          View only — switch to Chairman, Secretary, Faculty, or HQ to edit.
+          View only — switch to Campus Lead, Secretary, Faculty liaison, or HQ to edit.
         </p>
       ) : null}
 
@@ -258,7 +307,7 @@ export default function ChapterSettingsPage({
                   rows={3}
                   defaultValue={chapter.notes ?? ""}
                   disabled={!canManage}
-                  placeholder="HQ / chairman notes for this chapter"
+                  placeholder="HQ / Campus Lead notes for this chapter"
                   onBlur={(e) => {
                     if (e.target.value !== (chapter.notes ?? "")) {
                       saveField({ notes: e.target.value });

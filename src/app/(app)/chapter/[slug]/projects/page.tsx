@@ -6,6 +6,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
 import type { ProjectStage } from "@/types";
 
 const stages: ProjectStage[] = ["idea", "planning", "building", "testing", "demo", "showcase"];
@@ -35,6 +36,7 @@ export default function ChapterProjectsPage({
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(store.session.roleKey, "programs")}
         title="Project Pipeline"
         description="Track projects from idea to showcase — cluster assignments, team members, and progress."
       />
@@ -61,7 +63,12 @@ export default function ChapterProjectsPage({
                   <h3 className="font-[family-name:var(--font-display)] text-lg font-bold">{project.title}</h3>
                   <p className="mt-1 text-[12px] text-text-dim">{project.description}</p>
                 </div>
-                <Badge tone={stageTone[project.stage]}>{project.stage}</Badge>
+                <div className="flex flex-wrap gap-2">
+                  {project.projectType ? (
+                    <Badge tone="cyan">{project.projectType}</Badge>
+                  ) : null}
+                  <Badge tone={stageTone[project.stage]}>{project.stage}</Badge>
+                </div>
               </div>
               <ProgressBar value={project.progress} label="Build progress" accent="magenta" />
               <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-text-dim">

@@ -19,6 +19,8 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
+import { deriveEngagementTier } from "@/lib/eos/progression";
 import { healthLabel } from "@/lib/permissions";
 
 const NEON = { cyan: "#f26430", magenta: "#414066", green: "#758173", orange: "#f26430" };
@@ -57,18 +59,51 @@ export default function ChapterAnalyticsPage({
 
   const healthData = [{ name: "Health", value: chapter.healthScore, fill: NEON.green }];
 
+  const members = store.profiles.filter((p) => p.chapterId === chapter.id);
+  const clusterMembers = new Set(
+    store.clusters
+      .filter((c) => c.chapterId === chapter.id)
+      .flatMap((c) => c.memberIds),
+  ).size;
+  const activePlus = members.filter((m) =>
+    ["active", "cluster", "executive", "campus_lead"].includes(
+      deriveEngagementTier(store, m.id),
+    ),
+  ).length;
+  const projectsDone = store.projects.filter(
+    (p) =>
+      p.chapterId === chapter.id &&
+      (p.stage === "demo" || p.stage === "showcase"),
+  ).length;
+  const workshopToCluster =
+    attendance.length > 0
+      ? Math.round((clusterMembers / Math.max(attendance.length, 1)) * 100)
+      : 0;
+
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(store.session.roleKey, "home")}
         title="Chapter Analytics"
-        description={`Performance metrics, health score, and engagement trends for ${chapter.name}.`}
+        description={`Playbook metrics — reach, conversion, and build outcomes for ${chapter.name}.`}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Health Score" value={`${chapter.healthScore}%`} accent="green" hint={healthLabel(chapter.healthScore)} />
+        <Stat label="Students reached" value={members.length} accent="cyan" />
+        <Stat label="Active+ members" value={activePlus} accent="magenta" />
+        <Stat label="Cluster members" value={clusterMembers} accent="orange" />
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Events" value={events.length} accent="cyan" />
         <Stat label="Registrations" value={registrations.length} accent="magenta" />
         <Stat label="Check-ins" value={attendance.length} accent="orange" />
+        <Stat
+          label="Workshop→cluster %"
+          value={`${workshopToCluster}%`}
+          accent="green"
+          hint={`${projectsDone} projects shipped`}
+        />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">

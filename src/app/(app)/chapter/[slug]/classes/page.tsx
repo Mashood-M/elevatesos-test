@@ -2,12 +2,14 @@
 
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
+import { useAppDialogs } from "@/components/ui/app-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import type { ClassCohort, Department } from "@/types";
@@ -51,6 +53,7 @@ export default function ChapterClassesPage({
     deleteClassCohort,
   } = useStore();
   const { session } = useCurrentUser();
+  const { confirm } = useAppDialogs();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
   const canManage =
@@ -166,8 +169,14 @@ export default function ChapterClassesPage({
     window.setTimeout(() => setFlash(""), 1400);
   }
 
-  function remove(id: string, label: string) {
-    if (!window.confirm(`Delete class “${label}”?`)) return;
+  async function remove(id: string, label: string) {
+    const ok = await confirm({
+      title: "Delete class",
+      description: `Delete class “${label}”?`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     deleteClassCohort(id);
   }
 
@@ -207,8 +216,14 @@ export default function ChapterClassesPage({
     window.setTimeout(() => setFlash(""), 1400);
   }
 
-  function removeDepartment(d: Department) {
-    if (!window.confirm(`Delete department “${d.name}”?`)) return;
+  async function removeDepartment(d: Department) {
+    const confirmed = await confirm({
+      title: "Delete department",
+      description: `Delete department “${d.name}”?`,
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!confirmed) return;
     setDeptError("");
     const ok = deleteDepartment(d.id);
     if (!ok) {
@@ -227,6 +242,7 @@ export default function ChapterClassesPage({
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(session.roleKey, "programs")}
         title="Classes"
         description="Student-led — create departments first, then class divisions and assign 1–2 representatives (any gender; second is optional). Faculty is optional."
         actions={
@@ -252,7 +268,7 @@ export default function ChapterClassesPage({
       {!canManage ? (
         <TerminalPanel title="read.only" className="mb-6">
           <p className="text-sm text-text-dim">
-            Class lists are managed by chapter executives (Chairman, Secretary,
+            Class lists are managed by chapter executives (Campus Lead, Secretary,
             Elevates Coordinator). Ask them to add your division.
           </p>
           <Link
@@ -301,7 +317,7 @@ export default function ChapterClassesPage({
               {departments.map((d) => (
                 <li
                   key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-3 border border-border px-3 py-2"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2"
                 >
                   {renamingId === d.id ? (
                     <div className="flex flex-1 flex-wrap gap-2">
@@ -500,7 +516,7 @@ export default function ChapterClassesPage({
               return (
                 <li
                   key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-3 border border-border p-3"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3"
                 >
                   <div className="min-w-0">
                     <p className="font-semibold">{cohortLabel(c)}</p>

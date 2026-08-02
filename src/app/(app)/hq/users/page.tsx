@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -26,6 +27,8 @@ type EditDraft = {
   status: "active" | "disabled";
   roleKey: RoleKey;
   roleChapterId: string;
+  roleLocked: boolean;
+  leadershipLabels: string[];
 };
 
 const emptyCreate = (): CreateDraft => ({
@@ -34,6 +37,10 @@ const emptyCreate = (): CreateDraft => ({
   chapterId: "",
   roleKey: "student",
 });
+
+function looksLikeEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
 
 export default function HqUsersPage() {
   const { store, createUser, updateUser, setUserRoles } = useStore();
@@ -47,7 +54,7 @@ export default function HqUsersPage() {
     "all",
   );
 
-  const [showCreate, setShowCreate] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreate);
   const [createError, setCreateError] = useState("");
 
@@ -58,6 +65,9 @@ export default function HqUsersPage() {
 
   const hqRoles = store.roles.filter((r) => r.scope === "hq");
   const chapterRoles = store.roles.filter((r) => r.scope === "chapter");
+  const filtersActive = Boolean(
+    q.trim() || filterChapter || filterRole || filterStatus !== "all",
+  );
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -73,7 +83,11 @@ export default function HqUsersPage() {
       })
       .filter((row) => {
         if (filterStatus !== "all" && row.status !== filterStatus) return false;
-        if (filterChapter && row.profile.chapterId !== filterChapter) return false;
+        if (filterChapter) {
+          const homeMatch = row.profile.chapterId === filterChapter;
+          const roleMatch = row.urs.some((ur) => ur.chapterId === filterChapter);
+          if (!homeMatch && !roleMatch) return false;
+        }
         if (filterRole) {
           if (!row.roles.some((r) => r?.key === filterRole)) return false;
         }
@@ -97,92 +111,210 @@ export default function HqUsersPage() {
 
   function flashMsg(msg: string) {
     setFlash(msg);
-    window.setTimeout(() => setFlash(""), 1400);
+    window.setTimeout(() => setFlash(""), 1800);
   }
 
   function selectedRoleIsHq(roleKey: RoleKey) {
     return store.roles.find((r) => r.key === roleKey)?.scope === "hq";
   }
 
-  function submitCreate() {
+  function openCreate() {
+    setEditingId(null);
+    setEditDraft(null);
+    setEditError("");
+    setCreateDraft(emptyCreate());
     setCreateError("");
+    setCreateOpen(true);
+  }
+
+  function closeCreate() {
+    setCreateOpen(false);
+    setCreateDraft(emptyCreate());
+    setCreateError("");
+  }
+
+  function clearFilters() {
+    setQ("");
+    setFilterChapter("");
+    setFilterRole("");
+    setFilterStatus("all");
+  }
+
+  function submitCreate(e: FormEvent) {
+    e.preventDefault();
+    setCreateError("");
+    const fullName = createDraft.fullName.trim();
+    const email = createDraft.email.trim().toLowerCase();
+    if (!fullName) {
+      setCreateError("Full name is required.");
+      return;
+    }
+    if (!email) {
+      setCreateError("Email is required.");
+      return;
+    }
+    if (!looksLikeEmail(email)) {
+      setCreateError("Enter a valid email address.");
+      return;
+    }
+    if (store.profiles.some((p) => p.email.toLowerCase() === email)) {
+      setCreateError("That email is already in use.");
+      return;
+    }
     const isHq = selectedRoleIsHq(createDraft.roleKey);
+    if (!isHq && !createDraft.chapterId) {
+      setCreateError("Chapter is required for chapter-scoped roles.");
+      return;
+    }
     const created = createUser({
-      fullName: createDraft.fullName,
-      email: createDraft.email,
+      fullName,
+      email,
       roleKey: createDraft.roleKey,
       chapterId: isHq ? undefined : createDraft.chapterId || undefined,
     });
     if (!created) {
-      setCreateError(
-        "Could not create — check name/email uniqueness and chapter for non-HQ roles.",
-      );
+      setCreateError("Could not create user. Check role and chapter.");
       return;
     }
-    setShowCreate(false);
-    setCreateDraft(emptyCreate());
+    closeCreate();
     flashMsg("User created");
   }
 
   function startEdit(p: Profile) {
-    const urs = store.userRoles.filter(
-      (ur) => ur.userId === p.id && !ur.leadershipTermId,
-    );
-    const first = urs[0];
-    const role = first
-      ? store.roles.find((r) => r.id === first.roleId)
+    setCreateOpen(false);
+    setCreateError("");
+    const urs = store.userRoles.filter((ur) => ur.userId === p.id);
+    const orgUrs = urs.filter((ur) => !ur.leadershipTermId);
+    const leadershipUrs = urs.filter((ur) => Boolean(ur.leadershipTermId));
+    const leadershipLabels = leadershipUrs
+      .map((ur) => {
+        const role = store.roles.find((r) => r.id === ur.roleId);
+        return role ? roleKeyLabel(role.key) : null;
+      })
+      .filter((label): label is string => Boolean(label));
+
+    const firstOrg = orgUrs[0];
+    const orgRole = firstOrg
+      ? store.roles.find((r) => r.id === firstOrg.roleId)
       : undefined;
+    const roleLocked = !firstOrg && leadershipUrs.length > 0;
+
     setEditingId(p.id);
     setEditDraft({
       fullName: p.fullName,
       email: p.email,
       chapterId: p.chapterId ?? "",
       status: p.status ?? "active",
-      roleKey: role?.key ?? "student",
-      roleChapterId: first?.chapterId ?? p.chapterId ?? "",
+      roleKey: orgRole?.key ?? "student",
+      roleChapterId: firstOrg?.chapterId ?? p.chapterId ?? "",
+      roleLocked,
+      leadershipLabels,
     });
     setEditError("");
   }
 
-  function submitEdit() {
+  function submitEdit(e: FormEvent) {
+    e.preventDefault();
     if (!editingId || !editDraft) return;
     setEditError("");
-    const ok = updateUser(editingId, {
-      fullName: editDraft.fullName,
-      email: editDraft.email,
-      chapterId: editDraft.chapterId || undefined,
-      status: editDraft.status,
-    });
-    if (!ok) {
-      setEditError("Could not update profile — check email uniqueness.");
+
+    const fullName = editDraft.fullName.trim();
+    const email = editDraft.email.trim().toLowerCase();
+    if (!fullName) {
+      setEditError("Full name is required.");
       return;
     }
-    const isHq = selectedRoleIsHq(editDraft.roleKey);
-    const assignments: UserRoleAssignmentInput[] = [
-      isHq
-        ? { roleKey: editDraft.roleKey }
-        : {
-            roleKey: editDraft.roleKey,
-            chapterId: editDraft.roleChapterId || editDraft.chapterId,
-          },
-    ];
-    if (!isHq && !assignments[0].chapterId) {
-      setEditError("Chapter is required for chapter-scoped roles.");
+    if (!email) {
+      setEditError("Email is required.");
       return;
     }
-    if (!setUserRoles(editingId, assignments)) {
-      setEditError("Could not update roles.");
+    if (!looksLikeEmail(email)) {
+      setEditError("Enter a valid email address.");
       return;
+    }
+    if (
+      store.profiles.some(
+        (p) => p.id !== editingId && p.email.toLowerCase() === email,
+      )
+    ) {
+      setEditError("That email is already in use.");
+      return;
+    }
+
+    if (!editDraft.roleLocked) {
+      const isHq = selectedRoleIsHq(editDraft.roleKey);
+      const roleChapterId = editDraft.roleChapterId || editDraft.chapterId;
+      if (!isHq && !roleChapterId) {
+        setEditError("Chapter is required for chapter-scoped roles.");
+        return;
+      }
+      const assignments: UserRoleAssignmentInput[] = [
+        isHq
+          ? { roleKey: editDraft.roleKey }
+          : { roleKey: editDraft.roleKey, chapterId: roleChapterId },
+      ];
+      const okProfile = updateUser(editingId, {
+        fullName,
+        email,
+        chapterId: editDraft.chapterId || undefined,
+        status: editDraft.status,
+      });
+      if (!okProfile) {
+        setEditError("Could not update profile.");
+        return;
+      }
+      if (!setUserRoles(editingId, assignments)) {
+        setEditError("Could not update roles.");
+        return;
+      }
+    } else {
+      const okProfile = updateUser(editingId, {
+        fullName,
+        email,
+        chapterId: editDraft.chapterId || undefined,
+        status: editDraft.status,
+      });
+      if (!okProfile) {
+        setEditError("Could not update profile.");
+        return;
+      }
+    }
+
+    if (
+      editDraft.status === "disabled" &&
+      editingId === session.userId
+    ) {
+      flashMsg("User saved — current session is now disabled");
+    } else {
+      flashMsg("User saved");
     }
     setEditingId(null);
     setEditDraft(null);
-    flashMsg("User saved");
+  }
+
+  function toggleStatus(profile: Profile) {
+    const current = profile.status ?? "active";
+    const next = current === "active" ? "disabled" : "active";
+    const ok = updateUser(profile.id, { status: next });
+    if (!ok) {
+      flashMsg("Could not update status");
+      return;
+    }
+    if (editingId === profile.id && editDraft) {
+      setEditDraft({ ...editDraft, status: next });
+    }
+    if (next === "disabled" && profile.id === session.userId) {
+      flashMsg("Account disabled — switch persona to continue");
+    } else {
+      flashMsg(next === "disabled" ? "User disabled" : "User enabled");
+    }
   }
 
   if (!canManage) {
     return (
       <div>
         <PageHeader
+          eyebrow="Network"
           title="Users"
           description="Organization-wide user management."
         />
@@ -198,9 +330,14 @@ export default function HqUsersPage() {
     );
   }
 
+  const editProfile = editingId
+    ? store.profiles.find((p) => p.id === editingId)
+    : undefined;
+
   return (
     <div>
       <PageHeader
+        eyebrow="Network"
         title="Users"
         description="Super-admin console — create accounts, assign roles, and disable users across all chapters."
         actions={
@@ -210,109 +347,12 @@ export default function HqUsersPage() {
                 {flash}
               </span>
             ) : null}
-            <Button
-              variant="primary"
-              onClick={() => {
-                setShowCreate((v) => !v);
-                setCreateError("");
-              }}
-            >
-              {showCreate ? "Close" : "Create user"}
+            <Button variant="primary" onClick={openCreate}>
+              Create user
             </Button>
           </div>
         }
       />
-
-      {showCreate ? (
-        <TerminalPanel title="create.user" accent="cyan" className="mb-6">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <FieldLabel>Full name</FieldLabel>
-              <Input
-                value={createDraft.fullName}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({ ...d, fullName: e.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <FieldLabel>Email</FieldLabel>
-              <Input
-                type="email"
-                value={createDraft.email}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({ ...d, email: e.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <FieldLabel>Primary role</FieldLabel>
-              <Select
-                value={createDraft.roleKey}
-                onChange={(e) =>
-                  setCreateDraft((d) => ({
-                    ...d,
-                    roleKey: e.target.value as RoleKey,
-                  }))
-                }
-              >
-                <optgroup label="HQ">
-                  {hqRoles.map((r) => (
-                    <option key={r.id} value={r.key}>
-                      {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Chapter">
-                  {chapterRoles.map((r) => (
-                    <option key={r.id} value={r.key}>
-                      {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </Select>
-            </div>
-            {!selectedRoleIsHq(createDraft.roleKey) ? (
-              <div>
-                <FieldLabel>Chapter</FieldLabel>
-                <Select
-                  value={createDraft.chapterId}
-                  onChange={(e) =>
-                    setCreateDraft((d) => ({
-                      ...d,
-                      chapterId: e.target.value,
-                    }))
-                  }
-                >
-                  <option value="">Select…</option>
-                  {store.chapters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ) : null}
-          </div>
-          {createError ? (
-            <p className="mt-3 text-sm text-[var(--accent)]">{createError}</p>
-          ) : null}
-          <div className="mt-4 flex gap-2">
-            <Button variant="primary" onClick={submitCreate}>
-              Create
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setShowCreate(false);
-                setCreateError("");
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </TerminalPanel>
-      ) : null}
 
       <TerminalPanel title="filters" className="mb-6">
         <div className="grid gap-3 md:grid-cols-4">
@@ -369,114 +409,54 @@ export default function HqUsersPage() {
       </TerminalPanel>
 
       {editingId && editDraft ? (
-        <TerminalPanel title="edit.user" accent="orange" className="mb-6">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <FieldLabel>Full name</FieldLabel>
-              <Input
-                value={editDraft.fullName}
-                onChange={(e) =>
-                  setEditDraft((d) =>
-                    d ? { ...d, fullName: e.target.value } : d,
-                  )
-                }
-              />
-            </div>
-            <div>
-              <FieldLabel>Email</FieldLabel>
-              <Input
-                type="email"
-                value={editDraft.email}
-                onChange={(e) =>
-                  setEditDraft((d) =>
-                    d ? { ...d, email: e.target.value } : d,
-                  )
-                }
-              />
-            </div>
-            <div>
-              <FieldLabel>Home chapter</FieldLabel>
-              <Select
-                value={editDraft.chapterId}
-                onChange={(e) =>
-                  setEditDraft((d) =>
-                    d
-                      ? {
-                          ...d,
-                          chapterId: e.target.value,
-                          roleChapterId: e.target.value || d.roleChapterId,
-                        }
-                      : d,
-                  )
-                }
-              >
-                <option value="">None (HQ)</option>
-                {store.chapters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <FieldLabel>Status</FieldLabel>
-              <Select
-                value={editDraft.status}
-                onChange={(e) =>
-                  setEditDraft((d) =>
-                    d
-                      ? {
-                          ...d,
-                          status: e.target.value as "active" | "disabled",
-                        }
-                      : d,
-                  )
-                }
-              >
-                <option value="active">Active</option>
-                <option value="disabled">Disabled</option>
-              </Select>
-            </div>
-            <div>
-              <FieldLabel>Primary role</FieldLabel>
-              <Select
-                value={editDraft.roleKey}
-                onChange={(e) =>
-                  setEditDraft((d) =>
-                    d
-                      ? { ...d, roleKey: e.target.value as RoleKey }
-                      : d,
-                  )
-                }
-              >
-                <optgroup label="HQ">
-                  {hqRoles.map((r) => (
-                    <option key={r.id} value={r.key}>
-                      {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Chapter">
-                  {chapterRoles.map((r) => (
-                    <option key={r.id} value={r.key}>
-                      {r.name}
-                    </option>
-                  ))}
-                </optgroup>
-              </Select>
-            </div>
-            {!selectedRoleIsHq(editDraft.roleKey) ? (
+        <TerminalPanel
+          title="edit.user"
+          meta={editProfile?.fullName ?? editDraft.fullName}
+          accent="orange"
+          className="mb-6"
+        >
+          <form onSubmit={submitEdit}>
+            <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <FieldLabel>Role chapter</FieldLabel>
-                <Select
-                  value={editDraft.roleChapterId}
+                <FieldLabel>Full name</FieldLabel>
+                <Input
+                  value={editDraft.fullName}
                   onChange={(e) =>
                     setEditDraft((d) =>
-                      d ? { ...d, roleChapterId: e.target.value } : d,
+                      d ? { ...d, fullName: e.target.value } : d,
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <FieldLabel>Email</FieldLabel>
+                <Input
+                  type="email"
+                  value={editDraft.email}
+                  onChange={(e) =>
+                    setEditDraft((d) =>
+                      d ? { ...d, email: e.target.value } : d,
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <FieldLabel>Home chapter</FieldLabel>
+                <Select
+                  value={editDraft.chapterId}
+                  onChange={(e) =>
+                    setEditDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            chapterId: e.target.value,
+                            roleChapterId: e.target.value || d.roleChapterId,
+                          }
+                        : d,
                     )
                   }
                 >
-                  <option value="">Select…</option>
+                  <option value="">None (HQ)</option>
                   {store.chapters.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -484,37 +464,166 @@ export default function HqUsersPage() {
                   ))}
                 </Select>
               </div>
+              <div>
+                <FieldLabel>Status</FieldLabel>
+                <Select
+                  value={editDraft.status}
+                  onChange={(e) =>
+                    setEditDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            status: e.target.value as "active" | "disabled",
+                          }
+                        : d,
+                    )
+                  }
+                >
+                  <option value="active">Active</option>
+                  <option value="disabled">Disabled</option>
+                </Select>
+              </div>
+              {editDraft.roleLocked ? (
+                <div className="md:col-span-2">
+                  <FieldLabel>Primary role</FieldLabel>
+                  <p className="mt-1 text-[13px] text-text-dim">
+                    Leadership:{" "}
+                    {editDraft.leadershipLabels.join(", ") || "Assigned"} —
+                    change the executive seat on the chapter Leadership page
+                    {(() => {
+                      const chapterId =
+                        editDraft.chapterId ||
+                        editProfile?.chapterId ||
+                        "";
+                      const chapter = store.chapters.find(
+                        (c) => c.id === chapterId,
+                      );
+                      const href = chapter
+                        ? `/chapter/${chapter.slug}/leadership`
+                        : "/hq/leadership";
+                      return (
+                        <>
+                          {" "}
+                          (
+                          <Link
+                            href={href}
+                            className="text-[var(--accent)] hover:underline"
+                          >
+                            {chapter ? "Open chapter Leadership" : "Network overview"}
+                          </Link>
+                          )
+                        </>
+                      );
+                    })()}
+                    . Saving here updates profile and status only.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <FieldLabel>Primary role</FieldLabel>
+                    <Select
+                      value={editDraft.roleKey}
+                      onChange={(e) =>
+                        setEditDraft((d) =>
+                          d
+                            ? { ...d, roleKey: e.target.value as RoleKey }
+                            : d,
+                        )
+                      }
+                    >
+                      <optgroup label="HQ">
+                        {hqRoles.map((r) => (
+                          <option key={r.id} value={r.key}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Chapter">
+                        {chapterRoles.map((r) => (
+                          <option key={r.id} value={r.key}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </Select>
+                    {editDraft.leadershipLabels.length ? (
+                      <p className="mt-1 text-[11px] text-text-mute">
+                        Also leadership: {editDraft.leadershipLabels.join(", ")}{" "}
+                        (managed in Leadership)
+                      </p>
+                    ) : null}
+                  </div>
+                  {!selectedRoleIsHq(editDraft.roleKey) ? (
+                    <div>
+                      <FieldLabel>Role chapter</FieldLabel>
+                      <Select
+                        value={editDraft.roleChapterId}
+                        onChange={(e) =>
+                          setEditDraft((d) =>
+                            d ? { ...d, roleChapterId: e.target.value } : d,
+                          )
+                        }
+                      >
+                        <option value="">Select…</option>
+                        {store.chapters.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+            {editError ? (
+              <p className="mt-3 text-sm text-[var(--accent)]">{editError}</p>
             ) : null}
-          </div>
-          {editError ? (
-            <p className="mt-3 text-sm text-[var(--accent)]">{editError}</p>
-          ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="primary" onClick={submitEdit}>
-              Save user
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setEditingId(null);
-                setEditDraft(null);
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="submit" variant="primary">
+                Save user
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setEditingId(null);
+                  setEditDraft(null);
+                  setEditError("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
         </TerminalPanel>
       ) : null}
 
       <TerminalPanel title="user.directory" meta={`${rows.length} users`}>
         {!rows.length ? (
-          <p className="text-sm text-text-dim">No users match these filters.</p>
+          <div className="py-6 text-center">
+            <p className="text-sm text-text-dim">
+              {filtersActive
+                ? "No users match these filters."
+                : "No users in the directory yet."}
+            </p>
+            {filtersActive ? (
+              <Button variant="ghost" className="mt-3" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : (
+              <Button variant="primary" className="mt-3" onClick={openCreate}>
+                Create user
+              </Button>
+            )}
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-border">
             {rows.map(({ profile, roles, status, chapter }) => (
               <li
                 key={profile.id}
-                className="flex flex-wrap items-center justify-between gap-3 border border-border px-3 py-3"
+                className="flex flex-wrap items-center justify-between gap-3 py-3.5"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -536,7 +645,7 @@ export default function HqUsersPage() {
                     {roles.length ? (
                       roles.map((r) =>
                         r ? (
-                          <Badge key={r.id} tone="cyan">
+                          <Badge key={`${profile.id}-${r.id}`} tone="cyan">
                             {roleKeyLabel(r.key)}
                           </Badge>
                         ) : null,
@@ -548,14 +657,113 @@ export default function HqUsersPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" onClick={() => startEdit(profile)}>
-                  Edit
-                </Button>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => toggleStatus(profile)}
+                  >
+                    {status === "active" ? "Disable" : "Enable"}
+                  </Button>
+                  <Button variant="ghost" onClick={() => startEdit(profile)}>
+                    Edit
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </TerminalPanel>
+
+      <Dialog
+        open={createOpen}
+        onClose={closeCreate}
+        title="Create user"
+        description="Adds an account and primary role across the Elevates network."
+      >
+        <form onSubmit={submitCreate} className="space-y-3">
+          <div>
+            <FieldLabel>Full name</FieldLabel>
+            <Input
+              value={createDraft.fullName}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, fullName: e.target.value }))
+              }
+              placeholder="Full name"
+              autoFocus
+            />
+          </div>
+          <div>
+            <FieldLabel>Email</FieldLabel>
+            <Input
+              type="email"
+              value={createDraft.email}
+              onChange={(e) =>
+                setCreateDraft((d) => ({ ...d, email: e.target.value }))
+              }
+              placeholder="name@college.edu"
+            />
+          </div>
+          <div>
+            <FieldLabel>Primary role</FieldLabel>
+            <Select
+              value={createDraft.roleKey}
+              onChange={(e) =>
+                setCreateDraft((d) => ({
+                  ...d,
+                  roleKey: e.target.value as RoleKey,
+                }))
+              }
+            >
+              <optgroup label="HQ">
+                {hqRoles.map((r) => (
+                  <option key={r.id} value={r.key}>
+                    {r.name}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Chapter">
+                {chapterRoles.map((r) => (
+                  <option key={r.id} value={r.key}>
+                    {r.name}
+                  </option>
+                ))}
+              </optgroup>
+            </Select>
+          </div>
+          {!selectedRoleIsHq(createDraft.roleKey) ? (
+            <div>
+              <FieldLabel>Chapter</FieldLabel>
+              <Select
+                value={createDraft.chapterId}
+                onChange={(e) =>
+                  setCreateDraft((d) => ({
+                    ...d,
+                    chapterId: e.target.value,
+                  }))
+                }
+              >
+                <option value="">Select…</option>
+                {store.chapters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : null}
+          {createError ? (
+            <p className="text-[13px] text-[var(--accent)]">{createError}</p>
+          ) : null}
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="ghost" onClick={closeCreate}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary">
+              Create user
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

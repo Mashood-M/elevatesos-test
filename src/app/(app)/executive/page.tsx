@@ -19,7 +19,7 @@ const roleConfig: Partial<
   >
 > = {
   chairman: {
-    title: "Chairman Desk",
+    title: "Campus Lead Desk",
     accent: "cyan",
     focus: ["Chapter health", "Leadership cycle", "Monthly reports", "Strategic approvals"],
   },
@@ -39,7 +39,7 @@ const roleConfig: Partial<
     focus: ["Registration review", "Attendance check-in", "Class lists", "Student outreach"],
   },
   vice_chairman: {
-    title: "Vice Chairman Desk",
+    title: "Deputy Campus Lead Desk",
     accent: "cyan",
     focus: ["Deputy oversight", "Event backup", "Report drafts"],
   },
@@ -64,13 +64,18 @@ export default function ExecutivePage() {
   const myTasks = store.tasks.filter(
     (t) => t.assigneeId === session.userId && t.status !== "completed",
   );
-  const pendingRegs = store.registrations.filter((r) => {
-    const ev = store.events.find((e) => e.id === r.eventId);
-    return ev?.chapterId === session.chapterId && r.status === "reviewed";
-  });
-  const pendingEvents = store.events.filter(
-    (e) => e.chapterId === session.chapterId && e.status === "pending_approval",
+  const chapterEvents = store.events.filter(
+    (e) => e.chapterId === session.chapterId,
   );
+  const draftEvents = chapterEvents.filter((e) => e.status === "draft");
+  const pendingRegs = store.registrations.filter((r) => {
+    const ev = chapterEvents.find((e) => e.id === r.eventId);
+    return !!ev && r.status === "reviewed";
+  });
+  const reviewRegs = store.registrations.filter((r) => {
+    const ev = chapterEvents.find((e) => e.id === r.eventId);
+    return !!ev && r.status === "pending";
+  });
 
   const canApproveRegs = hasPermission(store, session.roleKey, "registration.approve");
   const canReviewRegs = hasPermission(store, session.roleKey, "registration.review");
@@ -78,69 +83,117 @@ export default function ExecutivePage() {
   return (
     <div>
       <PageHeader
+        eyebrow="Home"
         title={config.title}
-        description={`Welcome, ${profile?.fullName}. ${role?.description ?? "Chapter executive operations."}`}
+        description={`Your action queue, ${profile?.fullName?.split(" ")[0] ?? "lead"}. ${role?.description ?? "Focus on your open tasks and approvals."}`}
         actions={
           chapter ? (
             <Link href={`/chapter/${chapter.slug}`}>
-              <Button variant="ghost">Chapter dashboard</Button>
+              <Button variant="ghost">Open chapter</Button>
             </Link>
           ) : null
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Executive Score" value={score} accent={config.accent} />
-        <Stat label="Open Tasks" value={myTasks.length} accent="orange" />
+        <Stat label="Executive score" value={score} accent="orange" />
+        <Stat label="Open tasks" value={myTasks.length} />
         {canApproveRegs ? (
-          <Stat label="Regs to Approve" value={pendingRegs.length} accent="magenta" />
+          <Stat label="Regs to approve" value={pendingRegs.length} />
         ) : canReviewRegs ? (
-          <Stat label="Regs to Review" value={store.registrations.filter((r) => r.status === "pending").length} accent="magenta" />
+          <Stat label="Regs to review" value={reviewRegs.length} />
         ) : (
-          <Stat label="Events" value={store.events.filter((e) => e.chapterId === session.chapterId).length} accent="magenta" />
+          <Stat label="Events" value={chapterEvents.length} />
         )}
         <Stat
-          label="Chapter Health"
+          label="Chapter health"
           value={chapter ? `${chapter.healthScore}%` : "—"}
-          accent="green"
           hint={chapter ? healthLabel(chapter.healthScore) : undefined}
         />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <TerminalPanel title="role.focus" accent={config.accent}>
-          <ul className="space-y-2 text-[12px]">
+      <div className="mt-6 grid gap-5 xl:grid-cols-2">
+        <TerminalPanel title="Role focus">
+          <ul className="divide-y divide-border/80 text-[13px]">
             {config.focus.map((f) => (
-              <li key={f} className="flex items-center gap-2">
-                <span className="text-green">▸</span> {f}
+              <li key={f} className="py-2.5">
+                {f}
               </li>
             ))}
           </ul>
           {chapter ? (
             <div className="mt-4">
-              <ProgressBar value={chapter.healthScore} label={healthLabel(chapter.healthScore)} accent="green" />
+              <ProgressBar
+                value={chapter.healthScore}
+                label={healthLabel(chapter.healthScore)}
+              />
             </div>
           ) : null}
         </TerminalPanel>
 
-        <TerminalPanel title="action.queue" accent="orange">
-          <div className="space-y-3 text-[12px]">
-            {pendingEvents.length > 0 && chapter ? (
-              <Link
-                href={`/chapter/${chapter.slug}/events`}
-                className="block rounded-[var(--radius-sm)] border border-orange/30 p-3 hover:bg-bg-hover"
-              >
-                <p className="text-orange">
-                  {pendingEvents.length} event(s) pending faculty approval
-                </p>
-                <p className="mt-1 text-[11px] text-text-mute">Open events →</p>
-              </Link>
-            ) : null}
+        <TerminalPanel title="Action queue">
+          <div className="space-y-3 text-[13px]">
+            {chapter && draftEvents.length > 0
+              ? draftEvents.slice(0, 3).map((ev) => (
+                  <Link
+                    key={ev.id}
+                    href={`/chapter/${chapter.slug}/events/${ev.id}`}
+                    className="block rounded-[14px] bg-bg px-4 py-3 hover:bg-bg-hover"
+                  >
+                    <p className="font-medium text-[var(--accent)]">
+                      Draft: {ev.title}
+                    </p>
+                    <p className="mt-1 text-[11px] text-text-mute">
+                      Publish to open registration →
+                    </p>
+                  </Link>
+                ))
+              : null}
+            {chapter && canApproveRegs
+              ? pendingRegs.slice(0, 3).map((r) => {
+                  const ev = chapterEvents.find((e) => e.id === r.eventId);
+                  if (!ev) return null;
+                  return (
+                    <Link
+                      key={r.id}
+                      href={`/chapter/${chapter.slug}/events/${ev.id}`}
+                      className="block rounded-[14px] bg-bg px-4 py-3 hover:bg-bg-hover"
+                    >
+                      <p className="font-medium text-[var(--accent)]">
+                        Approve registration — {ev.title}
+                      </p>
+                      <p className="mt-1 text-[11px] text-text-mute">
+                        Reviewed queue →
+                      </p>
+                    </Link>
+                  );
+                })
+              : null}
+            {chapter && canReviewRegs && !canApproveRegs
+              ? reviewRegs.slice(0, 3).map((r) => {
+                  const ev = chapterEvents.find((e) => e.id === r.eventId);
+                  if (!ev) return null;
+                  return (
+                    <Link
+                      key={r.id}
+                      href={`/chapter/${chapter.slug}/events/${ev.id}`}
+                      className="block rounded-[14px] bg-bg px-4 py-3 hover:bg-bg-hover"
+                    >
+                      <p className="font-medium text-[var(--accent)]">
+                        Review registration — {ev.title}
+                      </p>
+                      <p className="mt-1 text-[11px] text-text-mute">
+                        Pending CR review →
+                      </p>
+                    </Link>
+                  );
+                })
+              : null}
             {myTasks.slice(0, 4).map((t) => (
               <Link
                 key={t.id}
                 href={chapter ? `/chapter/${chapter.slug}/tasks` : "#"}
-                className="flex justify-between border-b border-border pb-2 hover:text-[var(--accent)]"
+                className="flex justify-between border-b border-border/80 py-2 hover:text-[var(--accent)]"
               >
                 <span>{t.title}</span>
                 <Badge tone={t.status === "in_progress" ? "cyan" : "orange"}>
@@ -148,8 +201,11 @@ export default function ExecutivePage() {
                 </Badge>
               </Link>
             ))}
-            {myTasks.length === 0 ? (
-              <p className="text-text-dim">All tasks completed.</p>
+            {myTasks.length === 0 &&
+            draftEvents.length === 0 &&
+            !(canApproveRegs && pendingRegs.length) &&
+            !(canReviewRegs && !canApproveRegs && reviewRegs.length) ? (
+              <p className="text-text-dim">Queue clear — no drafts or regs waiting.</p>
             ) : null}
           </div>
           <div className="mt-4 flex flex-wrap gap-3 text-[12px]">
@@ -178,16 +234,17 @@ export default function ExecutivePage() {
           </div>
         </TerminalPanel>
 
-        <TerminalPanel title="recent.activity" accent="magenta" className="xl:col-span-2">
-          <ul className="space-y-2 text-[11px]">
+        <TerminalPanel title="Recent activity" className="xl:col-span-2">
+          <ul className="divide-y divide-border/80 text-[13px]">
             {store.activityLogs.slice(0, 6).map((log) => {
               const actor = store.profiles.find((p) => p.id === log.actorId);
               return (
-                <li key={log.id} className="text-text-dim">
-                  <span className="text-orange">{formatDateTime(log.createdAt)}</span>
-                  {" · "}
-                  <span className="text-text">{actor?.fullName}</span> — {log.action}
-                  {log.meta ? ` (${log.meta})` : ""}
+                <li key={log.id} className="flex flex-wrap gap-x-2 py-2.5 text-text-dim">
+                  <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                    {formatDateTime(log.createdAt)}
+                  </span>
+                  <span className="text-text">{actor?.fullName}</span>
+                  <span>— {log.action.replaceAll("_", " ")}</span>
                 </li>
               );
             })}

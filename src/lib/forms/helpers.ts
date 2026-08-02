@@ -1,3 +1,6 @@
+import { ensureOrganizationBrandKit } from "@/lib/brand/kit";
+import { createSeedStore } from "@/lib/demo/seed";
+import { mergeResourceCategories } from "@/lib/resources/categories";
 import type {
   ClassCohort,
   ElevatesStore,
@@ -131,18 +134,48 @@ export const REPRESENTATIVE_QUESTION: FormQuestion = {
   required: true,
 };
 
+/** Ensure unique question ids (keeps first occurrence). */
+export function dedupeFormQuestions(questions: FormQuestion[]): FormQuestion[] {
+  const seen = new Set<string>();
+  const out: FormQuestion[] = [];
+  for (const q of questions) {
+    if (seen.has(q.id)) continue;
+    seen.add(q.id);
+    out.push(q);
+  }
+  return out;
+}
+
 export function ensureRepresentativeQuestion(
   form: FormDefinition,
 ): FormDefinition {
   if (form.purpose !== "registration") return form;
-  if (form.questions.some((q) => q.type === "representative")) return form;
-  const basicsIdx = form.questions.findIndex(
+  let questions = dedupeFormQuestions(form.questions);
+  if (questions.some((q) => q.type === "representative")) {
+    return questions === form.questions ? form : { ...form, questions };
+  }
+
+  // If f-representative id is still on a non-rep question (type was changed),
+  // rename that id so we can insert the CR field without a React key clash.
+  const idTaken = questions.some((q) => q.id === REPRESENTATIVE_QUESTION.id);
+  if (idTaken) {
+    questions = questions.map((q) =>
+      q.id === REPRESENTATIVE_QUESTION.id
+        ? {
+            ...q,
+            id: `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`,
+          }
+        : q,
+    );
+  }
+
+  const basicsIdx = questions.findIndex(
     (q) => q.type === "section_header" && /you|basic/i.test(q.title),
   );
   const insertAt = basicsIdx >= 0 ? basicsIdx + 1 : 0;
-  const questions = [...form.questions];
-  questions.splice(insertAt, 0, { ...REPRESENTATIVE_QUESTION });
-  return { ...form, questions };
+  const next = [...questions];
+  next.splice(insertAt, 0, { ...REPRESENTATIVE_QUESTION });
+  return { ...form, questions: next };
 }
 
 const FIELD_TO_QUESTION: Record<FormFieldType, FormQuestionType> = {
@@ -191,10 +224,11 @@ export function questionToField(q: FormQuestion): FormField {
 }
 
 export function migrateForm(raw: FormDefinition & { fields?: FormField[] }): FormDefinition {
-  const questions =
+  const questions = dedupeFormQuestions(
     raw.questions?.length
       ? raw.questions
-      : (raw.fields ?? []).map(fieldToQuestion);
+      : (raw.fields ?? []).map(fieldToQuestion),
+  );
   const now = new Date().toISOString();
   return {
     id: raw.id,
@@ -203,11 +237,73 @@ export function migrateForm(raw: FormDefinition & { fields?: FormField[] }): For
     description: raw.description,
     chapterId: raw.chapterId || "ch-ekc",
     eventId: raw.eventId,
-    status: raw.status ?? "open",
+    status: raw.status ?? "draft",
     questions,
+    logicEnabled: raw.logicEnabled,
+    logicRules: Array.isArray(raw.logicRules)
+      ? raw.logicRules.slice(0, 8)
+      : undefined,
+    scriptEnabled: raw.scriptEnabled,
+    script: raw.script,
     createdAt: raw.createdAt ?? now,
     updatedAt: raw.updatedAt ?? now,
   };
+}
+
+export type FormSectionPage = {
+  id: string;
+  title: string;
+  description?: string;
+  /** Answerable questions on this page (no section_header). */
+  questions: FormQuestion[];
+  header?: FormQuestion;
+};
+
+/** Split questions into G Forms–style pages at each section_header. */
+export function splitFormSections(form: FormDefinition): FormSectionPage[] {
+  const pages: FormSectionPage[] = [];
+  let current: FormSectionPage = {
+    id: "section-0",
+    title: form.title,
+    description: form.description,
+    questions: [],
+  };
+
+  for (const q of form.questions) {
+    if (q.type === "section_header") {
+      if (current.questions.length > 0) {
+        pages.push(current);
+      }
+      current = {
+        id: q.id,
+        title: q.title || "Untitled section",
+        description: q.description,
+        questions: [],
+        header: q,
+      };
+      continue;
+    }
+    current.questions.push(q);
+  }
+  pages.push(current);
+
+  if (
+    pages.length > 1 &&
+    pages[0].questions.length === 0 &&
+    !pages[0].header
+  ) {
+    return pages.slice(1);
+  }
+  return pages.length
+    ? pages
+    : [
+        {
+          id: "section-0",
+          title: form.title,
+          description: form.description,
+          questions: [],
+        },
+      ];
 }
 
 export function getEventForm(
@@ -334,6 +430,7 @@ export function emptyForm(
 }
 
 export function normalizeStore(store: ElevatesStore): ElevatesStore {
+  const organization = ensureOrganizationBrandKit(store.organization);
   let forms = (store.forms ?? []).map((f) =>
     ensureRepresentativeQuestion(migrateForm(f as FormDefinition)),
   );
@@ -367,12 +464,42 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     };
   });
 
+  const profiles = (store.profiles ?? []).map((p) => ({
+    ...p,
+    engagementTier: p.engagementTier ?? ("everyone" as const),
+    journeyStage: p.journeyStage ?? ("awareness" as const),
+  }));
+  const clusters = (store.clusters ?? []).map((c) => ({
+    ...c,
+    accessMode: c.accessMode ?? ("invite" as const),
+    responsibilities: c.responsibilities ?? [],
+  }));
+
+  const resources = store.resources ?? [];
+  const resourceCategories = mergeResourceCategories(
+    store.resourceCategories,
+    resources.map((r) => r.category),
+  );
+
   return {
     ...store,
+    organization,
+    profiles,
     departments: store.departments ?? [],
     classCohorts,
+    clusters,
+    clusterInvites: store.clusterInvites ?? [],
+    leadershipApplications: store.leadershipApplications ?? [],
+    chapterStandardChecks: store.chapterStandardChecks ?? [],
+    resourceCategories,
+    resources,
+    // Old localStorage saves omit guidelines — hydrate seed once.
+    guidelines: Array.isArray(store.guidelines)
+      ? store.guidelines
+      : createSeedStore().guidelines,
     forms,
     formResponses,
+    outboundMessages: store.outboundMessages ?? [],
   };
 }
 

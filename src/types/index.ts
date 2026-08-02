@@ -34,6 +34,7 @@ export type PermissionKey =
   | "certificate.issue"
   | "report.submit"
   | "report.approve"
+  | "report.download"
   | "task.manage"
   | "resource.upload"
   | "announcement.publish"
@@ -73,8 +74,59 @@ export type ProjectStage =
   | "testing"
   | "demo"
   | "showcase";
+export type ProjectType =
+  | "internal"
+  | "campus"
+  | "open_source"
+  | "community"
+  | "startup"
+  | "industry";
+export type EngagementTier =
+  | "everyone"
+  | "participant"
+  | "active"
+  | "cluster"
+  | "executive"
+  | "campus_lead";
+export type JourneyStage =
+  | "awareness"
+  | "workshop"
+  | "hands_on"
+  | "task"
+  | "cluster"
+  | "projects"
+  | "leadership"
+  | "mentorship"
+  | "alumni";
+export type ClusterAccessMode = "open" | "invite" | "challenge";
+export type ClusterInviteStatus = "pending" | "accepted" | "declined" | "expired";
+export type LeadershipAppStatus =
+  | "applied"
+  | "screening"
+  | "interview"
+  | "selected"
+  | "training"
+  | "rejected"
+  | "withdrawn";
+export type EventProgressStage =
+  | "open"
+  | "workshop"
+  | "hands_on"
+  | "challenge"
+  | "cluster_selection"
+  | "advanced"
+  | "sprint"
+  | "demo_day";
 export type TaskStatus = "pending" | "in_progress" | "completed";
-export type ReportStatus = "draft" | "submitted" | "approved" | "archived";
+export type ReportStatus =
+  | "draft"
+  | "submitted"
+  | "changes_requested"
+  | "approved"
+  | "rejected"
+  | "archived";
+
+export type ReportReviewDecision = "approve" | "correction" | "reject";
 export type ReportType =
   | "event"
   | "monthly"
@@ -89,11 +141,23 @@ export type AnnouncementAudience =
   | "executive"
   | "student";
 
+export interface BrandKit {
+  logoUrl: string;
+  colors: {
+    accent: string;
+    charcoal: string;
+    sage: string;
+    indigo: string;
+  };
+}
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   tagline: string;
+  /** Chapter-facing brand documentation; does not theme the product UI. */
+  brandKit?: BrandKit;
 }
 
 export interface Chapter {
@@ -126,6 +190,10 @@ export interface Profile {
   chapterId?: string;
   /** Soft disable for HQ user management; default active */
   status?: "active" | "disabled";
+  /** EOS community engagement tier */
+  engagementTier?: EngagementTier;
+  /** EOS student journey stage */
+  journeyStage?: JourneyStage;
   skills: string[];
   interests: string[];
   portfolioUrl?: string;
@@ -135,6 +203,8 @@ export interface Profile {
   points: number;
   badges: string[];
   bio?: string;
+  /** Optional WhatsApp / SMS contact (demo outbound) */
+  phone?: string;
 }
 
 export type UserRoleAssignmentInput = {
@@ -232,6 +302,10 @@ export interface EventItem {
   certificateEnabled: boolean;
   ticketNo: string;
   category: string;
+  /** EOS event progression stage */
+  progressStage?: EventProgressStage;
+  /** Next event in the progression chain */
+  nextEventId?: string;
 }
 
 export type FormFieldType =
@@ -280,6 +354,21 @@ export type FormQuestionType =
 
 export type FormStatus = "draft" | "open" | "closed";
 
+export type FormValidationKind =
+  | "email"
+  | "url"
+  | "phone"
+  | "min_length"
+  | "max_length"
+  | "min"
+  | "max";
+
+export type FormValidationRule = {
+  kind: FormValidationKind;
+  value?: string | number;
+  message?: string;
+};
+
 export interface FormQuestion {
   id: string;
   type: FormQuestionType;
@@ -292,7 +381,36 @@ export interface FormQuestion {
   scaleMinLabel?: string;
   scaleMaxLabel?: string;
   ratingMax?: number;
+  /** file_upload: accept attribute, e.g. ".pdf,image/*" */
+  fileAccept?: string;
+  /** file_upload: max size in megabytes (demo default 2) */
+  fileMaxMb?: number;
+  validation?: FormValidationRule[];
 }
+
+export type FormLogicWhen =
+  | "answer_change"
+  | "before_next"
+  | "before_submit";
+
+export type FormLogicIf =
+  | { kind: "always" }
+  | { kind: "answer_equals"; questionId: string; value: string }
+  | { kind: "answer_not_empty"; questionId: string };
+
+export type FormLogicThen =
+  | { kind: "go_to_section"; sectionIndex: number }
+  | { kind: "show_error"; message: string; block: boolean }
+  | { kind: "set_answer"; questionId: string; value: string }
+  | { kind: "show_questions"; questionIds: string[] }
+  | { kind: "hide_questions"; questionIds: string[] };
+
+export type FormLogicRule = {
+  id: string;
+  when: FormLogicWhen;
+  if: FormLogicIf;
+  then: FormLogicThen;
+};
 
 export interface FormDefinition {
   id: string;
@@ -303,6 +421,12 @@ export interface FormDefinition {
   eventId?: string;
   status: FormStatus;
   questions: FormQuestion[];
+  /** Visual When/If/Then logic (Notion-style blocks). */
+  logicEnabled?: boolean;
+  logicRules?: FormLogicRule[];
+  /** @deprecated prefer logicRules — raw JS no longer used in UI */
+  scriptEnabled?: boolean;
+  script?: string;
   /** @deprecated migrated into questions */
   fields?: FormField[];
   createdAt: string;
@@ -363,6 +487,21 @@ export interface Cluster {
   facultyId?: string;
   memberIds: string[];
   roadmap: { week: number; title: string; done: boolean }[];
+  /** Default invite — EOS differentiator */
+  accessMode?: ClusterAccessMode;
+  responsibilities?: string[];
+  challengePrompt?: string;
+}
+
+export interface ClusterInvite {
+  id: string;
+  clusterId: string;
+  chapterId: string;
+  userId: string;
+  nominatedBy?: string;
+  status: ClusterInviteStatus;
+  note?: string;
+  createdAt: string;
 }
 
 export interface Project {
@@ -372,6 +511,7 @@ export interface Project {
   title: string;
   description: string;
   stage: ProjectStage;
+  projectType?: ProjectType;
   teamIds: string[];
   mentorId?: string;
   repositoryUrl?: string;
@@ -380,24 +520,63 @@ export interface Project {
   awards: string[];
 }
 
+export interface LeadershipApplication {
+  id: string;
+  termId: string;
+  chapterId: string;
+  userId: string;
+  roleKey: RoleKey;
+  title: string;
+  status: LeadershipAppStatus;
+  statement?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChapterStandardCheck {
+  id: string;
+  chapterId: string;
+  standardId: string;
+  done: boolean;
+  note?: string;
+  updatedAt: string;
+}
+
+/** HQ resource library category (built-in or custom). */
+export interface ResourceCategory {
+  key: string;
+  label: string;
+}
+
 export interface Resource {
   id: string;
   organizationId: string;
   title: string;
-  category:
-    | "sop"
-    | "workshop_kit"
-    | "ppt"
-    | "poster"
-    | "logo"
-    | "certificate"
-    | "sponsor_deck"
-    | "coding"
-    | "recording";
+  /** Category key — see `resourceCategories` on the store */
+  category: string;
   description: string;
   uploadedBy: string;
   uploadedAt: string;
   url: string;
+}
+
+export type GuidelineStatus = "draft" | "published" | "archived";
+
+export interface Guideline {
+  id: string;
+  organizationId: string;
+  title: string;
+  category: string;
+  version: string;
+  summary: string;
+  sections: string[];
+  /** Plain prose for the detail view */
+  body: string;
+  status: GuidelineStatus;
+  /** Optional deep-link (e.g. /hq/brand) */
+  relatedHref?: string;
+  updatedBy: string;
+  updatedAt: string;
 }
 
 export interface Task {
@@ -416,16 +595,35 @@ export interface Task {
   dueDate: string;
 }
 
+export type ReportSource = "manual" | "student_auto";
+
+export interface ReportImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+}
+
 export interface Report {
   id: string;
   chapterId: string;
   type: ReportType;
   title: string;
+  /** Short narrative for HQ review */
+  summary?: string;
+  /** Rendered HTML for preview / docx */
+  bodyHtml?: string;
+  /** TipTap JSON document (source of truth) */
+  bodyJson?: string;
+  eventId?: string;
+  images?: ReportImage[];
+  source?: ReportSource;
   status: ReportStatus;
   submittedBy: string;
   submittedAt?: string;
   hqComment?: string;
   approvedBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 export interface Announcement {
@@ -447,6 +645,28 @@ export interface NotificationItem {
   read: boolean;
   createdAt: string;
   href?: string;
+}
+
+export type OutboundChannel = "email" | "whatsapp" | "in_app";
+
+export type OutboundTemplateKey =
+  | "registration_approved"
+  | "registration_waitlisted"
+  | "event_reminder"
+  | "announcement";
+
+export interface OutboundMessage {
+  id: string;
+  channel: OutboundChannel;
+  toUserId: string;
+  toAddress: string;
+  templateKey: OutboundTemplateKey;
+  title: string;
+  body: string;
+  status: "queued" | "sent" | "failed";
+  relatedEntity?: string;
+  relatedId?: string;
+  createdAt: string;
 }
 
 export interface ActivityLog {
@@ -486,12 +706,19 @@ export interface ElevatesStore {
   attendance: AttendanceRecord[];
   certificates: Certificate[];
   clusters: Cluster[];
+  clusterInvites: ClusterInvite[];
   projects: Project[];
+  leadershipApplications: LeadershipApplication[];
+  chapterStandardChecks: ChapterStandardCheck[];
+  resourceCategories: ResourceCategory[];
   resources: Resource[];
+  guidelines: Guideline[];
   tasks: Task[];
   reports: Report[];
   announcements: Announcement[];
   notifications: NotificationItem[];
+  /** Demo outbound email / WhatsApp queue (no real provider) */
+  outboundMessages: OutboundMessage[];
   activityLogs: ActivityLog[];
   session: DemoUserSession;
 }

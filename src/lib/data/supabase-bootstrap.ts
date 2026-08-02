@@ -21,6 +21,7 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
       name: orgRow.name,
       slug: orgRow.slug,
       tagline: orgRow.tagline ?? seed.organization.tagline,
+      brandKit: seed.organization.brandKit,
     };
 
     const { data: chapterRows, error: chErr } = await supabase

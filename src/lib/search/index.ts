@@ -26,18 +26,19 @@ export function buildSearchIndex(
   store: ElevatesStore,
   roleKey: RoleKey = store.session.roleKey,
 ): SearchResult[] {
-  const results: SearchResult[] = navItemsForRole(roleKey).map((n) => ({
-    id: `nav-${n.href}`,
-    category: "nav",
-    title: n.title,
-    subtitle: n.subtitle,
-    href: n.href,
-    keywords: `${n.title} ${n.subtitle}`.toLowerCase(),
-  }));
+  const chapterSlug =
+    store.chapters.find((c) => c.id === store.session.chapterId)?.slug ?? "ekc";
 
-  const chapterSlug = store.chapters.find(
-    (c) => c.id === store.session.chapterId,
-  )?.slug;
+  const results: SearchResult[] = navItemsForRole(roleKey, chapterSlug).map(
+    (n) => ({
+      id: `nav-${n.href}`,
+      category: "nav",
+      title: n.title,
+      subtitle: n.subtitle,
+      href: n.href,
+      keywords: `${n.title} ${n.subtitle}`.toLowerCase(),
+    }),
+  );
 
   const visibleChapters = isHqRole(roleKey)
     ? store.chapters

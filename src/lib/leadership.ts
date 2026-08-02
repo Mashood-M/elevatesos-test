@@ -27,6 +27,12 @@ export function isSingletonLeadershipRole(key: RoleKey): boolean {
   return SINGLETON_LEADERSHIP_ROLES.includes(key);
 }
 
+/** EOS display names — Campus Lead aliases chairman */
 export function roleKeyLabel(key: RoleKey): string {
-  return key.replaceAll("_", " ");
+  if (key === "chairman") return "Campus Lead";
+  if (key === "vice_chairman") return "Deputy Campus Lead";
+  return key
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

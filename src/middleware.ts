@@ -50,7 +50,8 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/workflows") ||
     path.startsWith("/v2") ||
     path.startsWith("/design-system") ||
-    path.startsWith("/profile");
+    path.startsWith("/profile") ||
+    path.startsWith("/eos");
 
   if (isApp && !user) {
     const redirectUrl = request.nextUrl.clone();
@@ -80,6 +81,8 @@ export const config = {
     "/v2",
     "/design-system",
     "/profile/:path*",
+    "/eos",
+    "/eos/:path*",
     "/login",
   ],
 };

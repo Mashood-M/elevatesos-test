@@ -1,24 +1,16 @@
 import { clsx, type ClassValue } from "clsx";
+import { formatDate as formatDateTz, formatDateTime as formatDateTimeTz } from "@/lib/datetime";
 
 export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
 
 export function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateTz(iso);
 }
 
 export function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeTz(iso);
 }
 
 export function initials(name: string) {

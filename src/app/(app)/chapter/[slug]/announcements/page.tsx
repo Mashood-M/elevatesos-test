@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
+import { chapterEyebrow } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import type { AnnouncementAudience } from "@/types";
@@ -34,6 +35,7 @@ export default function ChapterAnnouncementsPage({
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [audience, setAudience] = useState<AnnouncementAudience>("chapter");
+  const [flash, setFlash] = useState("");
 
   if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
 
@@ -56,7 +58,11 @@ export default function ChapterAnnouncementsPage({
     );
 
   function handlePublish() {
-    if (!title.trim() || !body.trim()) return;
+    if (!title.trim() || !body.trim()) {
+      setFlash("Title and body are required.");
+      return;
+    }
+    setFlash("");
     createAnnouncement({
       title: title.trim(),
       body: body.trim(),
@@ -72,6 +78,7 @@ export default function ChapterAnnouncementsPage({
   return (
     <div>
       <PageHeader
+        eyebrow={chapterEyebrow(store.session.roleKey, "people")}
         title="Announcements"
         description="Broadcast messages — chapter notices, cluster alerts, and executive syncs."
         actions={
@@ -105,7 +112,6 @@ export default function ChapterAnnouncementsPage({
                 <option value="chapter">Chapter</option>
                 <option value="executive">Executive</option>
                 <option value="student">Students</option>
-                <option value="cluster">Cluster</option>
               </Select>
             </div>
             <div>
@@ -117,6 +123,9 @@ export default function ChapterAnnouncementsPage({
                 placeholder="What should people know?"
               />
             </div>
+            {flash ? (
+              <p className="text-[13px] text-[var(--accent)]">{flash}</p>
+            ) : null}
             <Button variant="primary" onClick={handlePublish}>
               Publish
             </Button>
@@ -125,6 +134,9 @@ export default function ChapterAnnouncementsPage({
       ) : null}
 
       <TerminalPanel title="Feed" meta={`${announcements.length} messages`}>
+        {announcements.length === 0 ? (
+          <p className="text-[13px] text-text-dim">No announcements yet.</p>
+        ) : null}
         <div className="space-y-4">
           {announcements.map((a) => {
             const author = store.profiles.find((p) => p.id === a.authorId);
@@ -134,7 +146,7 @@ export default function ChapterAnnouncementsPage({
             return (
               <article
                 key={a.id}
-                className="rounded-[var(--radius)] border border-border bg-bg p-4"
+                className="rounded-[var(--radius)] bg-bg-panel shadow-[var(--shadow)] bg-bg p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <h3 className="font-[family-name:var(--font-display)] text-lg font-bold">
@@ -156,6 +168,47 @@ export default function ChapterAnnouncementsPage({
           })}
         </div>
       </TerminalPanel>
+
+      {canPublish ? (
+        <TerminalPanel
+          title="Outbound log"
+          meta="demo email · WhatsApp"
+          className="mt-4"
+        >
+          <p className="mb-3 text-[12px] text-text-mute">
+            Demo delivery queue — no real provider. Approvals and announcements
+            append here.
+          </p>
+          {(store.outboundMessages ?? []).filter(
+            (m) =>
+              m.relatedEntity === "announcement" ||
+              m.relatedEntity === "registration" ||
+              m.relatedEntity === "event",
+          ).length === 0 ? (
+            <p className="text-[13px] text-text-dim">No outbound messages yet.</p>
+          ) : (
+            <ul className="max-h-64 space-y-2 overflow-y-auto">
+              {(store.outboundMessages ?? []).slice(0, 30).map((m) => (
+                <li
+                  key={m.id}
+                  className="rounded-[10px] bg-bg px-3 py-2 text-[12px]"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={m.channel === "whatsapp" ? "green" : "cyan"}>
+                      {m.channel}
+                    </Badge>
+                    <span className="font-medium">{m.title}</span>
+                    <span className="text-text-mute">{m.status}</span>
+                  </div>
+                  <p className="mt-1 truncate text-text-dim">
+                    → {m.toAddress}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </TerminalPanel>
+      ) : null}
     </div>
   );
 }

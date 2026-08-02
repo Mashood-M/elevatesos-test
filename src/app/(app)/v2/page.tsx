@@ -25,7 +25,7 @@ const roadmap = [
     title: "Mobile App",
     status: "planned" as const,
     progress: 5,
-    items: ["Native QR scanner", "Offline check-in", "Student wallet for certs"],
+    items: ["Native QR scanner (demo)", "Offline check-in queue", "Student wallet for certs"],
   },
   {
     phase: "Q2 2027",

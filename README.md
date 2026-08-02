@@ -73,5 +73,5 @@ npm run lint     # eslint
 
 ## Brand
 
-Accent `#f26430` · charcoal `#2d2d34` · cool canvas · Syne + IBM Plex  
+Accent `#f26430` · charcoal `#2d2d34` · cool canvas · Syne + Plus Jakarta Sans + IBM Plex Mono  
 See `DESIGN.md` and `/design-system`.

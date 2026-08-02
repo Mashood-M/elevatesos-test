@@ -6,7 +6,9 @@ import {
   useEffect,
   useMemo,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { createSeedStore } from "@/lib/demo/seed";
 import { loadDemoStore, saveDemoStore } from "@/lib/demo/persist";
@@ -19,6 +21,7 @@ import {
   cohortRepIds,
   defaultFormsForEvent,
   emptyForm,
+  ensureRepresentativeQuestion,
   fieldToQuestion,
   mintQrCode,
   normalizeStore,
@@ -28,15 +31,32 @@ import {
   isAssignableLeadershipRole,
   isSingletonLeadershipRole,
 } from "@/lib/leadership";
+import { resolveBrandKit } from "@/lib/brand/kit";
 import { isDemoMode } from "@/lib/mode";
+import { hasPermission, isHqRole } from "@/lib/permissions";
+import { slugifyCategoryKey } from "@/lib/resources/categories";
+import {
+  outboundEventReminders,
+  outboundForRegistration,
+  buildOutboundBody,
+  waAddress,
+  queueOutbound,
+} from "@/lib/comms/outbound";
 import type {
   Announcement,
   AttendanceStatus,
+  BrandKit,
   Chapter,
   ClassCohort,
   Cluster,
+  ClusterInvite,
   Department,
   ElevatesStore,
+  EngagementTier,
+  Guideline,
+  GuidelineStatus,
+  JourneyStage,
+  LeadershipApplication,
   EventItem,
   EventRegistration,
   FormDefinition,
@@ -48,10 +68,18 @@ import type {
   LeadershipAssignment,
   LeadershipStatus,
   LeadershipTerm,
+  NotificationItem,
+  OutboundMessage,
+  PermissionKey,
   Profile,
   RegistrationStatus,
   Report,
+  ReportImage,
+  ReportReviewDecision,
+  ReportSource,
+  ReportStatus,
   ReportType,
+  Resource,
   RoleKey,
   TaskStatus,
   UserRole,
@@ -67,7 +95,7 @@ type StoreContextValue = {
     id: string,
     status: RegistrationStatus,
     actorId: string,
-  ) => void;
+  ) => { ok: true; status: RegistrationStatus } | { ok: false; message: string };
   checkIn: (
     registrationId: string,
     status: AttendanceStatus,
@@ -83,9 +111,17 @@ type StoreContextValue = {
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   approveEvent: (eventId: string) => void;
   approveReport: (reportId: string, comment: string, actorId: string) => void;
+  reviewReport: (
+    reportId: string,
+    decision: ReportReviewDecision,
+    comment: string,
+    actorId: string,
+  ) => boolean;
   createEvent: (event: EventItem) => void;
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
-  registerForEvent: (registration: EventRegistration) => void;
+  registerForEvent: (
+    registration: EventRegistration,
+  ) => { ok: true } | { ok: false; message: string };
   issueCertificate: (eventId: string, userId: string) => CheckInResult;
   saveEventForm: (eventId: string, fields: FormField[]) => void;
   saveForm: (
@@ -139,8 +175,47 @@ type StoreContextValue = {
         | "githubUrl"
         | "linkedinUrl"
         | "portfolioUrl"
+        | "engagementTier"
+        | "journeyStage"
       >
     >,
+  ) => void;
+  joinChapterCommunity: (input: {
+    chapterId: string;
+    fullName: string;
+    email: string;
+    department?: string;
+    year?: string;
+  }) => Profile | null;
+  inviteToCluster: (input: {
+    clusterId: string;
+    userId: string;
+    nominatedBy?: string;
+    note?: string;
+  }) => boolean;
+  respondClusterInvite: (
+    inviteId: string,
+    status: "accepted" | "declined",
+  ) => boolean;
+  submitClusterChallenge: (input: {
+    clusterId: string;
+    userId: string;
+    note?: string;
+  }) => boolean;
+  applyForLeadership: (input: {
+    termId: string;
+    roleKey: RoleKey;
+    title: string;
+    statement?: string;
+  }) => boolean;
+  updateLeadershipApplicationStatus: (
+    id: string,
+    status: import("@/types").LeadershipAppStatus,
+  ) => boolean;
+  toggleChapterStandard: (
+    chapterId: string,
+    standardId: string,
+    done: boolean,
   ) => void;
   createUser: (input: {
     fullName: string;
@@ -158,6 +233,11 @@ type StoreContextValue = {
   setUserRoles: (
     userId: string,
     assignments: UserRoleAssignmentInput[],
+  ) => boolean;
+  setRolePermission: (
+    roleKey: RoleKey,
+    permissionKey: PermissionKey,
+    allowed: boolean,
   ) => boolean;
   createDepartment: (input: {
     chapterId: string;
@@ -217,7 +297,17 @@ type StoreContextValue = {
   updateCluster: (
     id: string,
     patch: Partial<
-      Pick<Cluster, "name" | "description" | "leaderId" | "facultyId" | "slug">
+      Pick<
+        Cluster,
+        | "name"
+        | "description"
+        | "leaderId"
+        | "facultyId"
+        | "slug"
+        | "accessMode"
+        | "responsibilities"
+        | "challengePrompt"
+      >
     >,
   ) => void;
   joinCluster: (clusterId: string, userId: string) => void;
@@ -227,17 +317,109 @@ type StoreContextValue = {
   toggleRoadmapWeek: (clusterId: string, week: number) => void;
   addRoadmapWeek: (clusterId: string, title: string) => void;
   removeRoadmapWeek: (clusterId: string, week: number) => void;
+  createReportDraft: (input: {
+    chapterId: string;
+    type: ReportType;
+    title: string;
+    summary?: string;
+    bodyHtml?: string;
+    bodyJson?: string;
+    eventId?: string;
+    images?: ReportImage[];
+    source?: ReportSource;
+    submittedBy: string;
+  }) => Report;
+  updateReportDocument: (
+    id: string,
+    patch: Partial<
+      Pick<
+        Report,
+        | "title"
+        | "type"
+        | "summary"
+        | "bodyHtml"
+        | "bodyJson"
+        | "images"
+        | "eventId"
+      >
+    >,
+    actorId: string,
+  ) => boolean;
+  submitReportDraft: (id: string, actorId: string) => boolean;
+  generateStudentEventReport: (input: {
+    chapterId: string;
+    eventId: string;
+    outcomes: string;
+    attendanceNote?: string;
+    images: ReportImage[];
+    bodyHtml: string;
+    bodyJson?: string;
+    title: string;
+    summary?: string;
+    submittedBy: string;
+  }) => Report | null;
+  /** @deprecated prefer createReportDraft + submitReportDraft */
   submitReport: (input: {
     chapterId: string;
     type: ReportType;
     title: string;
+    summary?: string;
     submittedBy: string;
   }) => Report;
   createAnnouncement: (
     input: Omit<Announcement, "id" | "createdAt">,
-  ) => Announcement;
+  ) => Announcement | null;
+  createResource: (input: {
+    title: string;
+    category: string;
+    description: string;
+    url: string;
+  }) => Resource | null;
+  updateResource: (
+    id: string,
+    patch: Partial<
+      Pick<Resource, "title" | "category" | "description" | "url">
+    >,
+  ) => boolean;
+  deleteResource: (id: string) => boolean;
+  createResourceCategory: (label: string) => { key: string; label: string } | null;
+  deleteResourceCategory: (key: string) => boolean;
+  updateBrandKit: (input: {
+    name: string;
+    tagline: string;
+    brandKit: BrandKit;
+  }) => boolean;
+  createGuideline: (input: {
+    title: string;
+    category: string;
+    version: string;
+    summary: string;
+    sections: string[];
+    body: string;
+    status: GuidelineStatus;
+    relatedHref?: string;
+  }) => Guideline | null;
+  updateGuideline: (
+    id: string,
+    patch: Partial<
+      Pick<
+        Guideline,
+        | "title"
+        | "category"
+        | "version"
+        | "summary"
+        | "sections"
+        | "body"
+        | "status"
+        | "relatedHref"
+      >
+    >,
+  ) => boolean;
+  deleteGuideline: (id: string) => boolean;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId: string) => void;
+  /** Demo: queue email + WhatsApp reminders for all approved regs on an event */
+  sendEventReminders: (eventId: string) => number;
   resetDemoStore: () => void;
 };
 
@@ -248,6 +430,7 @@ function log(
   action: string,
   entity: string,
   entityId: string,
+  meta?: string,
 ) {
   return {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -256,7 +439,154 @@ function log(
     entity,
     entityId,
     createdAt: new Date().toISOString(),
+    ...(meta?.trim() ? { meta: meta.trim() } : {}),
   };
+}
+
+function notifyUsers(
+  userIds: string[],
+  input: { title: string; body: string; href?: string },
+): NotificationItem[] {
+  const now = new Date().toISOString();
+  const unique = [...new Set(userIds.filter(Boolean))];
+  return unique.map((userId, i) => ({
+    id: `n-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+    userId,
+    title: input.title,
+    body: input.body,
+    read: false,
+    createdAt: now,
+    href: input.href,
+  }));
+}
+
+function hqUserIds(store: ElevatesStore): string[] {
+  const hqRoleIds = new Set(
+    store.roles.filter((r) => isHqRole(r.key)).map((r) => r.id),
+  );
+  return store.userRoles
+    .filter((ur) => hqRoleIds.has(ur.roleId))
+    .map((ur) => ur.userId);
+}
+
+function activeChairmanIds(store: ElevatesStore): string[] {
+  const activeTermIds = new Set(
+    store.leadershipTerms
+      .filter((t) => t.status === "active")
+      .map((t) => t.id),
+  );
+  return store.leadershipAssignments
+    .filter((a) => a.roleKey === "chairman" && activeTermIds.has(a.termId))
+    .map((a) => a.userId);
+}
+
+function applyReportReview(
+  store: ElevatesStore,
+  setStore: Dispatch<SetStateAction<ElevatesStore>>,
+  reportId: string,
+  decision: ReportReviewDecision,
+  comment: string,
+  actorId: string,
+): boolean {
+  const existing = store.reports.find((r) => r.id === reportId);
+  if (!existing || existing.status !== "submitted") return false;
+  const status: ReportStatus =
+    decision === "approve"
+      ? "approved"
+      : decision === "correction"
+        ? "changes_requested"
+        : "rejected";
+  const action =
+    decision === "approve"
+      ? "report_approved"
+      : decision === "correction"
+        ? "report_correction_requested"
+        : "report_rejected";
+  const note = comment.trim();
+  setStore((s) => ({
+    ...s,
+    reports: s.reports.map((r) =>
+      r.id === reportId
+        ? {
+            ...r,
+            status,
+            hqComment:
+              note ||
+              (decision === "approve"
+                ? "Approved by HQ."
+                : decision === "correction"
+                  ? "Please revise and resubmit."
+                  : "Rejected by HQ."),
+            ...(decision === "approve"
+              ? { approvedBy: actorId }
+              : { approvedBy: undefined }),
+          }
+        : r,
+    ),
+    activityLogs: [
+      log(actorId, action, "report", reportId, existing.title),
+      ...s.activityLogs,
+    ],
+  }));
+  return true;
+}
+
+function roleKeyFallback(key: RoleKey) {
+  return key.replaceAll("_", " ");
+}
+
+function createUserViaJoin(
+  store: ElevatesStore,
+  setStore: Dispatch<SetStateAction<ElevatesStore>>,
+  input: {
+    fullName: string;
+    email: string;
+    chapterId: string;
+    department?: string;
+    year?: string;
+  },
+): Profile {
+  const role = store.roles.find((r) => r.key === "student")!;
+  const id = `u-${Date.now()}`;
+  const profile: Profile = {
+    id,
+    email: input.email,
+    fullName: input.fullName,
+    chapterId: input.chapterId,
+    department: input.department,
+    year: input.year,
+    status: "active",
+    engagementTier: "everyone",
+    journeyStage: "awareness",
+    skills: [],
+    interests: [],
+    points: 0,
+    badges: ["Community"],
+  };
+  setStore((s) => ({
+    ...s,
+    profiles: [profile, ...s.profiles],
+    userRoles: [
+      ...s.userRoles,
+      {
+        id: `ur-${Date.now()}`,
+        userId: id,
+        roleId: role.id,
+        chapterId: input.chapterId,
+      },
+    ],
+    chapters: s.chapters.map((c) =>
+      c.id === input.chapterId
+        ? { ...c, memberCount: c.memberCount + 1 }
+        : c,
+    ),
+    session: {
+      userId: id,
+      roleKey: "student",
+      chapterId: input.chapterId,
+    },
+  }));
+  return profile;
 }
 
 function removeUserRoleForAssignment(
@@ -387,38 +717,142 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       store,
       setSession: (userId, roleKey, chapterId) => {
-        setStore((s) => ({
-          ...s,
-          session: { userId, roleKey, chapterId },
-        }));
+        setStore((s) => {
+          const profile = s.profiles.find((p) => p.id === userId);
+          if (profile && (profile.status ?? "active") === "disabled") {
+            return s;
+          }
+          return {
+            ...s,
+            session: { userId, roleKey, chapterId },
+          };
+        });
       },
       updateRegistrationStatus: (id, status, actorId) => {
-        setStore((s) => ({
-          ...s,
-          registrations: s.registrations.map((r) => {
-            if (r.id !== id) return r;
-            const qrCode =
-              status === "approved"
-                ? r.qrCode || mintQrCode(r.eventId, r.userId)
-                : status === "pending" || status === "rejected"
-                  ? ""
-                  : r.qrCode;
-            return {
-              ...r,
-              status,
-              qrCode,
-              reviewedBy:
-                status === "reviewed" || status === "approved"
-                  ? actorId
-                  : r.reviewedBy,
-              approvedBy: status === "approved" ? actorId : r.approvedBy,
-            };
-          }),
-          activityLogs: [
-            log(actorId, `registration_${status}`, "registration", id),
-            ...s.activityLogs,
-          ],
-        }));
+        let result: {
+          ok: true;
+          status: RegistrationStatus;
+        } | {
+          ok: false;
+          message: string;
+        } = { ok: true, status };
+        setStore((s) => {
+          const reg = s.registrations.find((r) => r.id === id);
+          if (!reg) {
+            result = { ok: false, message: "Registration not found." };
+            return s;
+          }
+          let nextStatus = status;
+          if (status === "approved") {
+            const event = s.events.find((e) => e.id === reg.eventId);
+            if (event) {
+              const approvedCount = s.registrations.filter(
+                (r) =>
+                  r.eventId === reg.eventId &&
+                  r.id !== id &&
+                  r.status === "approved",
+              ).length;
+              if (approvedCount >= event.capacity) {
+                const waitlistedCount = s.registrations.filter(
+                  (r) =>
+                    r.eventId === reg.eventId &&
+                    r.id !== id &&
+                    r.status === "waitlisted",
+                ).length;
+                if (waitlistedCount >= event.waitlistCapacity) {
+                  result = {
+                    ok: false,
+                    message:
+                      "Event is full and the waitlist is full — cannot approve.",
+                  };
+                  return s;
+                }
+                nextStatus = "waitlisted";
+                result = { ok: true, status: "waitlisted" };
+              }
+            }
+          }
+          return {
+            ...s,
+            registrations: s.registrations.map((r) => {
+              if (r.id !== id) return r;
+              const qrCode =
+                nextStatus === "approved"
+                  ? r.qrCode || mintQrCode(r.eventId, r.userId)
+                  : nextStatus === "pending" ||
+                      nextStatus === "rejected" ||
+                      nextStatus === "waitlisted"
+                    ? ""
+                    : r.qrCode;
+              return {
+                ...r,
+                status: nextStatus,
+                qrCode,
+                reviewedBy:
+                  nextStatus === "reviewed" ||
+                  nextStatus === "approved" ||
+                  nextStatus === "waitlisted"
+                    ? actorId
+                    : r.reviewedBy,
+                approvedBy:
+                  nextStatus === "approved" ? actorId : r.approvedBy,
+              };
+            }),
+            notifications: [
+              ...(nextStatus === "approved" || nextStatus === "waitlisted"
+                ? (() => {
+                    const event = s.events.find((e) => e.id === reg.eventId);
+                    const chapter = event
+                      ? s.chapters.find((c) => c.id === event.chapterId)
+                      : undefined;
+                    const profile = s.profiles.find((p) => p.id === reg.userId);
+                    const { title, body } = buildOutboundBody(
+                      nextStatus === "approved"
+                        ? "registration_approved"
+                        : "registration_waitlisted",
+                      {
+                        name: profile?.fullName,
+                        eventTitle: event?.title,
+                      },
+                    );
+                    return notifyUsers([reg.userId], {
+                      title,
+                      body,
+                      href: chapter
+                        ? `/chapter/${chapter.slug}/events/${reg.eventId}`
+                        : undefined,
+                    });
+                  })()
+                : []),
+              ...s.notifications,
+            ],
+            outboundMessages: [
+              ...(nextStatus === "approved" || nextStatus === "waitlisted"
+                ? outboundForRegistration(
+                    s,
+                    {
+                      id: reg.id,
+                      userId: reg.userId,
+                      eventId: reg.eventId,
+                      ticketNo: undefined,
+                    },
+                    nextStatus,
+                  )
+                : []),
+              ...(s.outboundMessages ?? []),
+            ],
+            activityLogs: [
+              log(
+                actorId,
+                `registration_${nextStatus}`,
+                "registration",
+                id,
+              ),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return result;
       },
       checkIn: (registrationId, status, method, actorId, expectedEventId) => {
         let result: CheckInResult = { ok: true };
@@ -517,24 +951,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       approveReport: (reportId, comment, actorId) => {
-        setStore((s) => ({
-          ...s,
-          reports: s.reports.map((r) =>
-            r.id === reportId
-              ? {
-                  ...r,
-                  status: "approved" as const,
-                  hqComment: comment,
-                  approvedBy: actorId,
-                }
-              : r,
-          ),
-          activityLogs: [
-            log(actorId, "report_approved", "report", reportId),
-            ...s.activityLogs,
-          ],
-        }));
+        applyReportReview(store, setStore, reportId, "approve", comment, actorId);
       },
+      reviewReport: (reportId, decision, comment, actorId) =>
+        applyReportReview(
+          store,
+          setStore,
+          reportId,
+          decision,
+          comment,
+          actorId,
+        ),
       createEvent: (event) => {
         const forms = defaultFormsForEvent(
           event.id,
@@ -542,13 +969,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           event.title,
         );
         const regFields = forms[0].questions.map(questionToField);
+        // Faculty never required to publish — coerce legacy pending_approval.
+        const status =
+          event.status === "pending_approval"
+            ? ("registration_open" as const)
+            : event.status;
+        const normalized = { ...event, status };
         setStore((s) => ({
           ...s,
-          events: [event, ...s.events],
+          events: [normalized, ...s.events],
           forms: [...forms, ...(s.forms ?? [])],
           eventForms: [
             { eventId: event.id, fields: regFields },
             ...s.eventForms,
+          ],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "event_created",
+              "event",
+              normalized.id,
+              normalized.title,
+            ),
+            ...s.activityLogs,
           ],
         }));
       },
@@ -559,26 +1002,78 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const { id: _id, chapterId: _chapterId, ...safe } = patch;
           void _id;
           void _chapterId;
+          if (safe.status === "pending_approval") {
+            safe.status = "registration_open";
+          }
+          const nextTitle = safe.title ?? prev.title;
           return {
             ...s,
             events: s.events.map((e) =>
               e.id === id ? { ...e, ...safe, id: e.id, chapterId: e.chapterId } : e,
             ),
             activityLogs: [
-              log(s.session.userId, "event_updated", "event", id),
+              log(s.session.userId, "event_updated", "event", id, nextTitle),
               ...s.activityLogs,
             ],
           };
         });
       },
       registerForEvent: (registration) => {
-        setStore((s) => ({
-          ...s,
-          registrations: [
-            { ...registration, qrCode: registration.qrCode || "" },
-            ...s.registrations,
-          ],
-        }));
+        let result: { ok: true } | { ok: false; message: string } = {
+          ok: true,
+        };
+        setStore((s) => {
+          const event = s.events.find((e) => e.id === registration.eventId);
+          if (!event) {
+            result = { ok: false, message: "Event not found." };
+            return s;
+          }
+          if (event.status !== "registration_open") {
+            result = {
+              ok: false,
+              message: "Registration is not open for this event.",
+            };
+            return s;
+          }
+          const now = Date.now();
+          const start = new Date(event.registrationStart).getTime();
+          const end = new Date(event.registrationEnd).getTime();
+          if (Number.isFinite(start) && now < start) {
+            result = {
+              ok: false,
+              message: "Registration has not opened yet.",
+            };
+            return s;
+          }
+          if (Number.isFinite(end) && now > end) {
+            result = {
+              ok: false,
+              message: "Registration has closed for this event.",
+            };
+            return s;
+          }
+          const duplicate = s.registrations.some(
+            (r) =>
+              r.eventId === registration.eventId &&
+              r.userId === registration.userId &&
+              r.status !== "rejected",
+          );
+          if (duplicate) {
+            result = {
+              ok: false,
+              message: "You are already registered for this event.",
+            };
+            return s;
+          }
+          return {
+            ...s,
+            registrations: [
+              { ...registration, qrCode: registration.qrCode || "" },
+              ...s.registrations,
+            ],
+          };
+        });
+        return result;
       },
       saveEventForm: (eventId, fields) => {
         const questions = fields.map(fieldToQuestion);
@@ -721,6 +1216,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           id: `form-${Date.now()}`,
           title: `${source.title} (copy)`,
           status: "draft",
+          eventId: undefined,
           questions: source.questions.map((q) => ({
             ...q,
             id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -734,13 +1230,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveFormQuestions: (id, questions) => {
         const now = new Date().toISOString();
         setStore((s) => {
+          const existing = (s.forms ?? []).find((f) => f.id === id);
+          let nextQuestions = questions;
+          if (existing?.purpose === "registration") {
+            nextQuestions = ensureRepresentativeQuestion({
+              ...existing,
+              questions,
+            }).questions;
+          }
           const forms = (s.forms ?? []).map((f) =>
-            f.id === id ? { ...f, questions, updatedAt: now } : f,
+            f.id === id
+              ? { ...f, questions: nextQuestions, updatedAt: now }
+              : f,
           );
           const form = forms.find((f) => f.id === id);
           let eventForms = s.eventForms;
           if (form?.purpose === "registration" && form.eventId) {
-            const fields = questions.map(questionToField);
+            const fields = nextQuestions.map(questionToField);
             const exists = eventForms.some((ef) => ef.eventId === form.eventId);
             eventForms = exists
               ? eventForms.map((ef) =>
@@ -764,33 +1270,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       submitFormResponse: (input) => {
-        const form = store.forms?.find((f) => f.id === input.formId);
-        if (!form) return null;
-        if (form.status !== "open") return null;
-        const already = store.formResponses?.some(
-          (r) =>
-            r.formId === input.formId &&
-            r.userId === input.userId &&
-            (input.eventId ? r.eventId === input.eventId : true),
-        );
-        if (already) return null;
-        for (const q of answerableQuestions(form)) {
-          if (!q.required) continue;
-          const v = input.answers[q.id];
-          if (v === undefined || v === "" || (Array.isArray(v) && !v.length)) {
-            return null;
+        let created: FormResponse | null = null;
+        setStore((s) => {
+          const form = (s.forms ?? []).find((f) => f.id === input.formId);
+          if (!form || form.status !== "open") return s;
+          const already = (s.formResponses ?? []).some(
+            (r) =>
+              r.formId === input.formId &&
+              r.userId === input.userId &&
+              (input.eventId ? r.eventId === input.eventId : true),
+          );
+          if (already) return s;
+          for (const q of answerableQuestions(form)) {
+            if (!q.required) continue;
+            const v = input.answers[q.id];
+            if (
+              v === undefined ||
+              v === "" ||
+              (Array.isArray(v) && !v.length)
+            ) {
+              return s;
+            }
           }
-        }
-        const response: FormResponse = {
-          ...input,
-          id: `fres-${Date.now()}`,
-          submittedAt: new Date().toISOString(),
-        };
-        setStore((s) => ({
-          ...s,
-          formResponses: [response, ...(s.formResponses ?? [])],
-        }));
-        return response;
+          created = {
+            ...input,
+            id: `fres-${Date.now()}`,
+            submittedAt: new Date().toISOString(),
+          };
+          return {
+            ...s,
+            formResponses: [created, ...(s.formResponses ?? [])],
+          };
+        });
+        return created;
       },
       deleteFormResponse: (id) => {
         setStore((s) => ({
@@ -847,14 +1359,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result;
       },
       createChapter: (input) => {
+        const trimmed = {
+          name: input.name.trim(),
+          slug: input.slug.trim(),
+          college: input.college.trim(),
+          city: input.city.trim(),
+          status: input.status,
+        };
         const chapter: Chapter = {
           id: `ch-${Date.now()}`,
           organizationId: store.organization.id,
-          name: input.name,
-          slug: input.slug,
-          college: input.college,
-          city: input.city,
-          status: input.status,
+          name: trimmed.name,
+          slug: trimmed.slug,
+          college: trimmed.college,
+          city: trimmed.city,
+          status: trimmed.status,
           healthScore: 40,
           memberCount: 0,
           eventCount: 0,
@@ -863,7 +1382,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         };
         if (!isDemoMode()) {
           void insertChapterRemote({
-            ...input,
+            ...trimmed,
             organizationId: store.organization.id,
           }).then((row) => {
             if (!row) return;
@@ -921,6 +1440,223 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             p.id === id ? { ...p, ...patch } : p,
           ),
         }));
+      },
+      joinChapterCommunity: (input) => {
+        const fullName = input.fullName.trim();
+        const email = input.email.trim().toLowerCase();
+        if (!fullName || !email || !input.chapterId) return null;
+        const chapter = store.chapters.find((c) => c.id === input.chapterId);
+        if (!chapter) return null;
+        const existing = store.profiles.find(
+          (p) => p.email.toLowerCase() === email,
+        );
+        if (existing) {
+          const prevChapterId = existing.chapterId;
+          setStore((s) => {
+            const profiles = s.profiles.map((p) =>
+              p.id === existing.id
+                ? {
+                    ...p,
+                    chapterId: input.chapterId,
+                    department: input.department ?? p.department,
+                    year: input.year ?? p.year,
+                    engagementTier: (p.engagementTier ??
+                      "everyone") as EngagementTier,
+                    journeyStage: (p.journeyStage ??
+                      "awareness") as JourneyStage,
+                  }
+                : p,
+            );
+            const countFor = (chapterId: string) =>
+              profiles.filter((p) => p.chapterId === chapterId).length;
+            return {
+              ...s,
+              profiles,
+              chapters: s.chapters.map((c) => {
+                if (c.id === input.chapterId) {
+                  return { ...c, memberCount: countFor(c.id) };
+                }
+                if (prevChapterId && c.id === prevChapterId) {
+                  return { ...c, memberCount: countFor(c.id) };
+                }
+                return c;
+              }),
+              session: {
+                userId: existing.id,
+                roleKey: "student",
+                chapterId: input.chapterId,
+              },
+            };
+          });
+          return { ...existing, chapterId: input.chapterId };
+        }
+        return createUserViaJoin(store, setStore, {
+          fullName,
+          email,
+          chapterId: input.chapterId,
+          department: input.department,
+          year: input.year,
+        });
+      },
+      inviteToCluster: (input) => {
+        const cluster = store.clusters.find((c) => c.id === input.clusterId);
+        if (!cluster) return false;
+        if (cluster.memberIds.includes(input.userId)) return false;
+        const dup = (store.clusterInvites ?? []).some(
+          (i) =>
+            i.clusterId === input.clusterId &&
+            i.userId === input.userId &&
+            i.status === "pending",
+        );
+        if (dup) return false;
+        const invite: ClusterInvite = {
+          id: `ci-${Date.now()}`,
+          clusterId: input.clusterId,
+          chapterId: cluster.chapterId,
+          userId: input.userId,
+          nominatedBy: input.nominatedBy ?? store.session.userId,
+          status: "pending",
+          note: input.note,
+          createdAt: new Date().toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          clusterInvites: [invite, ...(s.clusterInvites ?? [])],
+          activityLogs: [
+            log(s.session.userId, "cluster_invite_sent", "cluster_invite", invite.id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      respondClusterInvite: (inviteId, status) => {
+        const invite = store.clusterInvites?.find((i) => i.id === inviteId);
+        if (!invite || invite.status !== "pending") return false;
+        setStore((s) => {
+          let clusters = s.clusters;
+          let profiles = s.profiles;
+          if (status === "accepted") {
+            clusters = s.clusters.map((c) =>
+              c.id === invite.clusterId && !c.memberIds.includes(invite.userId)
+                ? { ...c, memberIds: [...c.memberIds, invite.userId] }
+                : c,
+            );
+            profiles = s.profiles.map((p) =>
+              p.id === invite.userId
+                ? {
+                    ...p,
+                    engagementTier: "cluster" as EngagementTier,
+                    journeyStage: "cluster" as JourneyStage,
+                  }
+                : p,
+            );
+          }
+          return {
+            ...s,
+            clusters,
+            profiles,
+            clusterInvites: (s.clusterInvites ?? []).map((i) =>
+              i.id === inviteId ? { ...i, status } : i,
+            ),
+          };
+        });
+        return true;
+      },
+      submitClusterChallenge: (input) => {
+        const cluster = store.clusters.find((c) => c.id === input.clusterId);
+        if (!cluster) return false;
+        if ((cluster.accessMode ?? "invite") !== "challenge") return false;
+        const invite: ClusterInvite = {
+          id: `ci-${Date.now()}`,
+          clusterId: input.clusterId,
+          chapterId: cluster.chapterId,
+          userId: input.userId,
+          nominatedBy: input.userId,
+          status: "pending",
+          note: input.note
+            ? `Challenge submission: ${input.note}`
+            : "Challenge submission",
+          createdAt: new Date().toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          clusterInvites: [invite, ...(s.clusterInvites ?? [])],
+        }));
+        return true;
+      },
+      applyForLeadership: (input) => {
+        const term = store.leadershipTerms.find((t) => t.id === input.termId);
+        if (!term || term.status === "archived") return false;
+        const userId = store.session.userId;
+        const dup = (store.leadershipApplications ?? []).some(
+          (a) =>
+            a.termId === input.termId &&
+            a.userId === userId &&
+            a.roleKey === input.roleKey &&
+            !["rejected", "withdrawn"].includes(a.status),
+        );
+        if (dup) return false;
+        const app: LeadershipApplication = {
+          id: `la-app-${Date.now()}`,
+          termId: input.termId,
+          chapterId: term.chapterId,
+          userId,
+          roleKey: input.roleKey,
+          title: input.title.trim() || roleKeyFallback(input.roleKey),
+          status: "applied",
+          statement: input.statement?.trim(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          leadershipApplications: [app, ...(s.leadershipApplications ?? [])],
+        }));
+        return true;
+      },
+      updateLeadershipApplicationStatus: (id, status) => {
+        const app = store.leadershipApplications?.find((a) => a.id === id);
+        if (!app) return false;
+        setStore((s) => ({
+          ...s,
+          leadershipApplications: (s.leadershipApplications ?? []).map((a) =>
+            a.id === id
+              ? { ...a, status, updatedAt: new Date().toISOString() }
+              : a,
+          ),
+        }));
+        return true;
+      },
+      toggleChapterStandard: (chapterId, standardId, done) => {
+        setStore((s) => {
+          const checks = s.chapterStandardChecks ?? [];
+          const existing = checks.find(
+            (c) => c.chapterId === chapterId && c.standardId === standardId,
+          );
+          if (existing) {
+            return {
+              ...s,
+              chapterStandardChecks: checks.map((c) =>
+                c.id === existing.id
+                  ? { ...c, done, updatedAt: new Date().toISOString() }
+                  : c,
+              ),
+            };
+          }
+          return {
+            ...s,
+            chapterStandardChecks: [
+              {
+                id: `csc-${Date.now()}`,
+                chapterId,
+                standardId,
+                done,
+                updatedAt: new Date().toISOString(),
+              },
+              ...checks,
+            ],
+          };
+        });
       },
       createUser: (input) => {
         const fullName = input.fullName.trim();
@@ -1072,6 +1808,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userRoles: [...others, ...built, ...leadershipLinked],
             activityLogs: [
               log(s.session.userId, "user_roles_set", "profile", userId),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return true;
+      },
+      setRolePermission: (roleKey, permissionKey, allowed) => {
+        const role = store.roles.find((r) => r.key === roleKey);
+        const permission = store.permissions.find((p) => p.key === permissionKey);
+        if (!role || !permission) return false;
+        setStore((s) => {
+          const idx = s.rolePermissions.findIndex(
+            (rp) =>
+              rp.roleId === role.id && rp.permissionId === permission.id,
+          );
+          const next =
+            idx >= 0
+              ? s.rolePermissions.map((rp, i) =>
+                  i === idx ? { ...rp, allowed } : rp,
+                )
+              : [
+                  ...s.rolePermissions,
+                  {
+                    roleId: role.id,
+                    permissionId: permission.id,
+                    allowed,
+                  },
+                ];
+          return {
+            ...s,
+            rolePermissions: next,
+            activityLogs: [
+              log(
+                s.session.userId,
+                "role_permission_set",
+                "role",
+                role.id,
+              ),
               ...s.activityLogs,
             ],
           };
@@ -1298,13 +2072,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let terms = [...s.leadershipTerms, term];
           let userRoles = s.userRoles;
           if (status === "active") {
+            const archivedSiblingIds = s.leadershipTerms
+              .filter(
+                (t) =>
+                  t.chapterId === input.chapterId &&
+                  t.id !== term.id &&
+                  t.status === "active",
+              )
+              .map((t) => t.id);
             terms = terms.map((t) =>
-              t.chapterId === input.chapterId &&
-              t.id !== term.id &&
-              t.status === "active"
+              archivedSiblingIds.includes(t.id)
                 ? { ...t, status: "archived" as const }
                 : t,
             );
+            if (archivedSiblingIds.length) {
+              const archived = new Set(archivedSiblingIds);
+              userRoles = userRoles.filter(
+                (ur) => !ur.leadershipTermId || !archived.has(ur.leadershipTermId),
+              );
+            }
           }
           return {
             ...s,
@@ -1340,17 +2126,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let terms = s.leadershipTerms.map((t) => (t.id === id ? next : t));
           let userRoles = s.userRoles;
           if (next.status === "active") {
+            const archivedSiblingIds = s.leadershipTerms
+              .filter(
+                (t) =>
+                  t.chapterId === next.chapterId &&
+                  t.id !== id &&
+                  t.status === "active",
+              )
+              .map((t) => t.id);
             terms = terms.map((t) =>
-              t.chapterId === next.chapterId &&
-              t.id !== id &&
-              t.status === "active"
+              archivedSiblingIds.includes(t.id)
                 ? { ...t, status: "archived" as const }
                 : t,
             );
+            if (archivedSiblingIds.length) {
+              const archived = new Set(archivedSiblingIds);
+              userRoles = userRoles.filter(
+                (ur) => !ur.leadershipTermId || !archived.has(ur.leadershipTermId),
+              );
+            }
             const assignments = s.leadershipAssignments.filter(
               (a) => a.termId === id,
             );
-            userRoles = syncActiveTermUserRoles(s, next, assignments);
+            userRoles = syncActiveTermUserRoles(
+              { ...s, userRoles },
+              next,
+              assignments,
+            );
           } else if (existing.status === "active") {
             // Demoted from active → clear term-linked demo roles
             userRoles = s.userRoles.filter(
@@ -1523,6 +2325,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           description: input.description,
           leaderId: input.leaderId,
           memberIds: input.leaderId ? [input.leaderId] : [],
+          accessMode: "invite",
+          responsibilities: [],
           roadmap: [
             { week: 1, title: "Kickoff & setup", done: false },
             { week: 2, title: "Core skills", done: false },
@@ -1549,12 +2353,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       joinCluster: (clusterId, userId) => {
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const mode = cluster.accessMode ?? "invite";
+        if (mode !== "open") return;
         setStore((s) => ({
           ...s,
           clusters: s.clusters.map((c) =>
             c.id === clusterId && !c.memberIds.includes(userId)
               ? { ...c, memberIds: [...c.memberIds, userId] }
               : c,
+          ),
+          profiles: s.profiles.map((p) =>
+            p.id === userId
+              ? {
+                  ...p,
+                  engagementTier: "cluster" as EngagementTier,
+                  journeyStage: "cluster" as JourneyStage,
+                }
+              : p,
           ),
         }));
       },
@@ -1635,19 +2452,176 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
         }));
       },
-      submitReport: (input) => {
+      createReportDraft: (input) => {
+        const now = new Date().toISOString();
         const report: Report = {
           id: `rep-${Date.now()}`,
           chapterId: input.chapterId,
           type: input.type,
-          title: input.title,
-          status: "submitted",
+          title: input.title.trim() || "Untitled report",
+          summary: input.summary?.trim() || undefined,
+          bodyHtml: input.bodyHtml,
+          bodyJson: input.bodyJson,
+          eventId: input.eventId,
+          images: input.images ?? [],
+          source: input.source ?? "manual",
+          status: "draft",
           submittedBy: input.submittedBy,
-          submittedAt: new Date().toISOString(),
+          updatedAt: now,
+          updatedBy: input.submittedBy,
         };
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
+          activityLogs: [
+            log(input.submittedBy, "report_draft_created", "report", report.id),
+            ...s.activityLogs,
+          ],
+        }));
+        return report;
+      },
+      updateReportDocument: (id, patch, actorId) => {
+        const existing = store.reports.find((r) => r.id === id);
+        if (!existing) return false;
+        if (
+          existing.status !== "draft" &&
+          existing.status !== "changes_requested"
+        ) {
+          return false;
+        }
+        const now = new Date().toISOString();
+        setStore((s) => ({
+          ...s,
+          reports: s.reports.map((r) => {
+            if (r.id !== id) return r;
+            return {
+              ...r,
+              ...(patch.title !== undefined
+                ? { title: patch.title.trim() || r.title }
+                : {}),
+              ...(patch.type !== undefined ? { type: patch.type } : {}),
+              ...(patch.summary !== undefined
+                ? { summary: patch.summary.trim() || undefined }
+                : {}),
+              ...(patch.bodyHtml !== undefined
+                ? { bodyHtml: patch.bodyHtml }
+                : {}),
+              ...(patch.bodyJson !== undefined
+                ? { bodyJson: patch.bodyJson }
+                : {}),
+              ...(patch.images !== undefined ? { images: patch.images } : {}),
+              ...(patch.eventId !== undefined ? { eventId: patch.eventId } : {}),
+              updatedAt: now,
+              updatedBy: actorId,
+            };
+          }),
+          activityLogs: [
+            log(actorId, "report_document_updated", "report", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      submitReportDraft: (id, actorId) => {
+        const existing = store.reports.find((r) => r.id === id);
+        if (
+          !existing ||
+          (existing.status !== "draft" &&
+            existing.status !== "changes_requested")
+        ) {
+          return false;
+        }
+        const now = new Date().toISOString();
+        const chapter = store.chapters.find((c) => c.id === existing.chapterId);
+        const hqAlerts = notifyUsers(hqUserIds(store), {
+          title: "Report awaiting HQ review",
+          body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
+          href: "/hq/reports",
+        });
+        setStore((s) => ({
+          ...s,
+          reports: s.reports.map((r) =>
+            r.id === id
+              ? {
+                  ...r,
+                  status: "submitted" as const,
+                  submittedAt: now,
+                  submittedBy: actorId,
+                  updatedAt: now,
+                  updatedBy: actorId,
+                }
+              : r,
+          ),
+          notifications: [...hqAlerts, ...s.notifications],
+          activityLogs: [
+            log(actorId, "report_submitted", "report", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      generateStudentEventReport: (input) => {
+        if (!store.events.some((e) => e.id === input.eventId)) return null;
+        if (!store.chapters.some((c) => c.id === input.chapterId)) return null;
+        const now = new Date().toISOString();
+        const report: Report = {
+          id: `rep-${Date.now()}`,
+          chapterId: input.chapterId,
+          type: "event",
+          title: input.title.trim(),
+          summary: input.summary?.trim() || input.outcomes.trim() || undefined,
+          bodyHtml: input.bodyHtml,
+          bodyJson: input.bodyJson,
+          eventId: input.eventId,
+          images: input.images.slice(0, 4),
+          source: "student_auto",
+          status: "draft",
+          submittedBy: input.submittedBy,
+          updatedAt: now,
+          updatedBy: input.submittedBy,
+        };
+        setStore((s) => ({
+          ...s,
+          reports: [report, ...s.reports],
+          activityLogs: [
+            log(
+              input.submittedBy,
+              "report_student_generated",
+              "report",
+              report.id,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return report;
+      },
+      submitReport: (input) => {
+        const now = new Date().toISOString();
+        const report: Report = {
+          id: `rep-${Date.now()}`,
+          chapterId: input.chapterId,
+          type: input.type,
+          title: input.title.trim(),
+          summary: input.summary?.trim() || undefined,
+          bodyHtml: `<h1>${input.title.trim()}</h1><p>${input.summary?.trim() || ""}</p>`,
+          source: "manual",
+          images: [],
+          status: "submitted",
+          submittedBy: input.submittedBy,
+          submittedAt: now,
+          updatedAt: now,
+          updatedBy: input.submittedBy,
+        };
+        const chapter = store.chapters.find((c) => c.id === input.chapterId);
+        const hqAlerts = notifyUsers(hqUserIds(store), {
+          title: "Report awaiting HQ review",
+          body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
+          href: "/hq/reports",
+        });
+        setStore((s) => ({
+          ...s,
+          reports: [report, ...s.reports],
+          notifications: [...hqAlerts, ...s.notifications],
           activityLogs: [
             log(input.submittedBy, "report_submitted", "report", report.id),
             ...s.activityLogs,
@@ -1656,16 +2630,404 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return report;
       },
       createAnnouncement: (input) => {
+        if (
+          !hasPermission(store, store.session.roleKey, "announcement.publish")
+        ) {
+          return null;
+        }
+        const title = input.title.trim();
+        const body = input.body.trim();
+        if (!title || !body) return null;
         const announcement: Announcement = {
           ...input,
+          title,
+          body,
           id: `ann-${Date.now()}`,
           createdAt: new Date().toISOString(),
         };
+        const fanout: NotificationItem[] = [];
+        const outbound: OutboundMessage[] = [];
+        if (announcement.audience === "global") {
+          const hqIds = hqUserIds(store);
+          const chairIds = activeChairmanIds(store);
+          fanout.push(
+            ...notifyUsers(hqIds, {
+              title: announcement.title,
+              body: announcement.body,
+              href: "/hq/notifications",
+            }),
+            ...notifyUsers(chairIds, {
+              title: announcement.title,
+              body: announcement.body,
+              href: "/notifications",
+            }),
+          );
+        } else if (announcement.chapterId) {
+          const chapterMembers = store.profiles
+            .filter((p) => p.chapterId === announcement.chapterId)
+            .map((p) => p.id);
+          let targets = chapterMembers;
+          if (announcement.audience === "executive") {
+            const execKeys = new Set(
+              store.roles
+                .filter((r) =>
+                  [
+                    "chairman",
+                    "vice_chairman",
+                    "secretary",
+                    "joint_secretary",
+                    "treasurer",
+                    "coordinator",
+                  ].includes(r.key),
+                )
+                .map((r) => r.id),
+            );
+            targets = store.userRoles
+              .filter(
+                (ur) =>
+                  ur.chapterId === announcement.chapterId &&
+                  execKeys.has(ur.roleId),
+              )
+              .map((ur) => ur.userId);
+          } else if (announcement.audience === "cluster" && announcement.clusterId) {
+            const cluster = store.clusters.find(
+              (c) => c.id === announcement.clusterId,
+            );
+            targets = cluster?.memberIds ?? [];
+          } else if (announcement.audience === "student") {
+            const studentRoleId = store.roles.find((r) => r.key === "student")?.id;
+            targets = store.userRoles
+              .filter(
+                (ur) =>
+                  ur.chapterId === announcement.chapterId &&
+                  ur.roleId === studentRoleId,
+              )
+              .map((ur) => ur.userId);
+          }
+          const chapter = store.chapters.find(
+            (c) => c.id === announcement.chapterId,
+          );
+          fanout.push(
+            ...notifyUsers(targets, {
+              title: announcement.title,
+              body: announcement.body,
+              href: chapter
+                ? `/chapter/${chapter.slug}/announcements`
+                : "/notifications",
+            }),
+          );
+          for (const userId of [...new Set(targets)].slice(0, 40)) {
+            const profile = store.profiles.find((p) => p.id === userId);
+            const { title, body } = buildOutboundBody("announcement", {
+              name: profile?.fullName,
+              extra: `${announcement.title}: ${announcement.body}`,
+            });
+            outbound.push(
+              queueOutbound({
+                channel: "email",
+                toUserId: userId,
+                toAddress: profile?.email || `user-${userId}@elevates.live`,
+                templateKey: "announcement",
+                title,
+                body,
+                relatedEntity: "announcement",
+                relatedId: announcement.id,
+              }),
+              queueOutbound({
+                channel: "whatsapp",
+                toUserId: userId,
+                toAddress: waAddress(profile, userId),
+                templateKey: "announcement",
+                title,
+                body,
+                relatedEntity: "announcement",
+                relatedId: announcement.id,
+              }),
+            );
+          }
+        }
         setStore((s) => ({
           ...s,
           announcements: [announcement, ...s.announcements],
+          notifications: [...fanout, ...s.notifications],
+          outboundMessages: [...outbound, ...(s.outboundMessages ?? [])],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "announcement_published",
+              "announcement",
+              announcement.id,
+              announcement.title,
+            ),
+            ...s.activityLogs,
+          ],
         }));
         return announcement;
+      },
+      createResource: (input) => {
+        const title = input.title.trim();
+        const url = input.url.trim();
+        if (!title || !url) return null;
+        const resource: Resource = {
+          id: `res-${Date.now()}`,
+          organizationId: store.organization.id,
+          title,
+          category: input.category,
+          description: input.description.trim(),
+          uploadedBy: store.session.userId,
+          uploadedAt: new Date().toISOString(),
+          url,
+        };
+        setStore((s) => ({
+          ...s,
+          resources: [resource, ...s.resources],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "resource_uploaded",
+              "resource",
+              resource.id,
+              resource.title,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return resource;
+      },
+      updateResource: (id, patch) => {
+        if (!store.resources.some((r) => r.id === id)) return false;
+        setStore((s) => ({
+          ...s,
+          resources: s.resources.map((r) => {
+            if (r.id !== id) return r;
+            return {
+              ...r,
+              ...(patch.title !== undefined
+                ? { title: patch.title.trim() || r.title }
+                : {}),
+              ...(patch.category !== undefined
+                ? { category: patch.category }
+                : {}),
+              ...(patch.description !== undefined
+                ? { description: patch.description.trim() }
+                : {}),
+              ...(patch.url !== undefined
+                ? { url: patch.url.trim() || r.url }
+                : {}),
+            };
+          }),
+          activityLogs: [
+            log(s.session.userId, "resource_updated", "resource", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      deleteResource: (id) => {
+        if (!store.resources.some((r) => r.id === id)) return false;
+        setStore((s) => ({
+          ...s,
+          resources: s.resources.filter((r) => r.id !== id),
+          activityLogs: [
+            log(s.session.userId, "resource_deleted", "resource", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      createResourceCategory: (label) => {
+        const trimmed = label.trim();
+        if (!trimmed) return null;
+        let key = slugifyCategoryKey(trimmed);
+        if (!key) key = `cat_${Date.now()}`;
+        const existing = store.resourceCategories ?? [];
+        if (existing.some((c) => c.key === key)) return null;
+        if (
+          existing.some(
+            (c) => c.label.trim().toLowerCase() === trimmed.toLowerCase(),
+          )
+        ) {
+          return null;
+        }
+        const category = {
+          key,
+          label: trimmed,
+        };
+        setStore((s) => ({
+          ...s,
+          resourceCategories: [...(s.resourceCategories ?? []), category],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "resource_category_created",
+              "resource_category",
+              key,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return category;
+      },
+      deleteResourceCategory: (key) => {
+        if (!key) return false;
+        if (store.resources.some((r) => r.category === key)) return false;
+        if (!(store.resourceCategories ?? []).some((c) => c.key === key)) {
+          return false;
+        }
+        setStore((s) => ({
+          ...s,
+          resourceCategories: (s.resourceCategories ?? []).filter(
+            (c) => c.key !== key,
+          ),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "resource_category_deleted",
+              "resource_category",
+              key,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      updateBrandKit: (input) => {
+        if (!hasPermission(store, store.session.roleKey, "org.manage")) {
+          return false;
+        }
+        const name = input.name.trim();
+        if (!name) return false;
+        const brandKit = resolveBrandKit({
+          ...store.organization,
+          brandKit: input.brandKit,
+        });
+        setStore((s) => ({
+          ...s,
+          organization: {
+            ...s.organization,
+            name,
+            tagline: input.tagline.trim(),
+            brandKit,
+          },
+          activityLogs: [
+            log(
+              s.session.userId,
+              "brand_kit_updated",
+              "organization",
+              s.organization.id,
+              name,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      createGuideline: (input) => {
+        if (!hasPermission(store, store.session.roleKey, "org.manage")) {
+          return null;
+        }
+        const title = input.title.trim();
+        const category = input.category.trim();
+        const body = input.body.trim();
+        if (!title || !category || !body) return null;
+        const sections = input.sections
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const guideline: Guideline = {
+          id: `pol-${Date.now()}`,
+          organizationId: store.organization.id,
+          title,
+          category,
+          version: input.version.trim() || "v1.0",
+          summary: input.summary.trim(),
+          sections,
+          body,
+          status: input.status,
+          relatedHref: input.relatedHref?.trim() || undefined,
+          updatedBy: store.session.userId,
+          updatedAt: new Date().toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          guidelines: [guideline, ...(s.guidelines ?? [])],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "guideline_created",
+              "guideline",
+              guideline.id,
+              guideline.title,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return guideline;
+      },
+      updateGuideline: (id, patch) => {
+        if (!hasPermission(store, store.session.roleKey, "org.manage")) {
+          return false;
+        }
+        if (!(store.guidelines ?? []).some((g) => g.id === id)) return false;
+        setStore((s) => ({
+          ...s,
+          guidelines: (s.guidelines ?? []).map((g) => {
+            if (g.id !== id) return g;
+            const next: Guideline = {
+              ...g,
+              ...(patch.title !== undefined
+                ? { title: patch.title.trim() || g.title }
+                : {}),
+              ...(patch.category !== undefined
+                ? { category: patch.category.trim() || g.category }
+                : {}),
+              ...(patch.version !== undefined
+                ? { version: patch.version.trim() || g.version }
+                : {}),
+              ...(patch.summary !== undefined
+                ? { summary: patch.summary.trim() }
+                : {}),
+              ...(patch.sections !== undefined
+                ? {
+                    sections: patch.sections
+                      .map((x) => x.trim())
+                      .filter(Boolean),
+                  }
+                : {}),
+              ...(patch.body !== undefined
+                ? { body: patch.body.trim() || g.body }
+                : {}),
+              ...(patch.status !== undefined ? { status: patch.status } : {}),
+              ...(patch.relatedHref !== undefined
+                ? {
+                    relatedHref: patch.relatedHref.trim() || undefined,
+                  }
+                : {}),
+              updatedBy: s.session.userId,
+              updatedAt: new Date().toISOString(),
+            };
+            return next;
+          }),
+          activityLogs: [
+            log(s.session.userId, "guideline_updated", "guideline", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
+      },
+      deleteGuideline: (id) => {
+        if (!hasPermission(store, store.session.roleKey, "org.manage")) {
+          return false;
+        }
+        if (!(store.guidelines ?? []).some((g) => g.id === id)) return false;
+        setStore((s) => ({
+          ...s,
+          guidelines: (s.guidelines ?? []).filter((g) => g.id !== id),
+          activityLogs: [
+            log(s.session.userId, "guideline_deleted", "guideline", id),
+            ...s.activityLogs,
+          ],
+        }));
+        return true;
       },
       markNotificationRead: (id) => {
         setStore((s) => ({
@@ -1682,6 +3044,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             n.userId === userId ? { ...n, read: true } : n,
           ),
         }));
+      },
+      sendEventReminders: (eventId) => {
+        const rows = outboundEventReminders(store, eventId);
+        const count = rows.length;
+        if (!count) return 0;
+        const event = store.events.find((e) => e.id === eventId);
+        const chapter = event
+          ? store.chapters.find((c) => c.id === event.chapterId)
+          : undefined;
+        const userIds = [
+          ...new Set(
+            store.registrations
+              .filter((r) => r.eventId === eventId && r.status === "approved")
+              .map((r) => r.userId),
+          ),
+        ];
+        const alerts = notifyUsers(userIds, {
+          title: `Reminder — ${event?.title ?? "event"}`,
+          body: "Your event is coming up. Check Elevates for details.",
+          href: chapter
+            ? `/chapter/${chapter.slug}/events/${eventId}`
+            : undefined,
+        });
+        setStore((s) => ({
+          ...s,
+          outboundMessages: [...rows, ...(s.outboundMessages ?? [])],
+          notifications: [...alerts, ...s.notifications],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "event_reminders_sent",
+              "event",
+              eventId,
+              `${count} messages`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        return count;
       },
       resetDemoStore: () => {
         setStore(normalizeStore(createSeedStore()));

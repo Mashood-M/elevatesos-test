@@ -1,6 +1,8 @@
 import { ensureOrganizationBrandKit } from "@/lib/brand/kit";
-import { createSeedStore } from "@/lib/demo/seed";
-import { mergeResourceCategories } from "@/lib/resources/categories";
+import {
+  DEFAULT_RESOURCE_CATEGORIES,
+  humanizeCategoryKey,
+} from "@/lib/resources/categories";
 import type {
   ClassCohort,
   ElevatesStore,
@@ -11,7 +13,30 @@ import type {
   FormQuestion,
   FormQuestionType,
   Profile,
+  ResourceCategory,
 } from "@/types";
+
+function mergeResourceCategoriesLocal(
+  stored: ResourceCategory[] | undefined,
+  resourceKeys: string[],
+): ResourceCategory[] {
+  const map = new Map<string, ResourceCategory>();
+  for (const c of DEFAULT_RESOURCE_CATEGORIES) map.set(c.key, c);
+  for (const c of stored ?? []) {
+    if (c?.key) {
+      map.set(c.key, {
+        key: c.key,
+        label: c.label || humanizeCategoryKey(c.key),
+      });
+    }
+  }
+  for (const key of resourceKeys) {
+    if (key && !map.has(key)) {
+      map.set(key, { key, label: humanizeCategoryKey(key) });
+    }
+  }
+  return Array.from(map.values());
+}
 
 export type RepresentativeOption = {
   id: string;
@@ -476,7 +501,7 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
   }));
 
   const resources = store.resources ?? [];
-  const resourceCategories = mergeResourceCategories(
+  const resourceCategories = mergeResourceCategoriesLocal(
     store.resourceCategories,
     resources.map((r) => r.category),
   );
@@ -493,10 +518,8 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     chapterStandardChecks: store.chapterStandardChecks ?? [],
     resourceCategories,
     resources,
-    // Old localStorage saves omit guidelines — hydrate seed once.
-    guidelines: Array.isArray(store.guidelines)
-      ? store.guidelines
-      : createSeedStore().guidelines,
+    // Old localStorage saves may omit guidelines.
+    guidelines: Array.isArray(store.guidelines) ? store.guidelines : [],
     forms,
     formResponses,
     outboundMessages: store.outboundMessages ?? [],

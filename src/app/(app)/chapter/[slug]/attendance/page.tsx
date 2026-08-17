@@ -20,7 +20,7 @@ import {
 } from "@/lib/attendance/offline-queue";
 import { hasPermission } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { AttendanceStatus } from "@/types";
+import type { AttendanceStatus, EventAttendanceSession } from "@/types";
 
 type DeskMessage = { tone: "ok" | "err"; text: string };
 
@@ -31,11 +31,12 @@ export default function ChapterAttendancePage({
 }) {
   const { slug } = use(params);
   const searchParams = useSearchParams();
-  const { store, checkIn, updateAttendance, issueCertificate } = useStore();
+  const { store, checkIn, updateAttendance, issueCertificate, updateEvent } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
   const [selectedEvent, setSelectedEvent] = useState("");
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [qrInput, setQrInput] = useState("");
   const [method, setMethod] = useState<
     "qr" | "manual" | "bulk" | "representative"
@@ -88,6 +89,28 @@ export default function ChapterAttendancePage({
 
   const eventId = selectedEvent || events[0]?.id || "";
   const hasEvent = Boolean(eventId);
+  const currentEvent = store.events.find((e) => e.id === eventId);
+
+  // Configured attendance terms/sessions for this event
+  const attendanceSessions: EventAttendanceSession[] = useMemo(() => {
+    if (!currentEvent) return [{ id: "sess-1", name: "Main Session", isRequired: true }];
+    if (currentEvent.attendanceSessions && currentEvent.attendanceSessions.length > 0) {
+      return currentEvent.attendanceSessions;
+    }
+    return [{ id: "sess-1", name: "Main Session", isRequired: true }];
+  }, [currentEvent]);
+
+  // Ensure activeSessionId points to a valid session
+  useEffect(() => {
+    if (attendanceSessions.length > 0) {
+      if (!activeSessionId || !attendanceSessions.some((s) => s.id === activeSessionId)) {
+        setActiveSessionId(attendanceSessions[0].id);
+      }
+    }
+  }, [attendanceSessions, activeSessionId]);
+
+  const activeSessionObj = attendanceSessions.find((s) => s.id === activeSessionId) || attendanceSessions[0];
+  const isMultiSession = attendanceSessions.length > 1;
 
   const approvedRegs = useMemo(
     () =>
@@ -145,17 +168,33 @@ export default function ChapterAttendancePage({
 
   const stats = useMemo(() => {
     const checked = store.attendance.filter((a) => a.eventId === eventId);
+    const currentSessionChecked = checked.filter(
+      (a) => (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id) && (a.status === "present" || a.status === "late"),
+    );
+
+    // Full completion: attended all required sessions
+    const fullyAttended = approvedRegs.filter((r) => {
+      const userRecords = checked.filter((a) => a.registrationId === r.id && (a.status === "present" || a.status === "late"));
+      return attendanceSessions.every((sess) =>
+        userRecords.some((a) => a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name),
+      );
+    });
+
     return {
       approved: approvedRegs.length,
+      currentSessionCount: currentSessionChecked.length,
+      fullyAttendedCount: fullyAttended.length,
       checkedIn: checked.length,
       present: checked.filter((a) => a.status === "present").length,
       late: checked.filter((a) => a.status === "late").length,
       absent: checked.filter((a) => a.status === "absent").length,
     };
-  }, [store.attendance, eventId, approvedRegs.length]);
+  }, [store.attendance, eventId, approvedRegs, attendanceSessions, activeSessionObj]);
 
   const deskRef = useRef({
     eventId,
+    activeSessionId: activeSessionObj?.id || "sess-1",
+    activeSessionName: activeSessionObj?.name || "Main Session",
     status,
     offlineDesk,
     online,
@@ -163,6 +202,8 @@ export default function ChapterAttendancePage({
   });
   deskRef.current = {
     eventId,
+    activeSessionId: activeSessionObj?.id || "sess-1",
+    activeSessionName: activeSessionObj?.name || "Main Session",
     status,
     offlineDesk,
     online,
@@ -170,18 +211,23 @@ export default function ChapterAttendancePage({
   };
 
   const runCheckIn = useCallback(
-    (registrationId: string, m: typeof method) => {
-      const { eventId: eid, status: st, userId } = deskRef.current;
+    (registrationId: string, m: typeof method, sessId?: string, sessName?: string) => {
+      const { eventId: eid, status: st, userId, activeSessionId: currentSessId, activeSessionName: currentSessName } = deskRef.current;
+      const targetId = sessId ?? currentSessId;
+      const targetName = sessName ?? currentSessName;
       if (!eid) {
         setFlash({ tone: "err", text: "Select an event first." });
         return false;
       }
-      const result = checkIn(registrationId, st, m, userId, eid);
+      const result = checkIn(registrationId, st, m, userId, eid, targetId, targetName);
       if (!result.ok) {
         setFlash({ tone: "err", text: result.message });
         return false;
       }
-      setFlash({ tone: "ok", text: `Checked in · ${st} · via ${m}` });
+      setFlash({
+        tone: "ok",
+        text: `Checked in [${targetName}] · ${st} · via ${m}`,
+      });
       return true;
     },
     [checkIn],
@@ -192,7 +238,7 @@ export default function ChapterAttendancePage({
       const code = (codeOverride ?? qrInput).trim();
       if (!code) return;
 
-      const { eventId: eid, status: st, offlineDesk: off, online: on } =
+      const { eventId: eid, status: st, offlineDesk: off, online: on, activeSessionId: sessId, activeSessionName: sessName } =
         deskRef.current;
       if (!eid) {
         setFlash({ tone: "err", text: "Select an event first." });
@@ -206,7 +252,7 @@ export default function ChapterAttendancePage({
           status: st,
         });
         setOfflineQueue(list);
-        setFlash({ tone: "ok", text: `Queued offline · ${code}` });
+        setFlash({ tone: "ok", text: `Queued offline (${sessName}) · ${code}` });
         setQrInput("");
         return;
       }
@@ -225,21 +271,23 @@ export default function ChapterAttendancePage({
         return;
       }
       const existing = store.attendance.find(
-        (a) => a.registrationId === reg.id,
+        (a) => a.registrationId === reg.id && (a.sessionId === sessId || a.session === sessId),
       );
       if (existing) {
         const result = updateAttendance(
           reg.id,
           st,
           deskRef.current.userId,
+          sessId,
+          sessName,
         );
         setFlash(
           result.ok
-            ? { tone: "ok", text: `Updated status to ${st}` }
+            ? { tone: "ok", text: `Updated ${sessName} status to ${st}` }
             : { tone: "err", text: result.message },
         );
       } else {
-        runCheckIn(reg.id, "qr");
+        runCheckIn(reg.id, "qr", sessId, sessName);
       }
       setQrInput("");
     },
@@ -253,109 +301,106 @@ export default function ChapterAttendancePage({
     [handleQrScan],
   );
 
-  function flushOfflineQueue() {
-    if (!eventId) {
-      setFlash({ tone: "err", text: "Select an event first." });
-      return;
-    }
-    if (!online) {
-      setFlash({ tone: "err", text: "Go online to sync the queue." });
-      return;
-    }
-    const queue = loadOfflineQueue(eventId);
+  function syncOffline() {
+    if (!online || !offlineQueue.length || !eventId) return;
     let ok = 0;
-    let fail = 0;
-    const seen = new Set(
-      store.attendance
-        .filter((a) => a.eventId === eventId)
-        .map((a) => a.registrationId),
-    );
-    for (const item of queue) {
+    for (const item of offlineQueue) {
       const reg = store.registrations.find(
         (r) =>
           r.qrCode === item.qrCode &&
-          r.eventId === eventId &&
+          r.eventId === item.eventId &&
           r.status === "approved",
       );
-      if (!reg) {
-        fail += 1;
-        continue;
+      if (reg) {
+        const res = checkIn(
+          reg.id,
+          item.status as AttendanceStatus,
+          "qr",
+          session.userId,
+          item.eventId,
+          activeSessionObj.id,
+          activeSessionObj.name,
+        );
+        if (res.ok) ok++;
       }
-      const st = item.status as AttendanceStatus;
-      const result = seen.has(reg.id)
-        ? updateAttendance(reg.id, st, session.userId)
-        : checkIn(reg.id, st, "qr", session.userId, eventId);
-      if (result.ok) {
-        ok += 1;
-        seen.add(reg.id);
-      } else fail += 1;
     }
     clearOfflineQueue(eventId);
     setOfflineQueue([]);
-    setFlash({
-      tone: fail && !ok ? "err" : "ok",
-      text: `Synced offline queue · ${ok} ok · ${fail} skipped`,
-    });
+    setFlash({ tone: "ok", text: `Synced ${ok} offline check-ins.` });
   }
 
   function handleBulk() {
-    if (!eventId) {
-      setFlash({ tone: "err", text: "Select an event first." });
-      return;
-    }
     const lines = bulkText
-      .split(/\n|,/)
+      .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
+    if (!lines.length) return;
     let ok = 0;
-    let fail = 0;
     for (const line of lines) {
-      const byQr = store.registrations.find(
+      const reg = store.registrations.find(
         (r) =>
-          r.qrCode === line &&
           r.eventId === eventId &&
-          r.status === "approved",
+          r.status === "approved" &&
+          (r.qrCode.toLowerCase() === line.toLowerCase() ||
+            store.profiles.find((p) => p.id === r.userId)?.email.toLowerCase() ===
+              line.toLowerCase()),
       );
-      const byEmail = store.profiles.find(
-        (p) => p.email.toLowerCase() === line.toLowerCase(),
-      );
-      const reg =
-        byQr ??
-        store.registrations.find(
-          (r) =>
-            r.eventId === eventId &&
-            r.status === "approved" &&
-            r.userId === byEmail?.id,
+      if (reg) {
+        const res = checkIn(
+          reg.id,
+          status,
+          "bulk",
+          session.userId,
+          eventId,
+          activeSessionObj.id,
+          activeSessionObj.name,
         );
-      if (reg && runCheckIn(reg.id, "bulk")) ok += 1;
-      else fail += 1;
+        if (res.ok) ok++;
+      }
     }
-    setFlash({
-      tone: fail && !ok ? "err" : "ok",
-      text: `Bulk done · ${ok} checked in · ${fail} skipped`,
-    });
+    setBulkText("");
+    setFlash({ tone: "ok", text: `Bulk processed: ${ok} / ${lines.length} (${activeSessionObj.name})` });
   }
 
   function handleRepresentative() {
-    if (!eventId) {
-      setFlash({ tone: "err", text: "Select an event first." });
-      return;
-    }
+    if (!selectedRegs.length || !eventId) return;
     let ok = 0;
-    for (const id of selectedRegs) {
-      if (runCheckIn(id, "representative")) ok += 1;
+    for (const regId of selectedRegs) {
+      const res = checkIn(
+        regId,
+        status,
+        "representative",
+        session.userId,
+        eventId,
+        activeSessionObj.id,
+        activeSessionObj.name,
+      );
+      if (res.ok) ok++;
     }
     setFlash({
       tone: "ok",
-      text: `Representative check-in · ${ok} students`,
+      text: `Representative check-in (${activeSessionObj.name}) · ${ok} students`,
     });
     setSelectedRegs([]);
   }
 
-  const demoCodes = approvedRegs
-    .filter((r) => r.qrCode)
-    .slice(0, 3)
-    .map((r) => r.qrCode);
+  function handleAddCustomCheckpoint() {
+    if (!eventId || !currentEvent) return;
+    const count = attendanceSessions.length + 1;
+    const newSession: EventAttendanceSession = {
+      id: `sess-${Date.now().toString().slice(-4)}`,
+      name: `Checkpoint ${count}`,
+      time: "",
+      isRequired: true,
+    };
+    const updated = [...attendanceSessions, newSession];
+    updateEvent(eventId, { attendanceSessions: updated });
+    setActiveSessionId(newSession.id);
+    setFlash({
+      tone: "ok",
+      text: `Added checkpoint session "${newSession.name}".`,
+    });
+  }
 
   if (!chapter) {
     return <p className="text-[var(--accent)]">Chapter not found</p>;
@@ -380,29 +425,97 @@ export default function ChapterAttendancePage({
     <div>
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Attendance check-in"
-        description="QR, manual, bulk, and representative check-in. Certificates issue after verified attendance."
+        title="Attendance Desk"
+        description="Verify arrivals & checkpoints via QR scanner, roster matrix, bulk input, or class representative."
+        actions={
+          hasEvent && isMultiSession ? (
+            <Button
+              variant="ghost"
+              className="text-xs border border-border"
+              onClick={handleAddCustomCheckpoint}
+            >
+              + Add Checkpoint Session
+            </Button>
+          ) : undefined
+        }
       />
 
+      {/* Top Stats Bar in clean ERP styling */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Stat label="Approved" value={stats.approved} />
-        <Stat label="Checked in" value={stats.checkedIn} />
-        <Stat label="Present" value={stats.present} />
-        <Stat label="Late" value={stats.late} />
-        <Stat label="Absent" value={stats.absent} />
+        <Stat label="Approved Students" value={stats.approved} />
+        {isMultiSession ? (
+          <>
+            <Stat label={`Active: ${activeSessionObj.name}`} value={`${stats.currentSessionCount} / ${stats.approved}`} />
+            <Stat label="All Terms Complete" value={`${stats.fullyAttendedCount} / ${stats.approved}`} />
+            <Stat label="Total Scans Logged" value={stats.checkedIn} />
+            <Stat label="Configured Terms" value={`${attendanceSessions.length} Checkpoints`} />
+          </>
+        ) : (
+          <>
+            <Stat label="Checked In" value={stats.checkedIn} />
+            <Stat label="Present" value={stats.present} />
+            <Stat label="Late" value={stats.late} />
+            <Stat label="Absent" value={stats.absent} />
+          </>
+        )}
       </div>
 
       <TerminalPanel
         title="Check-in desk"
         meta={
           [
-            events.find((e) => e.id === eventId)?.title,
+            currentEvent?.title,
+            isMultiSession ? `Session: ${activeSessionObj?.name}` : undefined,
             offlineDesk || !online ? "queue" : "live",
           ]
             .filter(Boolean)
             .join(" · ") || undefined
         }
       >
+        {/* Dynamic Multi-Session / Checkpoint Switcher */}
+        {isMultiSession ? (
+          <div className="mb-4 rounded-[var(--radius)] border border-border/80 bg-bg-panel p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-dim">
+                Active Check-In Checkpoint:
+              </span>
+              <span className="text-[11px] font-mono text-text-mute">
+                {attendanceSessions.findIndex((s) => s.id === activeSessionId) + 1} of {attendanceSessions.length} terms
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {attendanceSessions.map((sess, idx) => {
+                const isActive = sess.id === activeSessionId;
+                return (
+                  <Button
+                    key={sess.id || idx}
+                    type="button"
+                    variant={isActive ? "orange" : "ghost"}
+                    className={cn(
+                      "h-7 text-[11px] font-medium px-2.5",
+                      !isActive && "border border-border/60 hover:border-border",
+                    )}
+                    onClick={() => {
+                      setActiveSessionId(sess.id);
+                      setFlash(null);
+                    }}
+                  >
+                    #{idx + 1} {sess.name} {sess.time ? `(${sess.time})` : ""}
+                  </Button>
+                );
+              })}
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-7 text-[11px] text-text-dim border border-dashed border-border px-2"
+                onClick={handleAddCustomCheckpoint}
+              >
+                + Add Checkpoint
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid max-w-3xl gap-3 md:grid-cols-3">
           <div>
             <FieldLabel>Event</FieldLabel>
@@ -441,9 +554,9 @@ export default function ChapterAttendancePage({
               }
             >
               <option value="qr">QR scan</option>
-              <option value="manual">Manual (roster)</option>
-              <option value="representative">Representative</option>
-              <option value="bulk">Bulk paste</option>
+              <option value="manual">Manual (roster table)</option>
+              <option value="representative">Class representative</option>
+              <option value="bulk">Bulk list</option>
             </Select>
           </div>
           <div>
@@ -478,103 +591,94 @@ export default function ChapterAttendancePage({
             {offlineDesk || !online ? "queue" : "live"}
           </Badge>
           {offlineQueue.length ? (
-            <>
-              <span className="text-[12px] text-text-mute">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-text-dim">
                 {offlineQueue.length} queued
               </span>
               <Button
-                type="button"
                 variant="ghost"
-                className="h-8"
-                onClick={flushOfflineQueue}
-                disabled={!online || !hasEvent}
+                className="h-7 text-[11px]"
+                disabled={!online}
+                onClick={syncOffline}
               >
-                Sync
+                Sync to cloud
               </Button>
-            </>
-          ) : null}
-          {flash ? (
-            <p
-              className={cn(
-                "text-[13px]",
-                flash.tone === "ok"
-                  ? "text-[var(--success)]"
-                  : "text-[var(--accent)]",
-              )}
-            >
-              {flash.text}
-            </p>
-          ) : null}
-          {!hasEvent ? (
-            <p className="text-[13px] text-text-dim">
-              Select an event to run check-in.
-            </p>
+            </div>
           ) : null}
         </div>
 
+        {flash ? (
+          <p
+            className={cn(
+              "mt-3 text-[12px] rounded-[var(--radius)] border px-3 py-2",
+              flash.tone === "ok"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-red-500/30 bg-red-500/10 text-red-300",
+            )}
+          >
+            {flash.text}
+          </p>
+        ) : null}
+
+        {/* QR Scanner Mode */}
         {method === "qr" ? (
-          <div className="mt-4 space-y-3 border-t border-border/70 pt-4">
-            <QrScanner
-              active={method === "qr"}
-              disabled={!hasEvent}
-              onScan={onCameraScan}
-            />
-            <div className="max-w-xl">
-              <FieldLabel>Paste or type QR</FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  className="min-w-0 flex-1"
-                  placeholder="QR-EV2-…"
-                  value={qrInput}
-                  disabled={!hasEvent}
-                  onChange={(e) => setQrInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
-                />
-                <Button
-                  variant="orange"
-                  className="shrink-0"
-                  disabled={!hasEvent || !qrInput.trim()}
-                  onClick={() => handleQrScan()}
-                >
-                  Check in
-                </Button>
+          <div className="mt-4 border-t border-border/70 pt-4">
+            {isMultiSession ? (
+              <div className="mb-3 flex items-center justify-between rounded-[var(--radius)] border border-border/80 bg-bg-panel px-3 py-2 text-[12px]">
+                <span className="text-text">
+                  Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
+                  {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
+                </span>
+                <Badge tone="green">Ready</Badge>
               </div>
-              {demoCodes.length > 0 ? (
-                <p className="mt-2 font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
-                  Demo: {demoCodes.join(" · ")}
-                </p>
-              ) : (
-                <p className="mt-2 text-[11px] text-text-mute">
-                  No approved QR codes yet — approve registrations first.
-                </p>
-              )}
+            ) : null}
+
+            <QrScanner onScan={onCameraScan} active={method === "qr"} disabled={!hasEvent} />
+
+            <div className="mt-4 flex max-w-md gap-2">
+              <Input
+                placeholder="Or paste / type QR code..."
+                value={qrInput}
+                disabled={!hasEvent}
+                onChange={(e) => setQrInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
+                aria-label="QR Code input"
+              />
+              <Button
+                variant="orange"
+                disabled={!hasEvent || !qrInput.trim()}
+                onClick={() => handleQrScan()}
+              >
+                Verify
+              </Button>
             </div>
           </div>
         ) : null}
 
         {method === "manual" ? (
           <p className="mt-4 border-t border-border/70 pt-4 text-[13px] text-text-dim">
-            Use the roster below — search by name, email, or QR, then Check in
-            or mark Absent. Status above applies to new check-ins.
+            Use the roster below — click Check in or toggle status per student.
           </p>
         ) : null}
 
         {method === "bulk" ? (
           <div className="mt-4 max-w-xl space-y-2 border-t border-border/70 pt-4">
-            <FieldLabel>One QR code or email per line</FieldLabel>
+            <FieldLabel>
+              One QR code or email per line {isMultiSession ? `(${activeSessionObj.name})` : ""}
+            </FieldLabel>
             <TextArea
               rows={4}
               value={bulkText}
               disabled={!hasEvent}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"QR-EV2-ANANYA-A2\nananya@…"}
+              placeholder={"QR-ELV-DECODE-001\nsarhan@elevates.live\n..."}
             />
             <Button
               variant="orange"
               disabled={!hasEvent}
               onClick={handleBulk}
             >
-              Process bulk
+              Process bulk {isMultiSession ? `(${activeSessionObj.name})` : ""}
             </Button>
           </div>
         ) : null}
@@ -582,17 +686,19 @@ export default function ChapterAttendancePage({
         {method === "representative" ? (
           <div className="mt-4 max-w-xl border-t border-border/70 pt-4">
             <p className="mb-2 text-[12px] text-text-dim">
-              Select approved students, then check them in together.
+              Select students to check in together {isMultiSession ? `for ${activeSessionObj.name}` : ""}:
             </p>
-            <ul className="mb-3 max-h-40 space-y-2 overflow-y-auto">
+            <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto rounded-[var(--radius)] border border-border/80 bg-bg-panel p-2">
               {approvedRegs.map((reg) => {
                 const user = store.profiles.find((p) => p.id === reg.userId);
                 const att = store.attendance.find(
-                  (a) => a.registrationId === reg.id,
+                  (a) =>
+                    a.registrationId === reg.id &&
+                    (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
                 );
                 return (
-                  <li key={reg.id}>
-                    <label className="flex items-center gap-2 text-[13px]">
+                  <li key={reg.id} className="flex items-center justify-between text-[12px] border-b border-border/40 pb-1.5 last:border-0">
+                    <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         disabled={Boolean(att) || !hasEvent}
@@ -605,17 +711,13 @@ export default function ChapterAttendancePage({
                           );
                         }}
                       />
-                      {user?.fullName}
-                      {att ? <Badge tone="mute">{att.status}</Badge> : null}
+                      <span className="font-medium text-text">{user?.fullName}</span>
+                      <span className="text-text-mute">({user?.year} · {user?.department?.split(" ")[0]})</span>
                     </label>
+                    {att ? <Badge tone="green">{att.status}</Badge> : <Badge tone="mute">unmarked</Badge>}
                   </li>
                 );
               })}
-              {!approvedRegs.length ? (
-                <li className="text-[13px] text-text-dim">
-                  No approved registrations.
-                </li>
-              ) : null}
             </ul>
             <Button
               variant="orange"
@@ -628,6 +730,7 @@ export default function ChapterAttendancePage({
         ) : null}
       </TerminalPanel>
 
+      {/* Roster Table Matrix */}
       <TerminalPanel
         title="Roster"
         meta={`${filteredRoster.length}${
@@ -644,168 +747,223 @@ export default function ChapterAttendancePage({
             aria-label="Filter roster"
           />
         </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-[12px]">
+          <table className="w-full min-w-[700px] text-[12px]">
             <thead>
               <tr className="border-b border-border text-left text-[11px] text-text-mute">
                 <th className="pb-2">Student</th>
                 <th className="pb-2">QR</th>
-                <th className="pb-2">Attendance</th>
-                <th className="pb-2">Action</th>
+                {isMultiSession ? (
+                  <>
+                    {attendanceSessions.map((sess, i) => (
+                      <th key={sess.id || i} className="pb-2 text-center">
+                        #{i + 1} {sess.name}
+                      </th>
+                    ))}
+                    <th className="pb-2 text-center">Terms Progress</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="pb-2">Attendance</th>
+                    <th className="pb-2">Action</th>
+                  </>
+                )}
+                <th className="pb-2">Certificate</th>
               </tr>
             </thead>
             <tbody>
               {filteredRoster.map((reg) => {
                 const user = store.profiles.find((p) => p.id === reg.userId);
-                const att = store.attendance.find(
+                const userAttRecords = store.attendance.filter(
                   (a) => a.registrationId === reg.id,
                 );
+
+                const singleAtt = userAttRecords[0];
+                const attendedSessionsCount = attendanceSessions.filter((sess) =>
+                  userAttRecords.some(
+                    (a) =>
+                      (a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name) &&
+                      (a.status === "present" || a.status === "late" || a.status === "volunteer" || a.status === "speaker"),
+                  ),
+                ).length;
+
+                const isFullyComplete = attendedSessionsCount === attendanceSessions.length;
                 const cert = store.certificates.find(
-                  (c) =>
-                    c.eventId === reg.eventId && c.userId === reg.userId,
+                  (c) => c.eventId === reg.eventId && c.userId === reg.userId,
                 );
+
                 return (
                   <tr key={reg.id} className="border-b border-border/50">
                     <td className="py-3">
-                      <p className="font-medium">{user?.fullName}</p>
-                      <p className="text-[11px] text-text-mute">
-                        {user?.email}
-                      </p>
+                      <p className="font-medium text-text">{user?.fullName}</p>
+                      <p className="text-[11px] text-text-mute">{user?.email}</p>
                     </td>
-                    <td className="py-3 font-[family-name:var(--font-mono)] text-[11px] text-text-dim">
+
+                    <td className="py-3 font-mono text-[11px] text-text-dim">
                       {reg.qrCode || "—"}
                     </td>
+
+                    {/* Multi-Session Columns */}
+                    {isMultiSession ? (
+                      <>
+                        {attendanceSessions.map((sess) => {
+                          const sessRecord = userAttRecords.find(
+                            (a) => a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name,
+                          );
+                          return (
+                            <td key={sess.id} className="py-3 text-center">
+                              {sessRecord ? (
+                                <div className="inline-flex items-center gap-1">
+                                  <Badge tone={sessRecord.status === "present" ? "green" : "orange"}>
+                                    {sessRecord.status}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    className="h-6 px-1 text-[10px]"
+                                    onClick={() => {
+                                      updateAttendance(
+                                        reg.id,
+                                        sessRecord.status === "present" ? "absent" : "present",
+                                        session.userId,
+                                        sess.id,
+                                        sess.name,
+                                      );
+                                    }}
+                                  >
+                                    ⇄
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  className="h-6 px-2 text-[10px] border border-border"
+                                  onClick={() => runCheckIn(reg.id, "manual", sess.id, sess.name)}
+                                >
+                                  + Mark
+                                </Button>
+                              )}
+                            </td>
+                          );
+                        })}
+
+                        <td className="py-3 text-center">
+                          {isFullyComplete ? (
+                            <Badge tone="green">
+                              ✓ {attendedSessionsCount}/{attendanceSessions.length} (100%)
+                            </Badge>
+                          ) : attendedSessionsCount > 0 ? (
+                            <Badge tone="orange">
+                              {attendedSessionsCount}/{attendanceSessions.length} Terms
+                            </Badge>
+                          ) : (
+                            <Badge tone="mute">0/{attendanceSessions.length}</Badge>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-3">
+                          {singleAtt ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge tone="green">
+                                {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
+                              </Badge>
+                              <Select
+                                className="h-8 w-auto text-[11px]"
+                                value={singleAtt.status}
+                                onChange={(e) => {
+                                  const result = updateAttendance(
+                                    reg.id,
+                                    e.target.value as AttendanceStatus,
+                                    session.userId,
+                                  );
+                                  setFlash(
+                                    result.ok
+                                      ? { tone: "ok", text: `Updated ${user?.fullName}` }
+                                      : { tone: "err", text: result.message },
+                                  );
+                                }}
+                              >
+                                <option value="present">Present</option>
+                                <option value="late">Late</option>
+                                <option value="absent">Absent</option>
+                                <option value="volunteer">Volunteer</option>
+                                <option value="speaker">Speaker</option>
+                              </Select>
+                            </div>
+                          ) : (
+                            <Badge tone="orange">not checked in</Badge>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          {!singleAtt ? (
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="ghost"
+                                className="h-8"
+                                disabled={!hasEvent}
+                                onClick={() => runCheckIn(reg.id, "manual")}
+                              >
+                                Check in
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                className="h-8"
+                                disabled={!hasEvent}
+                                onClick={() => {
+                                  const result = checkIn(
+                                    reg.id,
+                                    "absent",
+                                    "manual",
+                                    session.userId,
+                                    eventId,
+                                  );
+                                  setFlash(
+                                    result.ok
+                                      ? { tone: "ok", text: "Marked absent" }
+                                      : { tone: "err", text: result.message },
+                                  );
+                                }}
+                              >
+                                Mark absent
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-text-dim">Checked in</span>
+                          )}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Certificate Column */}
                     <td className="py-3">
-                      {att ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge tone="green">
-                            {att.status} · {formatDateTime(att.checkedInAt)}
-                          </Badge>
-                          <Select
-                            className="h-8 w-auto text-[11px]"
-                            value={att.status}
-                            onChange={(e) => {
-                              const result = updateAttendance(
-                                reg.id,
-                                e.target.value as AttendanceStatus,
-                                session.userId,
-                              );
-                              setFlash(
-                                result.ok
-                                  ? {
-                                      tone: "ok",
-                                      text: `Updated ${user?.fullName}`,
-                                    }
-                                  : {
-                                      tone: "err",
-                                      text: result.message,
-                                    },
-                              );
-                            }}
-                          >
-                            <option value="present">Present</option>
-                            <option value="late">Late</option>
-                            <option value="absent">Absent</option>
-                            <option value="volunteer">Volunteer</option>
-                            <option value="speaker">Speaker</option>
-                          </Select>
-                        </div>
+                      {cert ? (
+                        <Badge tone="green">Issued · {cert.certificateId}</Badge>
+                      ) : (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
+                        <Button
+                          variant="orange"
+                          className="h-7 text-[11px]"
+                          onClick={() => {
+                            const res = issueCertificate(reg.eventId, reg.userId);
+                            setFlash(
+                              res.ok
+                                ? { tone: "ok", text: `Issued cert for ${user?.fullName}` }
+                                : { tone: "err", text: res.message },
+                            );
+                          }}
+                        >
+                          Issue cert ↗
+                        </Button>
                       ) : (
-                        <Badge tone="orange">not checked in</Badge>
+                        <span className="text-[11px] text-text-mute">
+                          {isMultiSession ? `Requires ${attendanceSessions.length} terms` : "Requires check-in"}
+                        </span>
                       )}
-                    </td>
-                    <td className="py-3">
-                      <div className="flex flex-wrap gap-2">
-                        {!att ? (
-                          <>
-                            <Button
-                              variant="ghost"
-                              className="h-8"
-                              disabled={!hasEvent}
-                              onClick={() => runCheckIn(reg.id, "manual")}
-                            >
-                              Check in
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              className="h-8"
-                              disabled={!hasEvent}
-                              onClick={() => {
-                                const result = checkIn(
-                                  reg.id,
-                                  "absent",
-                                  "manual",
-                                  session.userId,
-                                  eventId,
-                                );
-                                setFlash(
-                                  result.ok
-                                    ? {
-                                        tone: "ok",
-                                        text: "Marked absent",
-                                      }
-                                    : {
-                                        tone: "err",
-                                        text: result.message,
-                                      },
-                                );
-                              }}
-                            >
-                              Absent
-                            </Button>
-                          </>
-                        ) : null}
-                        {att &&
-                        !cert &&
-                        ["present", "late", "volunteer", "speaker"].includes(
-                          att.status,
-                        ) ? (
-                          <Button
-                            variant="orange"
-                            className="h-8"
-                            onClick={() => {
-                              const result = issueCertificate(
-                                reg.eventId,
-                                reg.userId,
-                              );
-                              setFlash(
-                                result.ok
-                                  ? {
-                                      tone: "ok",
-                                      text: "Certificate issued",
-                                    }
-                                  : {
-                                      tone: "err",
-                                      text: result.message,
-                                    },
-                              );
-                            }}
-                          >
-                            Issue cert
-                          </Button>
-                        ) : null}
-                        {cert ? (
-                          <a
-                            href={`/verify/certificate/${cert.certificateId}`}
-                            className="self-center text-[11px] font-medium text-[var(--accent)] hover:underline"
-                          >
-                            Verify
-                          </a>
-                        ) : null}
-                      </div>
                     </td>
                   </tr>
                 );
               })}
-              {filteredRoster.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-6 text-text-dim">
-                    {approvedRegs.length === 0
-                      ? "No approved registrations for this event."
-                      : "No roster matches — clear search."}
-                  </td>
-                </tr>
-              ) : null}
             </tbody>
           </table>
         </div>

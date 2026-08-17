@@ -1,9 +1,10 @@
-/** Demo store is the default. Set NEXT_PUBLIC_USE_DEMO_STORE=false to prefer Supabase data. */
+/** Live Supabase store is the default. Set NEXT_PUBLIC_USE_DEMO_STORE=true to enable mock store. */
 export function isDemoMode() {
   const flag = process.env.NEXT_PUBLIC_USE_DEMO_STORE;
-  if (flag === "false" || flag === "0") return false;
-  return true;
+  if (flag === "true" || flag === "1") return true;
+  return false;
 }
+
 
 export function useSupabaseAuth() {
   return (

@@ -1,5 +1,19 @@
 import { isHqRole, isSuperAdmin } from "@/lib/permissions";
-import type { RoleKey } from "@/types";
+import type { Chapter, RoleKey } from "@/types";
+
+export function resolveChapter(store: { chapters: Chapter[] }, slug?: string): Chapter | undefined {
+  if (!store.chapters?.length) return undefined;
+  if (!slug) return store.chapters[0];
+  return (
+    store.chapters.find(
+      (c) =>
+        c.slug === slug ||
+        c.id === slug ||
+        (slug === "ekc" && (c.slug === "eranad-knowledge-city" || c.id === "ch-ekc")) ||
+        (slug === "eranad-knowledge-city" && (c.slug === "ekc" || c.id === "ch-ekc")),
+    ) ?? store.chapters[0]
+  );
+}
 
 const EXECUTIVE_ROLES: RoleKey[] = [
   "chairman",
@@ -7,8 +21,12 @@ const EXECUTIVE_ROLES: RoleKey[] = [
   "secretary",
   "joint_secretary",
   "elevates_coordinator",
+  "technical_lead",
   "technical_team",
+  "media_lead",
   "media_team",
+  "innovation_lead",
+  "innovation_team",
   "class_representative",
 ];
 
@@ -57,7 +75,8 @@ export function canAccessPath(
     pathname === "/leaderboards" ||
     pathname === "/notifications" ||
     pathname === "/eos" ||
-    pathname.startsWith("/eos/")
+    pathname.startsWith("/eos/") ||
+    pathname === "/my-qr"
   ) {
     return true;
   }
@@ -84,7 +103,9 @@ export function canAccessPath(
     const slug = chapterMatch[1];
     const rest = chapterMatch[2] ?? "";
     if (isHqRole(roleKey)) return true;
-    if (!chapterSlug || slug !== chapterSlug) return false;
+    // Treat undefined chapterSlug as "ekc" so empty-store demo doesn't block all routes
+    const effectiveSlug = chapterSlug ?? "ekc";
+    if (slug !== effectiveSlug) return false;
 
     // Reports — students + exec + faculty (document system)
     const firstSeg = rest.split("/")[0] ?? "";

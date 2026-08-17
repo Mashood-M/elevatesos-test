@@ -53,14 +53,23 @@ Demo state persists in `sessionStorage` for the browser tab. Role routes are gua
    - `supabase/migrations/001_elevates_os_core.sql`
    - `supabase/migrations/002_rls_write_policies.sql`
    - `supabase/migrations/003_demo_seed.sql`
+   - `supabase/migrations/004_public_surface.sql`
+   - `supabase/migrations/005_rls_tenant_scope.sql`
+   - `supabase/migrations/006_web_content_seed.sql`
 4. Create Auth users in the dashboard; insert matching `profiles` + `user_roles` rows.  
 5. Optional flags in `.env.local`:
    - `NEXT_PUBLIC_USE_DEMO_STORE=false` — bootstrap org/chapters/events from Supabase (falls back to seed if empty)
    - `NEXT_PUBLIC_USE_SUPABASE_AUTH=true` — real email/password login + middleware protection on app routes  
+   - `SUPABASE_SERVICE_ROLE_KEY` — **OS server only**. Never put this in Elevates-web.
+   - `OS_API_TOKEN` — shared secret for public write endpoints
 
-`GET /api/health` reports `mode: "supabase"` when URL + anon key are present.
+`GET /api/health` reports `mode: "supabase"` when demo store is off and URL + anon key are present.
 
-Until auth is enabled, the app runs fully in **demo mode** with interactive mutations.
+Public contract for Elevates-web lives at `/api/public/v1/*` (chapters, events, projects, peer-labs, team, stats, verify, RSVP, join, college leads).
+
+**Boundary:** HQ / chapter / faculty / executive consoles stay in this repo. The marketing site (`elevates.live`) only consumes `/api/public/v1`. Do not duplicate admin routes on the web.
+
+Until auth is enabled, the app runs fully in **demo mode** with interactive mutations. Public API still serves seed data so the website can connect locally.
 
 ## Scripts
 
@@ -73,5 +82,5 @@ npm run lint     # eslint
 
 ## Brand
 
-Accent `#f26430` · charcoal `#2d2d34` · cool canvas · Syne + Plus Jakarta Sans + IBM Plex Mono  
-See `DESIGN.md` and `/design-system`.
+Paper `#f8fff4` · graphite `#2d2d34` · flame `#f26430` · Inter + VT323 + Kalam  
+See `DESIGN.md` and `/design-system`. Same visual language as elevates.live.

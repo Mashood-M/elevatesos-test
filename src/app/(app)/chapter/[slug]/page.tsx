@@ -11,7 +11,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { SectionGrid } from "@/components/layout/page-frame";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
@@ -44,7 +44,7 @@ export default function ChapterDashboardPage({
   const { slug } = use(params);
   const { store } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = resolveChapter(store, slug);
 
   if (!chapter) {
     return (
@@ -91,7 +91,7 @@ export default function ChapterDashboardPage({
             : `${chapter.college} · ${chapter.city} · lead the chapter from here`
         }
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5">
             {showOps ? (
               <>
                 <Link href={`/chapter/${slug}/calendar`}>

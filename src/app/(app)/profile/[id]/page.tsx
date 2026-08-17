@@ -2,10 +2,12 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Edit3, Globe, Link2, Mail, Phone } from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FieldLabel, Select } from "@/components/ui/input";
+import { Dialog } from "@/components/ui/dialog";
+import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
 import { useCurrentUser, useStore } from "@/context/store-context";
@@ -22,6 +24,7 @@ import {
 import { withDerivedProgression } from "@/lib/eos/progression";
 import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
+import type { Profile } from "@/types";
 
 export default function ProfilePage({
   params,
@@ -33,8 +36,26 @@ export default function ProfilePage({
   const { session } = useCurrentUser();
   const profile = store.profiles.find((p) => p.id === id);
 
+
   const [cohortId, setCohortId] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDept, setEditDept] = useState("");
+  const [editYear, setEditYear] = useState("");
+  const [editSection, setEditSection] = useState("");
+  const [editSkills, setEditSkills] = useState("");
+  const [editInterests, setEditInterests] = useState("");
+  const [editGithub, setEditGithub] = useState("");
+  const [editLinkedin, setEditLinkedin] = useState("");
+  const [editPortfolio, setEditPortfolio] = useState("");
+
+  const isOwn = session.userId === id || (!session.userId && id === "u-founder");
+  const canEdit = isOwn || isHqRole(session.roleKey);
 
   const chapterCohorts = useMemo(() => {
     if (!profile?.chapterId) return [];
@@ -56,7 +77,54 @@ export default function ProfilePage({
     setCohortId(match?.id ?? "");
   }, [profile, store]);
 
-  const isOwn = session.userId === id;
+  // Open edit modal with current profile data
+  function handleOpenEdit() {
+    if (!profile) return;
+    setEditName(profile.fullName || "");
+    setEditBio(profile.bio || "");
+    setEditPhone(profile.phone || "");
+    setEditDept(profile.department || "");
+    setEditYear(profile.year || "");
+    setEditSection(profile.section || "");
+    setEditSkills((profile.skills || []).join(", "));
+    setEditInterests((profile.interests || []).join(", "));
+    setEditGithub(profile.githubUrl || "");
+    setEditLinkedin(profile.linkedinUrl || "");
+    setEditPortfolio(profile.portfolioUrl || "");
+    setEditOpen(true);
+  }
+
+  function handleSaveProfile(e: React.FormEvent) {
+    e.preventDefault();
+    if (!profile) return;
+    const skillsArr = editSkills
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const interestsArr = editInterests
+      .split(",")
+      .map((i) => i.trim())
+      .filter(Boolean);
+
+    updateProfile(profile.id, {
+      fullName: editName.trim() || profile.fullName,
+      bio: editBio.trim() || undefined,
+      phone: editPhone.trim() || undefined,
+      department: editDept.trim() || undefined,
+      year: editYear.trim() || undefined,
+      section: editSection.trim() || undefined,
+      skills: skillsArr,
+      interests: interestsArr,
+      githubUrl: editGithub.trim() || undefined,
+      linkedinUrl: editLinkedin.trim() || undefined,
+      portfolioUrl: editPortfolio.trim() || undefined,
+    });
+
+    setEditOpen(false);
+    setSavedFlash(true);
+    window.setTimeout(() => setSavedFlash(false), 2000);
+  }
+
   const selectedCohort = chapterCohorts.find((c) => c.id === cohortId);
 
   const assignedReps = useMemo(() => {
@@ -101,8 +169,8 @@ export default function ProfilePage({
   const derived = withDerivedProgression(store, profile);
 
   function saveClass() {
-    if (!selectedCohort) return;
-    updateProfile(id, {
+    if (!selectedCohort || !profile) return;
+    updateProfile(profile.id, {
       department: selectedCohort.department,
       year: selectedCohort.year,
       section: selectedCohort.section,
@@ -113,63 +181,88 @@ export default function ProfilePage({
 
   return (
     <div>
+      {/* Header Banner */}
       <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8">
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-start">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-[22px] bg-[var(--accent-soft)] text-2xl font-semibold text-[var(--accent)]">
-            {initials(profile.fullName)}
-          </div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium text-[var(--accent)]">
-              Profile
-            </p>
-            <h1 className="mt-1 font-[family-name:var(--font-display)] text-4xl font-extrabold tracking-[-0.04em]">
-              {profile.fullName}
-            </h1>
-            <p className="mt-2 text-sm text-text-dim">
-              {classLabel || "Class not set"}
-              {chapter ? (
-                <>
-                  {" · "}
-                  <Link
-                    href={`/chapter/${chapter.slug}`}
-                    className="text-magenta hover:text-cyan"
-                  >
-                    {chapter.name}
-                  </Link>
-                </>
-              ) : null}
-            </p>
-            {profile.bio ? (
-              <p className="mt-3 max-w-xl text-[13px] text-text-dim">
-                {profile.bio}
-              </p>
-            ) : null}
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge tone="cyan">
-                {EOS_COMMUNITY_TIERS.find(
-                  (t) => t.key === derived.engagementTier,
-                )?.label ?? "Everyone"}
-              </Badge>
-              <Badge tone="orange">
-                {EOS_JOURNEY_STAGES.find(
-                  (s) => s.key === derived.journeyStage,
-                )?.label ?? "Awareness"}
-              </Badge>
-              {roles.map((r) => (
-                <Badge key={r!.id} tone="magenta">
-                  {r!.name}
-                </Badge>
-              ))}
-              {profile.badges.map((b) => (
-                <Badge key={b} tone="green">
-                  {b}
-                </Badge>
-              ))}
+        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[20px] bg-[var(--accent-soft)] text-2xl font-bold text-[var(--accent)] shadow-[var(--shadow-sm)]">
+              {initials(profile.fullName)}
             </div>
+            <div className="flex-1">
+              <p className="text-[12px] font-semibold text-[var(--accent)]">
+                Profile
+              </p>
+              <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
+                {profile.fullName}
+              </h1>
+              <p className="mt-1.5 text-sm text-text-dim">
+                {classLabel || "Class not set"}
+                {chapter ? (
+                  <>
+                    {" · "}
+                    <Link
+                      href={`/chapter/${chapter.slug}`}
+                      className="font-medium text-[var(--accent)] hover:underline"
+                    >
+                      {chapter.name}
+                    </Link>
+                  </>
+                ) : null}
+              </p>
+              {profile.bio ? (
+                <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-text-dim">
+                  {profile.bio}
+                </p>
+              ) : null}
+
+              {/* Badges */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Badge tone="cyan">
+                  {EOS_COMMUNITY_TIERS.find(
+                    (t) => t.key === derived.engagementTier,
+                  )?.label ?? "Everyone"}
+                </Badge>
+                <Badge tone="orange">
+                  {EOS_JOURNEY_STAGES.find(
+                    (s) => s.key === derived.journeyStage,
+                  )?.label ?? "Awareness"}
+                </Badge>
+                {roles.map((r) => (
+                  <Badge key={r!.id} tone="magenta">
+                    {r!.name}
+                  </Badge>
+                ))}
+                {profile.badges.map((b) => (
+                  <Badge key={b} tone="green">
+                    {b}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex shrink-0 items-center gap-2">
+            {canEdit && (
+              <Button
+                variant="orange"
+                onClick={handleOpenEdit}
+                className="flex items-center gap-2"
+              >
+                <Edit3 size={14} />
+                Edit profile
+              </Button>
+            )}
+            {savedFlash && (
+              <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[12px] font-medium text-[var(--accent)]">
+                Saved!
+              </span>
+            )}
           </div>
         </div>
       </div>
 
+      {/* Stats row */}
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Points" value={profile.points} accent="cyan" />
         <Stat label="Executive Score" value={score} accent="magenta" />
@@ -182,6 +275,7 @@ export default function ProfilePage({
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        {/* Class Selection */}
         {isOwn && profile.chapterId ? (
           <TerminalPanel
             title="class.order"
@@ -203,7 +297,7 @@ export default function ProfilePage({
                     {" "}
                     <Link
                       href={`/chapter/${chapter.slug}/classes`}
-                      className="underline"
+                      className="underline font-medium"
                     >
                       Open Classes
                     </Link>
@@ -234,11 +328,6 @@ export default function ProfilePage({
                   >
                     Save class
                   </Button>
-                  {savedFlash ? (
-                    <span className="text-[12px] text-[var(--accent)]">
-                      Saved
-                    </span>
-                  ) : null}
                   {canSeeClassesLink && chapter ? (
                     <Link href={`/chapter/${chapter.slug}/classes`}>
                       <Button variant="ghost">Manage classes</Button>
@@ -274,6 +363,7 @@ export default function ProfilePage({
           </TerminalPanel>
         ) : null}
 
+        {/* EOS Journey */}
         <TerminalPanel title="eos.journey" accent="cyan" className="xl:col-span-2">
           <p className="mb-3 text-[13px] text-text-dim">
             Progression is earned from activity — attendance, clusters, and
@@ -295,63 +385,94 @@ export default function ProfilePage({
           </p>
         </TerminalPanel>
 
+        {/* Skills & Interests */}
         <TerminalPanel title="skills.interests">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <p className="text-[10px] uppercase text-cyan">Skills</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {profile.skills.map((s) => (
-                  <span
-                    key={s}
-                    className="border border-cyan/30 px-2 py-0.5 text-[10px] text-cyan"
-                  >
-                    {s}
-                  </span>
-                ))}
-              </div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-text">Skills</p>
+              {profile.skills.length === 0 ? (
+                <p className="mt-2 text-[12px] text-text-mute">No skills added yet.</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profile.skills.map((s) => (
+                    <span
+                      key={s}
+                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text"
+                    >
+                      {s}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
-              <p className="text-[10px] uppercase text-magenta">Interests</p>
-              <div className="mt-2 flex flex-wrap gap-1">
-                {profile.interests.map((i) => (
-                  <span
-                    key={i}
-                    className="border border-magenta/30 px-2 py-0.5 text-[10px] text-magenta"
-                  >
-                    {i}
-                  </span>
-                ))}
-              </div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-text">Interests</p>
+              {profile.interests.length === 0 ? (
+                <p className="mt-2 text-[12px] text-text-mute">No interests added yet.</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {profile.interests.map((i) => (
+                    <span
+                      key={i}
+                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text"
+                    >
+                      {i}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap gap-3 text-[11px]">
+          <div className="mt-5 flex flex-wrap gap-4 border-t border-border pt-4 text-[13px]">
+            {profile.email ? (
+              <span className="flex items-center gap-1.5 text-text-dim">
+                <Mail size={14} className="opacity-60" />
+                {profile.email}
+              </span>
+            ) : null}
+            {profile.phone ? (
+              <span className="flex items-center gap-1.5 text-text-dim">
+                <Phone size={14} className="opacity-60" />
+                {profile.phone}
+              </span>
+            ) : null}
             {profile.githubUrl ? (
               <a
                 href={profile.githubUrl}
-                className="text-cyan hover:text-green"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 font-medium text-text hover:text-[var(--accent)]"
               >
-                github →
+                <Link2 size={14} />
+                GitHub
               </a>
             ) : null}
             {profile.linkedinUrl ? (
               <a
                 href={profile.linkedinUrl}
-                className="text-magenta hover:text-green"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 font-medium text-[#0a66c2] hover:underline"
               >
-                linkedin →
+                <Link2 size={14} />
+                LinkedIn
               </a>
             ) : null}
             {profile.portfolioUrl ? (
               <a
                 href={profile.portfolioUrl}
-                className="text-green hover:text-cyan"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 font-medium text-[var(--accent)] hover:underline"
               >
-                portfolio →
+                <Globe size={14} />
+                Portfolio
               </a>
             ) : null}
           </div>
         </TerminalPanel>
 
+        {/* Engagement Score */}
         <TerminalPanel title="engagement.score" accent="magenta">
           <ProgressBar
             value={Math.min(100, profile.points / 20)}
@@ -364,6 +485,7 @@ export default function ProfilePage({
           </p>
         </TerminalPanel>
 
+        {/* Certificates */}
         <TerminalPanel title="certificates" accent="green">
           {certs.length === 0 ? (
             <p className="text-[12px] text-text-dim">
@@ -395,6 +517,7 @@ export default function ProfilePage({
           )}
         </TerminalPanel>
 
+        {/* Projects */}
         <TerminalPanel title="projects" accent="orange">
           {projects.length === 0 ? (
             <p className="text-[12px] text-text-dim">// No active projects</p>
@@ -413,6 +536,129 @@ export default function ProfilePage({
           )}
         </TerminalPanel>
       </div>
+
+      {/* Edit Profile Modal Dialog */}
+      <Dialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit Profile"
+        description="Update your personal details, bio, skills, and links."
+      >
+        <form onSubmit={handleSaveProfile} className="space-y-4 pt-2">
+          <div>
+            <FieldLabel>Full Name</FieldLabel>
+            <Input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Your full name"
+              required
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Bio / Tagline</FieldLabel>
+            <TextArea
+              rows={2}
+              value={editBio}
+              onChange={(e) => setEditBio(e.target.value)}
+              placeholder="Short bio, focus areas, or interests"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Phone (optional)</FieldLabel>
+              <Input
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+              />
+            </div>
+            <div>
+              <FieldLabel>Department</FieldLabel>
+              <Input
+                value={editDept}
+                onChange={(e) => setEditDept(e.target.value)}
+                placeholder="e.g. CSE, Cyber Security"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Year</FieldLabel>
+              <Input
+                value={editYear}
+                onChange={(e) => setEditYear(e.target.value)}
+                placeholder="e.g. 3rd Year, S5"
+              />
+            </div>
+            <div>
+              <FieldLabel>Section</FieldLabel>
+              <Input
+                value={editSection}
+                onChange={(e) => setEditSection(e.target.value)}
+                placeholder="e.g. A, B"
+              />
+            </div>
+          </div>
+
+          <div>
+            <FieldLabel>Skills (comma separated)</FieldLabel>
+            <Input
+              value={editSkills}
+              onChange={(e) => setEditSkills(e.target.value)}
+              placeholder="React, TypeScript, Python, UI/UX"
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Interests (comma separated)</FieldLabel>
+            <Input
+              value={editInterests}
+              onChange={(e) => setEditInterests(e.target.value)}
+              placeholder="Web Dev, AI/ML, Cloud, Open Source"
+            />
+          </div>
+
+          <div className="space-y-3 border-t border-border pt-3">
+            <p className="text-[12px] font-semibold text-text-dim">Social & Portfolio Links</p>
+            <div>
+              <FieldLabel>GitHub URL</FieldLabel>
+              <Input
+                value={editGithub}
+                onChange={(e) => setEditGithub(e.target.value)}
+                placeholder="https://github.com/username"
+              />
+            </div>
+            <div>
+              <FieldLabel>LinkedIn URL</FieldLabel>
+              <Input
+                value={editLinkedin}
+                onChange={(e) => setEditLinkedin(e.target.value)}
+                placeholder="https://linkedin.com/in/username"
+              />
+            </div>
+            <div>
+              <FieldLabel>Portfolio / Website URL</FieldLabel>
+              <Input
+                value={editPortfolio}
+                onChange={(e) => setEditPortfolio(e.target.value)}
+                placeholder="https://yourportfolio.com"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="orange">
+              Save Changes
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

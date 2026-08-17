@@ -66,6 +66,7 @@ const I = {
   announcements: <Megaphone {...iconProps} />,
   settings: <Settings {...iconProps} />,
   desk: <LayoutDashboard {...iconProps} />,
+  myQr: <QrCode {...iconProps} />,
 } as const;
 
 export type NavItem = {
@@ -94,6 +95,7 @@ export function navGroupsForRole(
       { href: "/hq/leadership", label: "Leadership", icon: I.leadership },
       { href: "/hq/permissions", label: "Roles", icon: I.roles },
       { href: "/hq/reports", label: "Reports", icon: I.reports },
+      { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
     ];
 
     return [
@@ -106,6 +108,17 @@ export function navGroupsForRole(
         ],
       },
       { label: "Network", items: network },
+      {
+        label: "Website CMS",
+        items: [
+          { href: "/hq/website/pages", label: "Pages & Hero", icon: I.home },
+          { href: "/hq/website/events", label: "Events Manager", icon: I.events },
+          { href: "/hq/website/projects", label: "Projects Showcase", icon: I.projects },
+          { href: "/hq/website/team", label: "Founders & Team", icon: I.students },
+          { href: "/hq/website/for-colleges", label: "For Colleges", icon: I.chapters },
+          { href: "/hq/website/peer-labs", label: "Peer Labs", icon: I.playbook },
+        ],
+      },
       {
         label: "Library",
         items: [
@@ -182,7 +195,7 @@ export function navGroupsForRole(
         label: "People & ops",
         items: [
           { href: `${base}/community`, label: "Community", icon: I.community },
-          { href: `${base}/students`, label: "Students", icon: I.students },
+          { href: `${base}/students`, label: "Student Database", icon: I.students },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
@@ -198,6 +211,7 @@ export function navGroupsForRole(
       {
         label: "More",
         items: [
+          { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Alerts", icon: I.alerts },
           { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/eos", label: "Playbook", icon: I.playbook },
@@ -228,8 +242,11 @@ export function navGroupsForRole(
       ],
     },
     {
-      label: "More",
-      items: [{ href: "/eos", label: "Playbook", icon: I.playbook }],
+      label: "My Account",
+      items: [
+        { href: "/my-qr", label: "My QR Code", icon: I.myQr },
+        { href: "/eos", label: "Playbook", icon: I.playbook },
+      ],
     },
   ];
 }

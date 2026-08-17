@@ -19,21 +19,54 @@ import {
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 import type {
-  LeadershipAppStatus,
   LeadershipAssignment,
   LeadershipStatus,
   LeadershipTerm,
   RoleKey,
 } from "@/types";
 
-const APP_STATUSES: LeadershipAppStatus[] = [
-  "applied",
-  "screening",
-  "interview",
-  "selected",
-  "training",
-  "rejected",
-  "withdrawn",
+// Executive sub-team groupings for the role inspector
+const EXEC_SUB_TEAMS = [
+  {
+    id: "officers",
+    label: "Core Officers",
+    emoji: "👑",
+    tone: "cyan" as const,
+    roles: ["chairman", "vice_chairman", "secretary", "joint_secretary"],
+    note: "Chairman (1) · Vice Chairmen (2+) · Secretary (1) · Joint Secretary",
+  },
+  {
+    id: "media",
+    label: "Media Team",
+    emoji: "📸",
+    tone: "orange" as const,
+    roles: ["media_lead", "media_team"],
+    note: "2 Heads + 8 Members — Design, Photography, Social, Coverage",
+  },
+  {
+    id: "technical",
+    label: "Technical Team",
+    emoji: "💻",
+    tone: "green" as const,
+    roles: ["technical_lead", "technical_team"],
+    note: "2 Heads + Members — Platform, Dev, Infra, Workshops",
+  },
+  {
+    id: "innovation",
+    label: "Innovation Team",
+    emoji: "🚀",
+    tone: "cyan" as const,
+    roles: ["innovation_lead", "innovation_team"],
+    note: "2 Heads + Members — AI Labs, Hackathons, Idea Sprints",
+  },
+  {
+    id: "community",
+    label: "Community & Coordinators",
+    emoji: "🌐",
+    tone: "magenta" as const,
+    roles: ["elevates_coordinator", "class_representative", "faculty_coordinator"],
+    note: "Coordinators & Class Representatives",
+  },
 ];
 
 type TermDraft = {
@@ -529,55 +562,106 @@ export default function ChapterLeadershipPage({
                 </div>
               ) : null}
 
-              <ul className="mt-4 divide-y divide-border">
+              {/* Grouped Executive Teams */}
+              <div className="mt-4 space-y-4">
                 {!assignments.length ? (
-                  <li className="py-3 text-[13px] text-text-dim">
+                  <p className="py-3 text-[13px] text-text-dim">
                     {canEditTeam
-                      ? "Add executives to this cycle."
+                      ? "Add executive officers and sub-team members to this cycle."
                       : "No assignments recorded."}
-                  </li>
+                  </p>
                 ) : (
-                  assignments.map((a) => {
-                    const user = store.profiles.find((p) => p.id === a.userId);
+                  [
+                    {
+                      label: "Executive Officers (Chairman, Vice Chairmen, Secretary)",
+                      badgeTone: "cyan" as const,
+                      roles: ["chairman", "vice_chairman", "secretary", "joint_secretary"],
+                    },
+                    {
+                      label: "Media Team (Heads & Members)",
+                      badgeTone: "orange" as const,
+                      roles: ["media_lead", "media_team"],
+                    },
+                    {
+                      label: "Technical Team (Heads & Members)",
+                      badgeTone: "green" as const,
+                      roles: ["technical_lead", "technical_team"],
+                    },
+                    {
+                      label: "Innovation Team (Heads & Members)",
+                      badgeTone: "cyan" as const,
+                      roles: ["innovation_lead", "innovation_team"],
+                    },
+                    {
+                      label: "Community & Class Representatives",
+                      badgeTone: "orange" as const,
+                      roles: ["elevates_coordinator", "class_representative", "faculty_coordinator"],
+                    },
+                  ].map((grp) => {
+                    const grpAssignments = assignments.filter((a) =>
+                      grp.roles.includes(a.roleKey),
+                    );
+                    if (grpAssignments.length === 0) return null;
+
                     return (
-                      <li
-                        key={a.id}
-                        className="flex flex-wrap items-center justify-between gap-2 py-3"
+                      <div
+                        key={grp.label}
+                        className="rounded-[12px] border border-border/80 bg-bg p-3 shadow-[var(--shadow-sm)]"
                       >
-                        <div>
-                          <span className="text-magenta">{a.title}</span>
-                          {" · "}
-                          <Link
-                            href={`/profile/${a.userId}`}
-                            className="text-cyan hover:text-green"
-                          >
-                            {user?.fullName ?? "Unknown"}
-                          </Link>
-                          <span className="ml-2 text-[10px] uppercase text-text-mute">
-                            {roleKeyLabel(a.roleKey)}
+                        <div className="flex items-center justify-between border-b border-border/60 pb-2">
+                          <span className="text-[12px] font-semibold text-text">
+                            {grp.label}
                           </span>
+                          <Badge tone={grp.badgeTone}>
+                            {grpAssignments.length} Assigned
+                          </Badge>
                         </div>
-                        {canEditTeam ? (
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="ghost"
-                              onClick={() => startEditAssign(a)}
-                            >
-                              Edit
-                            </Button>
-                            <Button
-                              variant="orange"
-                              onClick={() => removeAssign(a)}
-                            >
-                              Remove
-                            </Button>
-                          </div>
-                        ) : null}
-                      </li>
+                        <ul className="mt-2 divide-y divide-border/60">
+                          {grpAssignments.map((a) => {
+                            const user = store.profiles.find((p) => p.id === a.userId);
+                            return (
+                              <li
+                                key={a.id}
+                                className="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px]"
+                              >
+                                <div>
+                                  <span className="font-medium text-text">{a.title}</span>
+                                  {" · "}
+                                  <Link
+                                    href={`/profile/${a.userId}`}
+                                    className="text-[var(--accent)] hover:underline"
+                                  >
+                                    {user?.fullName ?? "Unknown"}
+                                  </Link>
+                                  <span className="ml-2 text-[11px] uppercase text-text-mute">
+                                    [{roleKeyLabel(a.roleKey)}]
+                                  </span>
+                                </div>
+                                {canEditTeam ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      onClick={() => startEditAssign(a)}
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      variant="orange"
+                                      onClick={() => removeAssign(a)}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </div>
+                                ) : null}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
                     );
                   })
                 )}
-              </ul>
+              </div>
             </TerminalPanel>
           );
         })}
@@ -661,156 +745,77 @@ export default function ChapterLeadershipPage({
         </div>
       </Dialog>
 
-      <LeadershipPipeline
-        chapterId={chapter.id}
-        terms={terms}
-        canManage={canManage}
-        applyForLeadership={applyForLeadership}
-        updateLeadershipApplicationStatus={updateLeadershipApplicationStatus}
-      />
-    </div>
-  );
-}
+      {/* Sub-Team Role Overview — Chairman direct assignment, no pipeline */}
+      <div className="mt-6">
+        <TerminalPanel title="Executive Sub-Roles" meta="Direct assignment by Chairman">
+          <p className="mb-4 text-[13px] text-text-dim">
+            The <strong className="text-[var(--accent)]">Chairman</strong> directly assigns members to each sub-role. No hiring pipeline — just pick a member, pick their role, done.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {EXEC_SUB_TEAMS.map((team) => {
+              const activeTermId = terms.find((t) => t.status === "active")?.id;
+              const teamAssignments = activeTermId
+                ? store.leadershipAssignments.filter(
+                    (a) => a.termId === activeTermId && team.roles.includes(a.roleKey),
+                  )
+                : [];
 
-function LeadershipPipeline({
-  chapterId,
-  terms,
-  canManage,
-  applyForLeadership,
-  updateLeadershipApplicationStatus,
-}: {
-  chapterId: string;
-  terms: LeadershipTerm[];
-  canManage: boolean;
-  applyForLeadership: (input: {
-    termId: string;
-    roleKey: RoleKey;
-    title: string;
-    statement?: string;
-  }) => boolean;
-  updateLeadershipApplicationStatus: (
-    id: string,
-    status: LeadershipAppStatus,
-  ) => boolean;
-}) {
-  const { store } = useStore();
-  const active =
-    terms.find((t) => t.status === "active") ??
-    terms.find((t) => t.status === "upcoming");
-  const [roleKey, setRoleKey] = useState<RoleKey>("elevates_coordinator");
-  const [title, setTitle] = useState("");
-  const [statement, setStatement] = useState("");
-  const [msg, setMsg] = useState("");
-
-  const apps = (store.leadershipApplications ?? []).filter(
-    (a) => a.chapterId === chapterId,
-  );
-
-  if (!active) return null;
-
-  return (
-    <div className="mt-6 space-y-6">
-      <TerminalPanel title="hiring.pipeline" meta="EOS leadership cycle">
-        <p className="mb-3 text-[13px] text-text-dim">
-          Applications → Screening → Interviews → Executive team → Training →
-          Execution → Handover. No automatic promotions — every batch earns
-          leadership.
-        </p>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div>
-            <FieldLabel>Role</FieldLabel>
-            <Select
-              value={roleKey}
-              onChange={(e) => setRoleKey(e.target.value as RoleKey)}
-            >
-              {ASSIGNABLE_LEADERSHIP_ROLES.map((rk) => (
-                <option key={rk} value={rk}>
-                  {roleKeyLabel(rk)}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <FieldLabel>Display title</FieldLabel>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Operations Lead"
-            />
-          </div>
-          <div className="md:col-span-3">
-            <FieldLabel>Statement</FieldLabel>
-            <TextArea
-              rows={2}
-              value={statement}
-              onChange={(e) => setStatement(e.target.value)}
-              placeholder="Why you — what you have built…"
-            />
-          </div>
-        </div>
-        <Button
-          variant="primary"
-          className="mt-3"
-          onClick={() => {
-            const ok = applyForLeadership({
-              termId: active.id,
-              roleKey,
-              title: title || roleKeyLabel(roleKey),
-              statement,
-            });
-            setMsg(ok ? "Application submitted" : "Could not apply (duplicate?)");
-          }}
-        >
-          Apply for {active.title}
-        </Button>
-        {msg ? (
-          <p className="mt-2 text-[12px] text-[var(--accent)]">{msg}</p>
-        ) : null}
-      </TerminalPanel>
-
-      <TerminalPanel title="applications" meta={`${apps.length}`}>
-        {!apps.length ? (
-          <p className="text-sm text-text-dim">No applications yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {apps.map((a) => {
-              const user = store.profiles.find((p) => p.id === a.userId);
               return (
-                <li
-                  key={a.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2 text-sm"
+                <div
+                  key={team.id}
+                  className="rounded-[14px] border border-border/80 bg-bg p-4 shadow-[var(--shadow-sm)]"
                 >
-                  <div>
-                    <span className="font-medium">{a.title}</span>
-                    {" · "}
-                    {user?.fullName}
-                    <p className="text-[11px] text-text-dim">{a.statement}</p>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-[13px] font-semibold text-text">
+                        {team.emoji} {team.label}
+                      </span>
+                      <p className="mt-0.5 text-[11px] text-text-mute">{team.note}</p>
+                    </div>
+                    <Badge tone={team.tone}>{teamAssignments.length}</Badge>
                   </div>
-                  {canManage ? (
-                    <Select
-                      value={a.status}
-                      onChange={(e) =>
-                        updateLeadershipApplicationStatus(
-                          a.id,
-                          e.target.value as LeadershipAppStatus,
-                        )
-                      }
-                    >
-                      {APP_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </Select>
+
+                  {teamAssignments.length > 0 ? (
+                    <ul className="mt-3 space-y-1.5">
+                      {teamAssignments.map((a) => {
+                        const u = store.profiles.find((p) => p.id === a.userId);
+                        return (
+                          <li key={a.id} className="flex items-center justify-between text-[12px]">
+                            <div>
+                              <span className="font-medium text-text">{u?.fullName ?? "Unknown"}</span>
+                              <span className="ml-1.5 text-[10px] uppercase text-text-mute">/ {a.title}</span>
+                            </div>
+                            <span className="text-[10px] text-text-dim">{roleKeyLabel(a.roleKey)}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
                   ) : (
-                    <Badge tone="cyan">{a.status}</Badge>
+                    <p className="mt-2 text-[12px] italic text-text-mute">No one assigned yet</p>
                   )}
-                </li>
+
+                  {canManage && activeTermId ? (
+                    <button
+                      className="mt-3 w-full rounded-[10px] border border-dashed border-border/80 py-1.5 text-[12px] text-text-dim hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+                      onClick={() => {
+                        setAssignTermId(activeTermId);
+                        setAssignDraft({
+                          userId: "",
+                          roleKey: team.roles[0] as RoleKey,
+                          title: "",
+                        });
+                        setAssignError("");
+                      }}
+                    >
+                      + Assign member to {team.label}
+                    </button>
+                  ) : null}
+                </div>
               );
             })}
-          </ul>
-        )}
-      </TerminalPanel>
+          </div>
+        </TerminalPanel>
+      </div>
     </div>
   );
 }

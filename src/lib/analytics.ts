@@ -22,15 +22,14 @@ export type MonthlyEngagement = {
   registrations: number;
 };
 
-/** Live chapter metrics from store collections (not denormalized counters). */
 export function chapterMetricsFromStore(store: ElevatesStore): ChapterMetricRow[] {
   return store.chapters.map((c) => ({
     id: c.id,
     name: c.name,
     slug: c.slug,
-    members: store.profiles.filter((p) => p.chapterId === c.id).length,
-    events: store.events.filter((e) => e.chapterId === c.id).length,
-    projects: store.projects.filter((p) => p.chapterId === c.id).length,
+    members: Math.max(c.memberCount, store.profiles.filter((p) => p.chapterId === c.id).length),
+    events: Math.max(c.eventCount, store.events.filter((e) => e.chapterId === c.id).length),
+    projects: Math.max(c.projectCount, store.projects.filter((p) => p.chapterId === c.id).length),
     health: c.healthScore,
   }));
 }

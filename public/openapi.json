@@ -1,0 +1,30 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Elevates OS Public API",
+    "version": "1.0.0",
+    "description": "Read/write contract for elevates.live. Writes require x-elevates-token."
+  },
+  "servers": [{ "url": "https://os.elevates.live/api/public/v1" }],
+  "paths": {
+    "/chapters": { "get": { "summary": "List published chapters" } },
+    "/chapters/{slug}": { "get": { "summary": "Chapter detail + roster" } },
+    "/events": { "get": { "summary": "List published public events" } },
+    "/events/{slug}": { "get": { "summary": "Event detail with seats left" } },
+    "/events/{slug}/register": {
+      "post": { "summary": "Guest RSVP → pending registration" }
+    },
+    "/projects": { "get": { "summary": "Showcased projects" } },
+    "/projects/{slug}": { "get": { "summary": "Project detail" } },
+    "/peer-labs": { "get": { "summary": "Peer labs" } },
+    "/peer-labs/{slug}": { "get": { "summary": "Peer lab detail" } },
+    "/team": { "get": { "summary": "Public team profiles" } },
+    "/stats": { "get": { "summary": "Live counters" } },
+    "/verify/certificate/{id}": {
+      "get": { "summary": "Verify certificate via RPC" }
+    },
+    "/forms/{formId}/submit": { "post": { "summary": "Public form submit" } },
+    "/leads/college": { "post": { "summary": "College partnership lead" } },
+    "/join": { "post": { "summary": "Member join lead" } }
+  }
+}

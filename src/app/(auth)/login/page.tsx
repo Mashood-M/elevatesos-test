@@ -17,40 +17,28 @@ const personas: {
   roleKey: RoleKey;
   chapterId?: string;
 }[] = [
-  { label: "Founder (HQ)", userId: "u-founder", roleKey: "founder" },
+  { label: "HQ", userId: "u-founder", roleKey: "founder" },
   { label: "HQ Admin", userId: "u-hq-admin", roleKey: "hq_admin" },
   {
-    label: "Faculty liaison · EKC",
-    userId: "u-faculty",
-    roleKey: "faculty_coordinator",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Campus Lead · EKC",
+    label: "Campus Executive Team · EKC",
     userId: "u-chairman",
     roleKey: "chairman",
     chapterId: "ch-ekc",
   },
   {
-    label: "Secretary · EKC",
-    userId: "u-secretary",
-    roleKey: "secretary",
+    label: "Faculty Coordinator · EKC",
+    userId: "u-faculty",
+    roleKey: "faculty_coordinator",
     chapterId: "ch-ekc",
   },
   {
-    label: "Class Rep · CSE Girl",
+    label: "Class Rep · EKC",
     userId: "u-cr",
     roleKey: "class_representative",
     chapterId: "ch-ekc",
   },
   {
-    label: "Class Rep · CSE Boy",
-    userId: "u-cr-cse-boy",
-    roleKey: "class_representative",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Student · Ananya",
+    label: "Student · EKC",
     userId: "u-student-1",
     roleKey: "student",
     chapterId: "ch-ekc",

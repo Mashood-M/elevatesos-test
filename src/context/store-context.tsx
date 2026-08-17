@@ -17,6 +17,11 @@ import {
   loadStoreFromSupabase,
 } from "@/lib/data/supabase-bootstrap";
 import {
+  persistEvent,
+  persistForm,
+  persistFormResponse,
+} from "@/lib/data/mutations";
+import {
   answerableQuestions,
   cohortRepIds,
   defaultFormsForEvent,
@@ -44,8 +49,10 @@ import {
 } from "@/lib/comms/outbound";
 import type {
   Announcement,
+  AttendanceSession,
   AttendanceStatus,
   BrandKit,
+
   Chapter,
   ClassCohort,
   Cluster,
@@ -102,12 +109,18 @@ type StoreContextValue = {
     method: "qr" | "manual" | "bulk" | "representative",
     actorId: string,
     expectedEventId?: string,
+    session?: AttendanceSession,
+    sessionName?: string,
   ) => CheckInResult;
   updateAttendance: (
     registrationId: string,
     status: AttendanceStatus,
     actorId: string,
+    session?: AttendanceSession,
+    sessionName?: string,
   ) => CheckInResult;
+
+
   updateTaskStatus: (id: string, status: TaskStatus) => void;
   approveEvent: (eventId: string) => void;
   approveReport: (reportId: string, comment: string, actorId: string) => void;
@@ -166,6 +179,8 @@ type StoreContextValue = {
     patch: Partial<
       Pick<
         Profile,
+        | "fullName"
+        | "phone"
         | "department"
         | "year"
         | "section"
@@ -667,9 +682,31 @@ function maybeIssueCert(
   ) {
     return s.certificates;
   }
+
+  // If event has multiple configured attendance sessions (e.g. hackathons with 3-4 checkpoints), verify all required sessions
+  if (event.attendanceSessions && event.attendanceSessions.length > 1) {
+    const userRecords = s.attendance.filter(
+      (a) =>
+        a.eventId === eventId &&
+        a.userId === userId &&
+        (a.status === "present" ||
+          a.status === "late" ||
+          a.status === "volunteer" ||
+          a.status === "speaker"),
+    );
+    const requiredSessions = event.attendanceSessions.filter((sess) => sess.isRequired !== false);
+    const attendedAll = requiredSessions.every((reqSess) =>
+      userRecords.some((a) => (a.sessionId === reqSess.id || a.session === reqSess.id || a.sessionName === reqSess.name)),
+    );
+    if (!attendedAll) {
+      return s.certificates;
+    }
+  }
+
   const certificateId = `ELV-${event.chapterId.toUpperCase()}-${Date.now()
     .toString()
     .slice(-5)}`;
+
   return [
     {
       id: `cert-${Date.now()}`,
@@ -684,6 +721,7 @@ function maybeIssueCert(
   ];
 }
 
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<ElevatesStore>(() =>
     normalizeStore(createSeedStore()),
@@ -695,7 +733,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async function hydrate() {
       if (isDemoMode()) {
         const saved = loadDemoStore();
-        if (!cancelled && saved) setStore(normalizeStore(saved));
+        const seed = createSeedStore();
+        if (!cancelled && saved) {
+          const merged: ElevatesStore = {
+            ...seed,
+            ...saved,
+            chapters: (saved.chapters?.length ?? 0) >= seed.chapters.length ? saved.chapters : seed.chapters,
+            events: (saved.events?.length ?? 0) >= seed.events.length ? saved.events : seed.events,
+            profiles: (saved.profiles?.length ?? 0) >= seed.profiles.length ? saved.profiles : seed.profiles,
+            certificates: (saved.certificates?.length ?? 0) >= seed.certificates.length ? saved.certificates : seed.certificates,
+            projects: (saved.projects?.length ?? 0) >= seed.projects.length ? saved.projects : seed.projects,
+            reports: (saved.reports?.length ?? 0) >= seed.reports.length ? saved.reports : seed.reports,
+            organization: saved.organization || seed.organization,
+          };
+          setStore(normalizeStore(merged));
+        } else if (!cancelled) {
+          setStore(normalizeStore(seed));
+        }
       } else {
         const remote = await loadStoreFromSupabase();
         if (!cancelled) setStore(normalizeStore(remote));
@@ -854,7 +908,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         return result;
       },
-      checkIn: (registrationId, status, method, actorId, expectedEventId) => {
+      checkIn: (registrationId, status, method, actorId, expectedEventId, session = "single", sessionName) => {
         let result: CheckInResult = { ok: true };
         setStore((s) => {
           const reg = s.registrations.find((r) => r.id === registrationId);
@@ -877,21 +931,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return s;
           }
           const existing = s.attendance.find(
-            (a) => a.registrationId === registrationId,
+            (a) => a.registrationId === registrationId && (a.sessionId === session || a.session === session),
           );
+          if (existing && existing.status === "present") {
+            result = {
+              ok: false,
+              message: `Attendee already checked in for session "${sessionName || session}".`,
+            };
+            return s;
+          }
+          const sName = sessionName || (session === "single" ? "Event Check-In" : session);
           const record = {
-            id: existing?.id ?? `att-${Date.now()}`,
+            id: existing?.id ?? `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             eventId: reg.eventId,
             registrationId,
             userId: reg.userId,
             status,
             method,
+            sessionId: session,
+            session,
+            sessionName: sName,
             checkedInAt: new Date().toISOString(),
             checkedInBy: actorId,
           };
           const attendance = existing
             ? s.attendance.map((a) =>
-                a.registrationId === registrationId ? record : a,
+                a.id === existing.id ? record : a,
               )
             : [record, ...s.attendance];
           return {
@@ -906,18 +971,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         return result;
       },
-      updateAttendance: (registrationId, status, actorId) => {
+      updateAttendance: (registrationId, status, actorId, session = "single", sessionName) => {
         let result: CheckInResult = { ok: true };
         setStore((s) => {
           const existing = s.attendance.find(
-            (a) => a.registrationId === registrationId,
+            (a) => a.registrationId === registrationId && (a.sessionId === session || a.session === session),
           );
           if (!existing) {
-            result = { ok: false, message: "Not checked in yet." };
-            return s;
+            const reg = s.registrations.find((r) => r.id === registrationId);
+            if (!reg) {
+              result = { ok: false, message: "Registration not found." };
+              return s;
+            }
+            const sName = sessionName || (session === "single" ? "Event Check-In" : session);
+            const record = {
+              id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              eventId: reg.eventId,
+              registrationId,
+              userId: reg.userId,
+              status,
+              method: "manual" as const,
+              sessionId: session,
+              session,
+              sessionName: sName,
+              checkedInAt: new Date().toISOString(),
+              checkedInBy: actorId,
+            };
+            return {
+              ...s,
+              attendance: [record, ...s.attendance],
+              certificates: maybeIssueCert(s, reg.eventId, reg.userId, status),
+            };
           }
           const attendance = s.attendance.map((a) =>
-            a.registrationId === registrationId
+            a.id === existing.id
               ? { ...a, status, checkedInBy: actorId }
               : a,
           );
@@ -934,6 +1021,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         return result;
       },
+
+
       updateTaskStatus: (id, status) => {
         setStore((s) => ({
           ...s,
@@ -975,6 +1064,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ? ("registration_open" as const)
             : event.status;
         const normalized = { ...event, status };
+        void persistEvent(normalized);
         setStore((s) => ({
           ...s,
           events: [normalized, ...s.events],
@@ -1170,6 +1260,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: new Date().toISOString(),
         };
         setStore((s) => ({ ...s, forms: [form, ...(s.forms ?? [])] }));
+        void persistForm(form);
         return form;
       },
       updateForm: (id, patch) => {
@@ -1302,6 +1393,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             formResponses: [created, ...(s.formResponses ?? [])],
           };
         });
+        if (created) void persistFormResponse(created);
         return created;
       },
       deleteFormResponse: (id) => {
@@ -1434,12 +1526,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
       },
       updateProfile: (id, patch) => {
-        setStore((s) => ({
-          ...s,
-          profiles: s.profiles.map((p) =>
-            p.id === id ? { ...p, ...patch } : p,
-          ),
-        }));
+        setStore((s) => {
+          const exists = s.profiles.some((p) => p.id === id);
+          if (!exists) {
+            const newProf: Profile = {
+              id,
+              fullName: "User",
+              email: "user@elevates.live",
+              chapterId: s.session.chapterId,
+              skills: [],
+              interests: [],
+              points: 0,
+              badges: [],
+              ...patch,
+            } as Profile;
+            return {
+              ...s,
+              profiles: [...s.profiles, newProf],
+              activityLogs: [
+                log(s.session.userId, "profile_created", "profile", id),
+                ...s.activityLogs,
+              ],
+            };
+          }
+          return {
+            ...s,
+            profiles: s.profiles.map((p) =>
+              p.id === id ? { ...p, ...patch } : p,
+            ),
+            activityLogs: [
+              log(s.session.userId, "profile_updated", "profile", id),
+              ...s.activityLogs,
+            ],
+          };
+        });
       },
       joinChapterCommunity: (input) => {
         const fullName = input.fullName.trim();
@@ -3104,7 +3224,23 @@ export function useStore() {
 
 export function useCurrentUser() {
   const { store } = useStore();
-  const profile = store.profiles.find((p) => p.id === store.session.userId);
+  const userId = store.session.userId || "u-founder";
+  let profile = store.profiles.find((p) => p.id === userId);
+
+  if (!profile && userId) {
+    profile = {
+      id: userId,
+      fullName: "User",
+      email: "user@elevates.live",
+      chapterId: store.session.chapterId,
+      skills: [],
+      interests: [],
+      points: 0,
+      badges: [],
+    } as Profile;
+  }
+
   const role = store.roles.find((r) => r.key === store.session.roleKey);
   return { profile, role, session: store.session };
 }
+

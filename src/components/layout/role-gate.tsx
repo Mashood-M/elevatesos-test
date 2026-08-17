@@ -10,7 +10,8 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { store } = useStore();
   const { roleKey, chapterId } = store.session;
-  const chapterSlug = store.chapters.find((c) => c.id === chapterId)?.slug;
+  const chapterSlug =
+    store.chapters.find((c) => c.id === chapterId)?.slug ?? "ekc";
 
   useEffect(() => {
     if (!canAccessPath(pathname, roleKey, chapterSlug)) {

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DocumentEditor } from "@/components/domain/document-editor";
 import type { SaveState } from "@/components/domain/document-editor";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isFacultyRole } from "@/lib/access";
+import { isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { downloadReportDocx } from "@/lib/reports/docx-export";
 import { formatDateTime } from "@/lib/utils";
@@ -18,7 +18,7 @@ export default function ChapterReportDocumentPage({
   const { slug, reportId } = use(params);
   const { store, updateReportDocument, submitReportDraft } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = resolveChapter(store, slug);
   const report = store.reports.find((r) => r.id === reportId);
 
   const [title, setTitle] = useState(report?.title ?? "");

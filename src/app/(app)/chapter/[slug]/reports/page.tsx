@@ -10,7 +10,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import { chapterEyebrow, isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { compressImageFile, downloadReportDocx } from "@/lib/reports/docx-export";
 import {
@@ -43,7 +43,7 @@ export default function ChapterReportsPage({
     submitReportDraft,
   } = useStore();
   const { session, profile } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = resolveChapter(store, slug);
 
   const [flash, setFlash] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);

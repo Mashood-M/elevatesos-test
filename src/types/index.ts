@@ -10,8 +10,12 @@ export type RoleKey =
   | "secretary"
   | "joint_secretary"
   | "elevates_coordinator"
+  | "technical_lead"
   | "technical_team"
+  | "media_lead"
   | "media_team"
+  | "innovation_lead"
+  | "innovation_team"
   | "class_representative"
   | "student"
   | "alumni"
@@ -176,6 +180,9 @@ export interface Chapter {
   /** Faculty coordinator profile id */
   facultyId?: string;
   notes?: string;
+  published?: boolean;
+  logoUrl?: string;
+  district?: string;
 }
 
 export interface Profile {
@@ -190,6 +197,9 @@ export interface Profile {
   chapterId?: string;
   /** Soft disable for HQ user management; default active */
   status?: "active" | "disabled";
+  /** Shown on public elevates.live /team when true */
+  isPublic?: boolean;
+  phone?: string;
   /** EOS community engagement tier */
   engagementTier?: EngagementTier;
   /** EOS student journey stage */
@@ -203,8 +213,6 @@ export interface Profile {
   points: number;
   badges: string[];
   bio?: string;
-  /** Optional WhatsApp / SMS contact (demo outbound) */
-  phone?: string;
 }
 
 export type UserRoleAssignmentInput = {
@@ -281,6 +289,29 @@ export interface LeadershipAssignment {
   title: string;
 }
 
+export interface EventCaseStudy {
+  enabled: boolean;
+  platformName?: string;
+  tagline?: string;
+  caseStudySlug?: string;
+  liveUrl?: string;
+  repoUrl?: string;
+  highlightMetric?: string;
+  architectureSummary?: string;
+}
+
+export type EventHierarchyType = "main" | "sub" | "standalone";
+
+export interface EventPlatformRef {
+  enabled: boolean;
+  platformName?: string;
+  tagline?: string;
+  liveUrl?: string;
+  repoUrl?: string;
+  highlightMetric?: string;
+  architectureSummary?: string;
+}
+
 export interface EventItem {
   id: string;
   chapterId: string;
@@ -306,7 +337,27 @@ export interface EventItem {
   progressStage?: EventProgressStage;
   /** Next event in the progression chain */
   nextEventId?: string;
+  /** Public URL slug (unique per chapter) */
+  slug?: string;
+  publishedAt?: string;
+  summary?: string;
+  bannerUrl?: string;
+  mode?: "in_person" | "online" | "hybrid";
+  topics?: string[];
+  caseStudy?: EventCaseStudy;
+  /** Hierarchy: Main Event (e.g. Vibranium), Sub-Event (e.g. QR Hunt), or Standalone */
+  eventType?: EventHierarchyType;
+  /** If this is a sub-event, parent Main Event ID */
+  parentEventId?: string;
+  /** If this is a main event, IDs of sub-events */
+  subEventIds?: string[];
+  /** Custom web app / digital platform built for this specific event/sub-event */
+  platform?: EventPlatformRef;
+  /** Configurable attendance sessions (e.g. 1 session for workshop, 3-4 checkpoints for hackathon) */
+  attendanceSessions?: EventAttendanceSession[];
 }
+
+
 
 export type FormFieldType =
   | "text"
@@ -442,10 +493,13 @@ export interface FormResponse {
   submittedAt: string;
 }
 
+/** Maps to SQL table `event_registrations`. */
 export interface EventRegistration {
   id: string;
   eventId: string;
   userId: string;
+  guestEmail?: string;
+  guestName?: string;
   status: RegistrationStatus;
   /** Selected class representative (user id) at registration time */
   representativeId?: string;
@@ -456,6 +510,15 @@ export interface EventRegistration {
   approvedBy?: string;
 }
 
+export interface EventAttendanceSession {
+  id: string;
+  name: string;
+  time?: string;
+  isRequired?: boolean;
+}
+
+export type AttendanceSession = string;
+
 export interface AttendanceRecord {
   id: string;
   eventId: string;
@@ -463,9 +526,14 @@ export interface AttendanceRecord {
   userId: string;
   status: AttendanceStatus;
   method: "qr" | "manual" | "bulk" | "representative";
+  sessionId?: string;
+  sessionName?: string;
+  session?: string;
   checkedInAt: string;
   checkedInBy: string;
 }
+
+
 
 export interface Certificate {
   id: string;
@@ -518,6 +586,8 @@ export interface Project {
   progress: number;
   demoUrl?: string;
   awards: string[];
+  slug?: string;
+  isShowcased?: boolean;
 }
 
 export interface LeadershipApplication {
@@ -702,6 +772,7 @@ export interface ElevatesStore {
   eventForms: EventForm[];
   forms: FormDefinition[];
   formResponses: FormResponse[];
+  /** Client store key; persisted as `event_registrations` in Postgres. */
   registrations: EventRegistration[];
   attendance: AttendanceRecord[];
   certificates: Certificate[];

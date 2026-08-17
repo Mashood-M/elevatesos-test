@@ -18,7 +18,8 @@ import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput } from "@/lib/datetime";
 import { formatDateTime } from "@/lib/utils";
-import type { EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
+import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
+
 
 function Stat({
   label,
@@ -54,6 +55,19 @@ type EventDraft = {
   registrationStart: string;
   registrationEnd: string;
   certificateEnabled: boolean;
+  topics: string;
+  eventType: "standalone" | "main" | "sub";
+  parentEventId: string;
+  attendanceSessions: EventAttendanceSession[];
+  hasPlatform: boolean;
+  hasCaseStudy: boolean;
+  platformName: string;
+  caseStudySlug: string;
+  tagline: string;
+  liveUrl: string;
+  repoUrl: string;
+  highlightMetric: string;
+  architectureSummary: string;
 };
 
 function draftFromEvent(event: EventItem): EventDraft {
@@ -75,8 +89,25 @@ function draftFromEvent(event: EventItem): EventDraft {
     registrationStart: toLocalInput(event.registrationStart),
     registrationEnd: toLocalInput(event.registrationEnd),
     certificateEnabled: event.certificateEnabled,
+    topics: event.topics ? event.topics.join(", ") : "",
+    eventType: event.eventType ?? "standalone",
+    parentEventId: event.parentEventId ?? "",
+    attendanceSessions: event.attendanceSessions && event.attendanceSessions.length > 0
+      ? event.attendanceSessions
+      : [{ id: "sess-1", name: "Main Arrival Check-In", time: "09:30 AM", isRequired: true }],
+    hasPlatform: !!(event.platform?.enabled || event.caseStudy?.enabled),
+    hasCaseStudy: !!event.caseStudy?.enabled,
+    platformName: event.platform?.platformName ?? event.caseStudy?.platformName ?? "",
+    caseStudySlug: event.caseStudy?.caseStudySlug ?? "",
+    tagline: event.platform?.tagline ?? event.caseStudy?.tagline ?? "",
+    liveUrl: event.platform?.liveUrl ?? event.caseStudy?.liveUrl ?? "",
+    repoUrl: event.platform?.repoUrl ?? event.caseStudy?.repoUrl ?? "",
+    highlightMetric: event.platform?.highlightMetric ?? event.caseStudy?.highlightMetric ?? "",
+    architectureSummary: event.platform?.architectureSummary ?? event.caseStudy?.architectureSummary ?? "",
   };
 }
+
+
 
 const STATUS_OPTIONS: EventStatus[] = [
   "draft",
@@ -188,6 +219,23 @@ export default function EventDetailPage({
 
   function saveEdit() {
     if (!draft || !draft.title.trim() || !draft.venue.trim()) return;
+    const topics = draft.topics
+      ? draft.topics.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
+    const isPlatformActive = draft.hasPlatform || draft.hasCaseStudy;
+    const platformData = isPlatformActive
+      ? {
+          enabled: true,
+          platformName: draft.platformName || draft.title,
+          tagline: draft.tagline,
+          liveUrl: draft.liveUrl,
+          repoUrl: draft.repoUrl,
+          highlightMetric: draft.highlightMetric,
+          architectureSummary: draft.architectureSummary,
+        }
+      : undefined;
+
     updateEvent(event!.id, {
       title: draft.title.trim(),
       category: draft.category.trim() || event!.category,
@@ -205,6 +253,27 @@ export default function EventDetailPage({
       registrationStart: fromLocalInput(draft.registrationStart),
       registrationEnd: fromLocalInput(draft.registrationEnd),
       certificateEnabled: draft.certificateEnabled,
+      topics,
+      eventType: draft.eventType,
+      parentEventId: draft.eventType === "sub" ? draft.parentEventId || undefined : undefined,
+      attendanceSessions: draft.attendanceSessions,
+      platform: platformData,
+
+
+      caseStudy: isPlatformActive
+        ? {
+            enabled: true,
+            platformName: draft.platformName || draft.title,
+            tagline: draft.tagline,
+            caseStudySlug:
+              draft.caseStudySlug ||
+              draft.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            liveUrl: draft.liveUrl,
+            repoUrl: draft.repoUrl,
+            highlightMetric: draft.highlightMetric,
+            architectureSummary: draft.architectureSummary,
+          }
+        : undefined,
     });
     setEditing(false);
   }
@@ -277,9 +346,39 @@ export default function EventDetailPage({
     }
   }
 
+  const parentEvent = event.parentEventId
+    ? store.events.find((e) => e.id === event.parentEventId)
+    : null;
+  const subEvents = store.events.filter((e) => e.parentEventId === event.id);
+
   const detailsReadonly = (
     <>
+      {parentEvent ? (
+        <div className="mb-4 flex items-center justify-between gap-2 rounded-[12px] border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3.5 py-2.5 text-[12px]">
+          <div>
+            <span className="font-semibold text-[var(--accent)]">⚡ Sub-Event of Flagship:</span>{" "}
+            <span className="font-medium text-text">{parentEvent.title}</span>
+          </div>
+          <Link
+            href={`/chapter/${slug}/events/${parentEvent.id}`}
+            className="font-medium text-[var(--accent)] hover:underline"
+          >
+            View Main Event →
+          </Link>
+        </div>
+      ) : null}
+
       <dl className="space-y-2 text-sm">
+        <div className="flex justify-between gap-4">
+          <dt className="text-text-dim">Scope</dt>
+          <dd className="font-medium">
+            {event.eventType === "main"
+              ? "🏆 Main Flagship Event"
+              : event.eventType === "sub"
+              ? "⚡ Sub-Event"
+              : "🌟 Standalone Event"}
+          </dd>
+        </div>
         <div className="flex justify-between gap-4">
           <dt className="text-text-dim">Starts</dt>
           <dd>{formatDateTime(event.startsAt)}</dd>
@@ -317,6 +416,113 @@ export default function EventDetailPage({
           </>
         ) : null}
       </dl>
+
+      {event.topics && event.topics.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {event.topics.map((t) => (
+            <Badge key={t} tone="mute">
+              {t}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Custom Built Platform / Web App Showcase */}
+      {(event.platform?.enabled || event.caseStudy?.enabled) ? (
+        <div className="mt-4 rounded-[12px] border border-border/80 bg-bg-panel p-3.5 shadow-[var(--shadow-sm)]">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                🚀 Custom Built Platform / Live Web App
+              </span>
+              <p className="mt-0.5 text-sm font-semibold text-text">
+                {event.platform?.platformName || event.caseStudy?.platformName || event.title}
+              </p>
+              {(event.platform?.tagline || event.caseStudy?.tagline) ? (
+                <p className="text-[12px] text-text-dim">
+                  {event.platform?.tagline || event.caseStudy?.tagline}
+                </p>
+              ) : null}
+            </div>
+            {(event.platform?.highlightMetric || event.caseStudy?.highlightMetric) ? (
+              <Badge tone="orange">
+                {event.platform?.highlightMetric || event.caseStudy?.highlightMetric}
+              </Badge>
+            ) : null}
+          </div>
+          {(event.platform?.architectureSummary || event.caseStudy?.architectureSummary) ? (
+            <p className="mt-2 text-[12px] text-text-mute">
+              {event.platform?.architectureSummary || event.caseStudy?.architectureSummary}
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-3 text-[11px]">
+            {(event.platform?.liveUrl || event.caseStudy?.liveUrl) ? (
+              <a
+                href={event.platform?.liveUrl || event.caseStudy?.liveUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-[var(--accent)] hover:underline"
+              >
+                Launch Live App ↗
+              </a>
+            ) : null}
+            {(event.platform?.repoUrl || event.caseStudy?.repoUrl) ? (
+              <a
+                href={event.platform?.repoUrl || event.caseStudy?.repoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-text-dim hover:text-text hover:underline"
+              >
+                GitHub Source ↗
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Sub-Events List (if this is a main flagship event) */}
+      {subEvents.length > 0 ? (
+        <div className="mt-4 rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)]">
+          <div className="flex items-center justify-between mb-2.5">
+            <p className="text-[12px] font-semibold text-text">
+              ⚡ Sub-Events Track ({subEvents.length})
+            </p>
+            <Link
+              href={`/chapter/${slug}/events?create=1`}
+              className="text-[11px] text-[var(--accent)] hover:underline"
+            >
+              + Add Sub-Event
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {subEvents.map((sub) => (
+              <div
+                key={sub.id}
+                className="flex items-center justify-between rounded-[10px] border border-border/60 bg-bg-panel px-3 py-2 text-[12px]"
+              >
+                <div>
+                  <span className="font-medium text-text">{sub.title}</span>
+                  <span className="ml-1.5 text-[10px] text-text-dim">
+                    · {sub.category} · {sub.venue}
+                  </span>
+                  {sub.platform?.enabled && sub.platform.liveUrl ? (
+                    <span className="ml-1.5 text-[10px] text-[var(--accent)]">
+                      (Live App ↗)
+                    </span>
+                  ) : null}
+                </div>
+                <Link
+                  href={`/chapter/${slug}/events/${sub.id}`}
+                  className="text-[11px] font-medium text-[var(--accent)] hover:underline"
+                >
+                  Open →
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {event.description ? (
         <p className="mt-4 text-[13px] leading-relaxed text-text-dim">
           {event.description}
@@ -587,6 +793,80 @@ export default function EventDetailPage({
         >
           {editing && draft && canEdit ? (
             <div className="grid gap-3 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-[10px] border border-border/80 bg-bg p-3 shadow-[var(--shadow-sm)]">
+                <FieldLabel>Event Scope / Hierarchy</FieldLabel>
+                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    className={`rounded-[8px] border px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+                      draft.eventType === "standalone"
+                        ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                        : "border-border/80 bg-bg text-text-dim"
+                    }`}
+                    onClick={() =>
+                      setDraft((d) =>
+                        d ? { ...d, eventType: "standalone", parentEventId: "" } : d,
+                      )
+                    }
+                  >
+                    🌟 Standalone
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-[8px] border px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+                      draft.eventType === "main"
+                        ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                        : "border-border/80 bg-bg text-text-dim"
+                    }`}
+                    onClick={() =>
+                      setDraft((d) =>
+                        d ? { ...d, eventType: "main", parentEventId: "" } : d,
+                      )
+                    }
+                  >
+                    🏆 Main Flagship
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-[8px] border px-2.5 py-1.5 text-left text-[11px] transition-colors ${
+                      draft.eventType === "sub"
+                        ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                        : "border-border/80 bg-bg text-text-dim"
+                    }`}
+                    onClick={() =>
+                      setDraft((d) => (d ? { ...d, eventType: "sub" } : d))
+                    }
+                  >
+                    ⚡ Sub-Event
+                  </button>
+                </div>
+                {draft.eventType === "sub" ? (
+                  <div className="mt-2.5">
+                    <FieldLabel>Parent Main Event</FieldLabel>
+                    <Select
+                      value={draft.parentEventId}
+                      onChange={(e) =>
+                        setDraft((d) =>
+                          d ? { ...d, parentEventId: e.target.value } : d,
+                        )
+                      }
+                    >
+                      <option value="">Select parent flagship event…</option>
+                      {store.events
+                        .filter(
+                          (ev) =>
+                            ev.chapterId === chapter.id && ev.id !== event.id,
+                        )
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            🏆 {m.title}
+                          </option>
+                        ))}
+                    </Select>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="md:col-span-2">
                 <FieldLabel>Title</FieldLabel>
                 <Input
@@ -740,6 +1020,119 @@ export default function EventDetailPage({
                   }
                 />
               </div>
+              <div>
+                <FieldLabel>Topics / Tags (comma-separated)</FieldLabel>
+                <Input
+                  placeholder="e.g. AI, Full-Stack, Web3, Career"
+                  value={draft.topics}
+                  onChange={(e) =>
+                    setDraft((d) =>
+                      d ? { ...d, topics: e.target.value } : d,
+                    )
+                  }
+                />
+              </div>
+
+              {/* Custom Built Platform / Web App in Edit Mode */}
+              <div className="md:col-span-2 rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)]">
+                <label className="flex items-center gap-2 text-[13px] font-medium text-text cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={draft.hasPlatform || draft.hasCaseStudy}
+                    onChange={(e) =>
+                      setDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              hasPlatform: e.target.checked,
+                              hasCaseStudy: e.target.checked,
+                            }
+                          : d,
+                      )
+                    }
+                    className="h-4 w-4 rounded border-border accent-[var(--accent)]"
+                  />
+                  <span>💻 Built a custom platform / web app for this {draft.eventType === "sub" ? "sub-event" : "event"}</span>
+                </label>
+                <p className="mt-1 text-[11px] text-text-dim">
+                  Enable if your team built a custom web app (e.g. QR Hunt Scanner, Live Leaderboard, Battle Arena) for this event.
+                </p>
+
+                {(draft.hasPlatform || draft.hasCaseStudy) ? (
+                  <div className="mt-3 grid gap-3 border-t border-border/60 pt-3 md:grid-cols-2">
+                    <div>
+                      <FieldLabel>Platform / App Name</FieldLabel>
+                      <Input
+                        placeholder={
+                          draft.eventType === "sub"
+                            ? "e.g. Vibranium QR Treasure Hunt Engine"
+                            : "e.g. Vibranium Portal / Celestia Platform"
+                        }
+                        value={draft.platformName}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d ? { ...d, platformName: e.target.value } : d,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>Live Web App URL</FieldLabel>
+                      <Input
+                        placeholder="https://hunt.vibranium.live or https://..."
+                        value={draft.liveUrl}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d ? { ...d, liveUrl: e.target.value } : d,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>Highlight Metric / Feature</FieldLabel>
+                      <Input
+                        placeholder="e.g. 120+ Teams · Real-time GPS & QR Scanner"
+                        value={draft.highlightMetric}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d ? { ...d, highlightMetric: e.target.value } : d,
+                          )
+                        }
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>Source Code / GitHub Repo</FieldLabel>
+                      <Input
+                        placeholder="https://github.com/..."
+                        value={draft.repoUrl}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d ? { ...d, repoUrl: e.target.value } : d,
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <FieldLabel>Architecture / Tech Stack Highlights</FieldLabel>
+                      <Input
+                        placeholder="e.g. Next.js 15, WebSockets, Supabase Realtime, Geolocation API"
+                        value={draft.architectureSummary}
+                        onChange={(e) =>
+                          setDraft((d) =>
+                            d
+                              ? {
+                                  ...d,
+                                  architectureSummary: e.target.value,
+                                }
+                              : d,
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="md:col-span-2">
                 <label className="flex items-center gap-2 text-sm text-text-dim">
                   <input

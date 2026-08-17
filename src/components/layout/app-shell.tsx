@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Bell, Menu, Search, X } from "lucide-react";
+import { Bell, LogOut, Menu, Search, X } from "lucide-react";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
+import { useSupabaseAuth } from "@/lib/mode";
+import { createClient } from "@/lib/supabase/client";
 import { navGroupsForRole } from "@/lib/nav";
 import { isHqRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
@@ -20,30 +22,18 @@ const personas: {
   roleKey: RoleKey;
   chapterId?: string;
 }[] = [
-  { label: "Founder (HQ)", userId: "u-founder", roleKey: "founder" },
+  { label: "HQ", userId: "u-founder", roleKey: "founder" },
   { label: "HQ Admin", userId: "u-hq-admin", roleKey: "hq_admin" },
   {
-    label: "Faculty liaison · EKC",
-    userId: "u-faculty",
-    roleKey: "faculty_coordinator",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Campus Lead · EKC",
+    label: "Campus Executive Team · EKC",
     userId: "u-chairman",
     roleKey: "chairman",
     chapterId: "ch-ekc",
   },
   {
-    label: "Secretary · EKC",
-    userId: "u-secretary",
-    roleKey: "secretary",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Coordinator · EKC",
-    userId: "u-coord",
-    roleKey: "elevates_coordinator",
+    label: "Faculty Coordinator · EKC",
+    userId: "u-faculty",
+    roleKey: "faculty_coordinator",
     chapterId: "ch-ekc",
   },
   {
@@ -53,7 +43,7 @@ const personas: {
     chapterId: "ch-ekc",
   },
   {
-    label: "Student · Ananya",
+    label: "Student · EKC",
     userId: "u-student-1",
     roleKey: "student",
     chapterId: "ch-ekc",
@@ -99,6 +89,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? `${chapter.slug.toUpperCase()} chapter`
       : "Elevates OS";
 
+  async function handleLogout() {
+    if (useSupabaseAuth()) {
+      const supabase = createClient();
+      if (supabase) await supabase.auth.signOut();
+    }
+    setSession("", "student", undefined);
+    router.push("/login");
+  }
+
   return (
     <div
       className="min-h-dvh bg-bg lg:grid"
@@ -106,7 +105,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     >
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex flex-col border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:static lg:w-[var(--rail-width)] lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex flex-col overflow-y-auto border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:static lg:w-[var(--rail-width)] lg:translate-x-0 lg:overflow-y-visible",
           open
             ? "w-[var(--rail-width-mobile)] translate-x-0 shadow-[var(--shadow)]"
             : "w-[var(--rail-width-mobile)] -translate-x-full",
@@ -178,16 +177,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="space-y-3 border-t border-[var(--rail-border)] py-4"
           style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
         >
-          <div className="flex items-center gap-2.5 px-0.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--charcoal-900)] text-[10px] font-bold text-white">
-              {profile ? initials(profile.fullName) : "?"}
-            </span>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold">
-                {profile?.fullName}
-              </p>
-              <p className="truncate text-[11px] text-text-mute">{role?.name}</p>
-            </div>
+          <div className="flex items-center justify-between gap-2 px-0.5">
+            <Link
+              href={profile ? `/profile/${profile.id}` : "/login"}
+              className="flex min-w-0 flex-1 items-center gap-2.5 transition hover:opacity-80"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--charcoal-900)] text-[10px] font-bold text-white">
+                {profile ? initials(profile.fullName) : "?"}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-semibold">
+                  {profile?.fullName}
+                </p>
+                <p className="truncate text-[11px] text-text-mute">{role?.name}</p>
+              </div>
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              title="Log out"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-text-mute transition hover:bg-bg-hover hover:text-[var(--danger)]"
+              aria-label="Log out"
+            >
+              <LogOut size={15} />
+            </button>
           </div>
           <Select
             className="h-10 w-full rounded-full bg-bg text-[12px]"
@@ -271,7 +284,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex shrink-0 items-center gap-2">
               <Link
                 href={alertsHref}
-                className="relative flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim hover:text-text"
+                className="relative flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim hover:text-text shadow-[var(--shadow-sm)]"
                 aria-label="Notifications"
               >
                 <Bell size={17} strokeWidth={1.5} />
@@ -295,6 +308,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </span>
                 </span>
               </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Log out"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim shadow-[var(--shadow-sm)] transition hover:text-[var(--danger)]"
+                aria-label="Log out"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           </div>
         </header>

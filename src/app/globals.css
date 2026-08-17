@@ -80,6 +80,13 @@
   --z-modal: 80;
 }
 
+@media (max-width: 639px) {
+  :root {
+    --content-pad-x: 1rem;
+    --content-pad-y: 1.25rem;
+  }
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-bg-elevated: var(--bg-elevated);

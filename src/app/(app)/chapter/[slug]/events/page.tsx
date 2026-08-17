@@ -11,13 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
+import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { fromLocalInput, offsetIso, toLocalInput } from "@/lib/datetime";
 import { canRegisterNow } from "@/lib/events";
 import { getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
-import type { EventItem, EventStatus, Visibility } from "@/types";
+import type { EventAttendanceSession, EventItem, EventStatus, Visibility } from "@/types";
+
 
 type StatusChip = "all" | "registration_open" | "draft" | "completed";
 
@@ -39,14 +40,32 @@ function defaultCreateSchedule() {
 function emptyCreateForm() {
   return {
     title: "",
-    venue: "",
-    category: "WORKSHOP",
-    capacity: "40",
-    visibility: "chapter_only" as Visibility,
+    venue: "Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)",
+    category: "Workshop",
+    capacity: "60",
+    visibility: "public" as Visibility,
+    mode: "in_person" as "in_person" | "online" | "hybrid",
     description: "",
+    topics: "",
+    eventType: "standalone" as "standalone" | "main" | "sub",
+    parentEventId: "",
+    attendanceSessions: [
+      { id: "sess-1", name: "Main Arrival Check-In", time: "", isRequired: true },
+    ] as EventAttendanceSession[],
+    hasPlatform: false,
+    platformName: "",
+    platformTagline: "",
+    platformLiveUrl: "",
+    platformRepoUrl: "",
+    platformMetric: "",
+    hasCaseStudy: false,
+    caseStudySlug: "",
+    architectureSummary: "",
     ...defaultCreateSchedule(),
   };
 }
+
+
 
 export default function ChapterEventsPage({
   params,
@@ -58,7 +77,7 @@ export default function ChapterEventsPage({
   const searchParams = useSearchParams();
   const { store, createEvent, updateRegistrationStatus } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = resolveChapter(store, slug);
 
   const [showForm, setShowForm] = useState(false);
   const [statusChip, setStatusChip] = useState<StatusChip>("all");
@@ -81,6 +100,7 @@ export default function ChapterEventsPage({
   if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
 
   const events = store.events.filter((e) => e.chapterId === chapter.id);
+  const mainEvents = events.filter((e) => e.eventType === "main" || !e.parentEventId);
   const q = search.trim().toLowerCase();
   const filteredEvents = events
     .filter((e) =>
@@ -122,25 +142,62 @@ export default function ChapterEventsPage({
     const startsAt = fromLocalInput(form.startsAt);
     const endsAt = fromLocalInput(form.endsAt);
     const registrationEnd = fromLocalInput(form.registrationEnd);
+    const topics = form.topics
+      ? form.topics.split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
+    const isPlatformActive = form.hasPlatform || form.hasCaseStudy;
+    const platformData = isPlatformActive
+      ? {
+          enabled: true,
+          platformName: form.platformName || form.title,
+          tagline: form.platformTagline,
+          liveUrl: form.platformLiveUrl,
+          repoUrl: form.platformRepoUrl,
+          highlightMetric: form.platformMetric,
+          architectureSummary: form.architectureSummary,
+        }
+      : undefined;
+
     const event: EventItem = {
       id,
       chapterId: chapter.id,
       title: form.title,
-      bannerEmoji: "NEW",
-      description: form.description || "New chapter event",
+      bannerEmoji: form.eventType === "main" ? "🏆" : form.eventType === "sub" ? "⚡" : "EVENT",
+      description: form.description || "Chapter event and hands-on session.",
       venue: form.venue,
       startsAt,
       endsAt,
       organizerId: session.userId,
-      capacity: parseInt(form.capacity, 10) || 40,
-      waitlistCapacity: 10,
+      capacity: parseInt(form.capacity, 10) || 60,
+      waitlistCapacity: 15,
       visibility: form.visibility,
+      mode: form.mode,
       registrationStart: new Date().toISOString(),
       registrationEnd,
       status: "draft",
       certificateEnabled: true,
       ticketNo: `NO. ${String(events.length + 10).padStart(2, "0")}`,
       category: form.category,
+      topics,
+      eventType: form.eventType,
+      parentEventId: form.eventType === "sub" ? form.parentEventId || undefined : undefined,
+      attendanceSessions: form.attendanceSessions,
+      platform: platformData,
+
+
+      caseStudy: isPlatformActive
+        ? {
+            enabled: true,
+            platformName: form.platformName || form.title,
+            tagline: form.platformTagline,
+            caseStudySlug: form.caseStudySlug || form.title.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            liveUrl: form.platformLiveUrl,
+            repoUrl: form.platformRepoUrl,
+            highlightMetric: form.platformMetric,
+            architectureSummary: form.architectureSummary,
+          }
+        : undefined,
     };
     createEvent(event);
     closeCreate();
@@ -389,100 +446,431 @@ export default function ChapterEventsPage({
         open={showForm && canCreate}
         onClose={closeCreate}
         title="Create event"
-        description="Starts as a draft — publish from the event page to open registration."
+        description="Unified event creation across all chapters. Starts as a draft — publish to open registration."
         className="max-w-2xl"
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <FieldLabel>Title</FieldLabel>
-            <Input
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-            />
+        <div className="space-y-4">
+          {/* Event Scope: Main Flagship vs Sub-Event vs Standalone */}
+          <div className="rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)]">
+            <FieldLabel>Event Scope / Hierarchy</FieldLabel>
+            <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                className={`rounded-[10px] border px-3 py-2 text-left text-[12px] transition-colors ${
+                  form.eventType === "standalone"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                    : "border-border/80 bg-bg text-text-dim hover:text-text"
+                }`}
+                onClick={() => setForm((f) => ({ ...f, eventType: "standalone", parentEventId: "" }))}
+              >
+                <span className="block font-medium">🌟 Standalone Event</span>
+                <span className="text-[10px] text-text-mute">Single workshop / session</span>
+              </button>
+              <button
+                type="button"
+                className={`rounded-[10px] border px-3 py-2 text-left text-[12px] transition-colors ${
+                  form.eventType === "main"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                    : "border-border/80 bg-bg text-text-dim hover:text-text"
+                }`}
+                onClick={() => setForm((f) => ({ ...f, eventType: "main", parentEventId: "" }))}
+              >
+                <span className="block font-medium">🏆 Main Flagship Event</span>
+                <span className="text-[10px] text-text-mute">e.g. Vibranium '26</span>
+              </button>
+              <button
+                type="button"
+                className={`rounded-[10px] border px-3 py-2 text-left text-[12px] transition-colors ${
+                  form.eventType === "sub"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/10 font-semibold text-text"
+                    : "border-border/80 bg-bg text-text-dim hover:text-text"
+                }`}
+                onClick={() => setForm((f) => ({ ...f, eventType: "sub" }))}
+              >
+                <span className="block font-medium">⚡ Sub-Event</span>
+                <span className="text-[10px] text-text-mute">e.g. QR Treasure Hunt</span>
+              </button>
+            </div>
+
+            {form.eventType === "sub" ? (
+              <div className="mt-3 border-t border-border/60 pt-3">
+                <FieldLabel>Parent Main Event</FieldLabel>
+                <Select
+                  value={form.parentEventId}
+                  onChange={(e) => setForm((f) => ({ ...f, parentEventId: e.target.value }))}
+                >
+                  <option value="">Select parent flagship event…</option>
+                  {mainEvents.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      🏆 {m.title}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
           </div>
-          <div>
-            <FieldLabel>Venue</FieldLabel>
-            <Input
-              value={form.venue}
-              onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))}
-            />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <FieldLabel>Event Title</FieldLabel>
+              <Input
+                placeholder={
+                  form.eventType === "main"
+                    ? "e.g. VIBRANIUM '26 — ANNUAL TECH SYMPOSIUM"
+                    : form.eventType === "sub"
+                    ? "e.g. QR TREASURE HUNT / BLIND CODING BATTLE"
+                    : "e.g. LET'S DECODE LINKEDIN"
+                }
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Category</FieldLabel>
+              <Select
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              >
+                <option value="Workshop">Workshop</option>
+                <option value="Hackathon">Hackathon</option>
+                <option value="Meetup">Meetup</option>
+                <option value="Challenge">Challenge / Hunt</option>
+                <option value="Showcase">Showcase</option>
+                <option value="Lecture">Lecture</option>
+                <option value="Lab">Lab</option>
+              </Select>
+            </div>
+            <div>
+              <FieldLabel>Event Mode</FieldLabel>
+              <Select
+                value={form.mode}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    mode: e.target.value as "in_person" | "online" | "hybrid",
+                  }))
+                }
+              >
+                <option value="in_person">In-Person (Campus)</option>
+                <option value="online">Online / Virtual</option>
+                <option value="hybrid">Hybrid</option>
+              </Select>
+            </div>
+            <div className="md:col-span-2">
+              <FieldLabel>Venue / Location</FieldLabel>
+              <Input
+                placeholder="e.g. Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)"
+                value={form.venue}
+                onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Capacity (Seats)</FieldLabel>
+              <Input
+                type="number"
+                value={form.capacity}
+                onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Visibility</FieldLabel>
+              <Select
+                value={form.visibility}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    visibility: e.target.value as Visibility,
+                  }))
+                }
+              >
+                <option value="public">Public (Main Site & Chapter)</option>
+                <option value="chapter_only">Chapter Members Only</option>
+                <option value="all_chapters">All Elevates Chapters</option>
+                <option value="specific_chapters">Selected Chapters</option>
+              </Select>
+            </div>
+            <div>
+              <FieldLabel>Starts At</FieldLabel>
+              <Input
+                type="datetime-local"
+                value={form.startsAt}
+                onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Ends At</FieldLabel>
+              <Input
+                type="datetime-local"
+                value={form.endsAt}
+                onChange={(e) => setForm((f) => ({ ...f, endsAt: e.target.value }))}
+              />
+            </div>
+            <div>
+              <FieldLabel>Registration Closes</FieldLabel>
+              <Input
+                type="datetime-local"
+                value={form.registrationEnd}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, registrationEnd: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <FieldLabel>Topics / Tags (comma-separated)</FieldLabel>
+              <Input
+                placeholder="e.g. AI, Full-Stack, QR Hunt, CTF"
+                value={form.topics}
+                onChange={(e) => setForm((f) => ({ ...f, topics: e.target.value }))}
+              />
+            </div>
+            {/* Attendance Checkpoints / Terms Builder */}
+            <div className="md:col-span-2 rounded-[var(--radius)] border border-border/80 bg-bg-panel p-3 shadow-[var(--shadow-sm)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div>
+                  <p className="text-[12px] font-semibold text-text">Attendance Terms & Checkpoints</p>
+                  <p className="text-[11px] text-text-dim">
+                    Configure how many check-ins are required (e.g. 1 for workshop, 3-4 checkpoints for hackathons).
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        attendanceSessions: [
+                          { id: "sess-1", name: "Main Arrival Check-In", time: "09:30 AM", isRequired: true },
+                        ],
+                      }))
+                    }
+                  >
+                    1 Session (Workshop)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        attendanceSessions: [
+                          { id: "sess-1", name: "Morning Session", time: "09:30 AM", isRequired: true },
+                          { id: "sess-2", name: "Afternoon Session", time: "02:00 PM", isRequired: true },
+                        ],
+                      }))
+                    }
+                  >
+                    2 Sessions (Full-Day)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        attendanceSessions: [
+                          { id: "sess-1", name: "Ingress & Team Reg", time: "09:00 AM", isRequired: true },
+                          { id: "sess-2", name: "Midnight Code Check", time: "11:30 PM", isRequired: true },
+                          { id: "sess-3", name: "Final Pitch & Demo", time: "04:00 PM", isRequired: true },
+                        ],
+                      }))
+                    }
+                  >
+                    3 Checkpoints (Hackathon)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-6 px-2 text-[10px]"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        attendanceSessions: [
+                          { id: "sess-1", name: "Ingress Check-In (Day 1)", time: "09:00 AM", isRequired: true },
+                          { id: "sess-2", name: "Midnight Progress (Day 1)", time: "11:30 PM", isRequired: true },
+                          { id: "sess-3", name: "Midday Evaluation (Day 2)", time: "01:00 PM", isRequired: true },
+                          { id: "sess-4", name: "Final Presentation (Day 2)", time: "05:30 PM", isRequired: true },
+                        ],
+                      }))
+                    }
+                  >
+                    4 Checkpoints (36h Hackathon)
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 mt-3 border-t border-border/70 pt-3">
+                {form.attendanceSessions?.map((sess, idx) => (
+                  <div key={sess.id || idx} className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-text-dim w-5">#{idx + 1}</span>
+                    <Input
+                      placeholder="Session / Checkpoint Name (e.g. Midnight Code Check)"
+                      value={sess.name}
+                      className="h-8 text-[12px] flex-1"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          attendanceSessions: f.attendanceSessions.map((s, i) =>
+                            i === idx ? { ...s, name: val } : s,
+                          ),
+                        }));
+                      }}
+                    />
+                    <Input
+                      placeholder="Time (e.g. 11:30 PM)"
+                      value={sess.time || ""}
+                      className="h-8 text-[12px] w-32"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm((f) => ({
+                          ...f,
+                          attendanceSessions: f.attendanceSessions.map((s, i) =>
+                            i === idx ? { ...s, time: val } : s,
+                          ),
+                        }));
+                      }}
+                    />
+                    {form.attendanceSessions.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-8 px-2 text-[11px] text-text-dim hover:text-red-400"
+                        onClick={() => {
+                          setForm((f) => ({
+                            ...f,
+                            attendanceSessions: f.attendanceSessions.filter((_, i) => i !== idx),
+                          }));
+                        }}
+                      >
+                        ✕
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-3 flex justify-between items-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-7 text-[11px] border border-border"
+                  onClick={() => {
+                    setForm((f) => {
+                      const nextId = `sess-${(f.attendanceSessions?.length || 0) + 1}`;
+                      return {
+                        ...f,
+                        attendanceSessions: [
+                          ...(f.attendanceSessions || []),
+                          { id: nextId, name: `Checkpoint ${(f.attendanceSessions?.length || 0) + 1}`, time: "", isRequired: true },
+                        ],
+                      };
+                    });
+                  }}
+                >
+                  + Add Checkpoint / Session
+                </Button>
+                <span className="text-[11px] text-text-dim">
+                  {form.attendanceSessions?.length || 1} total check-in terms
+                </span>
+              </div>
+            </div>
+
+            <div className="md:col-span-2">
+              <FieldLabel>Description / Agenda</FieldLabel>
+              <TextArea
+                rows={3}
+                placeholder="Brief summary of event rules, schedule, prerequisites, and outcomes..."
+                value={form.description}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, description: e.target.value }))
+                }
+              />
+            </div>
           </div>
-          <div>
-            <FieldLabel>Category</FieldLabel>
-            <Input
-              value={form.category}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, category: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <FieldLabel>Capacity</FieldLabel>
-            <Input
-              value={form.capacity}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, capacity: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <FieldLabel>Visibility</FieldLabel>
-            <Select
-              value={form.visibility}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  visibility: e.target.value as Visibility,
-                }))
-              }
-            >
-              <option value="chapter_only">Chapter Only</option>
-              <option value="specific_chapters">Selected Chapters</option>
-              <option value="all_chapters">All Chapters</option>
-              <option value="public">Public</option>
-            </Select>
-          </div>
-          <div>
-            <FieldLabel>Starts</FieldLabel>
-            <Input
-              type="datetime-local"
-              value={form.startsAt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, startsAt: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <FieldLabel>Ends</FieldLabel>
-            <Input
-              type="datetime-local"
-              value={form.endsAt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, endsAt: e.target.value }))
-              }
-            />
-          </div>
-          <div>
-            <FieldLabel>Registration closes</FieldLabel>
-            <Input
-              type="datetime-local"
-              value={form.registrationEnd}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, registrationEnd: e.target.value }))
-              }
-            />
-          </div>
-          <div className="md:col-span-2">
-            <FieldLabel>Description</FieldLabel>
-            <TextArea
-              rows={2}
-              value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
-            />
+
+
+          {/* Custom Built Platform / Web App for this Event or Sub-Event */}
+          <div className="rounded-[12px] border border-border/80 bg-bg p-3 shadow-[var(--shadow-sm)]">
+            <label className="flex items-center gap-2 text-[13px] font-medium text-text cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.hasPlatform}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, hasPlatform: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-border accent-[var(--accent)]"
+              />
+              <span>💻 Built a custom platform / web app for this {form.eventType === "sub" ? "sub-event" : "event"}</span>
+            </label>
+            <p className="mt-1 text-[11px] text-text-dim">
+              Enable if your team built a custom web app (e.g. QR Hunt Scanner, Live Leaderboard, Battle Arena) for this event.
+            </p>
+
+            {form.hasPlatform ? (
+              <div className="mt-3 grid gap-3 border-t border-border/60 pt-3 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Platform / App Name</FieldLabel>
+                  <Input
+                    placeholder={
+                      form.eventType === "sub"
+                        ? "e.g. Vibranium QR Treasure Hunt Engine"
+                        : "e.g. Vibranium Portal / Celestia Platform"
+                    }
+                    value={form.platformName}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, platformName: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Live Web App URL</FieldLabel>
+                  <Input
+                    placeholder="https://hunt.vibranium.live or https://..."
+                    value={form.platformLiveUrl}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, platformLiveUrl: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Highlight Metric / Feature</FieldLabel>
+                  <Input
+                    placeholder="e.g. 120+ Teams · Real-time GPS & QR Scanner"
+                    value={form.platformMetric}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, platformMetric: e.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Source Code / GitHub Repo</FieldLabel>
+                  <Input
+                    placeholder="https://github.com/..."
+                    value={form.platformRepoUrl}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, platformRepoUrl: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <FieldLabel>Architecture / Tech Stack Highlights</FieldLabel>
+                  <Input
+                    placeholder="e.g. Next.js 15, WebSockets, Supabase Realtime, Geolocation API"
+                    value={form.architectureSummary}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, architectureSummary: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
+
         {createFlash ? (
           <p className="mt-3 text-[13px] text-[var(--accent)]">{createFlash}</p>
         ) : null}

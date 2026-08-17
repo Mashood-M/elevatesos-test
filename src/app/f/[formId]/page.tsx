@@ -5,7 +5,8 @@ import Link from "next/link";
 import { FormFill } from "@/components/domain/form-fill";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
-import { migrateForm } from "@/lib/forms/helpers";
+import { defaultFormsForEvent, migrateForm } from "@/lib/forms/helpers";
+
 
 export default function PublicFormFillPage({
   params,
@@ -14,11 +15,39 @@ export default function PublicFormFillPage({
 }) {
   const { formId } = use(params);
   const { store } = useStore();
-  const raw = store.forms?.find((f) => f.id === formId);
+  let raw = store.forms?.find((f) => f.id === formId);
+
+  // Auto-resolve event default forms (e.g. form-reg-evt-xyz or form-fb-evt-xyz or by event ID/slug)
+  if (!raw) {
+    if (formId.startsWith("form-reg-")) {
+      const target = formId.replace("form-reg-", "");
+      const ev = store.events.find((e) => e.id === target || e.slug === target);
+      if (ev) {
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        raw = defs.find((d) => d.purpose === "registration");
+      }
+    } else if (formId.startsWith("form-fb-")) {
+      const target = formId.replace("form-fb-", "");
+      const ev = store.events.find((e) => e.id === target || e.slug === target);
+      if (ev) {
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        raw = defs.find((d) => d.purpose === "feedback");
+      }
+    } else {
+      // Check if formId matches an event ID or slug directly
+      const ev = store.events.find((e) => e.id === formId || e.slug === formId);
+      if (ev) {
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        raw = defs.find((d) => d.purpose === "registration");
+      }
+    }
+  }
+
   const form = raw ? migrateForm(raw) : null;
   const chapter = form
-    ? store.chapters.find((c) => c.id === form.chapterId)
+    ? store.chapters.find((c) => c.id === form.chapterId || c.slug === form.chapterId)
     : undefined;
+
 
   return (
     <div className="min-h-screen bg-bg px-4 py-10">

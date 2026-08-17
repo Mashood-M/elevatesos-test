@@ -568,10 +568,15 @@ export default function ChapterEventsPage({
               <FieldLabel>Capacity (Seats)</FieldLabel>
               <Input
                 type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                placeholder="e.g. 60"
                 value={form.capacity}
                 onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
               />
             </div>
+
             <div>
               <FieldLabel>Visibility</FieldLabel>
               <Select

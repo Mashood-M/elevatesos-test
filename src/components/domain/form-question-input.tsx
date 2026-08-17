@@ -295,6 +295,38 @@ export function FormQuestionInput({
     );
   }
 
+  const qTitle = question.title.toLowerCase();
+  const qId = question.id.toLowerCase();
+  const isEmail = qTitle.includes("email") || qId.includes("email");
+  const isPhone =
+    qTitle.includes("phone") ||
+    qTitle.includes("mobile") ||
+    qTitle.includes("contact") ||
+    qTitle.includes("whatsapp") ||
+    qTitle.includes("tel") ||
+    qId.includes("phone") ||
+    qId.includes("tel");
+  const isNumber =
+    qTitle.includes("age") ||
+    qTitle.includes("roll") ||
+    qTitle.includes("semester") ||
+    qTitle.includes("seat") ||
+    qTitle.includes("capacity") ||
+    qTitle.includes("amount") ||
+    qTitle.includes("score") ||
+    qTitle.includes("points") ||
+    qId.includes("num");
+
+  const inputType = isEmail ? "email" : isPhone ? "tel" : isNumber ? "number" : "text";
+  const inputMode = isEmail ? "email" : isPhone ? "tel" : isNumber ? "numeric" : undefined;
+  const placeholder = isEmail
+    ? "e.g. alex@college.edu.in"
+    : isPhone
+    ? "e.g. +91 98765 43210"
+    : isNumber
+    ? "e.g. 100"
+    : undefined;
+
   return (
     <div>
       {label}
@@ -302,10 +334,14 @@ export function FormQuestionInput({
         <p className="mb-1 text-[11px] text-text-dim">{question.description}</p>
       ) : null}
       <Input
+        type={inputType}
+        inputMode={inputMode}
+        placeholder={placeholder}
         disabled={disabled}
-        value={typeof value === "string" ? value : ""}
+        value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
         onChange={(e) => onChange(e.target.value)}
       />
     </div>
   );
 }
+

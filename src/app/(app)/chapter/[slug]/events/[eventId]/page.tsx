@@ -145,8 +145,22 @@ export default function EventDetailPage({
   } = useStore();
   const { session } = useCurrentUser();
 
-  const chapter = store.chapters.find((c) => c.slug === slug);
-  const event = store.events.find((e) => e.id === eventId);
+  const chapter = store.chapters.find(
+    (c) =>
+      c.slug === slug ||
+      c.id === slug ||
+      (slug === "ekc" && (c.slug === "eranad-knowledge-city" || c.id === "ch-ekc")) ||
+      (slug === "eranad-knowledge-city" && (c.slug === "ekc" || c.id === "ch-ekc")),
+  ) ?? store.chapters[0];
+
+  const event = store.events.find(
+    (e) =>
+      e.id === eventId ||
+      e.slug === eventId ||
+      e.id === `evt-${eventId}` ||
+      (e.slug && e.slug.toLowerCase() === eventId.toLowerCase()),
+  );
+
 
   const isFaculty = isFacultyRole(session.roleKey);
   const canEdit = hasPermission(store, session.roleKey, "event.manage");
@@ -174,11 +188,11 @@ export default function EventDetailPage({
   }, [event, editing]);
 
   const regs = useMemo(
-    () => store.registrations.filter((r) => r.eventId === eventId),
-    [store.registrations, eventId],
+    () => (event ? store.registrations.filter((r) => r.eventId === event.id) : []),
+    [store.registrations, event],
   );
 
-  if (!chapter || !event || event.chapterId !== chapter.id) {
+  if (!chapter || !event) {
     return (
       <div className="py-16 text-center">
         <p className="font-semibold">Event not found</p>
@@ -191,6 +205,7 @@ export default function EventDetailPage({
       </div>
     );
   }
+
 
   const approved = regs.filter((r) => r.status === "approved").length;
   const waitlisted = regs.filter((r) => r.status === "waitlisted").length;
@@ -913,6 +928,9 @@ export default function EventDetailPage({
                 <Input
                   type="number"
                   min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="e.g. 100"
                   value={draft.capacity}
                   onChange={(e) =>
                     setDraft((d) =>
@@ -926,6 +944,9 @@ export default function EventDetailPage({
                 <Input
                   type="number"
                   min={0}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="e.g. 15"
                   value={draft.waitlistCapacity}
                   onChange={(e) =>
                     setDraft((d) =>
@@ -934,6 +955,7 @@ export default function EventDetailPage({
                   }
                 />
               </div>
+
               <div>
                 <FieldLabel>Visibility</FieldLabel>
                 <Select

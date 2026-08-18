@@ -11,7 +11,9 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
+import { CheckSquare, Square, ShieldCheck, Sliders, Check } from "lucide-react";
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
+
 
 type CreateDraft = {
   fullName: string;
@@ -43,7 +45,7 @@ function looksLikeEmail(value: string) {
 }
 
 export default function HqUsersPage() {
-  const { store, createUser, updateUser, setUserRoles } = useStore();
+  const { store, createUser, updateUser, setUserRoles, setRolePermission } = useStore();
   const { session } = useCurrentUser();
   const canManage = isSuperAdmin(session.roleKey);
 
@@ -62,12 +64,31 @@ export default function HqUsersPage() {
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [editError, setEditError] = useState("");
   const [flash, setFlash] = useState("");
+  const [permissionsModalUser, setPermissionsModalUser] = useState<Profile | null>(null);
 
   const hqRoles = store.roles.filter((r) => r.scope === "hq");
   const chapterRoles = store.roles.filter((r) => r.scope === "chapter");
   const filtersActive = Boolean(
     q.trim() || filterChapter || filterRole || filterStatus !== "all",
   );
+
+  const grantedByRole = useMemo(() => {
+    const roleById = new Map(store.roles.map((r) => [r.id, r]));
+    const permById = new Map(store.permissions.map((p) => [p.id, p]));
+    const map = new Map<RoleKey, Set<string>>();
+    for (const role of store.roles) {
+      map.set(role.key, new Set());
+    }
+    for (const rp of store.rolePermissions) {
+      if (!rp.allowed) continue;
+      const role = roleById.get(rp.roleId);
+      const perm = permById.get(rp.permissionId);
+      if (!role || !perm) continue;
+      map.get(role.key)?.add(perm.key);
+    }
+    return map;
+  }, [store.roles, store.permissions, store.rolePermissions]);
+
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -574,6 +595,79 @@ export default function HqUsersPage() {
                       </Select>
                     </div>
                   ) : null}
+
+                  {/* FOUNDER / SUPER ADMIN PERMISSION TICKS SETUP */}
+                  {canManage ? (
+                    <div className="md:col-span-2 pt-3 border-t border-border space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-text flex items-center gap-1.5">
+                            <ShieldCheck size={15} className="text-cyan" />
+                            Role Permission Ticks Matrix (Founder / Super Admin Setup)
+                          </p>
+                          <p className="text-[11px] text-text-dim">
+                            Granular tick controls for role: <span className="font-mono text-cyan font-semibold">{roleKeyLabel(editDraft.roleKey)}</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              store.permissions.forEach((p) =>
+                                setRolePermission(editDraft.roleKey, p.key, true),
+                              );
+                            }}
+                            className="text-[10px] font-mono bg-bg px-2 py-0.5 rounded border border-border hover:bg-bg-hover text-text"
+                          >
+                            Tick All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              store.permissions.forEach((p) =>
+                                setRolePermission(editDraft.roleKey, p.key, false),
+                              );
+                            }}
+                            className="text-[10px] font-mono bg-bg px-2 py-0.5 rounded border border-border hover:bg-bg-hover text-text-mute"
+                          >
+                            Untick All
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 bg-bg p-3 rounded-[var(--radius-sm)] border border-border max-h-56 overflow-y-auto">
+                        {store.permissions.map((perm) => {
+                          const allowed = grantedByRole.get(editDraft.roleKey)?.has(perm.key) ?? false;
+                          return (
+                            <button
+                              key={perm.id}
+                              type="button"
+                              onClick={() =>
+                                setRolePermission(editDraft.roleKey, perm.key, !allowed)
+                              }
+                              className={`flex items-start gap-2 p-2 rounded text-left transition border ${
+                                allowed
+                                  ? "border-[var(--success)]/30 bg-[var(--success-soft)]/20"
+                                  : "border-border/60 bg-bg-panel hover:bg-bg"
+                              }`}
+                            >
+                              <span className="mt-0.5">
+                                {allowed ? (
+                                  <CheckSquare size={14} className="text-green" />
+                                ) : (
+                                  <Square size={14} className="text-text-mute" />
+                                )}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold text-text truncate">{perm.name}</p>
+                                <p className="text-[9px] font-mono text-text-mute truncate">{perm.key}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>
@@ -596,6 +690,7 @@ export default function HqUsersPage() {
                 Cancel
               </Button>
             </div>
+
           </form>
         </TerminalPanel>
       ) : null}
@@ -657,17 +752,31 @@ export default function HqUsersPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {canManage ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPermissionsModalUser(profile)}
+                      title="Manage role permissions with tick options"
+                      className="text-cyan flex items-center gap-1"
+                    >
+                      <Sliders size={13} />
+                      Permissions
+                    </Button>
+                  ) : null}
                   <Button
                     variant="ghost"
+                    size="sm"
                     onClick={() => toggleStatus(profile)}
                   >
                     {status === "active" ? "Disable" : "Enable"}
                   </Button>
-                  <Button variant="ghost" onClick={() => startEdit(profile)}>
+                  <Button variant="ghost" size="sm" onClick={() => startEdit(profile)}>
                     Edit
                   </Button>
                 </div>
+
               </li>
             ))}
           </ul>
@@ -764,6 +873,107 @@ export default function HqUsersPage() {
           </div>
         </form>
       </Dialog>
+
+      {/* FOUNDER / SUPER ADMIN PERMISSIONS DIALOG MODAL */}
+      {permissionsModalUser ? (() => {
+        const userRoles = store.userRoles.filter((ur) => ur.userId === permissionsModalUser.id);
+        const roles = userRoles.map((ur) => store.roles.find((r) => r.id === ur.roleId)).filter(Boolean);
+        const activeRole = roles[0] ?? store.roles.find((r) => r.key === "student") ?? store.roles[0];
+
+        return (
+          <Dialog
+            open={Boolean(permissionsModalUser)}
+            onClose={() => setPermissionsModalUser(null)}
+            title={`Role & Permissions Setup — ${permissionsModalUser.fullName}`}
+            description={`Founder & Super Admin permission ticks manager for ${permissionsModalUser.email}`}
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded bg-bg border border-border">
+                <div>
+                  <p className="text-xs font-semibold text-text">Active Role: {activeRole?.name}</p>
+                  <p className="text-[11px] text-text-dim">Key: {activeRole?.key} · Scope: {activeRole?.scope}</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeRole) {
+                        store.permissions.forEach((p) =>
+                          setRolePermission(activeRole.key, p.key, true),
+                        );
+                      }
+                    }}
+                    className="text-[10px] font-mono bg-bg-panel px-2 py-1 rounded border border-border hover:bg-bg-hover text-text"
+                  >
+                    Tick All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeRole) {
+                        store.permissions.forEach((p) =>
+                          setRolePermission(activeRole.key, p.key, false),
+                        );
+                      }
+                    }}
+                    className="text-[10px] font-mono bg-bg-panel px-2 py-1 rounded border border-border hover:bg-bg-hover text-text-mute"
+                  >
+                    Untick All
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-text flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-cyan" />
+                  Select Permission Ticks (Click to Grant / Revoke)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-bg p-3 rounded border border-border max-h-72 overflow-y-auto">
+                  {store.permissions.map((perm) => {
+                    const allowed = activeRole ? (grantedByRole.get(activeRole.key)?.has(perm.key) ?? false) : false;
+                    return (
+                      <button
+                        key={perm.id}
+                        type="button"
+                        onClick={() => {
+                          if (activeRole) {
+                            setRolePermission(activeRole.key, perm.key, !allowed);
+                          }
+                        }}
+                        className={`flex items-start gap-2.5 p-2 rounded text-left transition border ${
+                          allowed
+                            ? "border-[var(--success)]/40 bg-[var(--success-soft)]/20"
+                            : "border-border/60 bg-bg-panel hover:bg-bg"
+                        }`}
+                      >
+                        <span className="mt-0.5">
+                          {allowed ? (
+                            <CheckSquare size={15} className="text-green" />
+                          ) : (
+                            <Square size={15} className="text-text-mute" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-text truncate">{perm.name}</p>
+                          <p className="text-[10px] font-mono text-text-mute truncate">{perm.key}</p>
+                          <p className="text-[10px] text-text-dim line-clamp-1">{perm.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-3 border-t border-border">
+                <Button variant="primary" onClick={() => setPermissionsModalUser(null)}>
+                  Done & Close
+                </Button>
+              </div>
+            </div>
+          </Dialog>
+        );
+      })() : null}
     </div>
   );
 }
+

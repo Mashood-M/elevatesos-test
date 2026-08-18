@@ -27,6 +27,7 @@ import {
   Users,
   UsersRound,
   Waypoints,
+  Code2,
 } from "lucide-react";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { isHqRole, isSuperAdmin } from "@/lib/permissions";
@@ -47,7 +48,9 @@ const I = {
   resources: <Library {...iconProps} />,
   brand: <Palette {...iconProps} />,
   guidelines: <ScrollText {...iconProps} />,
+  developer: <Code2 {...iconProps} />,
   alerts: <Bell {...iconProps} />,
+
   audit: <Activity {...iconProps} />,
   leaderboards: <Trophy {...iconProps} />,
   playbook: <Waypoints {...iconProps} />,
@@ -131,6 +134,7 @@ export function navGroupsForRole(
       {
         label: "More",
         items: [
+          { href: "/hq/developer", label: "Developer API", icon: I.developer },
           { href: "/hq/notifications", label: "Alerts", icon: I.alerts },
           { href: "/hq/settings", label: "Settings", icon: I.settings },
           { href: "/hq/audit", label: "Audit", icon: I.audit },
@@ -139,6 +143,7 @@ export function navGroupsForRole(
           { href: "/design-system", label: "Design system", icon: I.design },
         ],
       },
+
     ];
   }
 

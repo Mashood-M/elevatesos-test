@@ -601,7 +601,7 @@ const chapterEvents: EventItem[] = [
   {
     id: "evt-cse-revamp-mehar",
     chapterId: "ch-ekc",
-    title: "REVAMP OF CSE ASSOCIATION (CELESTIA)",
+    title: "REVAMP OF CSE ASSOCIATION",
     bannerEmoji: "🚀",
     description: "Association relaunch with Chief Guest Mehar M P (Co-Founder, TinkerHub). Rebuilt portal in 60 minutes with gesture launch.",
     venue: "Seminar Hall, EKCTC",

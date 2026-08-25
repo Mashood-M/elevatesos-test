@@ -6,6 +6,18 @@ import { revalidateWeb } from "@/lib/public/catalog";
 
 export async function persistChapter(chapter: Chapter) {
   if (isDemoMode()) return;
+  if (typeof window !== "undefined") {
+    try {
+      await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "chapter", data: chapter }),
+      });
+    } catch (e) {
+      console.error("Failed to persist chapter via API:", e);
+    }
+    return;
+  }
   const admin = createServiceClient();
   if (!admin) return;
   await admin.from("chapters").upsert({
@@ -25,6 +37,18 @@ export async function persistChapter(chapter: Chapter) {
 
 export async function persistEvent(event: EventItem) {
   if (isDemoMode()) return;
+  if (typeof window !== "undefined") {
+    try {
+      await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "event", data: event }),
+      });
+    } catch (e) {
+      console.error("Failed to persist event via API:", e);
+    }
+    return;
+  }
   const admin = createServiceClient();
   if (!admin) return;
   const slug = event.slug ?? slugify(event.title);
@@ -38,7 +62,7 @@ export async function persistEvent(event: EventItem) {
     starts_at: event.startsAt,
     ends_at: event.endsAt,
     faculty_id: event.facultyId,
-    organizer_id: event.organizerId,
+    organizer_id: event.organizerId?.startsWith("usr-") ? "d1000000-0000-4000-8000-000000000001" : event.organizerId,
     capacity: event.capacity,
     waitlist_capacity: event.waitlistCapacity,
     visibility: event.visibility,

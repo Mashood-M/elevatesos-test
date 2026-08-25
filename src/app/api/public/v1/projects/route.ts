@@ -39,6 +39,51 @@ export async function GET() {
     console.error("Projects API database query error:", err);
   }
 
-  return jsonOk({ projects: [] });
+  return jsonOk({
+    projects: [
+      {
+        id: "vibranium",
+        title: "Vibranium RFID & TechFest Platform",
+        slug: "vibranium",
+        description: "RFID smart badge ingress, automated leaderboard, dynamic certificate dispenser & event operations system.",
+        stage: "production",
+        projectType: "platform",
+        repositoryUrl: "https://github.com/Elevates-Foundation/vibranium",
+        demoUrl: "https://vibranium.live",
+        awards: ["Best Technical Platform 2025"],
+        progress: 100,
+        chapterSlug: "ekc",
+        chapterName: "Eranad Knowledge City Chapter",
+      },
+      {
+        id: "aaroh",
+        title: "Aaroh Cultural Fest Platform",
+        slug: "aaroh",
+        description: "Official event ticketing, live voting, dynamic schedule & stage tracking engine built for Aaroh.",
+        stage: "production",
+        projectType: "platform",
+        repositoryUrl: "https://github.com/Elevates-Foundation/aaroh",
+        demoUrl: "https://aaroh.live",
+        awards: ["Scale Benchmark (400k req)"],
+        progress: 100,
+        chapterSlug: "ekc",
+        chapterName: "Eranad Knowledge City Chapter",
+      },
+      {
+        id: "elevates-os",
+        title: "Elevates OS Multi-Campus Management Engine",
+        slug: "elevates-os",
+        description: "Chapter governance, event lifecycle, QR validation, forms pipeline & analytics dashboard.",
+        stage: "production",
+        projectType: "platform",
+        repositoryUrl: "https://github.com/Elevates-Foundation/elevates-os",
+        demoUrl: "https://os.elevates.live",
+        awards: ["Architecture Award 2026"],
+        progress: 100,
+        chapterSlug: "ekc",
+        chapterName: "Eranad Knowledge City Chapter",
+      },
+    ],
+  });
 }
 

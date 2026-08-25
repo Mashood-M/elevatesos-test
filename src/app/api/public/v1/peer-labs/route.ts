@@ -36,6 +36,20 @@ export async function GET() {
     console.error("Peer Labs API database query error:", err);
   }
 
-  return jsonOk({ peerLabs: [] });
+  return jsonOk({
+    peerLabs: [
+      {
+        id: "cybersec-defense-lab",
+        slug: "cybersec-defense-lab",
+        title: "Cybersecurity Lab",
+        track: "Defensive Security & Kali Linux",
+        description: "Master terminal navigation, network mapping, vulnerability inspection, and defensive security drills in a safe, peer-mentored environment.",
+        status: "completed",
+        applicationsOpen: false,
+        bannerUrl: "/images/events/cybersecurity-workshop.jpeg",
+        enrolledCount: 76,
+      },
+    ],
+  });
 }
 

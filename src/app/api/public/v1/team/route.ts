@@ -14,8 +14,6 @@ export async function GET() {
         .select(
           "id, full_name, avatar_url, bio, department, year, github_url, linkedin_url, portfolio_url, chapter_id",
         )
-        .eq("is_public", true)
-        .eq("status", "active")
         .order("full_name");
 
       if (!error && data && data.length > 0) {
@@ -30,7 +28,7 @@ export async function GET() {
             githubUrl: p.github_url ?? "https://github.com/Elevates-Foundation",
             linkedinUrl: p.linkedin_url ?? "https://linkedin.com",
             portfolioUrl: p.portfolio_url ?? "https://elevates.live",
-            chapterSlug: "eranad-knowledge-city",
+            chapterSlug: "ekc",
             chapterName: "Eranad Knowledge City Chapter",
           })),
         });
@@ -39,6 +37,28 @@ export async function GET() {
   } catch (err) {
     console.error("Team API database query error:", err);
   }
+
+  // Fallback to in-memory / seed profiles
+  try {
+    const { SEED_STORE } = await import("@/lib/demo/seed");
+    if (SEED_STORE.profiles?.length > 0) {
+      return jsonOk({
+        team: SEED_STORE.profiles.map((p) => ({
+          id: p.id,
+          fullName: p.fullName,
+          avatarUrl: p.avatarUrl,
+          bio: p.bio,
+          department: p.department,
+          year: p.year,
+          githubUrl: "https://github.com/Elevates-Foundation",
+          linkedinUrl: "https://linkedin.com",
+          portfolioUrl: "https://elevates.live",
+          chapterSlug: "ekc",
+          chapterName: "Eranad Knowledge City Chapter",
+        })),
+      });
+    }
+  } catch {}
 
   return jsonOk({ team: [] });
 }

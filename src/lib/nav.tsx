@@ -49,6 +49,7 @@ const I = {
   brand: <Palette {...iconProps} />,
   guidelines: <ScrollText {...iconProps} />,
   developer: <Code2 {...iconProps} />,
+  certificates: <GraduationCap {...iconProps} />,
   alerts: <Bell {...iconProps} />,
 
   audit: <Activity {...iconProps} />,
@@ -75,7 +76,9 @@ const I = {
 export type NavItem = {
   href: string;
   label: string;
-  icon: ReactNode;
+  icon?: ReactNode;
+  badge?: string;
+  external?: boolean;
 };
 
 export type NavGroup = {
@@ -98,6 +101,7 @@ export function navGroupsForRole(
       { href: "/hq/leadership", label: "Leadership", icon: I.leadership },
       { href: "/hq/permissions", label: "Roles", icon: I.roles },
       { href: "/hq/reports", label: "Reports", icon: I.reports },
+      { href: "/hq/certificates", label: "Certificates", icon: I.certificates },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
     ];
 

@@ -883,7 +883,20 @@ export default function EventsCMSPage() {
 
               <div className="flex flex-col gap-2 shrink-0">
                 <Button variant="secondary" size="sm" onClick={() => { setEditing(evt); setIsNew(false); }}><Edit size={13} /> Edit</Button>
-                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => setEvents((prev) => prev.filter((x) => x.id !== evt.id))}><Trash2 size={13} /></Button>
+                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={async () => {
+                  if (confirm(`Delete event "${evt.title}"?`)) {
+                    setEvents((prev) => prev.filter((x) => x.id !== evt.id));
+                    try {
+                      await fetch("/api/mutations", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ type: "delete_event", data: { id: evt.id, slug: evt.slug } }),
+                      });
+                    } catch (e) {
+                      console.error("Failed to delete event in DB:", e);
+                    }
+                  }
+                }}><Trash2 size={13} /></Button>
               </div>
             </div>
           </div>
@@ -892,9 +905,36 @@ export default function EventsCMSPage() {
 
       {editing && (
         <EventEditor event={editing} onClose={() => { setEditing(null); setIsNew(false); }}
-          onSave={(saved) => {
+          onSave={async (saved) => {
             if (isNew) setEvents((prev) => [saved, ...prev]);
             else setEvents((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
+            
+            // Persist to Supabase and revalidate cache
+            try {
+              const payload = {
+                id: saved.id,
+                chapterId: "c1000000-0000-4000-8000-000000000001",
+                title: saved.title,
+                slug: saved.slug,
+                summary: saved.tagline || saved.description,
+                description: saved.fullDescription || saved.description,
+                venue: saved.venue,
+                startsAt: saved.isoStartDate || new Date().toISOString(),
+                endsAt: saved.isoEndDate || new Date(Date.now() + 7200000).toISOString(),
+                capacity: saved.attendeesCount || 60,
+                status: saved.status?.toLowerCase() === "upcoming" ? "upcoming" : "completed",
+                bannerUrl: saved.coverImage || "/images/og-default.png",
+                category: saved.category,
+                visibility: "public",
+              };
+              await fetch("/api/mutations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type: "event", data: payload }),
+              });
+            } catch (err) {
+              console.error("Failed to persist event:", err);
+            }
           }}
         />
       )}

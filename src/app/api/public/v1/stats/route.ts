@@ -16,16 +16,16 @@ export async function GET() {
         admin.from("profiles").select("*", { count: "exact", head: true }),
       ]);
 
-      const chCount = chapters.count ?? 1;
-      const evCount = events.count ?? 7;
-      const prCount = projects.count ?? 4;
-      const stCount = students.count ?? 18;
+      const chCount = chapters.count ?? 0;
+      const evCount = events.count ?? 0;
+      const prCount = projects.count ?? 0;
+      const stCount = students.count ?? 0;
 
       return jsonOk({
-        chapters: Math.max(1, chCount),
-        events: Math.max(7, evCount),
-        projects: Math.max(4, prCount),
-        students: Math.max(18, stCount),
+        chapters: chCount,
+        events: evCount,
+        projects: prCount,
+        students: stCount,
       });
     }
   } catch (err) {
@@ -33,10 +33,10 @@ export async function GET() {
   }
 
   return jsonOk({
-    chapters: 1,
-    events: 7,
-    projects: 4,
-    students: 18,
+    chapters: 0,
+    events: 0,
+    projects: 0,
+    students: 0,
   });
 }
 

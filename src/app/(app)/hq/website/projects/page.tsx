@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useStore } from "@/context/store-context";
 import {
   Edit,
   ExternalLink,
@@ -60,7 +61,8 @@ const STATUS_TONE: Record<ProjectStatus, "green" | "orange" | "cyan" | "mute" | 
 };
 
 // ── ALL 4 CASE STUDIES FROM ELEVATES WEB ─────────────────────────────────────
-const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [
+const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
+/*
   {
     id: "vibranium-event-platform", slug: "vibranium-event-platform",
     title: "Vibranium Event Platform",
@@ -317,34 +319,9 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [
     },
     gallery: [],
   },
-];
-
-const DEFAULT_SHOWCASES: MemberShowcase[] = [
-  {
-    id: "gesture-launch", title: "Gesture-Controlled Website Launch", builder: "Abhijith CJ",
-    builderId: "abhijith-cj", cohort: "2025-26", status: "live",
-    description: "A Python, OpenCV, and MediaPipe gesture detector built for the Celestia relaunch that opened the website live on stage when Chief Guest Moosa Mehar MP raised his hand.",
-    repo: null, live: "https://www.linkedin.com/posts/abhijith-cj-a81b8a318_python-opencv-mediapipe-ugcPost-7443588025219190784-O6Vb/",
-  },
-  {
-    id: "roadundo-showcase", title: "RoadUndo Open Data Platform", builder: "Sarhan Qadir KVM",
-    builderId: "sarhan-qadir-kvm", cohort: "2025-26", status: "live-unmaintained",
-    description: "Kerala road passability and disaster board, with a free open public API for pincodes, wards, dam levels & weather alerts.",
-    repo: "https://github.com/Elevates-Foundation/RoadUndo", live: "https://roadundo.vercel.app",
-  },
-];
-
-const DEFAULT_ARCHIVE: AlsoBuiltItem[] = [
-  {
-    id: "celestia-archive", name: "Celestia", year: "2026", status: "live-incomplete",
-    reason: "Rebuilt in 1 hour on stage. Live and functional on Vercel, carrying placeholder statistics requiring institutional data audit.", slug: "celestia",
-  },
-  {
-    id: "roadundo-archive", name: "RoadUndo", year: "2026", status: "live-unmaintained",
-    reason: "The automated data API runs daily. The crowdsourced road reporting layer never launched due to cold-start reporter density.",
-    repo: "https://github.com/Elevates-Foundation/RoadUndo", slug: "roadundo",
-  },
-];
+*/
+const DEFAULT_SHOWCASES: MemberShowcase[] = [];
+const DEFAULT_ARCHIVE: AlsoBuiltItem[] = [];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -583,11 +560,44 @@ function FlagshipEditor({ project, onSave, onClose }: { project: FlagshipProject
 type ActiveSection = "flagship" | "showcases" | "archive";
 
 export default function ProjectsCMSPage() {
+  const { store } = useStore();
   const [section, setSection] = useState<ActiveSection>("flagship");
   const [search, setSearch] = useState("");
-  const [flagship, setFlagship] = useState<FlagshipProject[]>(ALL_FLAGSHIP_PROJECTS);
+  const [flagship, setFlagship] = useState<FlagshipProject[]>([]);
   const [showcases, setShowcases] = useState<MemberShowcase[]>(DEFAULT_SHOWCASES);
   const [archive, setArchive] = useState<AlsoBuiltItem[]>(DEFAULT_ARCHIVE);
+
+  useEffect(() => {
+    if (store.projects && store.projects.length > 0) {
+      const dynamicProjects: FlagshipProject[] = store.projects.map((p) => ({
+        id: p.id,
+        slug: p.slug || p.id,
+        title: p.title,
+        client: "ELEVATES Foundation",
+        date: "2026",
+        type: "flagship",
+        status: ((p.stage as string) === "production" || (p.stage as string) === "active" ? "live" : "live-incomplete") as ProjectStatus,
+        tagline: p.description || "",
+        summary: p.description || "",
+        metrics: [{ value: `${p.progress}%`, label: "Complete" }],
+        stack: ["TypeScript", "Next.js", "Supabase"],
+        repo: p.repositoryUrl || null,
+        live: p.demoUrl || null,
+        cover: "/team/elevates-founders.jpeg",
+        situation: { title: p.title, paragraphs: [p.description || ""], highlight: p.title },
+        numbers: [{ value: `${p.progress}%`, label: "Progress" }],
+        whatWeBuilt: p.awards || [],
+        howItHeldUp: { summary: "Operational", metrics: [], details: [] },
+        whatWeWouldDoDifferently: [],
+        builders: [],
+        contributors: [],
+        faculty: [],
+        stackAndCode: { technologies: ["TypeScript", "Next.js", "Supabase"], repoUrl: p.repositoryUrl || null, repoNote: "" },
+        gallery: [],
+      }));
+      setFlagship(dynamicProjects);
+    }
+  }, [store.projects]);
   const [editing, setEditing] = useState<FlagshipProject | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [editShowcase, setEditShowcase] = useState<MemberShowcase | null>(null);

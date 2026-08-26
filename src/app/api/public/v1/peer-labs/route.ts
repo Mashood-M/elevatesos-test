@@ -1,6 +1,8 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { corsOptions, jsonOk } from "@/lib/api/public";
 
+import { resolveMediaUrl } from "@/lib/data/media";
+
 export function OPTIONS() {
   return corsOptions();
 }
@@ -15,7 +17,7 @@ export async function GET() {
         .in("status", ["upcoming", "active", "completed"])
         .order("title");
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         return jsonOk({
           peerLabs: data.map((p) => ({
             id: p.id,
@@ -26,7 +28,7 @@ export async function GET() {
             syllabus: p.syllabus ?? [],
             status: p.status,
             applicationsOpen: p.applications_open,
-            bannerUrl: p.banner_url,
+            bannerUrl: resolveMediaUrl(p.banner_url),
             enrolledCount: p.enrolled_count,
           })),
         });
@@ -36,20 +38,6 @@ export async function GET() {
     console.error("Peer Labs API database query error:", err);
   }
 
-  return jsonOk({
-    peerLabs: [
-      {
-        id: "cybersec-defense-lab",
-        slug: "cybersec-defense-lab",
-        title: "Cybersecurity Lab",
-        track: "Defensive Security & Kali Linux",
-        description: "Master terminal navigation, network mapping, vulnerability inspection, and defensive security drills in a safe, peer-mentored environment.",
-        status: "completed",
-        applicationsOpen: false,
-        bannerUrl: "/images/events/cybersecurity-workshop.jpeg",
-        enrolledCount: 76,
-      },
-    ],
-  });
+  return jsonOk({ peerLabs: [] });
 }
 

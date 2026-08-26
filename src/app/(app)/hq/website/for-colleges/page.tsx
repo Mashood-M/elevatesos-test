@@ -65,87 +65,15 @@ interface UniversityLookupItem {
   adminValue: string;
 }
 
-const DEFAULT_OFFERS: OfferItem[] = [
-  {
-    id: "workshop",
-    level: "01",
-    title: "Single Workshop",
-    subtitle: "Zero Franchise Fee • High Impact",
-    desc: "A hands-on technical or design workshop delivered by ELEVATES mentors on your campus. We handle curriculum, tools, and technical delivery.",
-    commitment: "Access to a lab/seminar hall for 3-4 hours.",
-    idealFor: "Testing student interest without long-term commitment.",
-  },
-  {
-    id: "event-ops",
-    level: "02",
-    title: "Full Event Operations",
-    subtitle: "We Plan It. We Run It. We Bring the Guest.",
-    desc: "Complete end-to-end management for association relaunches, technical fests, or department days. Includes chief guest invitation, stage ops, and live building demos.",
-    commitment: "Auditorium reservation + guest TA/hospitality via department fund.",
-    idealFor: "Department HODs needing a seamless, high-visibility event.",
-  },
-  {
-    id: "iedc-trade",
-    level: "03",
-    title: "IEDC Programme Calendar",
-    subtitle: "You Have the Mandate. We Have the Calendar.",
-    desc: "Co-host our 13-programme technical calendar under your IEDC banner. Fulfill KSUM KPIs, generate annual report proof, and build innovation outcomes.",
-    commitment: "IEDC Nodal Officer partnership + venue + IEDC workshop allocation.",
-    idealFor: "IEDC Nodal Officers seeking active programming across campuses.",
-  },
-  {
-    id: "full-chapter",
-    level: "04",
-    title: "Full Campus Chapter",
-    subtitle: "Permanent Innovation Ecosystem",
-    desc: "Establish ELEVATES Chapter #02 on your campus. Includes structured 25-student cohorts per term, learning clusters, faculty coordinator oversight, and HQ playbook.",
-    commitment: "Faculty Coordinator + dedicated space + MOU + student support fund.",
-    idealFor: "Principals & Directors wanting long-term accreditation proof.",
-  },
-];
-
-const DEFAULT_FAQS: FAQItem[] = [
-  {
-    question: "How does funding work for ELEVATES chapters and campus events?",
-    answer: "ELEVATES charges zero commercial or franchise fees to the college or students. All core platform infrastructure, playbooks, and community frameworks are free. For campus events, standard operational funds (such as guest speaker travel allowance/TA or hospitality) are allocated directly by the college/department or IEDC funds out of heads the institution already holds.",
-  },
-  {
-    question: "Which budget heads do colleges use to fund event operational expenses?",
-    answer: "Colleges typically spend from existing heads already collected for this purpose: (1) Department Association Fund collected in published fee structures, (2) IEDC KSUM Activity Budget for KSUM KPIs, (3) PTA Discretionary Fund, or (4) IQAC Quality Initiative Head for NAAC activities.",
-  },
-  {
-    question: "What specifically is required from the college administration?",
-    answer: "Four practical things: (1) Seminar hall or computer lab access, (2) One named Faculty Coordinator, (3) Permission to co-brand event announcements, and (4) Standard department or IEDC allocation for guest travel allowance (TA) when organizing major events.",
-  },
-  {
-    question: "How does ELEVATES adapt to different universities in Kerala (KTU, Calicut, MG, Kerala)?",
-    answer: "For KTU colleges, our project clusters fill Group III Activity Points (startups, patents, shipped projects). For Calicut/MG/Kerala Four-Year Programmes (FYUGP 2024), we provide project proof for Skill Enhancement Courses, mandatory internships, and research projects.",
-  },
-];
-
-const DEFAULT_TIMELINE: TimelineItem[] = [
-  {
-    period: "Month 01 (Days 1–30)",
-    title: "Foundation & First Workshop",
-    desc: "Faculty coordinator appointment, room allocation, and first hands-on workshop (120+ seats).",
-  },
-  {
-    period: "Month 02 (Days 31–60)",
-    title: "Peer Lab Cohorts & First Campus Platform",
-    desc: "Launching 3 Peer Lab cohorts and specifying the first student-built software platform for the campus.",
-  },
-  {
-    period: "Month 03 (Days 61–90)",
-    title: "Independence, NAAC File & Leadership Handover",
-    desc: "First term outcomes file generated for IQAC/NAAC accreditation and junior team leadership training.",
-  },
-];
+const DEFAULT_OFFERS: OfferItem[] = [];
+const DEFAULT_FAQS: FAQItem[] = [];
+const DEFAULT_TIMELINE: TimelineItem[] = [];
 
 export default function ForCollegesCMSPage() {
   const [tab, setTab] = useState<"offers" | "faqs" | "timeline">("offers");
-  const [offers, setOffers] = useState<OfferItem[]>(DEFAULT_OFFERS);
-  const [faqs, setFaqs] = useState<FAQItem[]>(DEFAULT_FAQS);
-  const [timeline, setTimeline] = useState<TimelineItem[]>(DEFAULT_TIMELINE);
+  const [offers, setOffers] = useState<OfferItem[]>([]);
+  const [faqs, setFaqs] = useState<FAQItem[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
   const [editingOffer, setEditingOffer] = useState<OfferItem | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 

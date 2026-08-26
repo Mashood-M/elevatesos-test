@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useStore } from "@/context/store-context";
 import {
   BookOpen,
   Calendar,
@@ -57,80 +58,42 @@ export interface PeerLabSeriesItem {
   lessons: LessonPhase[];
 }
 
-const DEFAULT_PEER_LABS: PeerLabSeriesItem[] = [
-  {
-    id: "cybersec-defense-lab",
-    slug: "cybersec-defense-lab",
-    title: "Cybersecurity Lab",
-    subtitle: "3-Phase Hands-on Kali Linux & Network Defense",
-    description:
-      "Master terminal navigation, network mapping, vulnerability inspection, and defensive security drills in a safe, peer-mentored environment.",
-    campusName: "Eranad Knowledge City Technical Campus (EKCTC)",
-    status: "Completed",
-    joinedCount: 76,
-    featured: true,
-    facilitators: [
-      { name: "Adhinan K", role: "Cybersecurity Lead" },
-      { name: "Sarhan Qadir", role: "Lab Facilitator" },
-    ],
-    resources: [
-      {
-        title: "Kali Linux Setup & Terminal Cheatsheet",
-        url: "https://github.com/Elevates-Foundation",
-        type: "Doc",
-      },
-      {
-        title: "Wireshark Packet Analysis Labs",
-        url: "https://github.com/Elevates-Foundation",
-        type: "Labs",
-      },
-    ],
-    lessons: [
-      {
-        id: "cs-1",
-        slug: "cybersec-basics",
-        title: "Phase 1: Kali Linux & Network Defense (2nd & 3rd Years)",
-        date: "17 Sep 2025",
-        time: "10:00 AM",
-        location: "EKCTC Lab",
-        eventSlug: "cybersec-basics",
-      },
-      {
-        id: "cs-2",
-        slug: "cybersec-basics",
-        title: "Phase 2: Terminal Fundamentals (1st Years)",
-        date: "24 Sep 2025",
-        time: "10:00 AM",
-        location: "EKCTC Lab",
-        eventSlug: "cybersec-basics",
-      },
-      {
-        id: "cs-3",
-        slug: "cybersec-basics",
-        title: "Phase 3: Security & Ethical Hacking (4th Years)",
-        date: "25 Sep 2025",
-        time: "10:00 AM",
-        location: "EKCTC Lab",
-        eventSlug: "cybersec-basics",
-      },
-      {
-        id: "cs-4",
-        slug: "cyber-raid-ctf",
-        title: "Capstone: Cyber Raid Capture The Flag (₹1500 Prize Pool)",
-        date: "09 Oct 2025",
-        time: "10:00 AM",
-        location: "EKCTC Campus",
-        eventSlug: "cyber-raid-ctf",
-      },
-    ],
-  },
-];
+const DEFAULT_PEER_LABS: PeerLabSeriesItem[] = [];
 
 export default function PeerLabsCMSPage() {
-  const [labs, setLabs] = useState<PeerLabSeriesItem[]>(DEFAULT_PEER_LABS);
+  const { store } = useStore();
+  const [labs, setLabs] = useState<PeerLabSeriesItem[]>([]);
   const [search, setSearch] = useState("");
   const [editingLab, setEditingLab] = useState<PeerLabSeriesItem | null>(null);
   const [isNew, setIsNew] = useState(false);
+
+  useEffect(() => {
+    if (store.peerLabs && store.peerLabs.length > 0) {
+      const dynamicLabs: PeerLabSeriesItem[] = store.peerLabs.map((l) => ({
+        id: l.id,
+        slug: l.slug || l.id,
+        title: l.title,
+        subtitle: l.subtitle || "",
+        description: l.description || "",
+        campusName: "Eranad Knowledge City Technical Campus (EKCTC)",
+        status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as any,
+        joinedCount: l.enrolledCount || 0,
+        featured: true,
+        facilitators: l.facilitators ? l.facilitators.map((f: any) => ({ name: f.name || f, role: f.role || "Facilitator" })) : [],
+        resources: [],
+        lessons: l.phases ? l.phases.map((p: any, idx: number) => ({
+          id: p.id || `phase-${idx}`,
+          slug: p.slug || `phase-${idx}`,
+          title: p.title || `Phase ${idx + 1}`,
+          date: p.date || "TBA",
+          time: p.time || "10:00 AM",
+          location: p.location || "EKCTC Lab",
+          eventSlug: "",
+        })) : [],
+      }));
+      setLabs(dynamicLabs);
+    }
+  }, [store.peerLabs]);
 
   const filtered = labs.filter(
     (l) =>

@@ -572,7 +572,7 @@ export default function WordPressStylePageBuilder() {
       {saveStatus && (
         <div className="rounded-[var(--radius-md)] border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-400 flex items-center justify-between">
           <span>✓ {saveStatus}</span>
-          <span className="text-[10px] text-emerald-500/80 font-mono">Synced to localhost:3000/</span>
+          <span className="text-[10px] text-emerald-500/80 font-mono">Synced to localhost:5000/</span>
         </div>
       )}
 
@@ -756,7 +756,7 @@ export default function WordPressStylePageBuilder() {
 
         {/* Middle/Right Column: Visual Canvas & Inspector */}
         <div className={`${previewMode === "builder" ? "lg:col-span-8" : previewMode === "split" ? "lg:col-span-8" : "lg:col-span-12"} space-y-4`}>
-          {/* Visual Brutalist Live Rendering Window matching localhost:3000 */}
+          {/* Visual Brutalist Live Rendering Window matching localhost:5000 */}
           {(previewMode === "preview" || previewMode === "split") && (
             <div className="rounded-[var(--radius-xl)] border-4 border-[#2d2d34] bg-[#f8fff4] p-6 text-[#2d2d34] shadow-[8px_8px_0px_0px_rgba(45,45,52,1)] space-y-8 overflow-hidden relative">
               {/* Background Grid */}
@@ -767,7 +767,7 @@ export default function WordPressStylePageBuilder() {
                   <span className="bg-[#f26430] text-white px-2 py-0.5 rounded-sm">LIVE PREVIEW</span>
                   <span>elevates.live{currentPage.slug}</span>
                 </div>
-                <Badge tone="green">Synchronized with localhost:3000</Badge>
+                <Badge tone="green">Synchronized with localhost:5000</Badge>
               </div>
 
               {/* Render Blocks Visually in Exact Website Aesthetics */}

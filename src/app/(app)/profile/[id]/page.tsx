@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
+import { resolveMediaUrl } from "@/lib/data/media";
 import Link from "next/link";
 import { Edit3, Globe, Link2, Mail, Phone } from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -185,8 +186,16 @@ export default function ProfilePage({
       <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8">
         <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[20px] bg-[var(--accent-soft)] text-2xl font-bold text-[var(--accent)] shadow-[var(--shadow-sm)]">
-              {initials(profile.fullName)}
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[20px] bg-[var(--accent-soft)] text-2xl font-bold text-[var(--accent)] shadow-[var(--shadow-sm)]">
+              {profile.avatarUrl ? (
+                <img
+                  src={resolveMediaUrl(profile.avatarUrl)}
+                  alt={profile.fullName}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials(profile.fullName)
+              )}
             </div>
             <div className="flex-1">
               <p className="text-[12px] font-semibold text-[var(--accent)]">

@@ -1,6 +1,8 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { corsOptions, jsonOk } from "@/lib/api/public";
 
+import { resolveMediaUrl } from "@/lib/data/media";
+
 export function OPTIONS() {
   return corsOptions();
 }
@@ -25,7 +27,7 @@ export async function GET() {
             college: c.college,
             city: c.city,
             district: c.district,
-            logoUrl: c.logo_url,
+            logoUrl: resolveMediaUrl(c.logo_url),
             healthScore: Number(c.health_score ?? 94),
             memberCount: Number(c.member_count ?? 150),
             eventCount: Number(c.event_count ?? 19),

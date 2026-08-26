@@ -17,30 +17,28 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
   if (!supabase) return seed;
 
   try {
-    const { data: orgs, error: orgErr } = await supabase
+    const { data: orgs } = await supabase
       .from("organizations")
       .select("*")
       .limit(1);
-    if (orgErr || !orgs?.length) return seed;
 
-    const orgRow = orgs[0];
-    const organization: Organization = {
-      id: orgRow.id,
-      name: orgRow.name,
-      slug: orgRow.slug,
-      tagline: orgRow.tagline ?? seed.organization.tagline,
-      brandKit: orgRow.brand_kit ?? seed.organization.brandKit,
-    };
+    const orgRow = orgs?.[0];
+    const organization: Organization = orgRow
+      ? {
+          id: orgRow.id,
+          name: orgRow.name,
+          slug: orgRow.slug,
+          tagline: orgRow.tagline ?? seed.organization.tagline,
+          brandKit: orgRow.brand_kit ?? seed.organization.brandKit,
+        }
+      : seed.organization;
 
-    const { data: chapterRows, error: chErr } = await supabase
+    const { data: chapterRows } = await supabase
       .from("chapters")
       .select("*")
       .order("name");
-    if (chErr || !chapterRows?.length) {
-      return { ...seed, organization };
-    }
 
-    const chapters: Chapter[] = chapterRows.map((c) => ({
+    const chapters: Chapter[] = (chapterRows ?? []).map((c) => ({
       id: c.id,
       organizationId: c.organization_id,
       name: c.name,
@@ -211,18 +209,106 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
         checkedInBy: a.checked_in_by,
       })) ?? [];
 
+    const { data: roleRows } = await supabase.from("roles").select("*");
+    const roles =
+      roleRows?.map((r) => ({
+        id: r.id,
+        key: r.key,
+        name: r.name,
+        scope: r.scope,
+        description: r.description ?? "",
+      })) ?? [];
+
+    const { data: permRows } = await supabase.from("permissions").select("*");
+    const permissions =
+      permRows?.map((p) => ({
+        id: p.id,
+        key: p.key,
+        name: p.name,
+        description: p.description ?? "",
+      })) ?? [];
+
+    const { data: rpRows } = await supabase.from("role_permissions").select("*");
+    const rolePermissions =
+      rpRows?.map((rp) => ({
+        roleId: rp.role_id,
+        permissionId: rp.permission_id,
+        allowed: Boolean(rp.allowed),
+      })) ?? [];
+
+    const { data: urRows } = await supabase.from("user_roles").select("*");
+    const userRoles =
+      urRows?.map((ur) => ({
+        id: ur.id,
+        userId: ur.user_id,
+        roleId: ur.role_id,
+        chapterId: ur.chapter_id ?? undefined,
+        organizationId: ur.organization_id ?? undefined,
+      })) ?? [];
+
+    const { data: ltRows } = await supabase.from("leadership_terms").select("*");
+    const leadershipTerms =
+      ltRows?.map((lt) => ({
+        id: lt.id,
+        chapterId: lt.chapter_id,
+        academicYear: lt.academic_year,
+        title: lt.title,
+        startDate: lt.start_date,
+        endDate: lt.end_date,
+        status: lt.status,
+        handoverNotes: lt.handover_notes ?? undefined,
+      })) ?? [];
+
+    const { data: laRows } = await supabase.from("leadership_assignments").select("*");
+    const leadershipAssignments =
+      laRows?.map((la) => ({
+        id: la.id,
+        termId: la.term_id,
+        userId: la.user_id,
+        roleKey: la.role_key,
+        title: la.title,
+      })) ?? [];
+
+    const { data: clusterRows } = await supabase.from("clusters").select("*");
+    const clusters =
+      clusterRows?.map((cl) => ({
+        id: cl.id,
+        chapterId: cl.chapter_id,
+        name: cl.name,
+        slug: cl.slug,
+        description: cl.description ?? "",
+        leaderId: cl.leader_id ?? undefined,
+        accessMode: cl.access_mode ?? "open",
+        memberIds: [],
+        roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
+      })) ?? [];
+
+    // Maintain consistent demo session pointing to an existing profile in Supabase
+    const activeSarhanProfile = profiles.find((p) => p.email === "sarhan@elevates.live") || profiles[0];
+    const session = activeSarhanProfile
+      ? { userId: activeSarhanProfile.id, roleKey: "founder" as const, chapterId: activeSarhanProfile.chapterId }
+      : seed.session;
+
     return {
       ...seed,
       organization,
       chapters,
-      events: events.length ? events : seed.events,
-      projects: projects.length ? projects : seed.projects,
-      forms: forms.length ? forms : seed.forms,
-      profiles: profiles.length ? profiles : seed.profiles,
-      reports: reports.length ? reports : seed.reports,
-      certificates: certificates.length ? certificates : seed.certificates,
-      registrations: registrations.length ? registrations : seed.registrations,
-      attendance: attendance.length ? attendance : seed.attendance,
+      roles: roles.length ? roles : seed.roles,
+      permissions: permissions.length ? permissions : seed.permissions,
+      rolePermissions: rolePermissions.length ? rolePermissions : seed.rolePermissions,
+      userRoles,
+      leadershipTerms,
+      leadershipAssignments,
+      clusters,
+      events,
+      projects,
+      forms,
+      profiles,
+      reports,
+      certificates,
+      registrations,
+      attendance,
+      session,
     };
   } catch {
     return seed;

@@ -86,7 +86,7 @@ export default function WebsiteCmsHubPage() {
         description="Directly manage, edit, and publish every page, component, text element, event, and team profile on elevates.live."
         actions={
           <a
-            href="http://localhost:3000"
+            href="http://localhost:5000"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1.5"

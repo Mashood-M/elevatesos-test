@@ -243,9 +243,9 @@ export async function getPublicProject(slug: string) {
 
 export async function listPublicPeerLabs() {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
+  if (admin) {
     const { data } = await admin.from("peer_labs").select("*");
-    if (data?.length) {
+    if (data) {
       return data.map((p) => ({
         slug: p.slug,
         title: p.title,
@@ -256,47 +256,7 @@ export async function listPublicPeerLabs() {
       }));
     }
   }
-  return [
-    {
-      slug: "operation-java",
-      title: "Operation Java",
-      track: "Software Engineering",
-      syllabus: [
-        { title: "Week 1: Java OOP & Memory Model" },
-        { title: "Week 2: Collections & Concurrency" },
-        { title: "Week 3: Spring Boot Microservices" },
-        { title: "Week 4: Capstone & Production Deployment" },
-      ],
-      status: "active",
-      applicationsOpen: true,
-    },
-    {
-      slug: "cybersec-defense-lab",
-      title: "Cybersec Defense Lab",
-      track: "Cybersecurity",
-      syllabus: [
-        { title: "Phase 1: Kali Linux & Network Defense" },
-        { title: "Phase 2: Terminal Fundamentals" },
-        { title: "Phase 3: Security & Ethical Hacking" },
-        { title: "Capstone: Cyber Raid CTF" },
-      ],
-      status: "active",
-      applicationsOpen: true,
-    },
-    {
-      slug: "spark-electronics-lab",
-      title: "Spark Electronics Lab",
-      track: "Hardware & IoT",
-      syllabus: [
-        { title: "Week 1: Circuit Design & Component Fundamentals" },
-        { title: "Week 2: Microcontroller Programming with Arduino" },
-        { title: "Week 3: Sensors, Actuators & ESP32 IoT" },
-        { title: "Week 4: Hardware Hackathon Showcase" },
-      ],
-      status: "active",
-      applicationsOpen: true,
-    },
-  ];
+  return [];
 }
 
 export async function getPublicPeerLab(slug: string) {
@@ -305,6 +265,25 @@ export async function getPublicPeerLab(slug: string) {
 }
 
 export async function listPublicTeam() {
+  const admin = createServiceClient();
+  if (admin && !isDemoMode()) {
+    const { data } = await admin
+      .from("profiles")
+      .select("*")
+      .eq("is_public", true);
+    if (data?.length) {
+      return data.map((p) => ({
+        id: p.id,
+        name: p.full_name,
+        role: p.department || "Core Team",
+        bio: p.bio,
+        avatarUrl: p.avatar_url,
+        linkedinUrl: p.linkedin_url,
+        githubUrl: p.github_url,
+        chapterId: p.chapter_id,
+      }));
+    }
+  }
   const store = seed();
   return store.profiles
     .filter((p) => p.isPublic || !p.chapterId || p.badges.includes("Founder"))

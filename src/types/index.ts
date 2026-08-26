@@ -791,5 +791,6 @@ export interface ElevatesStore {
   /** Demo outbound email / WhatsApp queue (no real provider) */
   outboundMessages: OutboundMessage[];
   activityLogs: ActivityLog[];
+  peerLabs?: any[];
   session: DemoUserSession;
 }

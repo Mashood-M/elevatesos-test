@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useStore } from "@/context/store-context";
 import {
   Edit, ExternalLink, Plus, Search, Trash2, X, Users, User, GraduationCap,
 } from "lucide-react";
@@ -8,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { resolveMediaUrl } from "@/lib/data/media";
 
 // ── Types exactly matching src/data/team/founders.ts on Elevates Web ─────────
 interface Founder {
@@ -32,28 +34,197 @@ interface Advisor {
 }
 
 const DEFAULT_FOUNDERS: Founder[] = [
-  { id: "sarhan-qadir-kvm", name: "Sarhan Qadir KVM", tag: "Main Class Bunker", role: "Founder", proof: "Full-stack · Built elevates.live", linkedin: "https://www.linkedin.com/in/sqadirkvm/", cohort: "2025-26", image: "/images/founders/sarhan-qadir.jpeg" },
-  { id: "naseem-shan", name: "Naseem Shan", tag: "Studies In Silence", role: "Founder", proof: "Backend · Systems & Infrastructure", linkedin: "https://www.linkedin.com/in/naseem-shan-b5039a255/", cohort: "2025-26", image: "/images/founders/naseem-shan.jpeg" },
-  { id: "muhammed-nafih-p", name: "Muhammed Nafih P", tag: "Design Wizard", role: "Founder", proof: "Design · Aaroh brand and UI", linkedin: "https://www.linkedin.com/in/muhammed-nafih-8777a2282/", cohort: "2025-26", image: "/images/founders/nafih.jpeg" },
-  { id: "anil-das-p", name: "Anil Das P", tag: "Last Minute Committer", role: "Founder", proof: "Development · Ships right before deadline", linkedin: "https://www.linkedin.com/in/anildasp/", cohort: "2025-26", image: "/images/founders/anil-das.jpeg" },
-  { id: "nadheem-roshan", name: "Nadheem Roshan", tag: "Coming for 75% Attendance", role: "Founder", proof: "IoT · Hardware & Embedded Systems", linkedin: "https://www.linkedin.com/in/nadheem-roshan-aa417427a/", cohort: "2025-26", image: "/images/founders/nadheem.jpg" },
-  { id: "muhammed-shanif-p", name: "Muhammed Shanif P", tag: "Hardware Hacker", role: "Founder", proof: "Embedded · Vibranium RFID check-in", linkedin: "https://www.linkedin.com/in/muhammed-shanif-p-52865a27a/", cohort: "2025-26", image: "/images/founders/shanif.jpeg" },
-  { id: "adhinan-k", name: "Adhinan K", tag: "Terminal Addict", role: "Founder", proof: "DevOps · Linux & server infrastructure", linkedin: "https://www.linkedin.com/in/adhinan-k-48b65927a/", cohort: "2025-26", image: "/images/founders/adhinan.png" },
-  { id: "mashood-m", name: "Mashood M", tag: "Unfinished Project Collector", role: "Founder", proof: "Development · Multiple ambitious WIPs", linkedin: "https://www.linkedin.com/in/mashood-m-5516b71a7/", cohort: "2025-26", image: "/images/founders/mashood.jpeg" },
-  { id: "mohammed-shahin-ek", name: "Mohammed Shahin E K", tag: "Late Night Shipper", role: "Founder", proof: "Backend · 400k requests, zero downtime", linkedin: "https://www.linkedin.com/in/shahinek/", cohort: "2025-26", image: "/images/founders/shahin-ek.jpeg" },
-  { id: "shifna-kp", name: "Shifna K P", tag: "The Reason We Shipped", role: "Founder", proof: "Ops · Campus launch, 120 seats in 2 hours", linkedin: "https://www.linkedin.com/in/shifnarisan/", cohort: "2025-26", image: "/images/founders/shifna.jpeg" },
-  { id: "mohammed-mijvad", name: "Mohammed Mijvad", tag: "Lab Bench Resident", role: "Founder", proof: "Hardware · Lab systems & electronics", linkedin: "https://www.linkedin.com/in/mohammed-mijvad-1b8a3b376/", cohort: "2025-26", image: "/images/founders/mijvad.jpeg" },
-  { id: "sona-varghese", name: "Sona Varghese", tag: "Zero Stage Fear", role: "Founder", proof: "Events · Ran the first public showcase", linkedin: "https://www.linkedin.com/in/sona-varughese-97509b408/", cohort: "2025-26", image: "/images/founders/sona.jpg" },
-  { id: "ashith-mk", name: "Ashith MK", tag: "Bug Hunter", role: "Founder", proof: "Security · Ran the cybersecurity workshop", linkedin: "https://www.linkedin.com/in/ashith-mk-723599355/", cohort: "2025-26", image: "/images/founders/ashith.jpeg" },
-  { id: "arshak-perumballi", name: "Arshak Perumballi", tag: "PPT Specialist", role: "Founder", proof: "Comms · Every deck that got us in a room", linkedin: "https://www.linkedin.com/in/arshak-perumballi-14973b1b6/", cohort: "2025-26", image: "/images/founders/arshak.png" },
-  { id: "sinan-nooren", name: "Sinan Nooren", tag: "Quiet Builder", role: "Founder", proof: "Development · Builds first, talks later", linkedin: "https://www.linkedin.com/in/sinan-nooren-9329372b6/", cohort: "2025-26", image: "/images/founders/sinan-nooren.png" },
-  { id: "muhammed-fiyas-n", name: "Muhammed Fiyas", tag: "Works On My Machine", role: "Founder", proof: "Development · Environment debugging specialist", linkedin: "https://www.linkedin.com/in/muhammed-fiyas-n/", cohort: "2025-26", image: "/images/founders/fiyas.png" },
-  { id: "adil-pt", name: "Adil P T", tag: "Back Bencher", role: "Founder", proof: "Dev · Quietly ships from the last row", linkedin: "https://www.linkedin.com/in/adil-pt-2a6553267/", cohort: "2025-26", image: "/images/founders/adil.jpeg" },
-  { id: "abdul-haadi", name: "Abdul Haadi", tag: "Front Bencher", role: "Founder", proof: "Python · Development & Backend", linkedin: "https://www.linkedin.com/in/abdul-haadi/", cohort: "2025-26", image: "/images/founders/haadi.jpeg" },
+  {
+    id: "sarhan-qadir-kvm",
+    name: "Sarhan Qadir KVM",
+    tag: "Main Class Bunker",
+    role: "Founder",
+    proof: "Fullstack · Dev / Elevates Live",
+    linkedin: "https://www.linkedin.com/in/sqadirkvm/",
+    cohort: "2025-26",
+    image: "/images/founders/sarhan-qadir.jpeg",
+  },
+  {
+    id: "naseem-shan",
+    name: "Naseem Shan",
+    tag: "Stalked In Silence",
+    role: "Founder",
+    proof: "Backend - Systems & Infrastructure",
+    linkedin: "https://www.linkedin.com/in/naseem-shan-b5039a255/",
+    cohort: "2025-26",
+    image: "/images/founders/naseem-shan.jpeg",
+  },
+  {
+    id: "muhammed-nafih-p",
+    name: "Muhammed Nafih P",
+    tag: "Design Wizard",
+    role: "Founder",
+    proof: "Design - Arch & Brand UI",
+    linkedin: "https://www.linkedin.com/in/muhammed-nafih-8777a2282/",
+    cohort: "2025-26",
+    image: "/images/founders/nafih.jpeg",
+  },
+  {
+    id: "anil-das-p",
+    name: "Anil Das P",
+    tag: "Last Minute Contributor",
+    role: "Founder",
+    proof: "Development - Ships 1hr before deadline",
+    linkedin: "https://www.linkedin.com/in/anil-das-p/",
+    cohort: "2025-26",
+    image: "/images/founders/anil-das.jpeg",
+  },
+  {
+    id: "nadheem-roshan",
+    name: "Nadheem Roshan",
+    tag: "Savings Box /99% Attendance",
+    role: "Founder",
+    proof: "IoT & Hardware / Embedded Systems",
+    linkedin: "https://www.linkedin.com/in/nadheem-roshan/",
+    cohort: "2025-26",
+    image: "/images/founders/nadheem.jpg",
+  },
+  {
+    id: "muhammed-shanif-p",
+    name: "Muhammed Shanif P",
+    tag: "Hardware Hacker",
+    role: "Founder",
+    proof: "Embedded - Vibranium RTOS check-in",
+    linkedin: "https://www.linkedin.com/in/muhammed-shanif-p/",
+    cohort: "2025-26",
+    image: "/images/founders/shanif.jpeg",
+  },
+  {
+    id: "adhinan-k",
+    name: "Adhinan K",
+    tag: "Terminal Addict",
+    role: "Founder",
+    proof: "DevOps - Uncloud Server Infrastructure",
+    linkedin: "https://www.linkedin.com/company/elevates-in",
+    cohort: "2025-26",
+    image: "/images/founders/adhinan.png",
+  },
+  {
+    id: "mashood-m",
+    name: "Mashood M",
+    tag: "Unfinished Project Collector",
+    role: "Founder",
+    proof: "Development - Multi-tenant Router APIs",
+    linkedin: "https://www.linkedin.com/in/mashood-m/",
+    cohort: "2025-26",
+    image: "/images/founders/mashood.jpeg",
+  },
+  {
+    id: "mohammed-shahin-ek",
+    name: "Mohammed Shahin E K",
+    tag: "Late Night Shipper",
+    role: "Founder",
+    proof: "Backend - 100K requests, zero downtime",
+    linkedin: "https://www.linkedin.com/in/mohammed-shahin-ek/",
+    cohort: "2025-26",
+    image: "/images/founders/shahin-ek.jpeg",
+  },
+  {
+    id: "shifna-kp",
+    name: "Shifna K P",
+    tag: "The Reason We Skipped",
+    role: "Founder",
+    proof: "Ops - Campus launch, 123 seats in 2 hours",
+    linkedin: "https://www.linkedin.com/in/shifna-kp/",
+    cohort: "2025-26",
+    image: "/images/founders/shifna.jpeg",
+  },
+  {
+    id: "mohammed-mijvad",
+    name: "Mohammed Mijvad",
+    tag: "Lab Bench Resident",
+    role: "Founder",
+    proof: "Hardware - Lab systems & electronics",
+    linkedin: "https://www.linkedin.com/in/mohammed-mijvad/",
+    cohort: "2025-26",
+    image: "/images/founders/mijvad.jpeg",
+  },
+  {
+    id: "sona-varghese",
+    name: "Sona Varghese",
+    tag: "Zero Study Hour",
+    role: "Founder",
+    proof: "SecOps - Ironclad protocol showcase",
+    linkedin: "https://www.linkedin.com/in/sona-varghese/",
+    cohort: "2025-26",
+    image: "/images/founders/sona.jpg",
+  },
+  {
+    id: "ashith-mk",
+    name: "Ashith MK",
+    tag: "Bug Hunter",
+    role: "Founder",
+    proof: "Security - Ran the cyber security workshop",
+    linkedin: "https://www.linkedin.com/in/ashith-mk/",
+    cohort: "2025-26",
+    image: "/images/founders/ashith.jpeg",
+  },
+  {
+    id: "arshak-perumballi",
+    name: "Arshak Perumballi",
+    tag: "PPT Specialist",
+    role: "Founder",
+    proof: "Comms - Everyday deck than persona room",
+    linkedin: "https://www.linkedin.com/in/arshak-perumballi/",
+    cohort: "2025-26",
+    image: "/images/founders/arshak.png",
+  },
+  {
+    id: "sinan-nooren",
+    name: "Sinan Nooren",
+    tag: "Quiet Builder",
+    role: "Founder",
+    proof: "Development - Built the initial store",
+    linkedin: "https://www.linkedin.com/in/sinan-nooren/",
+    cohort: "2025-26",
+    image: "/images/founders/sinan-nooren.png",
+  },
+  {
+    id: "muhammed-fiyas",
+    name: "Muhammed Fiyas",
+    tag: "Hooks on My Mindset",
+    role: "Founder",
+    proof: "Development - One-comment debugging specialist",
+    linkedin: "https://www.linkedin.com/in/muhammed-fiyas/",
+    cohort: "2025-26",
+    image: "/images/founders/fiyas.png",
+  },
+  {
+    id: "adil-pt",
+    name: "Adil P T",
+    tag: "Quick Bencher",
+    role: "Founder",
+    proof: "Dev - Quality ships from the last row",
+    linkedin: "https://www.linkedin.com/in/adil-pt/",
+    cohort: "2025-26",
+    image: "/images/founders/adil.jpeg",
+  },
+  {
+    id: "abdul-haadi",
+    name: "Abdul Haadi",
+    tag: "Front Bencher",
+    role: "Founder",
+    proof: "Python - Development & Backend",
+    linkedin: "https://www.linkedin.com/in/abdul-haadi/",
+    cohort: "2025-26",
+    image: "/images/founders/haadi.jpeg",
+  },
 ];
 
 const DEFAULT_ADVISORS: Advisor[] = [
-  { id: "jasira-kt", name: "Jasira KT", role: "Faculty Head & Advisor", institution: "CSE, Eranad Knowledge City Technical Campus", image: "/images/team/jasira-kt.jpeg" },
+  {
+    id: "jasira-kt",
+    name: "Jasira KT",
+    role: "Faculty Head & Advisor",
+    institution: "Computer Science & Engineering, EKCTC",
+    linkedin: "https://www.linkedin.com/",
+    image: "/images/advisors/jasira-kt.jpeg",
+  },
 ];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -66,6 +237,39 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 function TInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
   return <input className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
+}
+
+function AvatarImage({ src, alt }: { src?: string; alt: string }) {
+  const [imgSrc, setImgSrc] = useState<string>(src ? resolveMediaUrl(src) : "");
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(src ? resolveMediaUrl(src) : "");
+    setHasError(false);
+  }, [src]);
+
+  if (!src || hasError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-bg-page text-text-dim font-mono font-bold text-xs">
+        {alt ? alt.slice(0, 2).toUpperCase() : <User size={18} />}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      className="w-full h-full object-cover"
+      onError={() => {
+        if (src && src.startsWith("/") && imgSrc !== src) {
+          setImgSrc(src);
+        } else {
+          setHasError(true);
+        }
+      }}
+    />
+  );
 }
 
 function FounderEditor({ founder, onSave, onClose }: { founder: Founder; onSave: (f: Founder) => void; onClose: () => void }) {
@@ -110,9 +314,11 @@ function FounderEditor({ founder, onSave, onClose }: { founder: Founder; onSave:
             <TInput value={d.image} onChange={(v) => u({ image: v })} mono placeholder="/images/founders/sarhan-qadir.jpeg" />
           </Field>
           {d.image && (
-            <div className="border border-border rounded-[var(--radius-md)] p-3 bg-bg-page">
-              <img src={d.image} alt={d.name} className="w-24 h-24 object-cover rounded-[var(--radius-md)] border border-border" onError={(e) => (e.currentTarget.style.display = "none")} />
-              <p className="text-[10px] text-text-dim mt-1.5 font-mono">{d.image}</p>
+            <div className="border border-border rounded-[var(--radius-md)] p-3 bg-bg-page flex items-center gap-3">
+              <div className="w-16 h-16 rounded-[var(--radius-md)] border border-border overflow-hidden">
+                <AvatarImage src={d.image} alt={d.name} />
+              </div>
+              <p className="text-[10px] text-text-dim font-mono">{d.image}</p>
             </div>
           )}
         </div>
@@ -156,10 +362,29 @@ function AdvisorEditor({ advisor, onSave, onClose }: { advisor: Advisor; onSave:
 type SectionTab = "founders" | "advisors";
 
 export default function TeamCMSPage() {
+  const { store } = useStore();
   const [tab, setTab] = useState<SectionTab>("founders");
   const [search, setSearch] = useState("");
   const [founders, setFounders] = useState<Founder[]>(DEFAULT_FOUNDERS);
   const [advisors, setAdvisors] = useState<Advisor[]>(DEFAULT_ADVISORS);
+
+  useEffect(() => {
+    if (store.profiles && store.profiles.length > 0) {
+      const enrichedFounders = DEFAULT_FOUNDERS.map((df) => {
+        const p = store.profiles.find(
+          (x) => x.id === df.id || x.fullName?.toLowerCase() === df.name.toLowerCase()
+        );
+        if (!p) return df;
+        return {
+          ...df,
+          image: p.avatarUrl || df.image,
+          linkedin: p.linkedinUrl || df.linkedin,
+          proof: p.bio || df.proof,
+        };
+      });
+      setFounders(enrichedFounders);
+    }
+  }, [store.profiles]);
   const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
   const [isNewFounder, setIsNewFounder] = useState(false);
   const [editingAdvisor, setEditingAdvisor] = useState<Advisor | null>(null);
@@ -233,7 +458,7 @@ export default function TeamCMSPage() {
         <div className="relative rounded-[var(--radius-xl)] border-2 border-border overflow-hidden bg-bg-panel p-2 shadow-sm">
           <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-[var(--radius-lg)]">
             <img
-              src="/team/elevates-founders.jpeg"
+              src={resolveMediaUrl("/team/elevates-founders.jpeg")}
               alt="The 18 founding members of ELEVATES at Eranad Knowledge City, September 2025"
               className="w-full h-full object-cover object-center"
             />
@@ -270,12 +495,7 @@ export default function TeamCMSPage() {
               <div className="flex items-start gap-3 mb-3">
                 {/* Avatar */}
                 <div className="w-14 h-14 rounded-[var(--radius-md)] border-2 border-border overflow-hidden bg-bg-page shrink-0">
-                  {f.image ? (
-                    <img src={f.image} alt={f.name} className="w-full h-full object-cover"
-                      onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-text-dim"><User size={20} /></div>
-                  )}
+                  <AvatarImage src={f.image} alt={f.name} />
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -327,11 +547,7 @@ export default function TeamCMSPage() {
             <div key={a.id} className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 flex items-start justify-between gap-4 hover:border-border-hover">
               <div className="flex items-start gap-3 flex-1">
                 <div className="w-12 h-12 rounded-[var(--radius-md)] border border-border overflow-hidden bg-bg-page shrink-0">
-                  {a.image ? (
-                    <img src={a.image} alt={a.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = "none"; }} />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-text-dim"><GraduationCap size={18} /></div>
-                  )}
+                  <AvatarImage src={a.image} alt={a.name} />
                 </div>
                 <div>
                   <h3 className="font-bold text-text text-sm">{a.name}</h3>

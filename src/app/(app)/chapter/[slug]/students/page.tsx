@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle,
@@ -73,11 +73,33 @@ export default function ChapterStudentsPage({
     interests: "",
   });
 
-  const activeChapter = chapter ?? {
-    id: "c1000000-0000-4000-8000-000000000001",
-    slug: "ekc",
-    name: "Eranad Knowledge City Chapter",
+  const activeChapter = chapter ?? store.chapters?.[0] ?? {
+    id: "",
+    slug: slug,
+    name: "Chapter",
   };
+
+  useEffect(() => {
+    if (store.profiles && store.profiles.length > 0) {
+      const chapterProfiles = store.profiles.filter(
+        (p) => !activeChapter.id || p.chapterId === activeChapter.id || p.chapterId === "ch-ekc"
+      );
+      const mapped: PreCollectedStudent[] = chapterProfiles.map((p) => ({
+        id: p.id,
+        fullName: p.fullName,
+        email: p.email || "",
+        phone: p.phone || "",
+        department: p.department || "Computer Science & Engineering",
+        year: p.year || "1st Year",
+        section: p.section || "A",
+        skills: p.skills || [],
+        interests: p.interests || [],
+        status: p.status === "disabled" ? "unclaimed" : "claimed",
+        collectedAt: new Date().toISOString().split("T")[0],
+      }));
+      setStudentList(mapped);
+    }
+  }, [store.profiles, activeChapter.id]);
 
   const filteredStudents = studentList.filter((s) => {
     const matchesSearch =
@@ -281,7 +303,7 @@ export default function ChapterStudentsPage({
                 <tr key={stu.id} className="group hover:bg-bg-page/50">
                   <td className="py-3">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
+                      <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
                         {initials(stu.fullName)}
                       </span>
                       <div>

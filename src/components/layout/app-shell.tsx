@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Bell, LogOut, Menu, Search, X } from "lucide-react";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
@@ -16,39 +16,7 @@ import { Select } from "@/components/ui/input";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
 
-const personas: {
-  label: string;
-  userId: string;
-  roleKey: RoleKey;
-  chapterId?: string;
-}[] = [
-  { label: "HQ", userId: "u-founder", roleKey: "founder" },
-  { label: "HQ Admin", userId: "u-hq-admin", roleKey: "hq_admin" },
-  {
-    label: "Campus Executive Team · EKC",
-    userId: "u-chairman",
-    roleKey: "chairman",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Faculty Coordinator · EKC",
-    userId: "u-faculty",
-    roleKey: "faculty_coordinator",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Class Rep · EKC",
-    userId: "u-cr",
-    roleKey: "class_representative",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Student · EKC",
-    userId: "u-student-1",
-    roleKey: "student",
-    chapterId: "ch-ekc",
-  },
-];
+// Dynamic personas are resolved within AppShell from store.profiles and store.chapters
 
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
@@ -73,6 +41,75 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, role, session } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const personas = useMemo(() => {
+    const activeCh = store.chapters[0];
+    const chSlug = activeCh?.slug ? activeCh.slug.toUpperCase() : "HQ";
+    const result: { label: string; userId: string; roleKey: RoleKey; chapterId?: string }[] = [];
+
+    const getProfileForRole = (rKey: RoleKey) => {
+      const ur = store.userRoles.find((u) => {
+        const r = store.roles.find((role) => role.id === u.roleId);
+        return r?.key === rKey;
+      });
+      if (ur) {
+        return store.profiles.find((p) => p.id === ur.userId);
+      }
+      return undefined;
+    };
+
+    const founderProf = getProfileForRole("founder") ?? store.profiles.find((p) => p.email.includes("sarhan")) ?? store.profiles[0];
+    if (founderProf) {
+      result.push({ label: `HQ (${founderProf.fullName})`, userId: founderProf.id, roleKey: "founder" });
+    }
+
+    const hqAdminProf = getProfileForRole("hq_admin") ?? founderProf;
+    if (hqAdminProf) {
+      result.push({ label: `HQ Admin (${hqAdminProf.fullName})`, userId: hqAdminProf.id, roleKey: "hq_admin" });
+    }
+
+    const chairmanProf = getProfileForRole("chairman") ?? store.profiles.find((p) => p.id !== founderProf?.id);
+    if (chairmanProf) {
+      result.push({
+        label: `Campus Lead (${chairmanProf.fullName}) · ${chSlug}`,
+        userId: chairmanProf.id,
+        roleKey: "chairman",
+        chapterId: chairmanProf.chapterId || activeCh?.id,
+      });
+    }
+
+    const facultyProf = getProfileForRole("faculty_coordinator");
+    if (facultyProf) {
+      result.push({
+        label: `Faculty Coordinator (${facultyProf.fullName}) · ${chSlug}`,
+        userId: facultyProf.id,
+        roleKey: "faculty_coordinator",
+        chapterId: facultyProf.chapterId || activeCh?.id,
+      });
+    }
+
+    const crProf = getProfileForRole("class_representative");
+    if (crProf) {
+      result.push({
+        label: `Class Rep (${crProf.fullName}) · ${chSlug}`,
+        userId: crProf.id,
+        roleKey: "class_representative",
+        chapterId: crProf.chapterId || activeCh?.id,
+      });
+    }
+
+    const studentProf = getProfileForRole("student") ?? store.profiles[store.profiles.length - 1];
+    if (studentProf && studentProf.id !== founderProf?.id) {
+      result.push({
+        label: `Student (${studentProf.fullName}) · ${chSlug}`,
+        userId: studentProf.id,
+        roleKey: "student",
+        chapterId: studentProf.chapterId || activeCh?.id,
+      });
+    }
+
+    return result;
+  }, [store.profiles, store.userRoles, store.roles, store.chapters]);
 
   const chapter = store.chapters.find((c) => c.id === session.chapterId);
   const chapterSlug = chapter?.slug ?? "ekc";

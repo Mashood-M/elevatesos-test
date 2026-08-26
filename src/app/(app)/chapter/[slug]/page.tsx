@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use } from "react";
+import { use, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -41,10 +41,23 @@ export default function ChapterDashboardPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { slug } = use(params);
   const { store } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey);
+
+  if (!mounted) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs text-text-dim animate-pulse">Loading chapter...</p>
+      </div>
+    );
+  }
 
   if (!chapter) {
     return (

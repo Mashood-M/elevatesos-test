@@ -34,6 +34,11 @@ export default function ChapterReportsPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { slug } = use(params);
   const router = useRouter();
   const {
@@ -52,6 +57,14 @@ export default function ChapterReportsPage({
   const [attendanceNote, setAttendanceNote] = useState("");
   const [images, setImages] = useState<ReportImage[]>([]);
   const [wizardError, setWizardError] = useState("");
+
+  if (!mounted) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs text-text-dim animate-pulse">Loading reports...</p>
+      </div>
+    );
+  }
 
   if (!chapter) {
     return (

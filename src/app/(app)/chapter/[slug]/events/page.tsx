@@ -72,6 +72,11 @@ export default function ChapterEventsPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { slug } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -96,6 +101,14 @@ export default function ChapterEventsPage({
       setShowForm(true);
     }
   }, [searchParams, canCreate]);
+
+  if (!mounted) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs text-text-dim animate-pulse">Loading events...</p>
+      </div>
+    );
+  }
 
   if (!chapter) {
     return (

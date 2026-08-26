@@ -11,7 +11,7 @@ import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { hasPermission } from "@/lib/permissions";
-import { resourceCategoryLabel } from "@/lib/resources/categories";
+import { DEFAULT_RESOURCE_CATEGORIES, resourceCategoryLabel } from "@/lib/resources/categories";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { Resource } from "@/types";
 
@@ -61,7 +61,12 @@ export default function HqResourcesPage() {
   const { confirm } = useAppDialogs();
   const canManage = hasPermission(store, session.roleKey, "resource.upload");
 
-  const categories = store.resourceCategories ?? [];
+  const categories = useMemo(() => {
+    return store.resourceCategories && store.resourceCategories.length > 0
+      ? store.resourceCategories
+      : DEFAULT_RESOURCE_CATEGORIES;
+  }, [store.resourceCategories]);
+
   const labelOf = (key: string) =>
     resourceCategoryLabel(categories, key);
 

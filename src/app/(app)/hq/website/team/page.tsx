@@ -365,26 +365,51 @@ export default function TeamCMSPage() {
   const { store } = useStore();
   const [tab, setTab] = useState<SectionTab>("founders");
   const [search, setSearch] = useState("");
-  const [founders, setFounders] = useState<Founder[]>(DEFAULT_FOUNDERS);
+
+  const [founders, setFounders] = useState<Founder[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("elevates_cms_founders");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return DEFAULT_FOUNDERS;
+  });
+
   const [advisors, setAdvisors] = useState<Advisor[]>(DEFAULT_ADVISORS);
+
+  const saveFounders = (updated: Founder[]) => {
+    setFounders(updated);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("elevates_cms_founders", JSON.stringify(updated));
+      } catch {}
+    }
+  };
 
   useEffect(() => {
     if (store.profiles && store.profiles.length > 0) {
-      const enrichedFounders = DEFAULT_FOUNDERS.map((df) => {
-        const p = store.profiles.find(
-          (x) => x.id === df.id || x.fullName?.toLowerCase() === df.name.toLowerCase()
-        );
-        if (!p) return df;
-        return {
-          ...df,
-          image: p.avatarUrl || df.image,
-          linkedin: p.linkedinUrl || df.linkedin,
-          proof: p.bio || df.proof,
-        };
+      setFounders((prev) => {
+        const enriched = prev.map((df) => {
+          const p = store.profiles.find(
+            (x) => x.id === df.id || x.fullName?.toLowerCase() === df.name.toLowerCase()
+          );
+          if (!p) return df;
+          return {
+            ...df,
+            image: p.avatarUrl || df.image,
+            linkedin: p.linkedinUrl || df.linkedin,
+            proof: p.bio || df.proof,
+          };
+        });
+        return enriched;
       });
-      setFounders(enrichedFounders);
     }
   }, [store.profiles]);
+
   const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
   const [isNewFounder, setIsNewFounder] = useState(false);
   const [editingAdvisor, setEditingAdvisor] = useState<Advisor | null>(null);
@@ -410,7 +435,7 @@ export default function TeamCMSPage() {
       <PageHeader
         eyebrow="Website CMS"
         title="Founders & Team"
-        description="Manage all 18 founding members and faculty advisors exactly as shown on elevates.live/team — names, authentic tags, proof of work, LinkedIn, and photos"
+        description={`Manage all ${founders.length} founding members and faculty advisors exactly as shown on elevates.live/team — names, authentic tags, proof of work, LinkedIn, and photos`}
         actions={
           tab === "founders" ? (
             <Button size="sm" variant="orange" onClick={() => { setEditingFounder(blankFounder()); setIsNewFounder(true); }}>
@@ -443,7 +468,7 @@ export default function TeamCMSPage() {
       {/* Tabs */}
       <div className="flex gap-0 border-b border-border">
         {([
-          { key: "founders", label: `18 Founding Members`, icon: Users },
+          { key: "founders", label: `${founders.length} Founding Members`, icon: Users },
           { key: "advisors", label: "Faculty Advisors", icon: GraduationCap },
         ] as { key: SectionTab; label: string; icon: typeof Users }[]).map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setTab(key)}
@@ -459,7 +484,7 @@ export default function TeamCMSPage() {
           <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-[var(--radius-lg)]">
             <img
               src={resolveMediaUrl("/team/elevates-founders.jpeg")}
-              alt="The 18 founding members of ELEVATES, September 2025"
+              alt={`The ${founders.length} founding members of ELEVATES`}
               className="w-full h-full object-cover object-center"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-5">
@@ -467,7 +492,7 @@ export default function TeamCMSPage() {
                 FOUNDING BATCH · 2025–26
               </span>
               <h3 className="text-xl font-black uppercase text-white tracking-tight">
-                THE 18 FOUNDING MEMBERS OF ELEVATES
+                THE {founders.length} FOUNDING MEMBERS OF ELEVATES
               </h3>
               <p className="text-xs text-white/80 font-mono mt-0.5">
                 Chapter 01 · September 2025
@@ -528,7 +553,7 @@ export default function TeamCMSPage() {
                   <Edit size={12} /> Edit
                 </Button>
                 <Button variant="ghost" size="sm" className="text-[var(--danger)]"
-                  onClick={() => setFounders((prev) => prev.filter((x) => x.id !== f.id))}>
+                  onClick={() => saveFounders(founders.filter((x) => x.id !== f.id))}>
                   <Trash2 size={12} />
                 </Button>
               </div>
@@ -575,8 +600,8 @@ export default function TeamCMSPage() {
       {editingFounder && (
         <FounderEditor founder={editingFounder} onClose={() => { setEditingFounder(null); setIsNewFounder(false); }}
           onSave={(saved) => {
-            if (isNewFounder) setFounders((prev) => [...prev, saved]);
-            else setFounders((prev) => prev.map((f) => (f.id === saved.id ? saved : f)));
+            if (isNewFounder) saveFounders([...founders, saved]);
+            else saveFounders(founders.map((f) => (f.id === saved.id ? saved : f)));
           }}
         />
       )}

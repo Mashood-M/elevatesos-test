@@ -1,10 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Calendar,
   ChevronRight,
-  FileText,
   Globe,
   GraduationCap,
   Layers,
@@ -18,65 +18,83 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/context/store-context";
 
-const CMS_MODULES = [
-  {
-    title: "Pages & Hero",
-    slug: "pages",
-    href: "/hq/website/pages",
-    icon: Globe,
-    description: "Hero headlines, marquee taglines, live stats counters, global announcement banner, and page text.",
-    badge: "Public Site",
-    tone: "cyan" as const,
-  },
-  {
-    title: "Events Manager",
-    slug: "events",
-    href: "/hq/website/events",
-    icon: Calendar,
-    description: "Full event creation & editing. Speakers, dates, tickets, topics, description, and cover images.",
-    badge: "15 Events",
-    tone: "orange" as const,
-  },
-  {
-    title: "Projects Showcase",
-    slug: "projects",
-    href: "/hq/website/projects",
-    icon: Layers,
-    description: "Flagship case studies (Celestia 1-Hour Build, Vibranium Fest), student builds, metrics, and repo links.",
-    badge: "Case Studies",
-    tone: "magenta" as const,
-  },
-  {
-    title: "Founders & Team",
-    slug: "team",
-    href: "/hq/website/team",
-    icon: Users,
-    description: "All 18 Founders, Core Team members, and Faculty Advisors. Roles, proof of work, photos, and socials.",
-    badge: "18 Founders",
-    tone: "green" as const,
-  },
-  {
-    title: "For Colleges",
-    slug: "for-colleges",
-    href: "/hq/website/for-colleges",
-    icon: GraduationCap,
-    description: "Partnership tiers, First 90 Days campus roadmap milestones, benefits, and dynamic FAQs.",
-    badge: "Partnerships",
-    tone: "cyan" as const,
-  },
-  {
-    title: "Peer Labs",
-    slug: "peer-labs",
-    href: "/hq/website/peer-labs",
-    icon: Sparkles,
-    description: "Hands-on student labs (Cybersec Defense, Operation Java, Spark Electronics) and syllabus modules.",
-    badge: "3 Labs",
-    tone: "orange" as const,
-  },
-];
-
 export default function WebsiteCmsHubPage() {
   const { store } = useStore();
+  const [foundersCount, setFoundersCount] = useState(18);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("elevates_cms_founders");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setFoundersCount(parsed.length);
+        }
+      }
+    } catch {}
+  }, []);
+
+  const totalEvents = store.events.length;
+  const totalChapters = store.chapters.length;
+  const totalProjects = store.projects.length;
+  const totalClusters = store.clusters.length;
+
+  const cmsModules = [
+    {
+      title: "Pages & Hero",
+      slug: "pages",
+      href: "/hq/website/pages",
+      icon: Globe,
+      description: "Hero headlines, marquee taglines, live stats counters, global announcement banner, and page text.",
+      badge: "Public Site",
+      tone: "cyan" as const,
+    },
+    {
+      title: "Events Manager",
+      slug: "events",
+      href: "/hq/website/events",
+      icon: Calendar,
+      description: "Full event creation & editing. Speakers, dates, tickets, topics, description, and cover images.",
+      badge: `${totalEvents} Events`,
+      tone: "orange" as const,
+    },
+    {
+      title: "Projects Showcase",
+      slug: "projects",
+      href: "/hq/website/projects",
+      icon: Layers,
+      description: "Flagship case studies (Celestia 1-Hour Build, Vibranium Fest), student builds, metrics, and repo links.",
+      badge: `${totalProjects} Projects`,
+      tone: "magenta" as const,
+    },
+    {
+      title: "Founders & Team",
+      slug: "team",
+      href: "/hq/website/team",
+      icon: Users,
+      description: `All ${foundersCount} Founders, Core Team members, and Faculty Advisors. Roles, proof of work, photos, and socials.`,
+      badge: `${foundersCount} Founders`,
+      tone: "green" as const,
+    },
+    {
+      title: "For Colleges",
+      slug: "for-colleges",
+      href: "/hq/website/for-colleges",
+      icon: GraduationCap,
+      description: "Partnership tiers, First 90 Days campus roadmap milestones, benefits, and dynamic FAQs.",
+      badge: "Partnerships",
+      tone: "cyan" as const,
+    },
+    {
+      title: "Peer Labs",
+      slug: "peer-labs",
+      href: "/hq/website/peer-labs",
+      icon: Sparkles,
+      description: "Hands-on student labs (Cybersec Defense, Operation Java, Spark Electronics) and syllabus modules.",
+      badge: `${totalClusters || 3} Labs`,
+      tone: "orange" as const,
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -101,15 +119,15 @@ export default function WebsiteCmsHubPage() {
 
       {/* Quick Stats */}
       <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Total Events" value={store.events.length || 15} accent="orange" />
-        <Stat label="Founders & Team" value="18 Founders" accent="cyan" />
-        <Stat label="Active Chapters" value={store.chapters.length || "1 (EKC)"} accent="green" />
-        <Stat label="Showcased Projects" value="3 Flagships" accent="magenta" />
+        <Stat label="Total Events" value={`${totalEvents} Events`} accent="orange" />
+        <Stat label="Founders & Team" value={`${foundersCount} Founders`} accent="cyan" />
+        <Stat label="Active Chapters" value={`${totalChapters} Active`} accent="green" />
+        <Stat label="Showcased Projects" value={`${totalProjects} Projects`} accent="magenta" />
       </div>
 
       {/* Grid of CMS Studios */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {CMS_MODULES.map((m) => {
+        {cmsModules.map((m) => {
           const Icon = m.icon;
           return (
             <Link

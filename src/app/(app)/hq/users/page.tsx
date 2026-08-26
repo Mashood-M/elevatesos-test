@@ -99,9 +99,7 @@ export default function HqUsersPage() {
           .map((ur) => store.roles.find((r) => r.id === ur.roleId))
           .filter(Boolean);
         const status = p.status ?? "active";
-        const chapter =
-          store.chapters.find((c) => c.id === p.chapterId) ??
-          store.chapters.find((c) => urs.some((ur) => ur.chapterId === c.id));
+        const chapter = store.chapters.find((c) => c.id === p.chapterId);
         return { profile: p, roles, status, chapter, urs };
       })
       .filter((row) => {

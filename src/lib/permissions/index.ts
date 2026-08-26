@@ -54,6 +54,6 @@ export function executiveScore(store: ElevatesStore, userId: string) {
   const reports = store.reports.filter((r) => r.submittedBy === userId).length;
   const attendanceManaged = store.attendance.filter((a) => a.checkedInBy === userId).length;
   const raw =
-    completed * 12 + eventsOrganized * 18 + reports * 15 + attendanceManaged * 10 + 40;
+    completed * 12 + eventsOrganized * 18 + reports * 15 + attendanceManaged * 10;
   return Math.min(99, raw);
 }

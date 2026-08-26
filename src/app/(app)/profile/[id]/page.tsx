@@ -490,7 +490,7 @@ export default function ProfilePage({
           />
           <p className="mt-4 text-[11px] text-text-dim">
             Executive score algorithm: tasks × 12 + events × 18 + reports × 15
-            + attendance × 10 + base 40
+            + attendance × 10
           </p>
         </TerminalPanel>
 

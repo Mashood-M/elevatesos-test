@@ -82,7 +82,7 @@ export default function ChapterStudentsPage({
   useEffect(() => {
     if (store.profiles && store.profiles.length > 0) {
       const chapterProfiles = store.profiles.filter(
-        (p) => !activeChapter.id || p.chapterId === activeChapter.id || p.chapterId === "ch-ekc"
+        (p) => !activeChapter.id || p.chapterId === activeChapter.id
       );
       const mapped: PreCollectedStudent[] = chapterProfiles.map((p) => ({
         id: p.id,
@@ -157,7 +157,7 @@ export default function ChapterStudentsPage({
         imported.push({
           id: `bulk-${Date.now()}-${idx}`,
           fullName: parts[0] || "Student",
-          email: parts[1] || `student${idx}@ekc.edu.in`,
+          email: parts[1] || `student${idx}@student.edu.in`,
           phone: parts[2] || "+91 90000 00000",
           department: parts[3] || "Computer Science & Engineering",
           year: parts[4] || "2nd Year",
@@ -250,7 +250,7 @@ export default function ChapterStudentsPage({
         />
         <Stat
           label="Active Chapter"
-          value="EKC"
+          value={activeChapter.name || "Active Chapter"}
           accent="magenta"
         />
       </div>
@@ -426,7 +426,7 @@ export default function ChapterStudentsPage({
                     required
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="student@ekc.edu.in"
+                    placeholder="student@student.edu.in"
                     className="mt-1"
                   />
                 </div>
@@ -532,7 +532,7 @@ export default function ChapterStudentsPage({
               <div className="rounded-[var(--radius-md)] bg-[var(--neutral-100)] p-3 text-[11px] text-text-dim font-mono">
                 Format: Name, Email, Phone, Department, Year, Skills (separated by semicolons)
                 <br />
-                Example: John Doe, john@ekc.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git
+                Example: John Doe, john@student.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git
               </div>
 
               <div>

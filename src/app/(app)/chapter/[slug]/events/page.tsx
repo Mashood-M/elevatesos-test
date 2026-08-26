@@ -40,7 +40,7 @@ function defaultCreateSchedule() {
 function emptyCreateForm() {
   return {
     title: "",
-    venue: "Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)",
+    venue: "Main Seminar Hall",
     category: "Workshop",
     capacity: "60",
     visibility: "public" as Visibility,
@@ -559,7 +559,7 @@ export default function ChapterEventsPage({
             <div className="md:col-span-2">
               <FieldLabel>Venue / Location</FieldLabel>
               <Input
-                placeholder="e.g. Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)"
+                placeholder="e.g. Main Seminar Hall / Campus Auditorium"
                 value={form.venue}
                 onChange={(e) => setForm((f) => ({ ...f, venue: e.target.value }))}
               />

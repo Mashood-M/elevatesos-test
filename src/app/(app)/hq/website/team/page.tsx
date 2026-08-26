@@ -345,7 +345,7 @@ function AdvisorEditor({ advisor, onSave, onClose }: { advisor: Advisor; onSave:
         <div className="p-6 space-y-4">
           <Field label="Name"><TInput value={d.name} onChange={(v) => u({ name: v })} /></Field>
           <Field label="Role / Title"><TInput value={d.role} onChange={(v) => u({ role: v })} placeholder="Faculty Head & Advisor" /></Field>
-          <Field label="Institution / Department"><TInput value={d.institution} onChange={(v) => u({ institution: v })} placeholder="CSE, Eranad Knowledge City Technical Campus" /></Field>
+          <Field label="Institution / Department"><TInput value={d.institution} onChange={(v) => u({ institution: v })} placeholder="Computer Science & Engineering" /></Field>
           <Field label="LinkedIn URL (optional)"><TInput value={d.linkedin ?? ""} onChange={(v) => u({ linkedin: v })} mono /></Field>
           <Field label="Photo Path (optional)"><TInput value={d.image ?? ""} onChange={(v) => u({ image: v })} mono placeholder="/images/team/jasira-kt.jpeg" /></Field>
           <Field label="ID (slug)"><TInput value={d.id} onChange={(v) => u({ id: v })} mono /></Field>
@@ -459,7 +459,7 @@ export default function TeamCMSPage() {
           <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-[var(--radius-lg)]">
             <img
               src={resolveMediaUrl("/team/elevates-founders.jpeg")}
-              alt="The 18 founding members of ELEVATES at Eranad Knowledge City, September 2025"
+              alt="The 18 founding members of ELEVATES, September 2025"
               className="w-full h-full object-cover object-center"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-5">
@@ -470,7 +470,7 @@ export default function TeamCMSPage() {
                 THE 18 FOUNDING MEMBERS OF ELEVATES
               </h3>
               <p className="text-xs text-white/80 font-mono mt-0.5">
-                Eranad Knowledge City · Manjeri, Malappuram · September 2025
+                Chapter 01 · September 2025
               </p>
             </div>
           </div>

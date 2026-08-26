@@ -146,11 +146,7 @@ export default function EventDetailPage({
   const { session } = useCurrentUser();
 
   const chapter = store.chapters.find(
-    (c) =>
-      c.slug === slug ||
-      c.id === slug ||
-      (slug === "ekc" && (c.slug === "eranad-knowledge-city" || c.id === "ch-ekc")) ||
-      (slug === "eranad-knowledge-city" && (c.slug === "ekc" || c.id === "ch-ekc")),
+    (c) => c.slug === slug || c.id === slug,
   ) ?? store.chapters[0];
 
   const event = store.events.find(

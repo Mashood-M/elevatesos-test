@@ -4,15 +4,7 @@ import type { Chapter, RoleKey } from "@/types";
 export function resolveChapter(store: { chapters: Chapter[] }, slug?: string): Chapter | undefined {
   if (!store.chapters?.length) return undefined;
   if (!slug) return store.chapters[0];
-  return (
-    store.chapters.find(
-      (c) =>
-        c.slug === slug ||
-        c.id === slug ||
-        (slug === "ekc" && (c.slug === "eranad-knowledge-city" || c.id === "ch-ekc")) ||
-        (slug === "eranad-knowledge-city" && (c.slug === "ekc" || c.id === "ch-ekc")),
-    ) ?? store.chapters[0]
-  );
+  return store.chapters.find((c) => c.slug === slug || c.id === slug) ?? store.chapters[0];
 }
 
 const EXECUTIVE_ROLES: RoleKey[] = [

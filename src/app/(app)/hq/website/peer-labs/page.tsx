@@ -75,7 +75,7 @@ export default function PeerLabsCMSPage() {
         title: l.title,
         subtitle: l.subtitle || "",
         description: l.description || "",
-        campusName: "Eranad Knowledge City Technical Campus (EKCTC)",
+        campusName: store.chapters.find((c) => c.id === l.chapterId)?.college || store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
         status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as any,
         joinedCount: l.enrolledCount || 0,
         featured: true,
@@ -87,13 +87,13 @@ export default function PeerLabsCMSPage() {
           title: p.title || `Phase ${idx + 1}`,
           date: p.date || "TBA",
           time: p.time || "10:00 AM",
-          location: p.location || "EKCTC Lab",
+          location: p.location || "Campus Computer Lab",
           eventSlug: "",
         })) : [],
       }));
       setLabs(dynamicLabs);
     }
-  }, [store.peerLabs]);
+  }, [store.peerLabs, store.chapters]);
 
   const filtered = labs.filter(
     (l) =>
@@ -107,7 +107,7 @@ export default function PeerLabsCMSPage() {
     title: "",
     subtitle: "",
     description: "",
-    campusName: "Eranad Knowledge City Technical Campus (EKCTC)",
+    campusName: store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
     status: "Upcoming",
     joinedCount: 0,
     featured: false,
@@ -120,7 +120,7 @@ export default function PeerLabsCMSPage() {
         title: "Phase 1: Getting Started",
         date: "TBA",
         time: "10:00 AM",
-        location: "EKCTC Lab",
+        location: "Campus Computer Lab",
         eventSlug: "",
       },
     ],

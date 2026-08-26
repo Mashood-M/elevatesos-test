@@ -738,12 +738,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const merged: ElevatesStore = {
             ...seed,
             ...saved,
-            chapters: (saved.chapters?.length ?? 0) >= seed.chapters.length ? saved.chapters : seed.chapters,
-            events: (saved.events?.length ?? 0) >= seed.events.length ? saved.events : seed.events,
-            profiles: (saved.profiles?.length ?? 0) >= seed.profiles.length ? saved.profiles : seed.profiles,
-            certificates: (saved.certificates?.length ?? 0) >= seed.certificates.length ? saved.certificates : seed.certificates,
-            projects: (saved.projects?.length ?? 0) >= seed.projects.length ? saved.projects : seed.projects,
-            reports: (saved.reports?.length ?? 0) >= seed.reports.length ? saved.reports : seed.reports,
+            chapters: saved.chapters ?? seed.chapters,
+            events: saved.events ?? seed.events,
+            profiles: saved.profiles ?? seed.profiles,
+            certificates: saved.certificates ?? seed.certificates,
+            projects: saved.projects ?? seed.projects,
+            reports: saved.reports ?? seed.reports,
             organization: saved.organization || seed.organization,
           };
           setStore(normalizeStore(merged));

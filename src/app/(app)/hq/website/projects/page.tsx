@@ -66,7 +66,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
   {
     id: "vibranium-event-platform", slug: "vibranium-event-platform",
     title: "Vibranium Event Platform",
-    client: "Eranad Knowledge City TechFest (Chapter 01)", date: "October 2025",
+    client: "Campus TechFest (Chapter 01)", date: "October 2025",
     type: "flagship", status: "live",
     tagline: "Five days to build it. 400,000 requests in the first 24 hours. It did not go down.",
     summary: "A complete event management system, running the fest end to end under extreme load.",
@@ -80,7 +80,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
     situation: {
       title: "The Application Window Was Closed",
       paragraphs: [
-        "Vibranium is Eranad Knowledge City's flagship annual tech fest.",
+        "Vibranium is Chapter 01's flagship annual tech fest.",
         "Five days before registrations opened, it had no system to handle them. The options were a Google Form and a spreadsheet, or something that actually worked.",
         "ELEVATES was about a month old at that point — founded in September 2025. In our final year, we stopped waiting for permission and built the software our college actually ran on.",
       ],
@@ -118,11 +118,11 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
       { role: "Development & Testing", name: "Muhammed Shanif P", founderId: "muhammed-shanif-p" },
     ],
     contributors: [],
-    faculty: [{ name: "Jasira KT", detail: "ELEVATES Faculty Head, CSE" }],
+    faculty: [{ name: "Faculty Lead", detail: "ELEVATES Faculty Head" }],
     stackAndCode: {
       technologies: ["Next.js", "TypeScript", "Tailwind CSS", "PostgreSQL", "Vercel Edge"],
       repoUrl: null,
-      repoNote: "Private repository — production software built for Eranad Knowledge City (Chapter 01) TechFest.",
+      repoNote: "Production software built for Chapter 01 TechFest.",
     },
     gallery: [
       { src: "/projects/vibranium/digital-entry-pass.png", caption: "Digital Entry Pass — Unique QR verification pass for participants" },
@@ -134,7 +134,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
   {
     id: "aaroh-arts-platform", slug: "aaroh-arts-platform",
     title: "Aaroh Arts Platform",
-    client: "Eranad Knowledge City Arts Fest (Chapter 01)", date: "January 5, 2026",
+    client: "Campus Arts Fest (Chapter 01)", date: "January 5, 2026",
     type: "flagship", status: "live",
     tagline: "The second platform. This time we knew what we were doing.",
     summary: "Sophisticated web application streamlining the entire lifecycle of an arts festival — from student enrollment and event scheduling to real-time participation monitoring and automated PDF reporting.",
@@ -144,7 +144,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
     situation: {
       title: "The Repeat Client",
       paragraphs: [
-        "Aaroh (meaning 'Ascent') is Eranad Knowledge City's annual inter-department arts festival.",
+        "Aaroh (meaning 'Ascent') is Chapter 01's annual inter-department arts festival.",
         "After Vibranium 5.0 succeeded, the college leadership returned to ask ELEVATES to build the complete event management, scoring, and scheduling system for the arts fest.",
         "A repeat client is the strongest proof available — one platform is luck, two platforms is a pattern.",
       ],
@@ -179,7 +179,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
       { role: "Development & Full-Stack", name: "Mashood M", founderId: "mashood-m" },
     ],
     contributors: [],
-    faculty: [{ name: "Jasira KT", detail: "ELEVATES Faculty Head, CSE" }],
+    faculty: [{ name: "Faculty Lead", detail: "ELEVATES Faculty Head" }],
     stackAndCode: {
       technologies: ["React 18", "Vite", "TypeScript", "Tailwind CSS", "shadcn/ui", "Supabase (DB & Auth)", "TanStack Query", "Zod", "jsPDF", "Recharts"],
       repoUrl: "https://github.com/elevates-club/aaroh",
@@ -194,7 +194,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
   {
     id: "celestia", slug: "celestia",
     title: "Celestia — CSE Association Website",
-    client: "Celestia, CSE Association — Eranad Knowledge City Technical Campus", date: "March 25, 2026",
+    client: "Celestia, CSE Association — Campus Chapter", date: "March 25, 2026",
     type: "flagship", status: "live-incomplete",
     tagline: "A department website, rebuilt in one hour.",
     summary: "We were running the event. The guest we had invited was arriving at two o'clock. We had two hours, five juniors, and a specification written on the way to campus. We finished in one hour, launched live on stage via Python gesture recognition.",
@@ -204,7 +204,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
     situation: {
       title: "The One-Hour Challenge",
       paragraphs: [
-        "On 25 March 2026 the Computer Science department at Eranad Knowledge City was relaunching its association as Celestia. ELEVATES coordinated the entire relaunch event, and we had invited the chief guest: Moosa Mehar MP, Co-Founder and CEO of TinkerHub Foundation. He was arriving at 2:00 PM.",
+        "On 25 March 2026 the Computer Science department was relaunching its association as Celestia. ELEVATES coordinated the entire relaunch event, and we had invited the chief guest: Moosa Mehar MP, Co-Founder and CEO of TinkerHub Foundation. He was arriving at 2:00 PM.",
         "The association's website was three years old and needed a complete overhaul.",
         "With two hours left, two of us called the HOD from the back of a bike and asked for permission to rebuild it before the guest arrived. Then we named five students, none of whom had built anything for the department before, and three of us walked into their classrooms and pulled them out of their sessions.",
       ],
@@ -251,14 +251,13 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
       { name: "Abhijith CJ", detail: "3rd year, AI & DS — Build & Gesture Launch Developer", did: "Built the gesture-controlled launch" },
     ],
     faculty: [
-      { name: "Jasira KT", detail: "ELEVATES Faculty Head, CSE" },
-      { name: "Anu K Soman", detail: "HOD, CSE" },
-      { name: "Anas Bin Malik", detail: "Assistant Professor, Computer Science and Engineering" },
+      { name: "Faculty Coordinator", detail: "ELEVATES Faculty Head" },
+      { name: "HOD, Computer Science", detail: "HOD, CSE" },
     ],
     stackAndCode: {
       technologies: ["React 18", "TypeScript", "Vite", "Tailwind CSS", "GSAP", "Framer Motion", "Lenis", "Python", "OpenCV", "MediaPipe"],
       repoUrl: null,
-      repoNote: "Production site deployed directly to Vercel preview under CSE Association Eranad Knowledge City.",
+      repoNote: "Production site deployed directly to Vercel preview under CSE Association Campus Chapter.",
     },
     gallery: [],
   },

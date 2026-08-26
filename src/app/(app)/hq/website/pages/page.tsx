@@ -177,7 +177,7 @@ const INITIAL_PAGES: WebsitePage[] = [
         data: {
           tag: "MANIFESTO 001",
           quote: "We are the untamed, the builders, the midnight coders. We don't just study the future—we ship it.",
-          author: "ELEVATES Founders · Eranad Knowledge City, Sept 2025",
+          author: "ELEVATES Founders · September 2025",
         },
       },
       {
@@ -279,7 +279,7 @@ const INITIAL_PAGES: WebsitePage[] = [
     title: "About Page",
     slug: "/about",
     seoTitle: "About ELEVATES — Proof Over Paperwork",
-    seoDesc: "How 18 students at Eranad Knowledge City started a community in their final year.",
+    seoDesc: "How 18 founding student developers started a community in their final year.",
     blocks: [
       {
         id: "hero-about",
@@ -290,7 +290,7 @@ const INITIAL_PAGES: WebsitePage[] = [
           strip1Text: "PROOF",
           strip2Text: "BEATS",
           strip3Text: "PAPERWORK",
-          subhead: "Founded by 18 back-benchers and quiet coders at Eranad Knowledge City.",
+          subhead: "Founded by 18 back-benchers and quiet coders in Chapter 01.",
           sticker1: "{ FOUNDERS }",
           sticker2: "SEPT 2025",
           sticker3: "CHAPTER 01",
@@ -345,7 +345,7 @@ const BLOCK_DEFINITIONS: {
     defaultData: {
       tag: "MANIFESTO 001",
       quote: "We are the untamed, the builders, the midnight coders. We don't just study the future—we ship it.",
-      author: "ELEVATES Founders · Eranad Knowledge City, Sept 2025",
+      author: "ELEVATES Founders · September 2025",
     },
   },
   {

@@ -143,6 +143,7 @@ function OrgList({ orgs, onChange }: { orgs: Organizer[]; onChange: (v: Organize
 }
 
 function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e: EventItem) => void; onClose: () => void }) {
+  const { store } = useStore();
   const [d, setD] = useState<EventItem>(event);
   const u = (patch: Partial<EventItem>) => setD((prev) => ({ ...prev, ...patch }));
 
@@ -182,15 +183,16 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
                 value={d.chapterSlug}
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val === "ekc") {
-                    u({ chapterSlug: "ekc", chapterName: "Chapter #01 · Eranad Knowledge City Technical Campus" });
-                  } else {
-                    u({ chapterSlug: val, chapterName: val });
-                  }
+                  const ch = store.chapters.find((c) => c.slug === val);
+                  u({ chapterSlug: val, chapterName: ch ? ch.name : val });
                 }}
               >
-                <option value="ekc">Chapter #01 · Eranad Knowledge City Technical Campus (EKCTC)</option>
                 <option value="hq">ELEVATES HQ / Network Wide</option>
+                {store.chapters.map((c) => (
+                  <option key={c.id} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </Field>
 
@@ -337,7 +339,7 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
             <Field label="End Time"><TInput value={d.endTime} onChange={(v) => u({ endTime: v })} placeholder="4:00 PM" /></Field>
           </div>
 
-          <Field label="Venue"><TInput value={d.venue} onChange={(v) => u({ venue: v })} placeholder="Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)" /></Field>
+          <Field label="Venue"><TInput value={d.venue} onChange={(v) => u({ venue: v })} placeholder="Main Seminar Hall / Campus Auditorium" /></Field>
           <Field label="Cover Image Path"><TInput value={d.coverImage} onChange={(v) => u({ coverImage: v })} mono placeholder="/images/events/my-event.jpeg" /></Field>
 
           <div className="flex items-center gap-3">
@@ -401,12 +403,12 @@ export default function EventsCMSPage() {
         attendeesCount: 50,
         coverImage: e.bannerUrl || "",
         featured: true,
-        chapterSlug: "ekc",
-        chapterName: "Chapter #01 · Eranad Knowledge City Technical Campus",
+        chapterSlug: store.chapters.find((c) => c.id === e.chapterId)?.slug || store.chapters[0]?.slug || "ch-main",
+        chapterName: store.chapters.find((c) => c.id === e.chapterId)?.name || store.chapters[0]?.name || "Campus Chapter",
       }));
       setEvents(dynamicEvents);
     }
-  }, [store.events]);
+  }, [store.events, store.chapters]);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<EventStatus | "all">("all");
   const [filterChapter, setFilterChapter] = useState<string>("all");
@@ -428,11 +430,11 @@ export default function EventsCMSPage() {
     format: "Campus Exclusive", category: "Workshop", status: "Upcoming",
     startDate: "", endDate: "", startTime: "", endTime: "",
     isoStartDate: "", isoEndDate: "",
-    venue: "Seminar Hall, Eranad Knowledge City Technical Campus (EKCTC)", locationName: "",
+    venue: "Main Seminar Hall", locationName: "",
     organizer: [{ name: "ELEVATES" }], hosts: [{ name: "", role: "" }],
     topics: [], attendeesCount: 0, coverImage: "", featured: false,
     platform: { enabled: false, platformName: "", tagline: "", caseStudySlug: "" },
-    chapterSlug: "ekc", chapterName: "Chapter #01 · Eranad Knowledge City Technical Campus",
+    chapterSlug: store.chapters[0]?.slug || "ch-main", chapterName: store.chapters[0]?.name || "Campus Chapter",
   });
 
   const platformEventsCount = events.filter((e) => e.platform?.enabled).length;
@@ -442,7 +444,7 @@ export default function EventsCMSPage() {
       <PageHeader
         eyebrow="Website CMS"
         title="Events & Workshops"
-        description="All 19 authentic ELEVATES workshops, meetups, hackathons, and challenges across Kerala. Seamlessly linked to Chapter #01 (EKC) and production software case studies."
+        description="All authentic ELEVATES workshops, meetups, hackathons, and challenges across Kerala. Seamlessly linked to campus chapters and software case studies."
         actions={
           <Button size="sm" variant="orange" onClick={() => { setEditing(blank()); setIsNew(true); }}>
             <Plus size={14} /> New Event
@@ -454,7 +456,7 @@ export default function EventsCMSPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
           <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{events.length}</p>
-          <p className="text-xs text-text-dim">Total Events (All 19)</p>
+          <p className="text-xs text-text-dim">Total Events</p>
         </div>
         <div className="rounded-[var(--radius-xl)] border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4">
           <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-[var(--accent)] flex items-center gap-1">
@@ -478,7 +480,7 @@ export default function EventsCMSPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-          <Input placeholder="Search all 19 events or speakers..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input placeholder="Search all events or speakers..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         
         {/* Chapter Filter */}
@@ -488,7 +490,11 @@ export default function EventsCMSPage() {
           onChange={(e) => setFilterChapter(e.target.value)}
         >
           <option value="all">All Chapters</option>
-          <option value="ekc">Chapter #01 · Eranad Knowledge City ({events.length})</option>
+          {store.chapters.map((c) => (
+            <option key={c.id} value={c.slug}>
+              {c.name}
+            </option>
+          ))}
         </select>
 
         <select className="h-9 rounded-[var(--radius-md)] border border-border bg-bg-panel px-3 text-xs text-text" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as EventStatus | "all")}>
@@ -544,7 +550,7 @@ export default function EventsCMSPage() {
                     className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-text bg-bg-page border border-border px-2.5 py-1 rounded-[var(--radius-md)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
                   >
                     <Building2 size={12} className="text-[var(--accent)]" />
-                    <span>{evt.chapterName || "Chapter #01 · Eranad Knowledge City Technical Campus"}</span>
+                    <span>{evt.chapterName || "Campus Chapter"}</span>
                     <span className="text-text-dim text-[10px]">↗</span>
                   </Link>
                 </div>

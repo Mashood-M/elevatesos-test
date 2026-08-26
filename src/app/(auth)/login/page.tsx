@@ -90,10 +90,11 @@ function LoginForm() {
       return;
     }
 
-    if (cleanEmail === "chairman@ekc.elevates.live") {
-      setSession("u-chairman", "chairman", "ch-ekc");
+    if (cleanEmail.includes("chairman@")) {
+      const activeCh = store.chapters[0];
+      setSession("u-chairman", "chairman", activeCh?.id);
       setLoading(false);
-      router.push("/chapter/ekc");
+      router.push(activeCh ? `/chapter/${activeCh.slug}` : "/hq");
       return;
     }
 

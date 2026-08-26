@@ -55,14 +55,14 @@ const API_ENDPOINTS: ApiEndpoint[] = [
         events: [
           {
             id: "evt-launch",
-            slug: "campus-launch-ekctc",
-            title: "Campus Launch — Eranad Knowledge City",
+            slug: "campus-launch",
+            title: "Campus Launch — Elevates Chapter",
             category: "Workshop",
-            venue: "Seminar Hall, EKCTC",
+            venue: "Main Seminar Hall",
             capacity: 120,
             seatsLeft: 42,
             startsAt: "2026-08-25T09:30:00Z",
-            chapter: { name: "Eranad Knowledge City", slug: "eranad-knowledge-city" }
+            chapter: { name: "Campus Chapter #01", slug: "campus-chapter" }
           }
         ]
       },
@@ -73,7 +73,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   {
     id: "get-event-detail",
     method: "GET",
-    path: "/events/campus-launch-ekctc",
+    path: "/events/campus-launch",
     category: "Events",
     title: "Get Event Detail",
     description: "Returns deep event metadata, description, seat availability, and attendance sessions.",
@@ -82,8 +82,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
       {
         event: {
           id: "evt-launch",
-          slug: "campus-launch-ekctc",
-          title: "Campus Launch — EKCTC",
+          slug: "campus-launch",
+          title: "Campus Launch — Elevates Chapter",
           category: "Workshop",
           capacity: 120,
           approvedCount: 78,
@@ -101,7 +101,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   {
     id: "post-register",
     method: "POST",
-    path: "/events/campus-launch-ekctc/register",
+    path: "/events/campus-launch/register",
     category: "Events",
     title: "Register for Event",
     description: "Submits a student RSVP for chapter review. Rate-limited and validated.",
@@ -111,7 +111,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
         fullName: "Alex Rivera",
         email: "alex@college.edu.in",
         phone: "+91 98765 43210",
-        college: "Eranad Knowledge City Technical Campus"
+        college: "Campus Engineering College"
       },
       null,
       2
@@ -137,12 +137,12 @@ const API_ENDPOINTS: ApiEndpoint[] = [
       {
         chapters: [
           {
-            id: "ch-ekc",
-            name: "Eranad Knowledge City Technical Campus",
-            slug: "eranad-knowledge-city",
-            location: "Manjeri, Malappuram, Kerala",
+            id: "ch-01",
+            name: "Campus Engineering College",
+            slug: "campus-chapter",
+            location: "Kerala",
             studentsCount: 214,
-            leadName: "Sarhan Qadir"
+            leadName: "Campus Lead"
           }
         ]
       },
@@ -153,7 +153,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   {
     id: "get-chapter-detail",
     method: "GET",
-    path: "/chapters/eranad-knowledge-city",
+    path: "/chapters/campus-chapter",
     category: "Chapters",
     title: "Get Chapter Detail & Leadership",
     description: "Returns chapter profile, verified execom roster, faculty coordinator, and active events.",
@@ -161,12 +161,12 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     sampleResponse: JSON.stringify(
       {
         chapter: {
-          id: "ch-ekc",
-          name: "Eranad Knowledge City Technical Campus",
-          slug: "eranad-knowledge-city",
+          id: "ch-01",
+          name: "Campus Engineering College",
+          slug: "campus-chapter",
           leadership: [
-            { name: "Sarhan Qadir", role: "Campus Lead / Chairman" },
-            { name: "Anu KS", role: "Faculty Coordinator" }
+            { name: "Campus Lead", role: "Campus Lead / Chairman" },
+            { name: "Faculty Lead", role: "Faculty Coordinator" }
           ]
         }
       },

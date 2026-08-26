@@ -47,50 +47,7 @@ export default function HqCertificatesPage() {
   const { session } = useCurrentUser();
   const canManage = isHqRole(session.roleKey);
 
-  const [certificates, setCertificates] = useState<CertificateRecord[]>([
-    {
-      id: "cert_1",
-      serialNumber: "CERT-EKC-2026-001",
-      recipientName: "Alex Rivera",
-      recipientEmail: "alex@college.edu.in",
-      eventName: "Campus Launch & Systems Architecture",
-      eventSlug: "campus-launch-ekctc",
-      chapterName: "Eranad Knowledge City",
-      achievement: "Merit & Excellence",
-      issueDate: "2026-08-25",
-      attendanceCompleted: "100%",
-      signatory: "Sarhan Qadir (Chairman)",
-      status: "active",
-    },
-    {
-      id: "cert_2",
-      serialNumber: "CERT-EKC-2026-002",
-      recipientName: "Devika Menon",
-      recipientEmail: "devika.m@ekc.edu",
-      eventName: "Campus Launch & Systems Architecture",
-      eventSlug: "campus-launch-ekctc",
-      chapterName: "Eranad Knowledge City",
-      achievement: "Participation",
-      issueDate: "2026-08-25",
-      attendanceCompleted: "100%",
-      signatory: "Sarhan Qadir (Chairman)",
-      status: "active",
-    },
-    {
-      id: "cert_3",
-      serialNumber: "CERT-EKC-2026-003",
-      recipientName: "Fahad Rahman",
-      recipientEmail: "fahad@ekc.edu",
-      eventName: "AI Engineering & Neural Edge Lab",
-      eventSlug: "ai-edge-lab",
-      chapterName: "Eranad Knowledge City",
-      achievement: "Workshop Lead",
-      issueDate: "2026-08-28",
-      attendanceCompleted: "100%",
-      signatory: "Anu KS (Faculty Lead)",
-      status: "active",
-    },
-  ]);
+  const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
 
   const [search, setSearch] = useState("");
   const [filterChapter, setFilterChapter] = useState("all");

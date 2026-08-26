@@ -10,7 +10,11 @@ import { useStore } from "@/context/store-context";
 export default function JoinChapterPage() {
   const { store, joinChapterCommunity } = useStore();
   const router = useRouter();
-  const [chapterId, setChapterId] = useState(store.chapters[0]?.id ?? "");
+  const activeChapters = useMemo(
+    () => store.chapters.filter((c) => c.status === "active"),
+    [store.chapters],
+  );
+  const [chapterId, setChapterId] = useState(activeChapters[0]?.id ?? store.chapters[0]?.id ?? "");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [department, setDepartment] = useState("");
@@ -63,7 +67,7 @@ export default function JoinChapterPage() {
               onChange={(e) => setChapterId(e.target.value)}
               className="border-white/15 bg-black/25 text-white"
             >
-              {store.chapters.map((c) => (
+              {activeChapters.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.college}
                 </option>

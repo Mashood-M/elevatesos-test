@@ -43,7 +43,7 @@ export default function ChapterReportsPage({
     submitReportDraft,
   } = useStore();
   const { session, profile } = useCurrentUser();
-  const chapter = resolveChapter(store, slug);
+  const chapter = resolveChapter(store, slug, session.roleKey);
 
   const [flash, setFlash] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -53,7 +53,14 @@ export default function ChapterReportsPage({
   const [images, setImages] = useState<ReportImage[]>([]);
   const [wizardError, setWizardError] = useState("");
 
-  if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
+  if (!chapter) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">Chapter not found</p>
+        <p className="mt-2 text-xs text-text-dim max-w-md mx-auto">This campus chapter is not yet registered or opened. HQ and HQ Admins only can manage un-opened chapters.</p>
+      </div>
+    );
+  }
   const currentChapter = chapter;
 
   const canSubmit = hasPermission(store, session.roleKey, "report.submit");

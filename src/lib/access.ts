@@ -1,10 +1,31 @@
 import { isHqRole, isSuperAdmin } from "@/lib/permissions";
 import type { Chapter, RoleKey } from "@/types";
 
-export function resolveChapter(store: { chapters: Chapter[] }, slug?: string): Chapter | undefined {
+export function resolveChapter(
+  store: { chapters: Chapter[] },
+  slug?: string,
+  roleKey?: RoleKey,
+): Chapter | undefined {
   if (!store.chapters?.length) return undefined;
-  if (!slug) return store.chapters[0];
-  return store.chapters.find((c) => c.slug === slug || c.id === slug) ?? store.chapters[0];
+  let chapter: Chapter | undefined;
+  if (slug) {
+    chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
+  } else {
+    chapter = store.chapters.find((c) => c.status === "active") ?? store.chapters[0];
+  }
+
+  if (!chapter) return undefined;
+
+  // If chapter is not open/active (e.g. status === "onboarding" or "inactive"):
+  // HQ and HQ Admin only can see and manage it.
+  // Others see Chapter Not Found.
+  if (chapter.status !== "active") {
+    if (!roleKey || !isHqRole(roleKey)) {
+      return undefined;
+    }
+  }
+
+  return chapter;
 }
 
 const EXECUTIVE_ROLES: RoleKey[] = [

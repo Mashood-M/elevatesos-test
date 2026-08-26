@@ -44,16 +44,19 @@ export default function ChapterDashboardPage({
   const { slug } = use(params);
   const { store } = useStore();
   const { session } = useCurrentUser();
-  const chapter = resolveChapter(store, slug);
+  const chapter = resolveChapter(store, slug, session.roleKey);
 
   if (!chapter) {
     return (
       <div className="py-20 text-center">
-        <p className="font-[family-name:var(--font-display)] text-xl font-bold">
+        <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">
           Chapter not found
         </p>
-        <Link href="/hq/chapters" className="mt-3 inline-block text-accent">
-          Back to chapters
+        <p className="mt-2 text-xs text-text-dim max-w-md mx-auto">
+          This campus chapter is not yet registered or opened. HQ and HQ Admins only can manage un-opened chapters.
+        </p>
+        <Link href="/hq/chapters" className="mt-4 inline-block text-xs font-semibold text-[var(--accent)] hover:underline">
+          Back to network →
         </Link>
       </div>
     );

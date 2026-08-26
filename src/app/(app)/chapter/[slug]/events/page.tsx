@@ -77,7 +77,7 @@ export default function ChapterEventsPage({
   const searchParams = useSearchParams();
   const { store, createEvent, updateRegistrationStatus } = useStore();
   const { session } = useCurrentUser();
-  const chapter = resolveChapter(store, slug);
+  const chapter = resolveChapter(store, slug, session.roleKey);
 
   const [showForm, setShowForm] = useState(false);
   const [statusChip, setStatusChip] = useState<StatusChip>("all");
@@ -97,7 +97,14 @@ export default function ChapterEventsPage({
     }
   }, [searchParams, canCreate]);
 
-  if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
+  if (!chapter) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">Chapter not found</p>
+        <p className="mt-2 text-xs text-text-dim max-w-md mx-auto">This campus chapter is not yet registered or opened. HQ and HQ Admins only can manage un-opened chapters.</p>
+      </div>
+    );
+  }
 
   const events = store.events.filter((e) => e.chapterId === chapter.id);
   const mainEvents = events.filter((e) => e.eventType === "main" || !e.parentEventId);

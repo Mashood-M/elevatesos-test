@@ -18,7 +18,7 @@ export default function ChapterReportDocumentPage({
   const { slug, reportId } = use(params);
   const { store, updateReportDocument, submitReportDraft } = useStore();
   const { session } = useCurrentUser();
-  const chapter = resolveChapter(store, slug);
+  const chapter = resolveChapter(store, slug, session.roleKey);
   const report = store.reports.find((r) => r.id === reportId);
 
   const [title, setTitle] = useState(report?.title ?? "");

@@ -23,15 +23,20 @@ export type MonthlyEngagement = {
 };
 
 export function chapterMetricsFromStore(store: ElevatesStore): ChapterMetricRow[] {
-  return store.chapters.map((c) => ({
-    id: c.id,
-    name: c.name,
-    slug: c.slug,
-    members: Math.max(c.memberCount, store.profiles.filter((p) => p.chapterId === c.id).length),
-    events: Math.max(c.eventCount, store.events.filter((e) => e.chapterId === c.id).length),
-    projects: Math.max(c.projectCount, store.projects.filter((p) => p.chapterId === c.id).length),
-    health: c.healthScore,
-  }));
+  return store.chapters.map((c) => {
+    const members = store.profiles.filter((p) => p.chapterId === c.id).length || c.memberCount || 0;
+    const events = store.events.filter((e) => e.chapterId === c.id).length || c.eventCount || 0;
+    const projects = store.projects.filter((p) => p.chapterId === c.id).length || c.projectCount || 0;
+    return {
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      members,
+      events,
+      projects,
+      health: c.healthScore ?? 0,
+    };
+  });
 }
 
 function ymKey(year: number, month: number) {

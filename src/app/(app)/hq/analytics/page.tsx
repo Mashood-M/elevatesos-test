@@ -43,32 +43,32 @@ export default function HqAnalyticsPage() {
     [store],
   );
 
-  const totalMembers = Math.max(
-    store.chapters.reduce((s, c) => s + (c.memberCount || 0), 0),
-    store.profiles.filter((p) => p.chapterId).length,
-    128,
-  );
-  const totalEvents = Math.max(
-    store.chapters.reduce((s, c) => s + (c.eventCount || 0), 0),
-    store.events.length,
-    19,
-  );
-  const totalCertificates = Math.max(148, store.certificates.length);
+  const totalMembers = store.profiles.length > 0
+    ? store.profiles.length
+    : store.chapters.reduce((s, c) => s + (c.memberCount || 0), 0);
+
+  const totalEvents = store.events.length > 0
+    ? store.events.length
+    : store.chapters.reduce((s, c) => s + (c.eventCount || 0), 0);
+
+  const totalCertificates = store.certificates.length;
+
   const pendingReports = store.reports.filter(
     (r) => r.status === "submitted",
   ).length;
+
   const avgHealth = store.chapters.length
     ? Math.round(
-        store.chapters.reduce((s, c) => s + c.healthScore, 0) /
+        store.chapters.reduce((s, c) => s + (c.healthScore || 0), 0) /
           store.chapters.length,
       )
-    : 98;
+    : 0;
 
   const barData = chapterRows.map((c) => ({
     name: c.slug.toUpperCase(),
-    members: c.members || 128,
-    events: c.events || 19,
-    projects: c.projects || 4,
+    members: c.members,
+    events: c.events,
+    projects: c.projects,
   }));
 
   return (

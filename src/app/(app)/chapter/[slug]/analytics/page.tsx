@@ -19,6 +19,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
+import { monthlyEngagementFromStore } from "@/lib/analytics";
 import { chapterEyebrow } from "@/lib/access";
 import { deriveEngagementTier } from "@/lib/eos/progression";
 import { healthLabel } from "@/lib/permissions";
@@ -50,12 +51,10 @@ export default function ChapterAnalyticsPage({
     attended: store.attendance.filter((a) => a.eventId === e.id).length,
   }));
 
-  const monthlyEngagement = [
-    { month: "Jan", members: 120, events: 1 },
-    { month: "Feb", members: 135, events: 2 },
-    { month: "Mar", members: 160, events: 3 },
-    { month: "Apr", members: chapter.memberCount, events: events.length },
-  ];
+  const monthlyEngagement = monthlyEngagementFromStore(
+    { ...store, events, registrations },
+    6,
+  );
 
   const healthData = [{ name: "Health", value: chapter.healthScore, fill: NEON.green }];
 

@@ -137,6 +137,8 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE;
+
 -- ============================================================================
 -- 3. ACADEMIC STRUCTURE (DEPARTMENTS & CLASS COHORTS)
 -- ============================================================================

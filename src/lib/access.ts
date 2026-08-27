@@ -66,7 +66,8 @@ export function homeForRole(roleKey: RoleKey, chapterSlug = "ekc") {
   if (isHqRole(roleKey)) return "/hq";
   if (isFacultyRole(roleKey)) return "/faculty";
   if (isExecutiveRole(roleKey)) return "/executive";
-  return `/chapter/${chapterSlug}`;
+  const slug = chapterSlug || "ekc";
+  return `/chapter/${slug}`;
 }
 
 export function notificationsHref(roleKey?: RoleKey, _chapterSlug?: string) {

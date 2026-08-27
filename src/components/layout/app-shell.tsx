@@ -59,20 +59,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (!isHqRole(session.roleKey)) {
       return [];
     }
-    const defaultChapterId = store.chapters?.[0]?.id;
 
-    // Define the exact 6 core system seed roles for HQ testing and role switching
-    const seedRoles: { label: string; userId: string; roleKey: RoleKey; chapterId?: string }[] = [
-      { label: "HQ Founder (All Views)", userId: "11111111-1111-1111-1111-111111111111", roleKey: "founder" },
-      { label: "HQ Admin (HQ & Campus Admin)", userId: "22222222-2222-2222-2222-222222222222", roleKey: "hq_admin" },
-      { label: "Campus Executive Team", userId: "33333333-3333-3333-3333-333333333333", roleKey: "chairman", chapterId: defaultChapterId },
-      { label: "Faculty Coordinator", userId: "44444444-4444-4444-4444-444444444444", roleKey: "faculty_coordinator", chapterId: defaultChapterId },
-      { label: "Class Representative", userId: "55555555-5555-5555-5555-555555555555", roleKey: "class_representative", chapterId: defaultChapterId },
-      { label: "Student", userId: "66666666-6666-6666-6666-666666666666", roleKey: "student", chapterId: defaultChapterId },
-    ];
-
-    // Combine loaded profiles from store with seed roles to ensure all 6 roles are always present
-    const loadedProfiles = (store.profiles ?? []).map((p) => {
+    // Purely dynamic persona list derived directly from active database profiles in store
+    return (store.profiles ?? []).map((p) => {
       const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
       const firstRoleId = uRoles[0]?.roleId;
       const rObj = store.roles.find((r) => r.id === firstRoleId);
@@ -86,15 +75,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         chapterId: p.chapterId,
       };
     });
-
-    // Merge without duplicate userIds
-    const merged = [...loadedProfiles];
-    for (const seed of seedRoles) {
-      if (!merged.some((m) => m.roleKey === seed.roleKey || m.userId === seed.userId)) {
-        merged.push(seed);
-      }
-    }
-    return merged;
   }, [session.roleKey, store.profiles, store.userRoles, store.roles, store.chapters]);
 
   async function handleLogout() {

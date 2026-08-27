@@ -630,6 +630,19 @@ ON CONFLICT (id) DO UPDATE SET
   encrypted_password = crypt('123456', gen_salt('bf')),
   email = EXCLUDED.email;
 
+-- Insert auth.identities (required by Supabase GoTrue Auth)
+INSERT INTO auth.identities (
+  id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', '{"sub":"11111111-1111-1111-1111-111111111111","email":"founder@elevates.live"}'::jsonb, 'email', '11111111-1111-1111-1111-111111111111', now(), now(), now()),
+  ('22222222-2222-2222-2222-222222222222', '22222222-2222-2222-2222-222222222222', '{"sub":"22222222-2222-2222-2222-222222222222","email":"admin@elevates.live"}'::jsonb, 'email', '22222222-2222-2222-2222-222222222222', now(), now(), now()),
+  ('33333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333', '{"sub":"33333333-3333-3333-3333-333333333333","email":"chairman@elevates.live"}'::jsonb, 'email', '33333333-3333-3333-3333-333333333333', now(), now(), now()),
+  ('44444444-4444-4444-4444-444444444444', '44444444-4444-4444-4444-444444444444', '{"sub":"44444444-4444-4444-4444-444444444444","email":"faculty@elevates.live"}'::jsonb, 'email', '44444444-4444-4444-4444-444444444444', now(), now(), now()),
+  ('55555555-5555-5555-5555-555555555555', '55555555-5555-5555-5555-555555555555', '{"sub":"55555555-5555-5555-5555-555555555555","email":"cr@elevates.live"}'::jsonb, 'email', '55555555-5555-5555-5555-555555555555', now(), now(), now()),
+  ('66666666-6666-6666-6666-666666666666', '66666666-6666-6666-6666-666666666666', '{"sub":"66666666-6666-6666-6666-666666666666","email":"student@elevates.live"}'::jsonb, 'email', '66666666-6666-6666-6666-666666666666', now(), now(), now())
+ON CONFLICT (id) DO NOTHING;
+
 -- Insert public.profiles
 INSERT INTO public.profiles (id, email, full_name, created_at)
 VALUES

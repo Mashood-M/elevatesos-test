@@ -207,11 +207,62 @@ async function seedEverything() {
     enrolled_count: l.enrolled_count,
   }));
 
-  const { error: labErr } = await supabase
-    .from("peer_labs")
-    .upsert(peerLabPayload, { onConflict: "id" });
-  if (labErr) console.error("Peer Labs Seed Error:", labErr);
-  else console.log("✓ Peer Labs seeded successfully.");
+  // 5. Seed Roles
+  console.log("Seeding System Roles...");
+  const rolesPayload = [
+    { id: toUuid("r-founder"), key: "founder", name: "Founder / HQ Leader", scope: "hq", description: "Full system control across network" },
+    { id: toUuid("r-hq-admin"), key: "hq_admin", name: "HQ Admin", scope: "hq", description: "HQ Administrator with analytics access" },
+    { id: toUuid("r-chairman"), key: "chairman", name: "Campus Executive Team", scope: "chapter", description: "Campus chapter lead" },
+    { id: toUuid("r-faculty"), key: "faculty_coordinator", name: "Faculty Coordinator", scope: "chapter", description: "Faculty supervisor" },
+    { id: toUuid("r-cr"), key: "class_representative", name: "Class Representative", scope: "chapter", description: "Class representative" },
+    { id: toUuid("r-student"), key: "student", name: "Student", scope: "chapter", description: "General student member" },
+  ];
+  const { error: rolesErr } = await supabase
+    .from("roles")
+    .upsert(rolesPayload, { onConflict: "id" });
+  if (rolesErr) console.error("Roles Seed Error:", rolesErr);
+  else console.log("✓ Roles seeded successfully.");
+
+  // 6. Seed Demo User Profiles & User Roles
+  console.log("Seeding Demo Users & User Roles...");
+  const demoUsers = [
+    { id: "u-founder", email: "founder@elevates.live", name: "HQ Founder", roleKey: "founder", roleId: "r-founder" },
+    { id: "u-hq-admin", email: "admin@elevates.live", name: "HQ Admin Intern", roleKey: "hq_admin", roleId: "r-hq-admin" },
+    { id: "u-chairman", email: "chairman@elevates.live", name: "EKC Executive Lead", roleKey: "chairman", roleId: "r-chairman" },
+    { id: "u-faculty", email: "faculty@elevates.live", name: "Prof. EKC Faculty", roleKey: "faculty_coordinator", roleId: "r-faculty" },
+    { id: "u-cr", email: "cr@elevates.live", name: "EKC Class Rep", roleKey: "class_representative", roleId: "r-cr" },
+    { id: "u-student-1", email: "student@elevates.live", name: "EKC Student", roleKey: "student", roleId: "r-student" },
+  ];
+
+  const demoProfilePayload = demoUsers.map((u) => ({
+    id: toUuid(u.id),
+    email: u.email,
+    full_name: u.name,
+    chapter_id: CHAPTER_ID,
+    status: "active",
+    is_public: true,
+    bio: `${u.name} · Elevates OS Demo Account`,
+    skills: ["Elevates OS", u.roleKey],
+  }));
+
+  const { error: demoProfErr } = await supabase
+    .from("profiles")
+    .upsert(demoProfilePayload, { onConflict: "id" });
+  if (demoProfErr) console.error("Demo Profiles Seed Error:", demoProfErr);
+
+  const userRolesPayload = demoUsers.map((u) => ({
+    id: toUuid(`ur-${u.id}`),
+    user_id: toUuid(u.id),
+    role_id: toUuid(u.roleId),
+    chapter_id: CHAPTER_ID,
+    organization_id: ORG_ID,
+  }));
+
+  const { error: urErr } = await supabase
+    .from("user_roles")
+    .upsert(userRolesPayload, { onConflict: "id" });
+  if (urErr) console.error("User Roles Seed Error:", urErr);
+  else console.log("✓ Demo Users & User Roles seeded successfully.");
 
   console.log("🎉 ALL SYSTEM DATA PUSHED TO SUPABASE SUCCESSFULLY!");
 }

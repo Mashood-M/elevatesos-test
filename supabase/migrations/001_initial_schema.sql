@@ -1,6 +1,7 @@
 -- Elevates OS Full Schema Migration (Fresh Supabase Account)
--- Paste this entire SQL into your new Supabase Project -> SQL Editor and click "Run".
+-- Creates all tables, relationships, indexes, RLS policies, and triggers.
 
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
@@ -32,7 +33,7 @@ CREATE TABLE IF NOT EXISTS public.chapters (
     college TEXT NOT NULL,
     city TEXT NOT NULL DEFAULT '',
     district TEXT,
-    status TEXT NOT NULL DEFAULT 'onboarding',
+    status TEXT NOT NULL DEFAULT 'onboarding', -- 'active', 'inactive', 'onboarding'
     published BOOLEAN DEFAULT false,
     health_score NUMERIC DEFAULT 0,
     member_count INT DEFAULT 0,
@@ -45,9 +46,11 @@ CREATE TABLE IF NOT EXISTS public.chapters (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Default Organization Record (Required for OS boot)
 INSERT INTO public.organizations (id, name, slug, tagline)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Elevates', 'elevates', 'Campus Operating System')
 ON CONFLICT (slug) DO NOTHING;
+
 
 -- ============================================================================
 -- 2. PROFILES & USER ROLES
@@ -61,7 +64,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     year TEXT,
     section TEXT,
     chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
-    status TEXT DEFAULT 'active',
+    status TEXT DEFAULT 'active', -- 'active', 'disabled'
     is_public BOOLEAN DEFAULT false,
     phone TEXT,
     engagement_tier TEXT DEFAULT 'everyone',
@@ -88,6 +91,7 @@ CREATE TABLE IF NOT EXISTS public.user_roles (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+
 -- ============================================================================
 -- 3. ACADEMIC STRUCTURE (DEPARTMENTS & CLASS COHORTS)
 -- ============================================================================
@@ -108,6 +112,7 @@ CREATE TABLE IF NOT EXISTS public.class_cohorts (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+
 -- ============================================================================
 -- 4. LEADERSHIP TERMS & ASSIGNMENTS
 -- ============================================================================
@@ -118,7 +123,7 @@ CREATE TABLE IF NOT EXISTS public.leadership_terms (
     title TEXT NOT NULL,
     start_date TIMESTAMPTZ,
     end_date TIMESTAMPTZ,
-    status TEXT DEFAULT 'active',
+    status TEXT DEFAULT 'active', -- 'upcoming', 'active', 'archived'
     handover_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -131,6 +136,7 @@ CREATE TABLE IF NOT EXISTS public.leadership_assignments (
     title TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
 
 -- ============================================================================
 -- 5. EVENTS, FORMS & REGISTRATIONS
@@ -236,6 +242,7 @@ CREATE TABLE IF NOT EXISTS public.certificates (
     digital_signature TEXT
 );
 
+
 -- ============================================================================
 -- 6. CLUSTERS & PROJECTS
 -- ============================================================================
@@ -297,6 +304,7 @@ CREATE TABLE IF NOT EXISTS public.leadership_applications (
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
 
 -- ============================================================================
 -- 7. HQ RESOURCES, TASKS, REPORTS & ANNOUNCEMENTS
@@ -389,6 +397,7 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+
 -- ============================================================================
 -- 8. AUTOMATIC PROFILE CREATION TRIGGER (FROM SUPABASE AUTH)
 -- ============================================================================
@@ -422,6 +431,7 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+
 -- ============================================================================
 -- 9. ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================================================
@@ -445,6 +455,7 @@ ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+-- Permissive public read & authenticated write policies for platform operation
 CREATE POLICY "Public Read Organizations" ON public.organizations FOR SELECT USING (true);
 CREATE POLICY "Public Read Chapters" ON public.chapters FOR SELECT USING (true);
 CREATE POLICY "HQ Manage Chapters" ON public.chapters FOR ALL USING (auth.uid() IS NOT NULL);
@@ -495,6 +506,7 @@ CREATE POLICY "Public Read Announcements" ON public.announcements FOR SELECT USI
 CREATE POLICY "Manage Announcements" ON public.announcements FOR ALL USING (auth.uid() IS NOT NULL);
 
 CREATE POLICY "User Read Notifications" ON public.notifications FOR ALL USING (auth.uid() = user_id);
+
 
 -- ============================================================================
 -- 10. MEDIA STORAGE BUCKET

@@ -3224,8 +3224,8 @@ export function useStore() {
 
 export function useCurrentUser() {
   const { store } = useStore();
-  const userId = store.session.userId || "u-founder";
-  let profile = store.profiles.find((p) => p.id === userId);
+  const userId = store.session.userId;
+  let profile = userId ? store.profiles.find((p) => p.id === userId) : undefined;
 
   if (!profile && userId) {
     profile = {

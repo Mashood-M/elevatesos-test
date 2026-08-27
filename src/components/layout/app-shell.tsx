@@ -90,12 +90,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       : "Elevates OS";
 
   async function handleLogout() {
-    if (useSupabaseAuth()) {
-      const supabase = createClient();
-      if (supabase) await supabase.auth.signOut();
+    const supabase = createClient();
+    if (supabase) {
+      await supabase.auth.signOut();
     }
     setSession("", "student", undefined);
     router.push("/login");
+    router.refresh();
   }
 
   return (

@@ -61,7 +61,7 @@ export default function HqCertificatesPage() {
   const [selectedChapterId, setSelectedChapterId] = useState(store.chapters[0]?.id ?? "");
   const [achievement, setAchievement] = useState<CertificateRecord["achievement"]>("Participation");
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split("T")[0]);
-  const [signatory, setSignatory] = useState("Sarhan Qadir (Chairman & Founder)");
+  const [signatory, setSignatory] = useState("Authorized Signatory (HQ Admin)");
   const [issueError, setIssueError] = useState("");
 
   // Preview & Email state
@@ -426,7 +426,7 @@ export default function HqCertificatesPage() {
             <Input
               value={signatory}
               onChange={(e) => setSignatory(e.target.value)}
-              placeholder="e.g. Sarhan Qadir (Chairman)"
+              placeholder="e.g. Authorized Signatory (Chairman)"
             />
           </div>
 

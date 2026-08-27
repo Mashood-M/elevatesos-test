@@ -306,7 +306,7 @@ const INITIAL_PAGES: WebsitePage[] = [
         data: {
           tag: "ORIGIN STORY // 2025",
           quote: "We spent three years in college waiting for someone to teach us how to build real things. In our final year, we stopped waiting and built the software our college ran on.",
-          author: "Sarhan Qadir KVM · Founder",
+          author: "ELEVATES Founders · September 2025",
         },
       },
     ],

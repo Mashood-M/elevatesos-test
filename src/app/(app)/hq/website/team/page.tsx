@@ -97,13 +97,13 @@ function FounderEditor({ founder, onSave, onClose }: { founder: Founder; onSave:
         </div>
         <div className="p-6 space-y-4">
           <Field label="Full Name (displayed on team card)">
-            <TInput value={d.name} onChange={(v) => u({ name: v })} placeholder="Sarhan Qadir KVM" />
+            <TInput value={d.name} onChange={(v) => u({ name: v })} placeholder="Founder Full Name" />
           </Field>
           <Field label="Tag — Authentic Persona Badge (shown below name on card)">
             <div className="relative">
-              <TInput value={d.tag} onChange={(v) => u({ tag: v })} placeholder="Main Class Bunker" />
+              <TInput value={d.tag} onChange={(v) => u({ tag: v })} placeholder="Core Builder" />
               <p className="text-[10px] text-text-dim mt-1">
-                e.g. "Main Class Bunker", "Design Wizard", "Terminal Addict", "Hardware Hacker", "Last Minute Committer"
+                e.g. "Core Builder", "Design Lead", "Systems Lead"
               </p>
             </div>
           </Field>
@@ -111,16 +111,16 @@ function FounderEditor({ founder, onSave, onClose }: { founder: Founder; onSave:
             <TInput value={d.role} onChange={(v) => u({ role: v })} placeholder="Founder" />
           </Field>
           <Field label="Proof of Work (1 line — what they actually built/did)">
-            <TInput value={d.proof} onChange={(v) => u({ proof: v })} placeholder="Full-stack · Built elevates.live" />
+            <TInput value={d.proof} onChange={(v) => u({ proof: v })} placeholder="Full-stack · Core OS Architecture" />
           </Field>
           <Field label="Founder ID (slug — used for internal linking)">
-            <TInput value={d.id} onChange={(v) => u({ id: v })} mono placeholder="sarhan-qadir-kvm" />
+            <TInput value={d.id} onChange={(v) => u({ id: v })} mono placeholder="founder-slug" />
           </Field>
           <Field label="LinkedIn URL">
-            <TInput value={d.linkedin ?? ""} onChange={(v) => u({ linkedin: v })} mono placeholder="https://www.linkedin.com/in/sqadirkvm/" />
+            <TInput value={d.linkedin ?? ""} onChange={(v) => u({ linkedin: v })} mono placeholder="https://linkedin.com/in/username" />
           </Field>
           <Field label="Photo Path (in /public/images/founders/)">
-            <TInput value={d.image} onChange={(v) => u({ image: v })} mono placeholder="/images/founders/sarhan-qadir.jpeg" />
+            <TInput value={d.image} onChange={(v) => u({ image: v })} mono placeholder="/images/founders/founder.jpeg" />
           </Field>
           {d.image && (
             <div className="border border-border rounded-[var(--radius-md)] p-3 bg-bg-page flex items-center gap-3">

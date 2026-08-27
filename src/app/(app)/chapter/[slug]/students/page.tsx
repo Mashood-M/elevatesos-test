@@ -414,7 +414,7 @@ export default function ChapterStudentsPage({
                   required
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  placeholder="e.g. Muhammed Rashiq"
+                  placeholder="e.g. Student Full Name"
                   className="mt-1"
                 />
               </div>

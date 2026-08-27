@@ -1,5 +1,5 @@
 /**
- * Helper utility to convert relative local paths (e.g. /images/founders/sarhan-qadir.jpeg)
+ * Helper utility to convert relative local paths (e.g. /images/founders/avatar.jpeg)
  * or raw storage keys into full Supabase Storage CDN URLs.
  */
 export function resolveMediaUrl(path: string | null | undefined): string {

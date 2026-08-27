@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
-import { createSeedStore } from "@/lib/demo/seed";
 import type {
+  BrandKit,
   Chapter,
   ElevatesStore,
   EventItem,
@@ -11,11 +11,77 @@ import type {
   RoleKey,
 } from "@/types";
 
+const defaultBrandKit: BrandKit = {
+  logoUrl: "/logo.svg",
+  colors: {
+    accent: "#6366f1",
+    charcoal: "#1e293b",
+    sage: "#10b981",
+    indigo: "#4f46e5",
+  },
+};
+
+function emptyStore(): ElevatesStore {
+  return {
+    organization: {
+      id: "org-elevates",
+      name: "Elevates",
+      slug: "elevates",
+      tagline: "Campus Operating System",
+      brandKit: defaultBrandKit,
+    },
+    chapters: [],
+    profiles: [],
+    departments: [],
+    classCohorts: [],
+    roles: [],
+    permissions: [],
+    rolePermissions: [],
+    userRoles: [],
+    leadershipTerms: [],
+    leadershipAssignments: [],
+    events: [],
+    eventForms: [],
+    forms: [],
+    formResponses: [],
+    registrations: [],
+    attendance: [],
+    certificates: [],
+    clusters: [],
+    clusterInvites: [],
+    projects: [],
+    leadershipApplications: [],
+    chapterStandardChecks: [],
+    resourceCategories: [],
+    resources: [],
+    guidelines: [],
+    tasks: [],
+    reports: [],
+    announcements: [],
+    notifications: [],
+    outboundMessages: [],
+    activityLogs: [],
+    session: {
+      userId: "",
+      roleKey: "student" as RoleKey,
+    },
+  };
+}
+
+export type StoreDataSource = "database" | "empty-fallback" | "demo";
+
+export interface StoreLoadResult {
+  store: ElevatesStore;
+  _dataSource: StoreDataSource;
+}
+
 /** Load org + chapters + events + projects + forms + public profiles from Supabase. */
-export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
-  const seed = createSeedStore();
+export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
   const supabase = createClient();
-  if (!supabase) return seed;
+  if (!supabase) {
+    console.warn("⚠️ FALLBACK DATA SERVED — Store Hydration — Supabase client unavailable, returning empty store");
+    return { store: emptyStore(), _dataSource: "empty-fallback" };
+  }
 
   try {
     const { data: orgs } = await supabase
@@ -29,10 +95,10 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
           id: orgRow.id,
           name: orgRow.name,
           slug: orgRow.slug,
-          tagline: orgRow.tagline ?? seed.organization.tagline,
-          brandKit: orgRow.brand_kit ?? seed.organization.brandKit,
+          tagline: orgRow.tagline ?? "Campus Operating System",
+          brandKit: orgRow.brand_kit ?? defaultBrandKit,
         }
-      : seed.organization;
+      : emptyStore().organization;
 
     const { data: chapterRows } = await supabase
       .from("chapters")
@@ -284,7 +350,7 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 
-    // Maintain consistent demo session pointing to an existing profile in Supabase
+    // Maintain session pointing to active user in Supabase
     const founderRoleIds = new Set(
       roles.filter((r) => r.key === "founder" || r.key === "admin").map((r) => r.id)
     );
@@ -299,31 +365,36 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
 
     const session = activeProfile
       ? { userId: activeProfile.id, roleKey: sessionRoleKey, chapterId: activeProfile.chapterId }
-      : seed.session;
+      : { userId: "", roleKey: "student" as RoleKey };
 
     return {
-      ...seed,
-      organization,
-      chapters,
-      roles: roles.length ? roles : seed.roles,
-      permissions: permissions.length ? permissions : seed.permissions,
-      rolePermissions: rolePermissions.length ? rolePermissions : seed.rolePermissions,
-      userRoles,
-      leadershipTerms,
-      leadershipAssignments,
-      clusters,
-      events,
-      projects,
-      forms,
-      profiles,
-      reports,
-      certificates,
-      registrations,
-      attendance,
-      session,
+      store: {
+        ...emptyStore(),
+        organization,
+        chapters,
+        roles,
+        permissions,
+        rolePermissions,
+        userRoles,
+        leadershipTerms,
+        leadershipAssignments,
+        clusters,
+        events,
+        projects,
+        forms,
+        profiles,
+        reports,
+        certificates,
+        registrations,
+        attendance,
+        session,
+      },
+      _dataSource: "database" as StoreDataSource,
     };
-  } catch {
-    return seed;
+  } catch (err) {
+    console.error("Error loading store from Supabase:", err);
+    console.warn("⚠️ FALLBACK DATA SERVED — Store Hydration — database query failed, returning empty store");
+    return { store: emptyStore(), _dataSource: "empty-fallback" };
   }
 }
 

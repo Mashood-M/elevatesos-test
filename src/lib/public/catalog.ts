@@ -1,19 +1,6 @@
 import { z } from "zod";
-import { createSeedStore } from "@/lib/demo/seed";
-import { isDemoMode } from "@/lib/mode";
 import { createServiceClient } from "@/lib/supabase/service";
 import { slugify } from "@/lib/public/http";
-
-const demoRsvps: {
-  id: string;
-  slug: string;
-  email: string;
-  name: string;
-  createdAt: string;
-}[] = [];
-
-const demoLeads: Record<string, unknown>[] = [];
-const demoFormResponses: Record<string, unknown>[] = [];
 
 export const registerSchema = z.object({
   name: z.string().min(2).max(120),
@@ -50,119 +37,97 @@ export const joinSchema = z.object({
   turnstileToken: z.string().optional(),
 });
 
-function seed() {
-  return createSeedStore();
-}
-
 function eventSlug(title: string, id: string) {
   return slugify(title) || slugify(id);
 }
 
 export async function listPublicChapters() {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data } = await admin
-      .from("chapters")
-      .select("*")
-      .eq("published", true)
-      .eq("status", "active")
-      .order("name");
-    if (data?.length) {
-      return data.map((c) => ({
-        slug: c.slug,
-        name: c.name,
-        college: c.college,
-        city: c.city,
-        district: c.district,
-        logoUrl: c.logo_url,
-        memberCount: c.member_count,
-        eventCount: c.event_count,
-        projectCount: c.project_count,
-        foundedAt: c.founded_at,
-      }));
-    }
-  }
-  return seed()
-    .chapters.filter((c) => c.status === "active")
-    .map((c) => ({
-      slug: c.slug,
-      name: c.name,
-      college: c.college,
-      city: c.city,
-      district: c.district ?? c.city,
-      logoUrl: c.logoUrl,
-      memberCount: c.memberCount,
-      eventCount: c.eventCount,
-      projectCount: c.projectCount,
-      foundedAt: c.foundedAt,
-    }));
+  if (!admin) return [];
+  const { data, error } = await admin
+    .from("chapters")
+    .select("*")
+    .eq("published", true)
+    .eq("status", "active")
+    .order("name");
+
+  if (error || !data) return [];
+  return data.map((c) => ({
+    slug: c.slug,
+    name: c.name,
+    college: c.college,
+    city: c.city,
+    district: c.district ?? c.city,
+    logoUrl: c.logo_url,
+    memberCount: c.member_count,
+    eventCount: c.event_count,
+    projectCount: c.project_count,
+    foundedAt: c.founded_at,
+  }));
 }
 
 export async function getPublicChapter(slug: string) {
-  const chapters = await listPublicChapters();
-  const chapter = chapters.find((c) => c.slug === slug);
-  if (!chapter) return null;
-  const store = seed();
-  const full = store.chapters.find((c) => c.slug === slug);
-  const roster = store.leadershipAssignments
-    .filter((a) => {
-      const term = store.leadershipTerms.find((t) => t.id === a.termId);
-      return term?.chapterId === full?.id && term?.status === "active";
-    })
-    .map((a) => {
-      const profile = store.profiles.find((p) => p.id === a.userId);
+  const admin = createServiceClient();
+  if (!admin) return null;
+  const { data: chapter, error } = await admin
+    .from("chapters")
+    .select("*")
+    .eq("slug", slug)
+    .eq("published", true)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !chapter) return null;
+
+  const { data: terms } = await admin
+    .from("leadership_terms")
+    .select("id")
+    .eq("chapter_id", chapter.id)
+    .eq("status", "active")
+    .limit(1);
+
+  let roster: Array<{ name: string; role: string; roleKey: string }> = [];
+  if (terms?.[0]) {
+    const { data: assignments } = await admin
+      .from("leadership_assignments")
+      .select("title, role_key, profiles(full_name)")
+      .eq("term_id", terms[0].id);
+
+    roster = (assignments ?? []).map((a) => {
+      const profile = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
       return {
-        name: profile?.fullName ?? a.title,
+        name: profile?.full_name ?? a.title,
         role: a.title,
-        roleKey: a.roleKey,
+        roleKey: a.role_key,
       };
     });
-  return { ...chapter, roster };
+  }
+
+  return {
+    slug: chapter.slug,
+    name: chapter.name,
+    college: chapter.college,
+    city: chapter.city,
+    district: chapter.district ?? chapter.city,
+    logoUrl: chapter.logo_url,
+    memberCount: chapter.member_count,
+    eventCount: chapter.event_count,
+    projectCount: chapter.project_count,
+    foundedAt: chapter.founded_at,
+    roster,
+  };
 }
 
 export async function listPublicEvents(status?: string, chapter?: string) {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    let q = admin.from("events").select("*, chapters(slug, name)").not("published_at", "is", null);
-    if (chapter) q = q.eq("chapters.slug", chapter);
-    const { data } = await q.order("starts_at", { ascending: false });
-    if (data) {
-      const now = Date.now();
-      return data
-        .map((e) => mapEventRow(e))
-        .filter((e) => matchEventStatus(e, status, now));
-    }
-  }
-  const store = seed();
+  if (!admin) return [];
+  let q = admin.from("events").select("*, chapters(slug, name)").not("published_at", "is", null);
+  if (chapter) q = q.eq("chapters.slug", chapter);
+  const { data, error } = await q.order("starts_at", { ascending: false });
+  if (error || !data) return [];
   const now = Date.now();
-  return store.events
-    .filter((e) => !chapter || store.chapters.find((c) => c.id === e.chapterId)?.slug === chapter)
-    .map((e) => {
-      const ch = store.chapters.find((c) => c.id === e.chapterId);
-      const seats = Math.max(
-        0,
-        e.capacity - store.registrations.filter((r) => r.eventId === e.id && r.status === "approved").length,
-      );
-      return {
-        slug: e.slug ?? eventSlug(e.title, e.id),
-        title: e.title,
-        summary: e.summary ?? e.description,
-        description: e.description,
-        venue: e.venue,
-        startsAt: e.startsAt,
-        endsAt: e.endsAt,
-        mode: e.mode ?? "in_person",
-        bannerUrl: e.bannerUrl,
-        chapterSlug: ch?.slug ?? "ekc",
-        chapterName: ch?.name,
-        seatsLeft: seats,
-        capacity: e.capacity,
-        status: e.status,
-        category: e.category,
-        registrationOpen:
-          e.status === "registration_open" || e.status === "approved",
-      };
-    })
+  return data
+    .map((e) => mapEventRow(e))
     .filter((e) => matchEventStatus(e, status, now));
 }
 
@@ -207,33 +172,21 @@ export async function getPublicEvent(slug: string) {
 
 export async function listPublicProjects() {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data } = await admin
-      .from("projects")
-      .select("*, chapters(slug)")
-      .eq("is_showcased", true);
-    if (data?.length) {
-      return data.map((p) => ({
-        slug: p.slug,
-        title: p.title,
-        description: p.description,
-        stage: p.stage,
-        demoUrl: p.demo_url,
-        repositoryUrl: p.repository_url,
-        chapterSlug: p.chapters?.slug,
-      }));
-    }
-  }
-  return seed()
-    .projects.filter((p) => p.isShowcased || p.stage === "showcase" || p.stage === "demo")
-    .map((p) => ({
-      slug: p.slug ?? eventSlug(p.title, p.id),
-      title: p.title,
-      description: p.description,
-      stage: p.stage,
-      demoUrl: p.demoUrl,
-      repositoryUrl: p.repositoryUrl,
-    }));
+  if (!admin) return [];
+  const { data, error } = await admin
+    .from("projects")
+    .select("*, chapters(slug)")
+    .eq("is_showcased", true);
+  if (error || !data) return [];
+  return data.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    description: p.description,
+    stage: p.stage,
+    demoUrl: p.demo_url,
+    repositoryUrl: p.repository_url,
+    chapterSlug: p.chapters?.slug,
+  }));
 }
 
 export async function getPublicProject(slug: string) {
@@ -243,20 +196,17 @@ export async function getPublicProject(slug: string) {
 
 export async function listPublicPeerLabs() {
   const admin = createServiceClient();
-  if (admin) {
-    const { data } = await admin.from("peer_labs").select("*");
-    if (data) {
-      return data.map((p) => ({
-        slug: p.slug,
-        title: p.title,
-        track: p.track,
-        syllabus: p.syllabus,
-        status: p.status,
-        applicationsOpen: p.applications_open,
-      }));
-    }
-  }
-  return [];
+  if (!admin) return [];
+  const { data, error } = await admin.from("peer_labs").select("*");
+  if (error || !data) return [];
+  return data.map((p) => ({
+    slug: p.slug,
+    title: p.title,
+    track: p.track,
+    syllabus: p.syllabus,
+    status: p.status,
+    applicationsOpen: p.applications_open,
+  }));
 }
 
 export async function getPublicPeerLab(slug: string) {
@@ -266,176 +216,119 @@ export async function getPublicPeerLab(slug: string) {
 
 export async function listPublicTeam() {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data } = await admin
-      .from("profiles")
-      .select("*")
-      .eq("is_public", true);
-    if (data?.length) {
-      return data.map((p) => ({
-        id: p.id,
-        name: p.full_name,
-        role: p.department || "Core Team",
-        bio: p.bio,
-        avatarUrl: p.avatar_url,
-        linkedinUrl: p.linkedin_url,
-        githubUrl: p.github_url,
-        chapterId: p.chapter_id,
-      }));
-    }
-  }
-  const store = seed();
-  return store.profiles
-    .filter((p) => p.isPublic || !p.chapterId || p.badges.includes("Founder"))
-    .map((p) => ({
-      id: p.id,
-      name: p.fullName,
-      role: p.badges[0] ?? p.department,
-      bio: p.bio,
-      avatarUrl: p.avatarUrl,
-      linkedinUrl: p.linkedinUrl,
-      githubUrl: p.githubUrl,
-      chapterId: p.chapterId,
-    }));
+  if (!admin) return [];
+  const { data, error } = await admin
+    .from("profiles")
+    .select("*")
+    .eq("is_public", true);
+  if (error || !data) return [];
+  return data.map((p) => ({
+    id: p.id,
+    name: p.full_name,
+    role: p.department || "Core Team",
+    bio: p.bio,
+    avatarUrl: p.avatar_url,
+    linkedinUrl: p.linkedin_url,
+    githubUrl: p.github_url,
+    chapterId: p.chapter_id,
+  }));
 }
 
 export async function publicStats() {
-  const store = seed();
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const [{ count: chapters }, { count: events }, { count: profiles }] =
-      await Promise.all([
-        admin.from("chapters").select("*", { count: "exact", head: true }).eq("published", true),
-        admin.from("events").select("*", { count: "exact", head: true }).not("published_at", "is", null),
-        admin.from("profiles").select("*", { count: "exact", head: true }),
-      ]);
-    return {
-      chapters: chapters ?? store.chapters.length,
-      events: events ?? store.events.length,
-      students: profiles ?? store.profiles.length,
-    };
-  }
+  if (!admin) return { chapters: 0, events: 0, students: 0 };
+  const [{ count: chapters }, { count: events }, { count: profiles }] =
+    await Promise.all([
+      admin.from("chapters").select("*", { count: "exact", head: true }).eq("published", true),
+      admin.from("events").select("*", { count: "exact", head: true }).not("published_at", "is", null),
+      admin.from("profiles").select("*", { count: "exact", head: true }),
+    ]);
   return {
-    chapters: store.chapters.filter((c) => c.status === "active").length,
-    events: store.events.length,
-    students: store.profiles.length,
+    chapters: chapters ?? 0,
+    events: events ?? 0,
+    students: profiles ?? 0,
   };
 }
 
 export async function verifyCertificate(id: string) {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data, error } = await admin.rpc("verify_certificate", { cert_id: id });
-    if (!error && data?.[0]) return data[0];
-  }
-  const store = seed();
-  const cert = store.certificates.find((c) => c.certificateId === id || c.id === id);
-  if (!cert) return null;
-  const holder = store.profiles.find((p) => p.id === cert.userId);
-  const event = store.events.find((e) => e.id === cert.eventId);
-  return {
-    certificate_id: cert.certificateId,
-    holder: holder?.fullName,
-    event_title: event?.title,
-    issued_at: cert.issuedAt,
-  };
+  if (!admin) return null;
+  const { data, error } = await admin.rpc("verify_certificate", { cert_id: id });
+  if (error || !data?.[0]) return null;
+  return data[0];
 }
 
 export async function registerForEvent(slug: string, input: z.infer<typeof registerSchema>) {
-  const event = await getPublicEvent(slug);
-  if (!event) return { ok: false as const, error: "Event not found", status: 404 };
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data: row } = await admin
-      .from("events")
-      .select("id, capacity")
-      .eq("slug", slug)
-      .maybeSingle();
-    if (!row) return { ok: false as const, error: "Event not found", status: 404 };
-    const { error } = await admin.from("event_registrations").insert({
-      event_id: row.id,
-      status: "pending",
-      guest_email: input.email,
-      guest_name: input.name,
-      answers: input.answers ?? {},
-      qr_code: `pending:${slug}:${input.email}`,
-    });
-    if (error) return { ok: false as const, error: error.message, status: 409 };
-    await revalidateWeb(["events", `event:${slug}`]);
-    return { ok: true as const, status: "pending" };
-  }
-  demoRsvps.push({
-    id: `rsvp-${Date.now()}`,
-    slug,
-    email: input.email,
-    name: input.name,
-    createdAt: new Date().toISOString(),
+  if (!admin) return { ok: false as const, error: "Database connection unavailable", status: 503 };
+  const { data: row } = await admin
+    .from("events")
+    .select("id, capacity")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!row) return { ok: false as const, error: "Event not found", status: 404 };
+  const { error } = await admin.from("event_registrations").insert({
+    event_id: row.id,
+    status: "pending",
+    guest_email: input.email,
+    guest_name: input.name,
+    answers: input.answers ?? {},
+    qr_code: `pending:${slug}:${input.email}`,
   });
-  return { ok: true as const, status: "pending", demo: true };
+  if (error) return { ok: false as const, error: error.message, status: 409 };
+  await revalidateWeb(["events", `event:${slug}`]);
+  return { ok: true as const, status: "pending" };
 }
 
 export async function submitPublicForm(formId: string, input: z.infer<typeof formSubmitSchema>) {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { data: form } = await admin
-      .from("forms")
-      .select("id, status, is_public")
-      .eq("id", formId)
-      .maybeSingle();
-    if (!form || form.status !== "open" || !form.is_public) {
-      return { ok: false as const, error: "Form is not open", status: 404 };
-    }
-    const { error } = await admin.from("form_responses").insert({
-      form_id: formId,
-      guest_email: input.email,
-      answers: input.answers,
-    });
-    if (error) return { ok: false as const, error: error.message, status: 400 };
-    return { ok: true as const };
-  }
-  const form = seed().forms.find((f) => f.id === formId);
-  if (!form || form.status !== "open") {
+  if (!admin) return { ok: false as const, error: "Database connection unavailable", status: 503 };
+  const { data: form } = await admin
+    .from("forms")
+    .select("id, status, is_public")
+    .eq("id", formId)
+    .maybeSingle();
+  if (!form || form.status !== "open" || !form.is_public) {
     return { ok: false as const, error: "Form is not open", status: 404 };
   }
-  demoFormResponses.push({ formId, ...input, submittedAt: new Date().toISOString() });
-  return { ok: true as const, demo: true };
+  const { error } = await admin.from("form_responses").insert({
+    form_id: formId,
+    guest_email: input.email,
+    answers: input.answers,
+  });
+  if (error) return { ok: false as const, error: error.message, status: 400 };
+  return { ok: true as const };
 }
 
 export async function createCollegeLead(input: z.infer<typeof collegeLeadSchema>) {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { error } = await admin.from("college_leads").insert({
-      college: input.college,
-      contact_name: input.contactName,
-      email: input.email,
-      phone: input.phone,
-      role: input.role,
-      message: input.message,
-      source: "web",
-    });
-    if (error) return { ok: false as const, error: error.message };
-    return { ok: true as const };
-  }
-  demoLeads.push({ ...input, source: "web", createdAt: new Date().toISOString() });
-  return { ok: true as const, demo: true };
+  if (!admin) return { ok: false as const, error: "Database connection unavailable" };
+  const { error } = await admin.from("college_leads").insert({
+    college: input.college,
+    contact_name: input.contactName,
+    email: input.email,
+    phone: input.phone,
+    role: input.role,
+    message: input.message,
+    source: "web",
+  });
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
 }
 
 export async function createJoinLead(input: z.infer<typeof joinSchema>) {
   const admin = createServiceClient();
-  if (admin && !isDemoMode()) {
-    const { error } = await admin.from("college_leads").insert({
-      college: input.college,
-      contact_name: input.name,
-      email: input.email,
-      role: input.role ?? "student",
-      message: input.message,
-      source: "join",
-    });
-    if (error) return { ok: false as const, error: error.message };
-    return { ok: true as const };
-  }
-  demoLeads.push({ ...input, source: "join", createdAt: new Date().toISOString() });
-  return { ok: true as const, demo: true };
+  if (!admin) return { ok: false as const, error: "Database connection unavailable" };
+  const { error } = await admin.from("college_leads").insert({
+    college: input.college,
+    contact_name: input.name,
+    email: input.email,
+    role: input.role ?? "student",
+    message: input.message,
+    source: "join",
+  });
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
 }
 
 export async function revalidateWeb(tags: string[]) {

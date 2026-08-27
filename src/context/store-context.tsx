@@ -10,8 +10,12 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { createSeedStore } from "@/lib/demo/seed";
+
 import { loadDemoStore, saveDemoStore } from "@/lib/demo/persist";
+import {
+  FallbackWarningBanner,
+  type DataSource,
+} from "@/components/ui/fallback-warning-banner";
 import {
   insertChapterRemote,
   loadStoreFromSupabase,
@@ -724,35 +728,81 @@ function maybeIssueCert(
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<ElevatesStore>(() =>
-    normalizeStore(createSeedStore()),
+    normalizeStore({
+      organization: {
+        id: "org-elevates",
+        name: "Elevates",
+        slug: "elevates",
+        tagline: "Campus Operating System",
+        brandKit: {
+          logoUrl: "/logo.svg",
+          colors: {
+            accent: "#6366f1",
+            charcoal: "#1e293b",
+            sage: "#10b981",
+            indigo: "#4f46e5",
+          },
+        },
+      },
+      chapters: [],
+      profiles: [],
+      departments: [],
+      classCohorts: [],
+      roles: [],
+      permissions: [],
+      rolePermissions: [],
+      userRoles: [],
+      leadershipTerms: [],
+      leadershipAssignments: [],
+      events: [],
+      eventForms: [],
+      forms: [],
+      formResponses: [],
+      registrations: [],
+      attendance: [],
+      certificates: [],
+      clusters: [],
+      clusterInvites: [],
+      projects: [],
+      leadershipApplications: [],
+      chapterStandardChecks: [],
+      resourceCategories: [],
+      resources: [],
+      guidelines: [],
+      tasks: [],
+      reports: [],
+      announcements: [],
+      notifications: [],
+      outboundMessages: [],
+      activityLogs: [],
+      session: {
+        userId: "",
+        roleKey: "student",
+      },
+    }),
   );
   const [hydrated, setHydrated] = useState(false);
+  const [dataSource, setDataSource] = useState<DataSource>("database");
 
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
       if (isDemoMode()) {
+        console.warn("⚠️ FALLBACK DATA SERVED — Store Hydration — demo mode is active");
+        setDataSource("demo");
         const saved = loadDemoStore();
-        const seed = createSeedStore();
         if (!cancelled && saved) {
-          const merged: ElevatesStore = {
-            ...seed,
-            ...saved,
-            chapters: saved.chapters ?? seed.chapters,
-            events: saved.events ?? seed.events,
-            profiles: saved.profiles ?? seed.profiles,
-            certificates: saved.certificates ?? seed.certificates,
-            projects: saved.projects ?? seed.projects,
-            reports: saved.reports ?? seed.reports,
-            organization: saved.organization || seed.organization,
-          };
-          setStore(normalizeStore(merged));
-        } else if (!cancelled) {
-          setStore(normalizeStore(seed));
+          setStore(normalizeStore(saved));
         }
       } else {
-        const remote = await loadStoreFromSupabase();
-        if (!cancelled) setStore(normalizeStore(remote));
+        const result = await loadStoreFromSupabase();
+        if (!cancelled) {
+          setStore(normalizeStore(result.store));
+          setDataSource(result._dataSource as DataSource);
+          if (result._dataSource !== "database") {
+            console.warn(`⚠️ FALLBACK DATA SERVED — Store Hydration — source: ${result._dataSource}`);
+          }
+        }
       }
       if (!cancelled) setHydrated(true);
     }
@@ -3205,14 +3255,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return count;
       },
       resetDemoStore: () => {
-        setStore(normalizeStore(createSeedStore()));
+        void loadStoreFromSupabase().then((result) => {
+          setStore(normalizeStore(result.store));
+          setDataSource(result._dataSource as DataSource);
+        });
       },
     }),
     [store],
   );
 
   return (
-    <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+    <StoreContext.Provider value={value}>
+      <FallbackWarningBanner source={dataSource} context="Store Hydration" />
+      {children}
+    </StoreContext.Provider>
   );
 }
 

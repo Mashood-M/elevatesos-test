@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export type ApiDataSource = "database" | "fallback";
+
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
 export function assertClientToken(req: Request): boolean {
@@ -38,22 +40,34 @@ export function rateLimit(
   return true;
 }
 
-export function jsonOk<T>(data: T, init?: ResponseInit) {
-  return NextResponse.json(data, {
-    ...init,
-    headers: {
-      "Access-Control-Allow-Origin": process.env.WEB_ORIGIN ?? "*",
-      "Access-Control-Allow-Headers":
-        "Content-Type, x-elevates-client, x-elevates-token, Authorization",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      ...(init?.headers ?? {}),
+/**
+ * Return a successful JSON response.
+ * Every response is tagged with `_source` so the frontend can detect
+ * whether data came from the real database or a fallback path.
+ */
+export function jsonOk<T>(
+  data: T,
+  init?: ResponseInit & { _source?: ApiDataSource },
+) {
+  const source = init?._source ?? "database";
+  return NextResponse.json(
+    { ...data as Record<string, unknown>, _source: source },
+    {
+      ...init,
+      headers: {
+        "Access-Control-Allow-Origin": process.env.WEB_ORIGIN ?? "*",
+        "Access-Control-Allow-Headers":
+          "Content-Type, x-elevates-client, x-elevates-token, Authorization",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        ...(init?.headers ?? {}),
+      },
     },
-  });
+  );
 }
 
 export function jsonError(message: string, status = 400) {
   return NextResponse.json(
-    { error: message },
+    { error: message, _source: "error" },
     {
       status,
       headers: {

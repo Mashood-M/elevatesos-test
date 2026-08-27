@@ -370,7 +370,7 @@ export default function PeerLabsCMSPage() {
                             title: `Phase ${editingLab.lessons.length + 1}: Topic`,
                             date: "TBA",
                             time: "10:00 AM",
-                            location: "EKCTC Lab",
+                            location: "Campus Computer Lab",
                             eventSlug: "",
                           },
                         ],

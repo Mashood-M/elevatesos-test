@@ -5,60 +5,64 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-
-const demoLoops = [
-  {
-    id: "event-loop",
-    title: "Event loop",
-    persona: "Secretary → Student → CR → Attendance",
-    steps: [
-      { label: "Create draft", detail: "Chapter → Events → New event (or Calendar create)" },
-      { label: "Publish", detail: "Event detail → Publish opens registration" },
-      { label: "Register", detail: "Student → Register CTA / public form link" },
-      { label: "CR review", detail: "Class rep reviews registrations on the event page" },
-      { label: "Secretary approve", detail: "Secretary approves → QR minted for check-in" },
-      { label: "Check-in + cert", detail: "Attendance QR/manual → Issue cert → verify" },
-    ],
-    href: "/chapter/ekc/events",
-  },
-  {
-    id: "forms-loop",
-    title: "Forms loop",
-    persona: "Secretary → Student",
-    steps: [
-      { label: "Forms hub", detail: "Chapter → Forms → New form or open seed survey" },
-      { label: "Questions", detail: "Add rating, linear scale, MCQ, sections" },
-      { label: "Preview / fill", detail: "Preview tab or public-style fill link" },
-      { label: "Responses + Summary", detail: "Spreadsheet table, CSV, bar charts" },
-    ],
-    href: "/chapter/ekc/forms",
-  },
-  {
-    id: "ops-loop",
-    title: "Ops loop",
-    persona: "Executive → HQ",
-    steps: [
-      { label: "Tasks", detail: "Update task status on chapter tasks" },
-      { label: "Announce", detail: "Publish a chapter announcement" },
-      { label: "Submit report", detail: "New report → submitted to HQ" },
-      { label: "HQ approve", detail: "Founder/HQ Admin approves with comment" },
-    ],
-    href: "/chapter/ekc/tasks",
-  },
-  {
-    id: "org-loop",
-    title: "Org loop",
-    persona: "Founder (HQ)",
-    steps: [
-      { label: "Create chapter", detail: "HQ → Chapters → create form" },
-      { label: "See on dashboard", detail: "Network overview lists the new chapter" },
-      { label: "Open chapter", detail: "Click through into the chapter home" },
-    ],
-    href: "/hq/chapters",
-  },
-];
+import { useStore } from "@/context/store-context";
 
 export default function WorkflowsPage() {
+  const { store } = useStore();
+  const chapterSlug = store.chapters[0]?.slug ?? "";
+
+  const demoLoops = [
+    {
+      id: "event-loop",
+      title: "Event loop",
+      persona: "Secretary → Student → CR → Attendance",
+      steps: [
+        { label: "Create draft", detail: "Chapter → Events → New event (or Calendar create)" },
+        { label: "Publish", detail: "Event detail → Publish opens registration" },
+        { label: "Register", detail: "Student → Register CTA / public form link" },
+        { label: "CR review", detail: "Class rep reviews registrations on the event page" },
+        { label: "Secretary approve", detail: "Secretary approves → QR minted for check-in" },
+        { label: "Check-in + cert", detail: "Attendance QR/manual → Issue cert → verify" },
+      ],
+      href: chapterSlug ? `/chapter/${chapterSlug}/events` : "/chapter",
+    },
+    {
+      id: "forms-loop",
+      title: "Forms loop",
+      persona: "Secretary → Student",
+      steps: [
+        { label: "Forms hub", detail: "Chapter → Forms → New form or open survey" },
+        { label: "Questions", detail: "Add rating, linear scale, MCQ, sections" },
+        { label: "Preview / fill", detail: "Preview tab or public-style fill link" },
+        { label: "Responses + Summary", detail: "Spreadsheet table, CSV, bar charts" },
+      ],
+      href: chapterSlug ? `/chapter/${chapterSlug}/forms` : "/chapter",
+    },
+    {
+      id: "ops-loop",
+      title: "Ops loop",
+      persona: "Executive → HQ",
+      steps: [
+        { label: "Tasks", detail: "Update task status on chapter tasks" },
+        { label: "Announce", detail: "Publish a chapter announcement" },
+        { label: "Submit report", detail: "New report → submitted to HQ" },
+        { label: "HQ approve", detail: "Founder/HQ Admin approves with comment" },
+      ],
+      href: chapterSlug ? `/chapter/${chapterSlug}/tasks` : "/chapter",
+    },
+    {
+      id: "org-loop",
+      title: "Org loop",
+      persona: "Founder (HQ)",
+      steps: [
+        { label: "Create chapter", detail: "HQ → Chapters → create form" },
+        { label: "See on dashboard", detail: "Network overview lists the new chapter" },
+        { label: "Open chapter", detail: "Click through into the chapter home" },
+      ],
+      href: "/hq/chapters",
+    },
+  ];
+
   return (
     <div>
       <PageHeader

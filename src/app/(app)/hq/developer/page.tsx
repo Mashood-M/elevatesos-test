@@ -108,8 +108,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     requiresAuth: true,
     sampleBody: JSON.stringify(
       {
-        fullName: "Alex Rivera",
-        email: "alex@college.edu.in",
+        fullName: "Student Name",
+        email: "student@college.edu.in",
         phone: "+91 98765 43210",
         college: "Campus Engineering College"
       },
@@ -277,7 +277,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   {
     id: "verify-cert",
     method: "GET",
-    path: "/verify/certificate/CERT-EKC-2026-001",
+    path: "/verify/certificate/CERT-2026-001",
     category: "Community & Stats",
     title: "Cryptographic Certificate Verification",
     description: "Verifies student authenticity, completed attendance terms, and issuing campus lead.",
@@ -285,9 +285,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     sampleResponse: JSON.stringify(
       {
         valid: true,
-        certificateNumber: "CERT-EKC-2026-001",
-        recipient: "Alex Rivera",
-        eventName: "Campus Launch & System Architecture",
+        certificateNumber: "CERT-2026-001",
+        recipient: "Student Name",
+        eventName: "Campus Event & System Architecture",
         attendanceCompleted: "100%",
         issuedAt: "2026-08-25T17:00:00Z"
       },

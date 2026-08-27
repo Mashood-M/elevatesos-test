@@ -516,8 +516,8 @@ export default function HqSettingsPage() {
 
             <div className="p-3.5 rounded bg-bg border border-border text-xs font-mono text-text-dim space-y-1">
               <p className="text-text font-semibold">Live Template Preview:</p>
-              <p className="text-cyan">Subject: {certSubject.replace("{{eventName}}", "Campus Launch EKC")}</p>
-              <p className="text-text-dim">Body: {certGreeting.replace("{{recipientName}}", "Alex Rivera")} Verification link and official seal attached.</p>
+              <p className="text-cyan">Subject: {certSubject.replace("{{eventName}}", "[Event Name]")}</p>
+              <p className="text-text-dim">Body: {certGreeting.replace("{{recipientName}}", "[Recipient Name]")} Verification link and official seal attached.</p>
             </div>
 
             <div className="flex justify-end pt-2">

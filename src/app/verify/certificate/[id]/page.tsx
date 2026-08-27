@@ -89,7 +89,7 @@ export default function VerifyCertificatePage({
                 issued certificate.
               </p>
               <p className="mt-4 text-xs text-text-mute">
-                Try: ELV-EKC-2026-00042
+                Example format: ELV-CERT-2026-XXXXX
               </p>
             </div>
           )}

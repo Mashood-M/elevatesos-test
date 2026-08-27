@@ -4,31 +4,20 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 export async function middleware(request: NextRequest) {
-  const rawAuthFlag = process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH;
-  const isExplicitlyDisabled = rawAuthFlag === "false" || rawAuthFlag === "0";
-  const isProduction = process.env.NODE_ENV === "production";
-
-  // Safeguard: default protection to enabled in production unless explicitly set to false
-  const useAuth = isProduction
-    ? !isExplicitlyDisabled
-    : rawAuthFlag === "true" || rawAuthFlag === "1";
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   const configured = isSupabaseConfigured();
 
-  if (!useAuth || !configured) {
-    if (isProduction && !isExplicitlyDisabled && !configured) {
+  // If Supabase is not configured at all, allow all requests and warn.
+  if (!configured) {
+    if (process.env.NODE_ENV === "production") {
       console.error(
-        "[CRITICAL SECURITY WARNING] Route protection active in production but Supabase credentials (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY) are missing or placeholder values!"
-      );
-    } else if (!useAuth) {
-      console.warn(
-        "[SECURITY WARNING] Route protection skipped because NEXT_PUBLIC_USE_SUPABASE_AUTH is disabled."
+        "[CRITICAL SECURITY WARNING] Route protection is disabled in production because Supabase credentials are missing or are placeholder values!"
       );
     }
     return NextResponse.next();
   }
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   let response = NextResponse.next({
     request: { headers: request.headers },
@@ -58,7 +47,8 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  const isApp =
+
+  const isProtectedApp =
     path.startsWith("/hq") ||
     path.startsWith("/chapter") ||
     path.startsWith("/executive") ||
@@ -71,13 +61,15 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/profile") ||
     path.startsWith("/eos");
 
-  if (isApp && !user) {
+  // Unauthenticated user accessing protected route → redirect to login
+  if (isProtectedApp && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", path);
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Already-authenticated user visiting /login → redirect to HQ
   if (path === "/login" && user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/hq";

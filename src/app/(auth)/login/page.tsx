@@ -3,11 +3,9 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Suspense, useState, type FormEvent } from "react";
-import { useStore } from "@/context/store-context";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
 import { homeForRole } from "@/lib/access";
-import { useSupabaseAuth } from "@/lib/mode";
 import { createClient } from "@/lib/supabase/client";
 import { Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
 import type { RoleKey } from "@/types";
@@ -16,8 +14,6 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
-  const auth = useSupabaseAuth();
-  const { setSession, store } = useStore();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,79 +33,93 @@ function LoginForm() {
       return;
     }
 
-    // 1. If Supabase is configured, attempt Supabase Auth
     const supabase = createClient();
-    if (supabase) {
-      try {
-        const { data: authData, error: signError } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-
-        if (!signError && authData.user) {
-          const matched = store.profiles.find(
-            (p) => p.email.toLowerCase() === cleanEmail || p.id === authData.user.id
-          );
-          const userRoles = matched ? store.userRoles.filter((ur) => ur.userId === matched.id) : [];
-          const firstRole = userRoles.map((ur) => store.roles.find((r) => r.id === ur.roleId)).filter(Boolean)[0];
-          const roleKey: RoleKey = firstRole?.key ?? (cleanEmail.includes("founder") || cleanEmail.includes("admin") ? "founder" : "student");
-          const chapter = store.chapters.find((c) => c.id === (userRoles[0]?.chapterId ?? matched?.chapterId));
-          const chapterSlug = chapter?.slug ?? "ekc";
-
-          setSession(matched?.id ?? authData.user.id, roleKey, chapter?.id);
-          setLoading(false);
-
-          if (next) {
-            router.push(next);
-          } else {
-            router.push(homeForRole(roleKey, chapterSlug));
-          }
-          router.refresh();
-          return;
-        }
-
-        if (signError && auth) {
-          setError(signError.message);
-          setLoading(false);
-          return;
-        }
-      } catch (err: unknown) {
-        console.error("Supabase auth error:", err);
-      }
+    if (!supabase) {
+      setError("Authentication service is unavailable. Please try again later.");
+      setLoading(false);
+      return;
     }
 
-    // 2. Lookup profile by email in active store
-    const matchedProfile = store.profiles.find(
-      (p) => p.email.toLowerCase() === cleanEmail
-    );
+    try {
+      const { data: authData, error: signError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
 
-    if (matchedProfile) {
-      if ((matchedProfile.status ?? "active") === "disabled") {
+      if (signError) {
+        setError(signError.message);
+        setLoading(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError("Login failed — no user returned. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const userId = authData.user.id;
+
+      // Fetch the profile by the Supabase Auth UUID (definitive — prevents duplicate profile lookup)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("id, chapter_id, status")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (profile?.status === "disabled") {
+        await supabase.auth.signOut();
         setError("This account has been disabled. Please contact your campus administrator.");
         setLoading(false);
         return;
       }
 
-      // Resolve primary role for this user
-      const userRoles = store.userRoles.filter((ur) => ur.userId === matchedProfile.id);
-      const firstRole = userRoles.map((ur) => store.roles.find((r) => r.id === ur.roleId)).filter(Boolean)[0];
-      const roleKey: RoleKey = firstRole?.key ?? "student";
-      const chapter = store.chapters.find((c) => c.id === (userRoles[0]?.chapterId ?? matchedProfile.chapterId));
-      const chapterSlug = chapter?.slug ?? "ekc";
+      // Fetch the user's roles from the database
+      const { data: userRoleRows } = await supabase
+        .from("user_roles")
+        .select("role_id, chapter_id")
+        .eq("user_id", userId)
+        .limit(1);
 
-      setSession(matchedProfile.id, roleKey, chapter?.id);
+      let roleKey: RoleKey = "student";
+      let chapterId: string | undefined = profile?.chapter_id ?? undefined;
+
+      if (userRoleRows && userRoleRows.length > 0) {
+        const roleId = userRoleRows[0].role_id;
+        chapterId = userRoleRows[0].chapter_id ?? chapterId;
+
+        const { data: roleRow } = await supabase
+          .from("roles")
+          .select("key")
+          .eq("id", roleId)
+          .maybeSingle();
+
+        if (roleRow?.key) {
+          roleKey = roleRow.key as RoleKey;
+        }
+      }
+
+      // Fetch chapter slug for redirect
+      let chapterSlug = "ekc";
+      if (chapterId) {
+        const { data: chapterRow } = await supabase
+          .from("chapters")
+          .select("slug")
+          .eq("id", chapterId)
+          .maybeSingle();
+        if (chapterRow?.slug) chapterSlug = chapterRow.slug;
+      }
+
       setLoading(false);
 
-      if (next) {
-        router.push(next);
-      } else {
-        router.push(homeForRole(roleKey, chapterSlug));
-      }
-      return;
+      // Hard redirect — clears any stale client state and lets middleware verify the session
+      const destination = next ?? homeForRole(roleKey, chapterSlug);
+      window.location.href = destination;
+    } catch (err: unknown) {
+      console.error("Login error:", err);
+      setError("An unexpected error occurred. Please try again.");
+      setLoading(false);
     }
-
-    setLoading(false);
-    setError("Invalid email address or password. Please check your credentials.");
   }
 
   return (

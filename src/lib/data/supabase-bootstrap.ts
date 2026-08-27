@@ -350,22 +350,29 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 
-    // Maintain session pointing to active user in Supabase
-    const founderRoleIds = new Set(
-      roles.filter((r) => r.key === "founder" || r.key === "admin").map((r) => r.id)
-    );
-    const founderUserRole = userRoles.find((ur) => founderRoleIds.has(ur.roleId));
-    const activeProfile = founderUserRole
-      ? profiles.find((p) => p.id === founderUserRole.userId)
-      : profiles[0];
+    // Resolve session from the actual Supabase Auth user — never guess from profile list
+    const { data: { user: authUser } } = await supabase.auth.getUser();
 
-    const sessionRoleKey: RoleKey = founderUserRole
-      ? (roles.find((r) => r.id === founderUserRole.roleId)?.key ?? "founder")
-      : "founder";
-
-    const session = activeProfile
-      ? { userId: activeProfile.id, roleKey: sessionRoleKey, chapterId: activeProfile.chapterId }
-      : { userId: "", roleKey: "student" as RoleKey };
+    let session: { userId: string; roleKey: RoleKey; chapterId?: string };
+    if (authUser) {
+      const matchedProfile = profiles.find((p) => p.id === authUser.id);
+      if (matchedProfile) {
+        const userRoleEntry = userRoles.find((ur) => ur.userId === matchedProfile.id);
+        const roleEntry = userRoleEntry ? roles.find((r) => r.id === userRoleEntry.roleId) : undefined;
+        const roleKey: RoleKey = (roleEntry?.key ?? "student") as RoleKey;
+        session = {
+          userId: matchedProfile.id,
+          roleKey,
+          chapterId: userRoleEntry?.chapterId ?? matchedProfile.chapterId,
+        };
+      } else {
+        // Auth user exists but no profile row yet — treat as student until profile is created
+        session = { userId: authUser.id, roleKey: "student" as RoleKey };
+      }
+    } else {
+      // No authenticated user — empty session (middleware will redirect to /login)
+      session = { userId: "", roleKey: "student" as RoleKey };
+    }
 
     return {
       store: {

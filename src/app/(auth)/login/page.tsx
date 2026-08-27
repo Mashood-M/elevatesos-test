@@ -231,36 +231,6 @@ function LoginForm() {
         </Button>
       </form>
 
-      {/* Quick Demo Accounts Helper */}
-      <div className="mt-6 pt-6 border-t border-[var(--border)]">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-text-mute mb-2">
-          Quick Fill Seed Accounts (Password: 123456)
-        </p>
-        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-          {[
-            { label: "HQ Founder", email: "founder@elevates.live" },
-            { label: "HQ Admin", email: "admin@elevates.live" },
-            { label: "Campus Chairman", email: "chairman@elevates.live" },
-            { label: "Faculty Coord", email: "faculty@elevates.live" },
-            { label: "Class Rep", email: "cr@elevates.live" },
-            { label: "Student", email: "student@elevates.live" },
-          ].map((acc) => (
-            <button
-              key={acc.email}
-              type="button"
-              onClick={() => {
-                setEmail(acc.email);
-                setPassword("123456");
-              }}
-              className="text-left px-2 py-1.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--neutral-50)] text-text-dim hover:text-text transition-colors truncate"
-            >
-              <span className="font-semibold block text-text">{acc.label}</span>
-              <span className="font-mono text-[10px] opacity-70">{acc.email}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
       <div className="mt-6 text-center text-xs text-text-dim">
         <span>Need an account or chapter invitation? </span>
         <Link href="/join" className="text-[var(--accent)] font-semibold hover:underline">

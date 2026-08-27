@@ -118,12 +118,12 @@ CREATE TABLE IF NOT EXISTS public.attendance (
 -- Seed System Roles
 INSERT INTO public.roles (id, key, name, scope, description)
 VALUES
-  ('r0000000-0000-0000-0000-000000000001', 'founder', 'HQ Founder', 'hq', 'Full platform administrative access across HQ and all campus chapters'),
-  ('r0000000-0000-0000-0000-000000000002', 'hq_admin', 'HQ Admin', 'hq', 'HQ operation and campus chapter management permissions'),
-  ('r0000000-0000-0000-0000-000000000003', 'chairman', 'Campus Executive', 'chapter', 'Chapter leadership, event management, and team oversight'),
-  ('r0000000-0000-0000-0000-000000000004', 'faculty_coordinator', 'Faculty Coordinator', 'chapter', 'Faculty window, event approvals, and academic coordination'),
-  ('r0000000-0000-0000-0000-000000000005', 'class_representative', 'Class Representative', 'chapter', 'Class cohort coordination, announcements, and student engagement'),
-  ('r0000000-0000-0000-0000-000000000006', 'student', 'Student', 'chapter', 'Student access, event registration, certificates, and portfolio')
+  ('70000000-0000-0000-0000-000000000001', 'founder', 'HQ Founder', 'hq', 'Full platform administrative access across HQ and all campus chapters'),
+  ('70000000-0000-0000-0000-000000000002', 'hq_admin', 'HQ Admin', 'hq', 'HQ operation and campus chapter management permissions'),
+  ('70000000-0000-0000-0000-000000000003', 'chairman', 'Campus Executive', 'chapter', 'Chapter leadership, event management, and team oversight'),
+  ('70000000-0000-0000-0000-000000000004', 'faculty_coordinator', 'Faculty Coordinator', 'chapter', 'Faculty window, event approvals, and academic coordination'),
+  ('70000000-0000-0000-0000-000000000005', 'class_representative', 'Class Representative', 'chapter', 'Class cohort coordination, announcements, and student engagement'),
+  ('70000000-0000-0000-0000-000000000006', 'student', 'Student', 'chapter', 'Student access, event registration, certificates, and portfolio')
 ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 CREATE TABLE IF NOT EXISTS public.user_roles (
@@ -644,12 +644,12 @@ ON CONFLICT (id) DO UPDATE SET
 -- Insert public.user_roles
 INSERT INTO public.user_roles (id, user_id, role_id, role_key, organization_id)
 VALUES
-  ('a1111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'r0000000-0000-0000-0000-000000000001', 'founder', '00000000-0000-0000-0000-000000000001'),
-  ('a2222222-2222-2222-2222-222222222222', '22222222-2222-2222-2222-222222222222', 'r0000000-0000-0000-0000-000000000002', 'hq_admin', '00000000-0000-0000-0000-000000000001'),
-  ('a3333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333', 'r0000000-0000-0000-0000-000000000003', 'chairman', '00000000-0000-0000-0000-000000000001'),
-  ('a4444444-4444-4444-4444-444444444444', '44444444-4444-4444-4444-444444444444', 'r0000000-0000-0000-0000-000000000004', 'faculty_coordinator', '00000000-0000-0000-0000-000000000001'),
-  ('a5555555-5555-5555-5555-555555555555', '55555555-5555-5555-5555-555555555555', 'r0000000-0000-0000-0000-000000000005', 'class_representative', '00000000-0000-0000-0000-000000000001'),
-  ('a6666666-6666-6666-6666-666666666666', '66666666-6666-6666-6666-666666666666', 'r0000000-0000-0000-0000-000000000006', 'student', '00000000-0000-0000-0000-000000000001')
+  ('a1111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', '70000000-0000-0000-0000-000000000001', 'founder', '00000000-0000-0000-0000-000000000001'),
+  ('a2222222-2222-2222-2222-222222222222', '22222222-2222-2222-2222-222222222222', '70000000-0000-0000-0000-000000000002', 'hq_admin', '00000000-0000-0000-0000-000000000001'),
+  ('a3333333-3333-3333-3333-333333333333', '33333333-3333-3333-3333-333333333333', '70000000-0000-0000-0000-000000000003', 'chairman', '00000000-0000-0000-0000-000000000001'),
+  ('a4444444-4444-4444-4444-444444444444', '44444444-4444-4444-4444-444444444444', '70000000-0000-0000-0000-000000000004', 'faculty_coordinator', '00000000-0000-0000-0000-000000000001'),
+  ('a5555555-5555-5555-5555-555555555555', '55555555-5555-5555-5555-555555555555', '70000000-0000-0000-0000-000000000005', 'class_representative', '00000000-0000-0000-0000-000000000001'),
+  ('a6666666-6666-6666-6666-666666666666', '66666666-6666-6666-6666-666666666666', '70000000-0000-0000-0000-000000000006', 'student', '00000000-0000-0000-0000-000000000001')
 ON CONFLICT (id) DO UPDATE SET
   role_id = EXCLUDED.role_id,
   role_key = EXCLUDED.role_key;

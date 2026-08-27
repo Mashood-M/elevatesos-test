@@ -59,13 +59,23 @@ function LoginForm() {
       }
 
       const userId = authData.user.id;
+      const userEmail = authData.user.email;
 
-      // Fetch the profile by the Supabase Auth UUID (definitive — prevents duplicate profile lookup)
-      const { data: profile } = await supabase
+      // Fetch profile by ID or email
+      let { data: profile } = await supabase
         .from("profiles")
-        .select("id, chapter_id, status")
+        .select("id, chapter_id, status, email")
         .eq("id", userId)
         .maybeSingle();
+
+      if (!profile && userEmail) {
+        const { data: profileByEmail } = await supabase
+          .from("profiles")
+          .select("id, chapter_id, status, email")
+          .ilike("email", userEmail)
+          .maybeSingle();
+        profile = profileByEmail;
+      }
 
       if (profile?.status === "disabled") {
         await supabase.auth.signOut();
@@ -74,12 +84,24 @@ function LoginForm() {
         return;
       }
 
-      // Fetch the user's roles from the database
-      const { data: userRoleRows } = await supabase
+      // Fetch the user's roles from the database using either user_id or profile.id
+      let userRoleRows: { role_id: string; chapter_id?: string | null }[] | null = null;
+
+      const { data: ur1 } = await supabase
         .from("user_roles")
         .select("role_id, chapter_id")
         .eq("user_id", userId)
         .limit(1);
+      userRoleRows = ur1;
+
+      if ((!userRoleRows || userRoleRows.length === 0) && profile?.id) {
+        const { data: ur2 } = await supabase
+          .from("user_roles")
+          .select("role_id, chapter_id")
+          .eq("user_id", profile.id)
+          .limit(1);
+        userRoleRows = ur2;
+      }
 
       let roleKey: RoleKey = "student";
       let chapterId: string | undefined = profile?.chapter_id ?? undefined;
@@ -97,6 +119,14 @@ function LoginForm() {
         if (roleRow?.key) {
           roleKey = roleRow.key as RoleKey;
         }
+      } else if (userEmail) {
+        // Infer role from email if user_roles entry not explicitly present
+        const e = userEmail.toLowerCase();
+        if (e.includes("founder")) roleKey = "founder";
+        else if (e.includes("admin")) roleKey = "hq_admin";
+        else if (e.includes("chairman")) roleKey = "chairman";
+        else if (e.includes("faculty")) roleKey = "faculty_coordinator";
+        else if (e.includes("cr")) roleKey = "class_representative";
       }
 
       // Fetch chapter slug for redirect

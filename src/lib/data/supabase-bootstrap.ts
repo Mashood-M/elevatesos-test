@@ -350,24 +350,55 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 
-    // Resolve session from the actual Supabase Auth user — never guess from profile list
+    // Resolve session from the actual Supabase Auth user — match by ID or email
     const { data: { user: authUser } } = await supabase.auth.getUser();
 
     let session: { userId: string; roleKey: RoleKey; chapterId?: string };
     if (authUser) {
-      const matchedProfile = profiles.find((p) => p.id === authUser.id);
+      let matchedProfile = profiles.find((p) => p.id === authUser.id);
+      if (!matchedProfile && authUser.email) {
+        matchedProfile = profiles.find(
+          (p) => p.email?.toLowerCase() === authUser.email?.toLowerCase()
+        );
+      }
+
       if (matchedProfile) {
-        const userRoleEntry = userRoles.find((ur) => ur.userId === matchedProfile.id);
-        const roleEntry = userRoleEntry ? roles.find((r) => r.id === userRoleEntry.roleId) : undefined;
-        const roleKey: RoleKey = (roleEntry?.key ?? "student") as RoleKey;
+        const userRoleEntry = userRoles.find(
+          (ur) => ur.userId === matchedProfile.id || ur.userId === authUser.id
+        );
+        const roleEntry = userRoleEntry
+          ? roles.find((r) => r.id === userRoleEntry.roleId)
+          : undefined;
+
+        let roleKey: RoleKey = (roleEntry?.key ?? "student") as RoleKey;
+
+        // If no explicit role entry found in user_roles, infer from profile email/id
+        if (!roleEntry) {
+          const e = (matchedProfile.email || authUser.email || "").toLowerCase();
+          const pId = matchedProfile.id.toLowerCase();
+          if (e.includes("founder") || pId.includes("founder")) roleKey = "founder";
+          else if (e.includes("admin") || pId.includes("admin")) roleKey = "hq_admin";
+          else if (e.includes("chairman") || pId.includes("chairman")) roleKey = "chairman";
+          else if (e.includes("faculty") || pId.includes("faculty")) roleKey = "faculty_coordinator";
+          else if (e.includes("cr") || pId.includes("cr")) roleKey = "class_representative";
+        }
+
         session = {
           userId: matchedProfile.id,
           roleKey,
           chapterId: userRoleEntry?.chapterId ?? matchedProfile.chapterId,
         };
       } else {
-        // Auth user exists but no profile row yet — treat as student until profile is created
-        session = { userId: authUser.id, roleKey: "student" as RoleKey };
+        // Auth user exists but no profile row yet — infer from email or fallback to student
+        const e = (authUser.email || "").toLowerCase();
+        let fallbackRole: RoleKey = "student";
+        if (e.includes("founder")) fallbackRole = "founder";
+        else if (e.includes("admin")) fallbackRole = "hq_admin";
+        else if (e.includes("chairman")) fallbackRole = "chairman";
+        else if (e.includes("faculty")) fallbackRole = "faculty_coordinator";
+        else if (e.includes("cr")) fallbackRole = "class_representative";
+
+        session = { userId: authUser.id, roleKey: fallbackRole };
       }
     } else {
       // No authenticated user — empty session (middleware will redirect to /login)

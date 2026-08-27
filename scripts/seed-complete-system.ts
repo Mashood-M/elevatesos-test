@@ -264,7 +264,35 @@ async function seedEverything() {
   if (urErr) console.error("User Roles Seed Error:", urErr);
   else console.log("✓ Demo Users & User Roles seeded successfully.");
 
-  console.log("🎉 ALL SYSTEM DATA PUSHED TO SUPABASE SUCCESSFULLY!");
+  // 7. Seed Supabase Auth Users (auth.users)
+  console.log("Seeding Supabase Auth Users (auth.users)...");
+  for (const u of demoUsers) {
+    try {
+      const { error: authErr } = await supabase.auth.admin.createUser({
+        email: u.email,
+        password: "123456",
+        email_confirm: true,
+        user_metadata: { full_name: u.name },
+      });
+      if (authErr) {
+        if (
+          authErr.message.includes("already registered") ||
+          authErr.message.includes("already exists")
+        ) {
+          console.log(`ℹ Auth user ${u.email} already registered.`);
+        } else {
+          console.log(`⚠️ Auth User (${u.email}) note:`, authErr.message);
+        }
+      } else {
+        console.log(`✓ Auth user ${u.email} created with password "123456".`);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.log(`⚠️ Auth User (${u.email}) exception:`, msg);
+    }
+  }
+
+  console.log("🎉 ALL SYSTEM DATA & AUTH USERS PUSHED TO SUPABASE SUCCESSFULLY!");
 }
 
 seedEverything().catch(console.error);

@@ -1231,7 +1231,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
           } else {
             const chapterId =
-              s.events.find((e) => e.id === eventId)?.chapterId ?? "ch-ekc";
+              s.events.find((e) => e.id === eventId)?.chapterId ?? s.chapters?.[0]?.id ?? "";
             forms.unshift({
               id: `form-reg-${eventId}`,
               purpose: "registration",
@@ -1265,7 +1265,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             (f) => f.eventId === eventId && f.purpose === purpose,
           );
           const chapterId =
-            s.events.find((e) => e.id === eventId)?.chapterId ?? "ch-ekc";
+            s.events.find((e) => e.id === eventId)?.chapterId ?? s.chapters?.[0]?.id ?? "";
           if (idx >= 0) {
             forms[idx] = {
               ...forms[idx],

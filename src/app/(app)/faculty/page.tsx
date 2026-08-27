@@ -12,7 +12,7 @@ import { formatDateTime } from "@/lib/utils";
 export default function FacultyPage() {
   const { store } = useStore();
   const { session, profile } = useCurrentUser();
-  const chapterId = session.chapterId ?? "ch-ekc";
+  const chapterId = session.chapterId ?? store.chapters?.[0]?.id;
   const chapter = store.chapters.find((c) => c.id === chapterId);
   const firstName = profile?.fullName?.split(" ")[0] ?? "there";
 
@@ -24,11 +24,12 @@ export default function FacultyPage() {
   const submittedReports = store.reports.filter(
     (r) => r.chapterId === chapterId && r.status === "submitted",
   );
+  const studentRoleId = store.roles.find((r) => r.key === "student")?.id;
   const students = store.profiles.filter(
     (p) =>
       p.chapterId === chapterId &&
       store.userRoles.some(
-        (ur) => ur.userId === p.id && ur.roleId === "r-student",
+        (ur) => ur.userId === p.id && (!studentRoleId || ur.roleId === studentRoleId),
       ),
   );
 

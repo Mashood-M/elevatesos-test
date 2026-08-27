@@ -546,7 +546,7 @@ export default function EventsCMSPage() {
                 {/* Chapter Association Badge */}
                 <div className="mt-2.5 flex items-center gap-2">
                   <Link
-                    href={`/chapter/${evt.chapterSlug || "ekc"}/events`}
+                    href={`/chapter/${evt.chapterSlug || store.chapters?.[0]?.slug || "main"}/events`}
                     className="inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-text bg-bg-page border border-border px-2.5 py-1 rounded-[var(--radius-md)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
                   >
                     <Building2 size={12} className="text-[var(--accent)]" />
@@ -627,7 +627,7 @@ export default function EventsCMSPage() {
             try {
               const payload = {
                 id: saved.id,
-                chapterId: store.chapters?.[0]?.id || "ch-ekc",
+                chapterId: store.chapters.find((c) => c.slug === saved.chapterSlug)?.id || store.chapters?.[0]?.id || "",
                 title: saved.title,
                 slug: saved.slug,
                 summary: saved.tagline || saved.description,

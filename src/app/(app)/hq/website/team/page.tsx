@@ -33,199 +33,8 @@ interface Advisor {
   image?: string;
 }
 
-const DEFAULT_FOUNDERS: Founder[] = [
-  {
-    id: "sarhan-qadir-kvm",
-    name: "Sarhan Qadir KVM",
-    tag: "Main Class Bunker",
-    role: "Founder",
-    proof: "Fullstack · Dev / Elevates Live",
-    linkedin: "https://www.linkedin.com/in/sqadirkvm/",
-    cohort: "2025-26",
-    image: "/images/founders/sarhan-qadir.jpeg",
-  },
-  {
-    id: "naseem-shan",
-    name: "Naseem Shan",
-    tag: "Stalked In Silence",
-    role: "Founder",
-    proof: "Backend - Systems & Infrastructure",
-    linkedin: "https://www.linkedin.com/in/naseem-shan-b5039a255/",
-    cohort: "2025-26",
-    image: "/images/founders/naseem-shan.jpeg",
-  },
-  {
-    id: "muhammed-nafih-p",
-    name: "Muhammed Nafih P",
-    tag: "Design Wizard",
-    role: "Founder",
-    proof: "Design - Arch & Brand UI",
-    linkedin: "https://www.linkedin.com/in/muhammed-nafih-8777a2282/",
-    cohort: "2025-26",
-    image: "/images/founders/nafih.jpeg",
-  },
-  {
-    id: "anil-das-p",
-    name: "Anil Das P",
-    tag: "Last Minute Contributor",
-    role: "Founder",
-    proof: "Development - Ships 1hr before deadline",
-    linkedin: "https://www.linkedin.com/in/anil-das-p/",
-    cohort: "2025-26",
-    image: "/images/founders/anil-das.jpeg",
-  },
-  {
-    id: "nadheem-roshan",
-    name: "Nadheem Roshan",
-    tag: "Savings Box /99% Attendance",
-    role: "Founder",
-    proof: "IoT & Hardware / Embedded Systems",
-    linkedin: "https://www.linkedin.com/in/nadheem-roshan/",
-    cohort: "2025-26",
-    image: "/images/founders/nadheem.jpg",
-  },
-  {
-    id: "muhammed-shanif-p",
-    name: "Muhammed Shanif P",
-    tag: "Hardware Hacker",
-    role: "Founder",
-    proof: "Embedded - Vibranium RTOS check-in",
-    linkedin: "https://www.linkedin.com/in/muhammed-shanif-p/",
-    cohort: "2025-26",
-    image: "/images/founders/shanif.jpeg",
-  },
-  {
-    id: "adhinan-k",
-    name: "Adhinan K",
-    tag: "Terminal Addict",
-    role: "Founder",
-    proof: "DevOps - Uncloud Server Infrastructure",
-    linkedin: "https://www.linkedin.com/company/elevates-in",
-    cohort: "2025-26",
-    image: "/images/founders/adhinan.png",
-  },
-  {
-    id: "mashood-m",
-    name: "Mashood M",
-    tag: "Unfinished Project Collector",
-    role: "Founder",
-    proof: "Development - Multi-tenant Router APIs",
-    linkedin: "https://www.linkedin.com/in/mashood-m/",
-    cohort: "2025-26",
-    image: "/images/founders/mashood.jpeg",
-  },
-  {
-    id: "mohammed-shahin-ek",
-    name: "Mohammed Shahin E K",
-    tag: "Late Night Shipper",
-    role: "Founder",
-    proof: "Backend - 100K requests, zero downtime",
-    linkedin: "https://www.linkedin.com/in/mohammed-shahin-ek/",
-    cohort: "2025-26",
-    image: "/images/founders/shahin-ek.jpeg",
-  },
-  {
-    id: "shifna-kp",
-    name: "Shifna K P",
-    tag: "The Reason We Skipped",
-    role: "Founder",
-    proof: "Ops - Campus launch, 123 seats in 2 hours",
-    linkedin: "https://www.linkedin.com/in/shifna-kp/",
-    cohort: "2025-26",
-    image: "/images/founders/shifna.jpeg",
-  },
-  {
-    id: "mohammed-mijvad",
-    name: "Mohammed Mijvad",
-    tag: "Lab Bench Resident",
-    role: "Founder",
-    proof: "Hardware - Lab systems & electronics",
-    linkedin: "https://www.linkedin.com/in/mohammed-mijvad/",
-    cohort: "2025-26",
-    image: "/images/founders/mijvad.jpeg",
-  },
-  {
-    id: "sona-varghese",
-    name: "Sona Varghese",
-    tag: "Zero Study Hour",
-    role: "Founder",
-    proof: "SecOps - Ironclad protocol showcase",
-    linkedin: "https://www.linkedin.com/in/sona-varghese/",
-    cohort: "2025-26",
-    image: "/images/founders/sona.jpg",
-  },
-  {
-    id: "ashith-mk",
-    name: "Ashith MK",
-    tag: "Bug Hunter",
-    role: "Founder",
-    proof: "Security - Ran the cyber security workshop",
-    linkedin: "https://www.linkedin.com/in/ashith-mk/",
-    cohort: "2025-26",
-    image: "/images/founders/ashith.jpeg",
-  },
-  {
-    id: "arshak-perumballi",
-    name: "Arshak Perumballi",
-    tag: "PPT Specialist",
-    role: "Founder",
-    proof: "Comms - Everyday deck than persona room",
-    linkedin: "https://www.linkedin.com/in/arshak-perumballi/",
-    cohort: "2025-26",
-    image: "/images/founders/arshak.png",
-  },
-  {
-    id: "sinan-nooren",
-    name: "Sinan Nooren",
-    tag: "Quiet Builder",
-    role: "Founder",
-    proof: "Development - Built the initial store",
-    linkedin: "https://www.linkedin.com/in/sinan-nooren/",
-    cohort: "2025-26",
-    image: "/images/founders/sinan-nooren.png",
-  },
-  {
-    id: "muhammed-fiyas",
-    name: "Muhammed Fiyas",
-    tag: "Hooks on My Mindset",
-    role: "Founder",
-    proof: "Development - One-comment debugging specialist",
-    linkedin: "https://www.linkedin.com/in/muhammed-fiyas/",
-    cohort: "2025-26",
-    image: "/images/founders/fiyas.png",
-  },
-  {
-    id: "adil-pt",
-    name: "Adil P T",
-    tag: "Quick Bencher",
-    role: "Founder",
-    proof: "Dev - Quality ships from the last row",
-    linkedin: "https://www.linkedin.com/in/adil-pt/",
-    cohort: "2025-26",
-    image: "/images/founders/adil.jpeg",
-  },
-  {
-    id: "abdul-haadi",
-    name: "Abdul Haadi",
-    tag: "Front Bencher",
-    role: "Founder",
-    proof: "Python - Development & Backend",
-    linkedin: "https://www.linkedin.com/in/abdul-haadi/",
-    cohort: "2025-26",
-    image: "/images/founders/haadi.jpeg",
-  },
-];
-
-const DEFAULT_ADVISORS: Advisor[] = [
-  {
-    id: "jasira-kt",
-    name: "Jasira KT",
-    role: "Faculty Head & Advisor",
-    institution: "Computer Science & Engineering, EKCTC",
-    linkedin: "https://www.linkedin.com/",
-    image: "/images/advisors/jasira-kt.jpeg",
-  },
-];
+const DEFAULT_FOUNDERS: Founder[] = [];
+const DEFAULT_ADVISORS: Advisor[] = [];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -393,7 +202,20 @@ export default function TeamCMSPage() {
   useEffect(() => {
     if (store.profiles && store.profiles.length > 0) {
       setFounders((prev) => {
-        const enriched = prev.map((df) => {
+        if (prev.length === 0) {
+          // Dynamically map store profiles to founder objects
+          return store.profiles.map((p) => ({
+            id: p.id,
+            name: p.fullName,
+            tag: p.engagementTier ?? "Builder",
+            role: "Founder",
+            proof: p.bio ?? "Core builder",
+            linkedin: p.linkedinUrl,
+            cohort: "2025-26" as const,
+            image: p.avatarUrl ?? "",
+          }));
+        }
+        return prev.map((df) => {
           const p = store.profiles.find(
             (x) => x.id === df.id || x.fullName?.toLowerCase() === df.name.toLowerCase()
           );
@@ -405,7 +227,6 @@ export default function TeamCMSPage() {
             proof: p.bio || df.proof,
           };
         });
-        return enriched;
       });
     }
   }, [store.profiles]);

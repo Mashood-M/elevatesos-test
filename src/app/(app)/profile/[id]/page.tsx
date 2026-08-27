@@ -55,7 +55,7 @@ export default function ProfilePage({
   const [editLinkedin, setEditLinkedin] = useState("");
   const [editPortfolio, setEditPortfolio] = useState("");
 
-  const isOwn = session.userId === id || (!session.userId && id === "u-founder");
+  const isOwn = Boolean(session.userId && session.userId === id);
   const canEdit = isOwn || isHqRole(session.roleKey);
 
   const chapterCohorts = useMemo(() => {

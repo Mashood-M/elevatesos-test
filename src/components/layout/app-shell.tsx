@@ -16,40 +16,6 @@ import { Select } from "@/components/ui/input";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
 
-const personas: {
-  label: string;
-  userId: string;
-  roleKey: RoleKey;
-  chapterId?: string;
-}[] = [
-  { label: "HQ", userId: "u-founder", roleKey: "founder" },
-  { label: "HQ Admin", userId: "u-hq-admin", roleKey: "hq_admin" },
-  {
-    label: "Campus Executive Team · EKC",
-    userId: "u-chairman",
-    roleKey: "chairman",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Faculty Coordinator · EKC",
-    userId: "u-faculty",
-    roleKey: "faculty_coordinator",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Class Rep · EKC",
-    userId: "u-cr",
-    roleKey: "class_representative",
-    chapterId: "ch-ekc",
-  },
-  {
-    label: "Student · EKC",
-    userId: "u-student-1",
-    roleKey: "student",
-    chapterId: "ch-ekc",
-  },
-];
-
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
     "/hq",
@@ -75,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   const chapter = store.chapters.find((c) => c.id === session.chapterId);
-  const chapterSlug = chapter?.slug ?? "ekc";
+  const chapterSlug = chapter?.slug ?? store.chapters?.[0]?.slug ?? "";
   const groups = navGroupsForRole(session.roleKey, chapterSlug);
   const unread = store.notifications.filter(
     (n) => n.userId === session.userId && !n.read,
@@ -89,28 +55,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ? `${chapter.slug.toUpperCase()} chapter`
       : "Elevates OS";
   const availablePersonas = useMemo(() => {
-    if (session.roleKey === "founder") {
-      return personas;
+    // Non-HQ users do not get a persona switcher
+    if (!isHqRole(session.roleKey)) {
+      return [];
     }
-    if (session.roleKey === "hq_admin") {
-      return personas.filter(
-        (p) => p.roleKey === "hq_admin" || p.roleKey === "chairman"
-      );
-    }
-    if (
-      session.roleKey === "chairman" ||
-      session.roleKey === "vice_chairman" ||
-      session.roleKey === "secretary"
-    ) {
-      return personas.filter(
-        (p) =>
-          p.roleKey === "chairman" ||
-          p.roleKey === "class_representative" ||
-          p.roleKey === "student"
-      );
-    }
-    return [];
-  }, [session.roleKey]);
+    // Dynamically derive available profiles for HQ testing from real store profiles
+    return (store.profiles ?? []).map((p) => {
+      const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
+      const firstRoleId = uRoles[0]?.roleId;
+      const rObj = store.roles.find((r) => r.id === firstRoleId);
+      const roleKey = (rObj?.key ?? "student") as RoleKey;
+      const ch = store.chapters.find((c) => c.id === p.chapterId);
+      const chName = ch ? ch.name : "HQ";
+      return {
+        label: `${p.fullName} (${rObj?.name ?? roleKey}) · ${chName}`,
+        userId: p.id,
+        roleKey,
+        chapterId: p.chapterId,
+      };
+    });
+  }, [session.roleKey, store.profiles, store.userRoles, store.roles, store.chapters]);
 
   async function handleLogout() {
     try {
@@ -243,18 +207,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 setSession(userId, nextRole, chapterId || undefined);
                 const nextSlug =
                   store.chapters.find((c) => c.id === (chapterId || undefined))
-                    ?.slug ?? "ekc";
+                    ?.slug ?? store.chapters?.[0]?.slug ?? "";
                 router.push(homeForRole(nextRole, nextSlug));
                 setOpen(false);
               }}
               aria-label="Switch persona"
             >
               {availablePersonas
-                .filter((p: (typeof personas)[number]) => {
+                .filter((p) => {
                   const target = store.profiles.find((pr) => pr.id === p.userId);
                   return !target || (target.status ?? "active") !== "disabled";
                 })
-                .map((p: (typeof personas)[number]) => (
+                .map((p) => (
                   <option
                     key={p.label}
                     value={`${p.userId}|${p.roleKey}|${p.chapterId ?? ""}`}

@@ -1,14 +1,32 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-export async function middleware(request: NextRequest) {
-  const useAuth =
-    process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH === "true" ||
-    process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH === "1";
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 
-  if (!useAuth || !url || !key) {
+export async function middleware(request: NextRequest) {
+  const rawAuthFlag = process.env.NEXT_PUBLIC_USE_SUPABASE_AUTH;
+  const isExplicitlyDisabled = rawAuthFlag === "false" || rawAuthFlag === "0";
+  const isProduction = process.env.NODE_ENV === "production";
+
+  // Safeguard: default protection to enabled in production unless explicitly set to false
+  const useAuth = isProduction
+    ? !isExplicitlyDisabled
+    : rawAuthFlag === "true" || rawAuthFlag === "1";
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const configured = isSupabaseConfigured();
+
+  if (!useAuth || !configured) {
+    if (isProduction && !isExplicitlyDisabled && !configured) {
+      console.error(
+        "[CRITICAL SECURITY WARNING] Route protection active in production but Supabase credentials (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY) are missing or placeholder values!"
+      );
+    } else if (!useAuth) {
+      console.warn(
+        "[SECURITY WARNING] Route protection skipped because NEXT_PUBLIC_USE_SUPABASE_AUTH is disabled."
+      );
+    }
     return NextResponse.next();
   }
 

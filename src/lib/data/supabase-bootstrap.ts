@@ -8,6 +8,7 @@ import type {
   Organization,
   Profile,
   Project,
+  RoleKey,
 } from "@/types";
 
 /** Load org + chapters + events + projects + forms + public profiles from Supabase. */
@@ -284,9 +285,20 @@ export async function loadStoreFromSupabase(): Promise<ElevatesStore> {
       })) ?? [];
 
     // Maintain consistent demo session pointing to an existing profile in Supabase
-    const activeSarhanProfile = profiles.find((p) => p.email === "sarhan@elevates.live") || profiles[0];
-    const session = activeSarhanProfile
-      ? { userId: activeSarhanProfile.id, roleKey: "founder" as const, chapterId: activeSarhanProfile.chapterId }
+    const founderRoleIds = new Set(
+      roles.filter((r) => r.key === "founder" || r.key === "admin").map((r) => r.id)
+    );
+    const founderUserRole = userRoles.find((ur) => founderRoleIds.has(ur.roleId));
+    const activeProfile = founderUserRole
+      ? profiles.find((p) => p.id === founderUserRole.userId)
+      : profiles[0];
+
+    const sessionRoleKey: RoleKey = founderUserRole
+      ? (roles.find((r) => r.id === founderUserRole.roleId)?.key ?? "founder")
+      : "founder";
+
+    const session = activeProfile
+      ? { userId: activeProfile.id, roleKey: sessionRoleKey, chapterId: activeProfile.chapterId }
       : seed.session;
 
     return {

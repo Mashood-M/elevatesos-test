@@ -97,7 +97,7 @@ export default function HqSettingsPage() {
   const [smtpPort, setSmtpPort] = useState("587");
   const [smtpSecurity, setSmtpSecurity] = useState("tls");
   const [smtpUser, setSmtpUser] = useState("resend");
-  const [smtpPass, setSmtpPass] = useState("re_sec_99482710394821");
+  const [smtpPass, setSmtpPass] = useState("");
   const [fromName, setFromName] = useState("Elevates Kerala HQ");
   const [fromEmail, setFromEmail] = useState("certificates@elevates.live");
   const [replyTo, setReplyTo] = useState("contact@elevates.live");
@@ -112,7 +112,7 @@ export default function HqSettingsPage() {
   const [certGreeting, setCertGreeting] = useState("Congratulations {{recipientName}}, your official verified credential is ready.");
 
   // Test Email State
-  const [testRecipient, setTestRecipient] = useState("sarhanqadir007@gmail.com");
+  const [testRecipient, setTestRecipient] = useState("");
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [testFeedback, setTestFeedback] = useState("");
 

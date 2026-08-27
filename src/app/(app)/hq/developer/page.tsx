@@ -339,7 +339,7 @@ export default function DeveloperPortalPage() {
     {
       id: "tok_1",
       label: "Elevates Web Client (Production)",
-      token: "76566c5f3f4667c3eaf17cd8161c532fdbf558a6671d618a45499e37089bba41",
+      token: "sk_demo_xxxxxxxxxxxxxxxxxxxx",
       env: "production",
       scopes: ["events:read", "events:write", "chapters:read", "leads:write"],
       expiresAt: "Never",

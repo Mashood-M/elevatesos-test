@@ -10,7 +10,11 @@ export function resolveMediaUrl(path: string | null | undefined): string {
     return path;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://shidqhewtbjjeyxaedzu.supabase.co";
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    console.error("[CONFIGURATION ERROR] NEXT_PUBLIC_SUPABASE_URL environment variable is missing.");
+    return path;
+  }
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
 
   return `${supabaseUrl}/storage/v1/object/public/elevates-media/${cleanPath}`;

@@ -31,22 +31,48 @@ function LoginForm() {
 
     const cleanEmail = email.trim().toLowerCase();
 
+    if (!password || !password.trim()) {
+      setError("Password is required.");
+      setLoading(false);
+      return;
+    }
+
     // 1. If Supabase is configured, attempt Supabase Auth
     const supabase = createClient();
-    if (supabase && auth) {
+    if (supabase) {
       try {
-        const { error: signError } = await supabase.auth.signInWithPassword({
+        const { data: authData, error: signError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
         });
-        if (signError) {
+
+        if (!signError && authData.user) {
+          const matched = store.profiles.find(
+            (p) => p.email.toLowerCase() === cleanEmail || p.id === authData.user.id
+          );
+          const userRoles = matched ? store.userRoles.filter((ur) => ur.userId === matched.id) : [];
+          const firstRole = userRoles.map((ur) => store.roles.find((r) => r.id === ur.roleId)).filter(Boolean)[0];
+          const roleKey: RoleKey = firstRole?.key ?? (cleanEmail.includes("founder") || cleanEmail.includes("admin") ? "founder" : "student");
+          const chapter = store.chapters.find((c) => c.id === (userRoles[0]?.chapterId ?? matched?.chapterId));
+          const chapterSlug = chapter?.slug ?? "ekc";
+
+          setSession(matched?.id ?? authData.user.id, roleKey, chapter?.id);
+          setLoading(false);
+
+          if (next) {
+            router.push(next);
+          } else {
+            router.push(homeForRole(roleKey, chapterSlug));
+          }
+          router.refresh();
+          return;
+        }
+
+        if (signError && auth) {
           setError(signError.message);
           setLoading(false);
           return;
         }
-        router.push(next ?? "/hq");
-        router.refresh();
-        return;
       } catch (err: unknown) {
         console.error("Supabase auth error:", err);
       }
@@ -79,22 +105,6 @@ function LoginForm() {
       } else {
         router.push(homeForRole(roleKey, chapterSlug));
       }
-      return;
-    }
-
-    // Fallback: founder or admin default login fallback
-    if (cleanEmail === "founder@elevates.live" || cleanEmail === "admin@elevates.live") {
-      setSession("u-founder", "founder");
-      setLoading(false);
-      router.push("/hq");
-      return;
-    }
-
-    if (cleanEmail.includes("chairman@")) {
-      const activeCh = store.chapters[0];
-      setSession("u-chairman", "chairman", activeCh?.id);
-      setLoading(false);
-      router.push(activeCh ? `/chapter/${activeCh.slug}` : "/hq");
       return;
     }
 

@@ -671,7 +671,7 @@ export default function ChapterAttendancePage({
               value={bulkText}
               disabled={!hasEvent}
               onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"QR-ELV-DECODE-001\nsarhan@elevates.live\n..."}
+              placeholder={"QR-ELV-DECODE-001\nuser@elevates.live\n..."}
             />
             <Button
               variant="orange"

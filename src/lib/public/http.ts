@@ -46,7 +46,13 @@ export function rateLimit(req: Request, key: string, limit: number, windowMs: nu
 
 export function assertWriteToken(req: Request) {
   const expected = process.env.OS_API_TOKEN;
-  if (!expected) return true;
+  if (!expected) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[SECURITY ERROR] OS_API_TOKEN is missing in production environment. Denying write request.");
+      return false;
+    }
+    return true;
+  }
   const header =
     req.headers.get("x-elevates-token") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
@@ -55,7 +61,13 @@ export function assertWriteToken(req: Request) {
 
 export async function verifyTurnstile(token: string | undefined) {
   const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) return true;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[SECURITY ERROR] TURNSTILE_SECRET_KEY is missing in production environment. Denying verification.");
+      return false;
+    }
+    return true;
+  }
   if (!token) return false;
   const res = await fetch(
     "https://challenges.cloudflare.com/turnstile/v0/siteverify",

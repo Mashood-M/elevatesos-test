@@ -62,12 +62,12 @@ export function isFacultyRole(roleKey: RoleKey) {
   return roleKey === "faculty_coordinator";
 }
 
-export function homeForRole(roleKey: RoleKey, chapterSlug = "ekc") {
+export function homeForRole(roleKey: RoleKey, chapterSlug = "") {
   if (isHqRole(roleKey)) return "/hq";
   if (isFacultyRole(roleKey)) return "/faculty";
   if (isExecutiveRole(roleKey)) return "/executive";
-  const slug = chapterSlug || "ekc";
-  return `/chapter/${slug}`;
+  const slug = chapterSlug || "";
+  return slug ? `/chapter/${slug}` : "/chapter";
 }
 
 export function notificationsHref(roleKey?: RoleKey, _chapterSlug?: string) {
@@ -128,9 +128,8 @@ export function canAccessPath(
     const slug = chapterMatch[1];
     const rest = chapterMatch[2] ?? "";
     if (isHqRole(roleKey)) return true;
-    // Treat undefined chapterSlug as "ekc" so empty-store demo doesn't block all routes
-    const effectiveSlug = chapterSlug ?? "ekc";
-    if (slug !== effectiveSlug) return false;
+    const effectiveSlug = chapterSlug ?? "";
+    if (effectiveSlug && slug !== effectiveSlug) return false;
 
     // Reports — students + exec + faculty (document system)
     const firstSeg = rest.split("/")[0] ?? "";
@@ -164,7 +163,7 @@ export function canAccessPath(
 export type NavAccess = "hq" | "faculty" | "executive" | "student" | "shared";
 
 /** Command-palette destinations — order matches sidebar hierarchy in `nav.tsx`. */
-export function navItemsForRole(roleKey: RoleKey, chapterSlug = "ekc") {
+export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
   type Item = { title: string; subtitle: string; href: string; access: NavAccess };
   const base = `/chapter/${chapterSlug}`;
 

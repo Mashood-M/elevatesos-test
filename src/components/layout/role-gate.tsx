@@ -11,7 +11,9 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
   const { store, hydrated } = useStore();
   const { userId, roleKey, chapterId } = store.session;
   const chapterSlug =
-    store.chapters.find((c) => c.id === chapterId)?.slug ?? "ekc";
+    store.chapters.find((c) => c.id === chapterId)?.slug ??
+    store.chapters[0]?.slug ??
+    "";
 
   useEffect(() => {
     // Wait until Supabase store hydration has finished before enforcing permissions
@@ -25,7 +27,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
 
     // User is logged in but doesn't have permission for this path
     if (!canAccessPath(pathname, roleKey, chapterSlug)) {
-      router.replace(homeForRole(roleKey, chapterSlug ?? "ekc"));
+      router.replace(homeForRole(roleKey, chapterSlug));
     }
   }, [pathname, userId, roleKey, chapterSlug, router, hydrated]);
 

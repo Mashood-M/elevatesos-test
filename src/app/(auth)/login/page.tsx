@@ -130,7 +130,7 @@ function LoginForm() {
       }
 
       // Fetch chapter slug for redirect
-      let chapterSlug = "ekc";
+      let chapterSlug = "";
       if (chapterId) {
         const { data: chapterRow } = await supabase
           .from("chapters")
@@ -138,6 +138,15 @@ function LoginForm() {
           .eq("id", chapterId)
           .maybeSingle();
         if (chapterRow?.slug) chapterSlug = chapterRow.slug;
+      }
+      if (!chapterSlug) {
+        const { data: firstChapter } = await supabase
+          .from("chapters")
+          .select("slug")
+          .eq("status", "active")
+          .limit(1)
+          .maybeSingle();
+        if (firstChapter?.slug) chapterSlug = firstChapter.slug;
       }
 
       setLoading(false);

@@ -16,7 +16,11 @@ export default function ChapterIndexPage() {
       store.chapters.find((c) => c.status === "active") ??
       store.chapters[0];
 
-    const slug = chapter?.slug ?? "ekc";
+    const slug = chapter?.slug;
+    if (!slug) {
+      router.replace(session.roleKey?.startsWith("hq") ? "/hq" : "/join");
+      return;
+    }
     const target = homeForRole(session.roleKey, slug);
     router.replace(target === "/chapter" || target === "/chapter/" ? `/chapter/${slug}` : target);
   }, [router, session, store.chapters]);

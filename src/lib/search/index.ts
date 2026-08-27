@@ -27,7 +27,9 @@ export function buildSearchIndex(
   roleKey: RoleKey = store.session.roleKey,
 ): SearchResult[] {
   const chapterSlug =
-    store.chapters.find((c) => c.id === store.session.chapterId)?.slug ?? "ekc";
+    store.chapters.find((c) => c.id === store.session.chapterId)?.slug ??
+    store.chapters[0]?.slug ??
+    "";
 
   const results: SearchResult[] = navItemsForRole(roleKey, chapterSlug).map(
     (n) => ({

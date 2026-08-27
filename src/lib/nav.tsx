@@ -88,10 +88,10 @@ export type NavGroup = {
 
 export function navGroupsForRole(
   roleKey: RoleKey,
-  chapterSlug = "ekc",
+  chapterSlug = "",
 ): NavGroup[] {
-  const slug = chapterSlug || "ekc";
-  const base = `/chapter/${slug}`;
+  const slug = chapterSlug || "";
+  const base = slug ? `/chapter/${slug}` : "/chapter";
 
   if (isHqRole(roleKey)) {
     const network: NavItem[] = [

@@ -138,11 +138,14 @@ export default function MyQrPage() {
     );
   }
 
+  const userChapterSlug = store.chapters.find((c) => c.id === session.chapterId)?.slug ?? store.chapters[0]?.slug;
+  const backHref = userChapterSlug ? `/chapter/${userChapterSlug}` : "/chapter";
+
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       {/* Back */}
       <Link
-        href={`/chapter/${store.chapters.find((c) => c.id === session.chapterId)?.slug ?? "ekc"}`}
+        href={backHref}
         className="mb-8 flex items-center gap-2 text-[13px] text-text-mute hover:text-text"
       >
         <ArrowLeft size={15} />

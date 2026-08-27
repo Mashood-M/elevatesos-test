@@ -101,6 +101,7 @@ type CheckInResult = { ok: true } | { ok: false; message: string };
 
 type StoreContextValue = {
   store: ElevatesStore;
+  hydrated: boolean;
   setSession: (userId: string, roleKey: RoleKey, chapterId?: string) => void;
   updateRegistrationStatus: (
     id: string,
@@ -820,6 +821,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<StoreContextValue>(
     () => ({
       store,
+      hydrated,
       setSession: (userId, roleKey, chapterId) => {
         setStore((s) => {
           const profile = s.profiles.find((p) => p.id === userId);
@@ -3261,7 +3263,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
     }),
-    [store],
+    [store, hydrated],
   );
 
   return (
@@ -3281,10 +3283,17 @@ export function useStore() {
 export function useCurrentUser() {
   const { store } = useStore();
   const userId = store.session.userId;
-  let profile = userId ? store.profiles.find((p) => p.id === userId) : undefined;
+  let profile = userId
+    ? store.profiles.find(
+        (p) => p.id === userId || (p.email && p.email.toLowerCase() === userId.toLowerCase())
+      )
+    : undefined;
 
   if (!profile && userId) {
-    profile = {
+    profile = store.profiles.find(
+      (p) =>
+        store.session.roleKey === "founder" && p.email?.toLowerCase().includes("founder")
+    ) ?? {
       id: userId,
       fullName: "User",
       email: "user@elevates.live",

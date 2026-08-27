@@ -35,7 +35,9 @@ export default function ProfilePage({
   const { id } = use(params);
   const { store, updateProfile } = useStore();
   const { session } = useCurrentUser();
-  const profile = store.profiles.find((p) => p.id === id);
+  const profile = store.profiles.find(
+    (p) => p.id === id || (p.email && p.email.toLowerCase() === id.toLowerCase())
+  );
 
 
   const [cohortId, setCohortId] = useState("");

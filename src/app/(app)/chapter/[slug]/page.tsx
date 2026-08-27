@@ -49,7 +49,7 @@ export default function ChapterDashboardPage({
   const { slug } = use(params);
   const { store } = useStore();
   const { session } = useCurrentUser();
-  const chapter = resolveChapter(store, slug, session.roleKey);
+  const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   if (!mounted) {
     return (

@@ -5,20 +5,31 @@ export function resolveChapter(
   store: { chapters: Chapter[] },
   slug?: string,
   roleKey?: RoleKey,
+  userChapterId?: string,
 ): Chapter | undefined {
   if (!store.chapters?.length) return undefined;
   let chapter: Chapter | undefined;
   if (slug) {
     chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
+  } else if (userChapterId) {
+    chapter = store.chapters.find((c) => c.id === userChapterId);
   } else {
     chapter = store.chapters.find((c) => c.status === "active") ?? store.chapters[0];
   }
 
   if (!chapter) return undefined;
 
-  // If chapter is not open/active (e.g. status === "onboarding" or "inactive"):
-  // HQ and HQ Admin only can see and manage it.
-  // Others see Chapter Not Found.
+  // Non-HQ roles (students, class reps, executives, faculty) can ONLY view their own assigned college chapter:
+  if (roleKey && !isHqRole(roleKey)) {
+    if (userChapterId) {
+      const assignedChapter = store.chapters.find((c) => c.id === userChapterId);
+      if (assignedChapter && chapter.id !== assignedChapter.id && chapter.slug !== assignedChapter.slug) {
+        return undefined;
+      }
+    }
+  }
+
+  // If chapter is not open/active: HQ and HQ Admin only can see and manage it.
   if (chapter.status !== "active") {
     if (!roleKey || !isHqRole(roleKey)) {
       return undefined;

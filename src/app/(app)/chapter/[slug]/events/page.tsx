@@ -82,7 +82,7 @@ export default function ChapterEventsPage({
   const searchParams = useSearchParams();
   const { store, createEvent, updateRegistrationStatus } = useStore();
   const { session } = useCurrentUser();
-  const chapter = resolveChapter(store, slug, session.roleKey);
+  const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   const [showForm, setShowForm] = useState(false);
   const [statusChip, setStatusChip] = useState<StatusChip>("all");

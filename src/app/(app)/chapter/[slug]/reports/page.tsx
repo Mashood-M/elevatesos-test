@@ -48,7 +48,7 @@ export default function ChapterReportsPage({
     submitReportDraft,
   } = useStore();
   const { session, profile } = useCurrentUser();
-  const chapter = resolveChapter(store, slug, session.roleKey);
+  const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   const [flash, setFlash] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);

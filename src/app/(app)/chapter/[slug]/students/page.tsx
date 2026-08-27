@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { Input } from "@/components/ui/input";
-import { useStore } from "@/context/store-context";
+import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { initials } from "@/lib/utils";
 
@@ -52,7 +52,8 @@ export default function ChapterStudentsPage({
 }) {
   const { slug } = use(params);
   const { store, createUser } = useStore();
-  const chapter = resolveChapter(store, slug);
+  const { session } = useCurrentUser();
+  const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   const [studentList, setStudentList] = useState<PreCollectedStudent[]>(DEFAULT_PRE_COLLECTED);
   const [search, setSearch] = useState("");

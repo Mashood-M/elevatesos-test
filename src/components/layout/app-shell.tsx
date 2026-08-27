@@ -113,13 +113,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [session.roleKey]);
 
   async function handleLogout() {
-    const supabase = createClient();
-    if (supabase) {
-      await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (err: unknown) {
+      console.error("Logout error:", err);
     }
     setSession("", "guest", undefined);
-    router.push("/login");
-    router.refresh();
+    window.location.href = "/login";
   }
 
   return (

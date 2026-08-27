@@ -603,3 +603,17 @@ VALUES
   ('a6666666-6666-6666-6666-666666666666', '66666666-6666-6666-6666-666666666666', 'student', '00000000-0000-0000-0000-000000000001')
 ON CONFLICT (id) DO UPDATE SET
   role_key = EXCLUDED.role_key;
+
+-- ============================================================================
+-- 12. GRANT PERMISSIONS & RELOAD SCHEMA CACHE
+-- ============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO anon, authenticated, service_role;
+
+NOTIFY pgrst, 'reload schema';

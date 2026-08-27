@@ -617,18 +617,24 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Insert auth.users
 INSERT INTO auth.users (
   id, instance_id, email, encrypted_password, email_confirmed_at,
-  raw_app_meta_data, raw_user_meta_data, aud, role, created_at, updated_at
+  raw_app_meta_data, raw_user_meta_data, aud, role, created_at, updated_at,
+  confirmation_token, recovery_token, email_change_token_new, email_change,
+  phone_change, phone_change_token, reauthentication_token
 )
 VALUES
-  ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000000', 'founder@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"HQ Founder"}'::jsonb, 'authenticated', 'authenticated', now(), now()),
-  ('22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-000000000000', 'admin@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"HQ Admin"}'::jsonb, 'authenticated', 'authenticated', now(), now()),
-  ('33333333-3333-3333-3333-333333333333', '00000000-0000-0000-0000-000000000000', 'chairman@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Campus Chairman"}'::jsonb, 'authenticated', 'authenticated', now(), now()),
-  ('44444444-4444-4444-4444-444444444444', '00000000-0000-0000-0000-000000000000', 'faculty@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Faculty Coordinator"}'::jsonb, 'authenticated', 'authenticated', now(), now()),
-  ('55555555-5555-5555-5555-555555555555', '00000000-0000-0000-0000-000000000000', 'cr@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Class Representative"}'::jsonb, 'authenticated', 'authenticated', now(), now()),
-  ('66666666-6666-6666-6666-666666666666', '00000000-0000-0000-0000-000000000000', 'student@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Student"}'::jsonb, 'authenticated', 'authenticated', now(), now())
+  ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000000', 'founder@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"HQ Founder"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', ''),
+  ('22222222-2222-2222-2222-222222222222', '00000000-0000-0000-0000-000000000000', 'admin@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"HQ Admin"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', ''),
+  ('33333333-3333-3333-3333-333333333333', '00000000-0000-0000-0000-000000000000', 'chairman@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Campus Chairman"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', ''),
+  ('44444444-4444-4444-4444-444444444444', '00000000-0000-0000-0000-000000000000', 'faculty@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Faculty Coordinator"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', ''),
+  ('55555555-5555-5555-5555-555555555555', '00000000-0000-0000-0000-000000000000', 'cr@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Class Representative"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', ''),
+  ('66666666-6666-6666-6666-666666666666', '00000000-0000-0000-0000-000000000000', 'student@elevates.live', crypt('123456', gen_salt('bf')), now(), '{"provider":"email","providers":["email"]}'::jsonb, '{"full_name":"Student"}'::jsonb, 'authenticated', 'authenticated', now(), now(), '', '', '', '', '', '', '')
 ON CONFLICT (id) DO UPDATE SET
   encrypted_password = crypt('123456', gen_salt('bf')),
-  email = EXCLUDED.email;
+  email = EXCLUDED.email,
+  confirmation_token = '',
+  recovery_token = '',
+  email_change_token_new = '',
+  email_change = '';
 
 -- Insert auth.identities (required by Supabase GoTrue Auth)
 INSERT INTO auth.identities (

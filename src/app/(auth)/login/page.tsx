@@ -230,13 +230,6 @@ function LoginForm() {
           {!loading && <ArrowRight size={16} />}
         </Button>
       </form>
-
-      <div className="mt-6 text-center text-xs text-text-dim">
-        <span>Need an account or chapter invitation? </span>
-        <Link href="/join" className="text-[var(--accent)] font-semibold hover:underline">
-          Join a chapter
-        </Link>
-      </div>
     </>
   );
 }

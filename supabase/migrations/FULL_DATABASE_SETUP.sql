@@ -445,55 +445,103 @@ ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public Read Organizations" ON public.organizations;
 CREATE POLICY "Public Read Organizations" ON public.organizations FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public Read Chapters" ON public.chapters;
 CREATE POLICY "Public Read Chapters" ON public.chapters FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "HQ Manage Chapters" ON public.chapters;
 CREATE POLICY "HQ Manage Chapters" ON public.chapters FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Profiles" ON public.profiles;
 CREATE POLICY "Public Read Profiles" ON public.profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users Update Own Profile" ON public.profiles;
 CREATE POLICY "Users Update Own Profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Service Insert Profiles" ON public.profiles;
 CREATE POLICY "Service Insert Profiles" ON public.profiles FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Public Read User Roles" ON public.user_roles;
 CREATE POLICY "Public Read User Roles" ON public.user_roles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage User Roles" ON public.user_roles;
 CREATE POLICY "Manage User Roles" ON public.user_roles FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Departments" ON public.departments;
 CREATE POLICY "Public Read Departments" ON public.departments FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Departments" ON public.departments;
 CREATE POLICY "Manage Departments" ON public.departments FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Class Cohorts" ON public.class_cohorts;
 CREATE POLICY "Public Read Class Cohorts" ON public.class_cohorts FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Class Cohorts" ON public.class_cohorts;
 CREATE POLICY "Manage Class Cohorts" ON public.class_cohorts FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Events" ON public.events;
 CREATE POLICY "Public Read Events" ON public.events FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Events" ON public.events;
 CREATE POLICY "Manage Events" ON public.events FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Forms" ON public.forms;
 CREATE POLICY "Public Read Forms" ON public.forms FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Forms" ON public.forms;
 CREATE POLICY "Manage Forms" ON public.forms FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Form Responses Access" ON public.form_responses;
 CREATE POLICY "Form Responses Access" ON public.form_responses FOR ALL USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Public Submit Form Responses" ON public.form_responses;
 CREATE POLICY "Public Submit Form Responses" ON public.form_responses FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Event Registrations Access" ON public.event_registrations;
 CREATE POLICY "Event Registrations Access" ON public.event_registrations FOR ALL USING (true);
 
+DROP POLICY IF EXISTS "Attendance Records Access" ON public.attendance_records;
 CREATE POLICY "Attendance Records Access" ON public.attendance_records FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Clusters" ON public.clusters;
 CREATE POLICY "Public Read Clusters" ON public.clusters FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Clusters" ON public.clusters;
 CREATE POLICY "Manage Clusters" ON public.clusters FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Projects" ON public.projects;
 CREATE POLICY "Public Read Projects" ON public.projects FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Projects" ON public.projects;
 CREATE POLICY "Manage Projects" ON public.projects FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Resources" ON public.resources;
 CREATE POLICY "Public Read Resources" ON public.resources FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Resources" ON public.resources;
 CREATE POLICY "Manage Resources" ON public.resources FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Guidelines" ON public.guidelines;
 CREATE POLICY "Public Read Guidelines" ON public.guidelines FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Guidelines" ON public.guidelines;
 CREATE POLICY "Manage Guidelines" ON public.guidelines FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Tasks Access" ON public.tasks;
 CREATE POLICY "Tasks Access" ON public.tasks FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Reports Access" ON public.reports;
 CREATE POLICY "Reports Access" ON public.reports FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "Public Read Announcements" ON public.announcements;
 CREATE POLICY "Public Read Announcements" ON public.announcements FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Manage Announcements" ON public.announcements;
 CREATE POLICY "Manage Announcements" ON public.announcements FOR ALL USING (auth.uid() IS NOT NULL);
 
+DROP POLICY IF EXISTS "User Read Notifications" ON public.notifications;
 CREATE POLICY "User Read Notifications" ON public.notifications FOR ALL USING (auth.uid() = user_id);
 
 -- ============================================================================
@@ -503,7 +551,10 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('elevates-media', 'elevates-media', true)
 ON CONFLICT (id) DO NOTHING;
 
+DROP POLICY IF EXISTS "Public Storage Media Select" ON storage.objects;
 CREATE POLICY "Public Storage Media Select" ON storage.objects FOR SELECT USING (bucket_id = 'elevates-media');
+
+DROP POLICY IF EXISTS "Authenticated Storage Media Upload" ON storage.objects;
 CREATE POLICY "Authenticated Storage Media Upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'elevates-media' AND auth.role() = 'authenticated');
 
 -- ============================================================================

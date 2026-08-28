@@ -61,6 +61,12 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/profile") ||
     path.startsWith("/eos");
 
+  // Prevent back-button caching of protected app pages after sign out
+  if (isProtectedApp) {
+    response.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+    response.headers.set("Pragma", "no-cache");
+  }
+
   // Unauthenticated user accessing protected route → redirect to login
   if (isProtectedApp && !user) {
     const redirectUrl = request.nextUrl.clone();
@@ -69,10 +75,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Already-authenticated user visiting /login → redirect to HQ
+  // Already-authenticated user visiting /login → redirect to /chapter index for proper role-based routing
   if (path === "/login" && user) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/hq";
+    redirectUrl.pathname = "/chapter";
     return NextResponse.redirect(redirectUrl);
   }
 

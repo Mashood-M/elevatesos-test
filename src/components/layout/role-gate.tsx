@@ -16,19 +16,29 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     "";
 
   useEffect(() => {
-    // Wait until Supabase store hydration has finished before enforcing permissions
-    if (!hydrated) return;
+    // Handle back button / BFCache restoration after logout
+    function onPageShow(e: PageTransitionEvent) {
+      if (e.persisted) {
+        window.location.replace("/login");
+      }
+    }
+    window.addEventListener("pageshow", onPageShow);
 
-    // No authenticated user — hard redirect to login (clears stale state)
+    // Wait until Supabase store hydration has finished before enforcing permissions
+    if (!hydrated) return () => window.removeEventListener("pageshow", onPageShow);
+
+    // No authenticated user — hard redirect to login using replace (clears stale state)
     if (!userId) {
-      window.location.href = `/login?next=${encodeURIComponent(pathname)}`;
-      return;
+      window.location.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      return () => window.removeEventListener("pageshow", onPageShow);
     }
 
     // User is logged in but doesn't have permission for this path
     if (!canAccessPath(pathname, roleKey, chapterSlug)) {
       router.replace(homeForRole(roleKey, chapterSlug));
     }
+
+    return () => window.removeEventListener("pageshow", onPageShow);
   }, [pathname, userId, roleKey, chapterSlug, router, hydrated]);
 
   // While store is hydrating from Supabase, render loading indicator

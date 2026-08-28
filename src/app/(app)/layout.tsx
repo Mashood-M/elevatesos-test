@@ -5,9 +5,9 @@ import { AppDialogProvider } from "@/components/ui/app-dialogs";
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AppDialogProvider>
-      <AppShell>
-        <RoleGate>{children}</RoleGate>
-      </AppShell>
+      <RoleGate>
+        <AppShell>{children}</AppShell>
+      </RoleGate>
     </AppDialogProvider>
   );
 }

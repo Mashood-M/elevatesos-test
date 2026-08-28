@@ -87,7 +87,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       console.error("Logout error:", err);
     }
     setSession("", "guest", undefined);
-    window.location.href = "/login";
+    window.location.replace("/login");
   }
 
   return (

@@ -84,10 +84,47 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
   }
 
   try {
-    const { data: orgs } = await supabase
-      .from("organizations")
-      .select("*")
-      .limit(1);
+    const [
+      { data: orgs },
+      { data: chapterRows },
+      { data: eventRows },
+      { data: projectRows },
+      { data: formRows },
+      { data: profileRows },
+      { data: reportRows },
+      { data: certRows },
+      { data: regRows },
+      { data: attRows },
+      { data: roleRows },
+      { data: permRows },
+      { data: rpRows },
+      { data: urRows },
+      { data: ltRows },
+      { data: laRows },
+      { data: clusterRows },
+      authUserData,
+    ] = await Promise.all([
+      supabase.from("organizations").select("*").limit(1),
+      supabase.from("chapters").select("*").order("name"),
+      supabase.from("events").select("*"),
+      supabase.from("projects").select("*"),
+      supabase.from("forms").select("*"),
+      supabase.from("profiles").select("*"),
+      supabase.from("reports").select("*"),
+      supabase.from("certificates").select("*"),
+      supabase.from("event_registrations").select("*"),
+      supabase.from("attendance").select("*"),
+      supabase.from("roles").select("*"),
+      supabase.from("permissions").select("*"),
+      supabase.from("role_permissions").select("*"),
+      supabase.from("user_roles").select("*"),
+      supabase.from("leadership_terms").select("*"),
+      supabase.from("leadership_assignments").select("*"),
+      supabase.from("clusters").select("*"),
+      supabase.auth.getUser(),
+    ]);
+
+    const authUser = authUserData?.data?.user;
 
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow
@@ -99,11 +136,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           brandKit: orgRow.brand_kit ?? defaultBrandKit,
         }
       : emptyStore().organization;
-
-    const { data: chapterRows } = await supabase
-      .from("chapters")
-      .select("*")
-      .order("name");
 
     const chapters: Chapter[] = (chapterRows ?? []).map((c) => ({
       id: c.id,
@@ -125,7 +157,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       district: c.district ?? undefined,
     }));
 
-    const { data: eventRows } = await supabase.from("events").select("*");
     const events: EventItem[] =
       eventRows?.map((e) => ({
         id: e.id,
@@ -157,7 +188,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         mode: e.mode ?? undefined,
       })) ?? [];
 
-    const { data: projectRows } = await supabase.from("projects").select("*");
     const projects: Project[] =
       projectRows?.map((p) => ({
         id: p.id,
@@ -177,7 +207,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         isShowcased: Boolean(p.is_showcased),
       })) ?? [];
 
-    const { data: formRows } = await supabase.from("forms").select("*");
     const forms: FormDefinition[] =
       formRows?.map((f) => ({
         id: f.id,
@@ -192,7 +221,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         updatedAt: f.updated_at ?? f.created_at,
       })) ?? [];
 
-    const { data: profileRows } = await supabase.from("profiles").select("*");
     const profiles: Profile[] =
       profileRows?.map((p) => ({
         id: p.id,
@@ -219,7 +247,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         bio: p.bio ?? undefined,
       })) ?? [];
 
-    const { data: reportRows } = await supabase.from("reports").select("*");
     const reports =
       reportRows?.map((r) => ({
         id: r.id,
@@ -237,7 +264,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         approvedBy: r.approved_by ?? undefined,
       })) ?? [];
 
-    const { data: certRows } = await supabase.from("certificates").select("*");
     const certificates =
       certRows?.map((c) => ({
         id: c.id,
@@ -249,7 +275,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         digitalSignature: c.digital_signature,
       })) ?? [];
 
-    const { data: regRows } = await supabase.from("event_registrations").select("*");
     const registrations =
       regRows?.map((r) => ({
         id: r.id,
@@ -263,7 +288,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         createdAt: r.created_at,
       })) ?? [];
 
-    const { data: attRows } = await supabase.from("attendance").select("*");
     const attendance =
       attRows?.map((a) => ({
         id: a.id,
@@ -276,7 +300,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         checkedInBy: a.checked_in_by,
       })) ?? [];
 
-    const { data: roleRows } = await supabase.from("roles").select("*");
     const roles =
       roleRows?.map((r) => ({
         id: r.id,
@@ -286,7 +309,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         description: r.description ?? "",
       })) ?? [];
 
-    const { data: permRows } = await supabase.from("permissions").select("*");
     const permissions =
       permRows?.map((p) => ({
         id: p.id,
@@ -295,7 +317,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         description: p.description ?? "",
       })) ?? [];
 
-    const { data: rpRows } = await supabase.from("role_permissions").select("*");
     const rolePermissions =
       rpRows?.map((rp) => ({
         roleId: rp.role_id,
@@ -303,7 +324,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         allowed: Boolean(rp.allowed),
       })) ?? [];
 
-    const { data: urRows } = await supabase.from("user_roles").select("*");
     const userRoles =
       urRows?.map((ur) => ({
         id: ur.id,
@@ -314,7 +334,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         organizationId: ur.organization_id ?? undefined,
       })) ?? [];
 
-    const { data: ltRows } = await supabase.from("leadership_terms").select("*");
     const leadershipTerms =
       ltRows?.map((lt) => ({
         id: lt.id,
@@ -327,7 +346,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         handoverNotes: lt.handover_notes ?? undefined,
       })) ?? [];
 
-    const { data: laRows } = await supabase.from("leadership_assignments").select("*");
     const leadershipAssignments =
       laRows?.map((la) => ({
         id: la.id,
@@ -337,7 +355,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         title: la.title,
       })) ?? [];
 
-    const { data: clusterRows } = await supabase.from("clusters").select("*");
     const clusters =
       clusterRows?.map((cl) => ({
         id: cl.id,
@@ -350,9 +367,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         memberIds: [],
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
-
-    // Resolve session from the actual Supabase Auth user — match by ID or email
-    const { data: { user: authUser } } = await supabase.auth.getUser();
 
     let session: { userId: string; roleKey: RoleKey; chapterId?: string };
     if (authUser) {

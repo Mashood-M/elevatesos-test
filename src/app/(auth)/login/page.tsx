@@ -85,21 +85,29 @@ function LoginForm() {
       }
 
       // Fetch the user's roles from the database using either user_id or profile.id
-      let userRoleRows: { role_id: string; chapter_id?: string | null }[] | null = null;
+      let userRoleRows: { role_id?: string | null; role_key?: string | null; chapter_id?: string | null }[] | null = null;
 
-      const { data: ur1 } = await supabase
+      const { data: ur1, error: ur1Error } = await supabase
         .from("user_roles")
-        .select("role_id, chapter_id")
+        .select("role_id, role_key, chapter_id")
         .eq("user_id", userId)
         .limit(1);
+
+      if (ur1Error) {
+        console.error("Error fetching user_roles by user_id:", ur1Error);
+      }
       userRoleRows = ur1;
 
       if ((!userRoleRows || userRoleRows.length === 0) && profile?.id) {
-        const { data: ur2 } = await supabase
+        const { data: ur2, error: ur2Error } = await supabase
           .from("user_roles")
-          .select("role_id, chapter_id")
+          .select("role_id, role_key, chapter_id")
           .eq("user_id", profile.id)
           .limit(1);
+
+        if (ur2Error) {
+          console.error("Error fetching user_roles by profile.id:", ur2Error);
+        }
         userRoleRows = ur2;
       }
 
@@ -107,26 +115,44 @@ function LoginForm() {
       let chapterId: string | undefined = profile?.chapter_id ?? undefined;
 
       if (userRoleRows && userRoleRows.length > 0) {
-        const roleId = userRoleRows[0].role_id;
-        chapterId = userRoleRows[0].chapter_id ?? chapterId;
+        const firstRow = userRoleRows[0];
+        chapterId = firstRow.chapter_id ?? chapterId;
 
-        const { data: roleRow } = await supabase
-          .from("roles")
-          .select("key")
-          .eq("id", roleId)
-          .maybeSingle();
+        let resolvedRoleKey: string | null = null;
 
-        if (roleRow?.key) {
-          roleKey = roleRow.key as RoleKey;
+        if (firstRow.role_id) {
+          const { data: roleRow, error: roleError } = await supabase
+            .from("roles")
+            .select("key")
+            .eq("id", firstRow.role_id)
+            .maybeSingle();
+
+          if (roleError) {
+            console.error("Error fetching role by id:", roleError);
+          }
+
+          if (roleRow?.key) {
+            resolvedRoleKey = roleRow.key;
+          }
+        }
+
+        if (!resolvedRoleKey && firstRow.role_key) {
+          resolvedRoleKey = firstRow.role_key;
+        }
+
+        if (resolvedRoleKey) {
+          roleKey = resolvedRoleKey as RoleKey;
         }
       } else if (userEmail) {
-        // Infer role from email if user_roles entry not explicitly present
+        // Absolute last resort fallback for standard logins if user_roles entry is missing
+        console.warn("⚠️ Role could not be resolved from database — checking email pattern as last resort");
         const e = userEmail.toLowerCase();
         if (e.includes("founder")) roleKey = "founder";
         else if (e.includes("admin")) roleKey = "hq_admin";
         else if (e.includes("chairman")) roleKey = "chairman";
         else if (e.includes("faculty")) roleKey = "faculty_coordinator";
         else if (e.includes("cr")) roleKey = "class_representative";
+        else if (e.includes("student")) roleKey = "student";
       }
 
       // Fetch chapter slug for redirect

@@ -309,6 +309,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         id: ur.id,
         userId: ur.user_id,
         roleId: ur.role_id,
+        roleKey: ur.role_key ?? undefined,
         chapterId: ur.chapter_id ?? undefined,
         organizationId: ur.organization_id ?? undefined,
       })) ?? [];
@@ -366,14 +367,20 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         const userRoleEntry = userRoles.find(
           (ur) => ur.userId === matchedProfile.id || ur.userId === authUser.id
         );
-        const roleEntry = userRoleEntry
-          ? roles.find((r) => r.id === userRoleEntry.roleId)
-          : undefined;
-
-        let roleKey: RoleKey = (roleEntry?.key ?? "student") as RoleKey;
+        
+        let roleKey: RoleKey | undefined = undefined;
+        if (userRoleEntry) {
+          if (userRoleEntry.roleId) {
+            const roleObj = roles.find((r) => r.id === userRoleEntry.roleId);
+            if (roleObj?.key) roleKey = roleObj.key as RoleKey;
+          }
+          if (!roleKey && userRoleEntry.roleKey) {
+            roleKey = userRoleEntry.roleKey as RoleKey;
+          }
+        }
 
         // If no explicit role entry found in user_roles, infer from profile email/id
-        if (!roleEntry) {
+        if (!roleKey) {
           const e = (matchedProfile.email || authUser.email || "").toLowerCase();
           const pId = matchedProfile.id.toLowerCase();
           if (e.includes("founder") || pId.includes("founder")) roleKey = "founder";
@@ -381,6 +388,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           else if (e.includes("chairman") || pId.includes("chairman")) roleKey = "chairman";
           else if (e.includes("faculty") || pId.includes("faculty")) roleKey = "faculty_coordinator";
           else if (e.includes("cr") || pId.includes("cr")) roleKey = "class_representative";
+          else roleKey = "student";
         }
 
         session = {

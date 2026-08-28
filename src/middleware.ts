@@ -19,8 +19,8 @@ export async function middleware(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  let response = NextResponse.next({
-    request: { headers: request.headers },
+  let supabaseResponse = NextResponse.next({
+    request,
   });
 
   const supabase = createServerClient(url, key, {
@@ -32,11 +32,11 @@ export async function middleware(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) =>
           request.cookies.set(name, value),
         );
-        response = NextResponse.next({
-          request: { headers: request.headers },
+        supabaseResponse = NextResponse.next({
+          request,
         });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
+          supabaseResponse.cookies.set(name, value, options),
         );
       },
     },
@@ -61,28 +61,37 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/profile") ||
     path.startsWith("/eos");
 
-  // Prevent back-button caching of protected app pages after sign out
-  if (isProtectedApp) {
-    response.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
-    response.headers.set("Pragma", "no-cache");
-  }
-
   // Unauthenticated user accessing protected route → redirect to login
   if (isProtectedApp && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.searchParams.set("next", path);
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    // Copy cookies so session updates aren't lost
+    supabaseResponse.cookies.getAll().forEach((c) => {
+      redirectResponse.cookies.set(c.name, c.value);
+    });
+    return redirectResponse;
   }
 
   // Already-authenticated user visiting /login → redirect to /chapter index for proper role-based routing
   if (path === "/login" && user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/chapter";
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    supabaseResponse.cookies.getAll().forEach((c) => {
+      redirectResponse.cookies.set(c.name, c.value);
+    });
+    return redirectResponse;
   }
 
-  return response;
+  // Prevent back-button caching of protected app pages after sign out
+  if (isProtectedApp) {
+    supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+    supabaseResponse.headers.set("Pragma", "no-cache");
+  }
+
+  return supabaseResponse;
 }
 
 export const config = {

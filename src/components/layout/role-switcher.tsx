@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Shield, Sparkles, UserCheck } from "lucide-react";
+import { Check, ChevronUp } from "lucide-react";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole } from "@/lib/access";
 import { roleKeyLabel } from "@/lib/leadership";
@@ -46,24 +46,24 @@ export function RoleSwitcher() {
     // Build available target personas based on user's highest role
     const results: SwitchablePersona[] = [];
 
-    // Helper badge emoji
+    // Helper badge text (NO emojis)
     const getBadge = (rk: RoleKey) => {
       switch (rk) {
         case "founder":
-          return "👑 HQ";
+          return "HQ";
         case "hq_admin":
-          return "⚡ HQ Admin";
+          return "HQ Admin";
         case "campus_lead":
         case "chairman":
-          return "🎓 Campus Lead";
+          return "Campus Lead";
         case "class_representative":
-          return "📚 Class Rep";
+          return "Class Rep";
         case "student":
-          return "🌱 Student";
+          return "Student";
         case "faculty_coordinator":
-          return "🏛️ Faculty";
+          return "Faculty";
         default:
-          return "👤 User";
+          return "User";
       }
     };
 
@@ -114,7 +114,7 @@ export function RoleSwitcher() {
     userId: session.userId,
     roleKey: session.roleKey,
     chapterId: session.chapterId,
-    badge: session.roleKey === "founder" ? "👑 HQ" : "⚡ HQ Admin",
+    badge: session.roleKey === "founder" ? "HQ" : "HQ Admin",
   };
 
   const handleSelect = (target: SwitchablePersona) => {
@@ -144,19 +144,19 @@ export function RoleSwitcher() {
             {roleKeyLabel(currentPersona.roleKey)}
           </span>
         </div>
-        <ChevronDown
+        <ChevronUp
           size={14}
           className={cn("shrink-0 text-white/50 transition-transform duration-200", isOpen && "rotate-180")}
         />
       </button>
 
+      {/* Upward Dropdown Menu with White Background */}
       {isOpen && (
-        <div className="absolute left-0 right-0 top-full z-[100] mt-2 max-h-72 overflow-y-auto rounded-[16px] border border-white/15 bg-[var(--charcoal-900)] p-2 shadow-2xl backdrop-blur-xl ring-1 ring-white/10">
-          <div className="mb-2 px-2.5 pt-1.5 pb-1 flex items-center justify-between border-b border-white/10">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">
-              Role & Persona Switcher
+        <div className="absolute left-0 right-0 bottom-full z-[100] mb-2 max-h-72 overflow-y-auto rounded-[16px] border border-border/80 bg-white p-2 shadow-xl ring-1 ring-black/5">
+          <div className="mb-2 px-2.5 pt-1.5 pb-1 border-b border-border/60">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">
+              Switch Role & Persona
             </span>
-            <Sparkles size={12} className="text-[var(--accent)]" />
           </div>
 
           <div className="space-y-1">
@@ -170,18 +170,18 @@ export function RoleSwitcher() {
                   className={cn(
                     "flex w-full items-center justify-between rounded-[10px] px-2.5 py-2 text-left text-xs transition-colors",
                     isSelected
-                      ? "bg-[var(--accent)]/20 text-white font-semibold"
-                      : "text-white/80 hover:bg-white/[0.08] hover:text-white",
+                      ? "bg-[var(--accent)]/10 text-[var(--accent)] font-semibold"
+                      : "text-text hover:bg-bg-hover",
                   )}
                 >
                   <div className="min-w-0 flex-1 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-white">{roleKeyLabel(p.roleKey)}</span>
-                      <span className="text-[10px] opacity-75 text-[var(--accent)]">
-                        {p.badge}
+                      <span className="font-medium text-text">{roleKeyLabel(p.roleKey)}</span>
+                      <span className="text-[10px] font-semibold text-text-dim">
+                        ({p.badge})
                       </span>
                     </div>
-                    <p className="truncate text-[11px] text-white/50">{p.label}</p>
+                    <p className="truncate text-[11px] text-text-dim">{p.label}</p>
                   </div>
                   {isSelected && <Check size={14} className="shrink-0 text-[var(--accent)]" />}
                 </button>

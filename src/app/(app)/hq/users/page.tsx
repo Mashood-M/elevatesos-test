@@ -783,14 +783,23 @@ export default function HqUsersPage() {
                         // Pre-populate existing roles & chapter assignments
                         const urs = store.userRoles.filter((ur) => ur.userId === profile.id);
                         const existingKeys = urs
-                          .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key)
+                          .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
                           .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
+                        const defaultChap = profile.chapterId || store.chapters[0]?.id || "";
                         const chaptersMap: Record<string, string> = {};
                         urs.forEach((ur) => {
-                          const rkey = store.roles.find((r) => r.id === ur.roleId)?.key;
-                          if (rkey && ur.chapterId) chaptersMap[rkey] = ur.chapterId;
+                          const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
+                          if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
                         });
-                        setRoleModalSelected(existingKeys.length > 0 ? existingKeys : []);
+                        SIX_ROLES.forEach((r) => {
+                          if (!chaptersMap[r.key] && defaultChap) {
+                            chaptersMap[r.key] = defaultChap;
+                          }
+                        });
+                        const initialSelected = existingKeys.length > 0
+                          ? existingKeys
+                          : ([(profile as any).roleKey].filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey)));
+                        setRoleModalSelected(initialSelected.length > 0 ? initialSelected : [canAssign[0]]);
                         setRoleModalChapters(chaptersMap);
                         setRoleModalUser(profile);
                       }}
@@ -915,9 +924,10 @@ export default function HqUsersPage() {
         const chapterNeeded = roleModalSelected.filter(
           (k) => SIX_ROLES.find((r) => r.key === k)?.scope === "chapter",
         );
+        const defaultChap = roleModalUser.chapterId || store.chapters[0]?.id || "";
         const canSave =
           roleModalSelected.length > 0 &&
-          chapterNeeded.every((k) => Boolean(roleModalChapters[k]));
+          chapterNeeded.every((k: RoleKey) => Boolean(roleModalChapters[k] || defaultChap));
         return (
           <Dialog
             open={Boolean(roleModalUser)}
@@ -935,6 +945,9 @@ export default function HqUsersPage() {
                       key={role.key}
                       type="button"
                       onClick={() => {
+                        if (!isChecked && defaultChap && !roleModalChapters[role.key]) {
+                          setRoleModalChapters((prev) => ({ ...prev, [role.key]: defaultChap }));
+                        }
                         setRoleModalSelected((prev) =>
                           isChecked
                             ? prev.filter((k) => k !== role.key)
@@ -984,7 +997,7 @@ export default function HqUsersPage() {
                           {roleInfo?.label}
                         </span>
                         <Select
-                          value={roleModalChapters[rk] ?? ""}
+                          value={roleModalChapters[rk] || defaultChap}
                           onChange={(e) =>
                             setRoleModalChapters((prev) => ({ ...prev, [rk]: e.target.value }))
                           }
@@ -1008,17 +1021,23 @@ export default function HqUsersPage() {
                 <Button variant="ghost" onClick={() => setRoleModalUser(null)}>Cancel</Button>
                 <Button
                   variant="primary"
+                  disabled={!canSave}
                   onClick={() => {
                     if (!roleModalUser || !canSave) return;
                     const assignments: UserRoleAssignmentInput[] = roleModalSelected.map((rk) => {
                       const isHq = SIX_ROLES.find((r) => r.key === rk)?.scope === "hq";
+                      const chap = roleModalChapters[rk] || defaultChap;
                       return isHq
                         ? { roleKey: rk }
-                        : { roleKey: rk, chapterId: roleModalChapters[rk] };
+                        : { roleKey: rk, chapterId: chap };
                     });
-                    setUserRoles(roleModalUser.id, assignments);
-                    setRoleModalUser(null);
-                    flashMsg(`${assignments.length} role(s) assigned`);
+                    const res = setUserRoles(roleModalUser.id, assignments);
+                    if (res) {
+                      setRoleModalUser(null);
+                      flashMsg(`${assignments.length} role(s) assigned successfully`);
+                    } else {
+                      flashMsg("Could not update roles");
+                    }
                   }}
                 >
                   Assign {roleModalSelected.length > 0 ? `${roleModalSelected.length} Role${roleModalSelected.length > 1 ? "s" : ""}` : "Role"}

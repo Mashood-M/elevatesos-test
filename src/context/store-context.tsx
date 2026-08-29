@@ -2054,26 +2054,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true;
       },
       setUserRoles: (userId, assignments) => {
-        if (!store.profiles.some((p) => p.id === userId)) return false;
+        const profile = store.profiles.find((p) => p.id === userId);
+        if (!profile) return false;
         const built: UserRole[] = [];
         for (const a of assignments) {
-          const role = store.roles.find((r) => r.key === a.roleKey);
-          if (!role) return false;
-          if (role.scope === "hq") {
+          let role = store.roles.find((r) => r.key === a.roleKey);
+          const isHq = ["founder", "hq_admin"].includes(a.roleKey);
+          if (!role) {
+            role = {
+              id: `role-${a.roleKey}`,
+              key: a.roleKey,
+              name: roleKeyFallback(a.roleKey),
+              scope: isHq ? "hq" : "chapter",
+              description: "",
+            };
+          }
+          if (role.scope === "hq" || isHq) {
             built.push({
               id: `ur-${Date.now()}-${built.length}`,
               userId,
               roleId: role.id,
+              roleKey: a.roleKey,
               organizationId: a.organizationId ?? store.organization.id,
             });
           } else {
-            if (!a.chapterId) return false;
-            if (!store.chapters.some((c) => c.id === a.chapterId)) return false;
+            const chapId = a.chapterId || profile.chapterId || store.chapters[0]?.id || "";
             built.push({
               id: `ur-${Date.now()}-${built.length}`,
               userId,
               roleId: role.id,
-              chapterId: a.chapterId,
+              roleKey: a.roleKey,
+              chapterId: chapId,
               leadershipTermId: undefined,
             });
           }
@@ -2092,6 +2103,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+
+        // Sync to Supabase DB if available
+        try {
+          const supabase = createClient();
+          if (supabase) {
+            (async () => {
+              await supabase.from("user_roles").delete().eq("user_id", userId);
+              const rowsToInsert = built.map((ur) => ({
+                user_id: userId,
+                role_key: ur.roleKey || (store.roles.find((r) => r.id === ur.roleId)?.key),
+                role_id: ur.roleId.startsWith("role-") ? null : ur.roleId,
+                chapter_id: ur.chapterId || null,
+                organization_id: ur.organizationId || store.organization.id,
+              }));
+              if (rowsToInsert.length > 0) {
+                await supabase.from("user_roles").insert(rowsToInsert);
+              }
+            })();
+          }
+        } catch (err) {
+          console.warn("Supabase user_roles sync notice:", err);
+        }
+
         return true;
       },
       setRolePermission: (roleKey, permissionKey, allowed) => {

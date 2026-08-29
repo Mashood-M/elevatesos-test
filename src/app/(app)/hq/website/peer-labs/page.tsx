@@ -236,7 +236,20 @@ export default function PeerLabsCMSPage() {
                   variant="ghost"
                   size="sm"
                   className="text-[var(--danger)] hover:bg-[var(--danger)]/10"
-                  onClick={() => setLabs((prev) => prev.filter((l) => l.id !== lab.id))}
+                  onClick={async () => {
+                    if (confirm(`Delete Peer Lab Track "${lab.title}"?`)) {
+                      setLabs((prev) => prev.filter((l) => l.id !== lab.id));
+                      try {
+                        await fetch("/api/mutations", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ type: "delete_cluster", data: { id: lab.id, slug: lab.slug } }),
+                        });
+                      } catch (e) {
+                        console.error("Failed to delete peer lab cluster:", e);
+                      }
+                    }
+                  }}
                 >
                   <Trash2 size={13} />
                 </Button>
@@ -456,13 +469,34 @@ export default function PeerLabsCMSPage() {
               <Button
                 variant="orange"
                 size="sm"
-                onClick={() => {
-                  if (isNew) setLabs((prev) => [...prev, editingLab]);
+                onClick={async () => {
+                  const saved = editingLab;
+                  if (isNew) setLabs((prev) => [...prev, saved]);
                   else
                     setLabs((prev) =>
-                      prev.map((l) => (l.id === editingLab.id ? editingLab : l)),
+                      prev.map((l) => (l.id === saved.id ? saved : l)),
                     );
                   setEditingLab(null);
+
+                  try {
+                    await fetch("/api/mutations", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        type: "cluster",
+                        data: {
+                          id: saved.id,
+                          title: saved.title,
+                          slug: saved.slug,
+                          subtitle: saved.subtitle,
+                          description: saved.description,
+                          accessMode: "open",
+                        },
+                      }),
+                    });
+                  } catch (err) {
+                    console.error("Failed to persist peer lab cluster:", err);
+                  }
                 }}
               >
                 Save Track

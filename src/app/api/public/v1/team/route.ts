@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
 import { resolveMediaUrl } from "@/lib/data/media";
+import { INITIAL_FOUNDERS, INITIAL_ADVISORS, FOUNDING_TEAM_IMAGE } from "@/lib/data/founders-team";
 
 export function OPTIONS() {
   return corsOptions();
@@ -26,6 +27,15 @@ export async function GET() {
     }
 
     return jsonOk({
+      foundingTeamImage: resolveMediaUrl(FOUNDING_TEAM_IMAGE),
+      founders: INITIAL_FOUNDERS.map((f) => ({
+        ...f,
+        image: resolveMediaUrl(f.image),
+      })),
+      advisors: INITIAL_ADVISORS.map((a) => ({
+        ...a,
+        image: a.image ? resolveMediaUrl(a.image) : undefined,
+      })),
       team: (data ?? []).map((p) => ({
         id: p.id,
         fullName: p.full_name,

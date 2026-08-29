@@ -119,7 +119,6 @@ export function navGroupsForRole(
       {
         label: "Website CMS",
         items: [
-          { href: "/hq/website/pages", label: "Pages & Hero", icon: I.home },
           { href: "/hq/website/events", label: "Events Manager", icon: I.events },
           { href: "/hq/website/projects", label: "Projects Showcase", icon: I.projects },
           { href: "/hq/website/team", label: "Founders & Team", icon: I.students },

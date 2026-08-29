@@ -682,7 +682,20 @@ export default function ProjectsCMSPage() {
                 </div>
                 <div className="flex flex-col gap-2 shrink-0">
                   <Button variant="secondary" size="sm" onClick={() => { setEditing(p); setIsNew(false); }}><Edit size={13} /> Edit</Button>
-                  <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => setFlagship((prev) => prev.filter((x) => x.id !== p.id))}><Trash2 size={13} /></Button>
+                  <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={async () => {
+                    if (confirm(`Delete project "${p.title}"?`)) {
+                      setFlagship((prev) => prev.filter((x) => x.id !== p.id));
+                      try {
+                        await fetch("/api/mutations", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ type: "delete_project", data: { id: p.id, slug: p.slug } }),
+                        });
+                      } catch (e) {
+                        console.error("Failed to delete project:", e);
+                      }
+                    }
+                  }}><Trash2 size={13} /></Button>
                 </div>
               </div>
             </div>
@@ -751,9 +764,32 @@ export default function ProjectsCMSPage() {
       {/* Flagship Editor Modal */}
       {editing && (
         <FlagshipEditor project={editing} onClose={() => { setEditing(null); setIsNew(false); }}
-          onSave={(saved) => {
+          onSave={async (saved) => {
             if (isNew) setFlagship((prev) => [...prev, saved]);
             else setFlagship((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+
+            try {
+              await fetch("/api/mutations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  type: "project",
+                  data: {
+                    id: saved.id,
+                    title: saved.title,
+                    slug: saved.slug,
+                    description: saved.summary || saved.tagline,
+                    stage: saved.status === "live" ? "production" : "active",
+                    projectType: saved.type,
+                    repositoryUrl: saved.repo,
+                    demoUrl: saved.live,
+                    isShowcased: true,
+                  },
+                }),
+              });
+            } catch (err) {
+              console.error("Failed to persist project:", err);
+            }
           }}
         />
       )}

@@ -41,15 +41,6 @@ export default function WebsiteCmsHubPage() {
 
   const cmsModules = [
     {
-      title: "Pages & Hero",
-      slug: "pages",
-      href: "/hq/website/pages",
-      icon: Globe,
-      description: "Hero headlines, marquee taglines, live stats counters, global announcement banner, and page text.",
-      badge: "Public Site",
-      tone: "cyan" as const,
-    },
-    {
       title: "Events Manager",
       slug: "events",
       href: "/hq/website/events",

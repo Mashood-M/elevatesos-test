@@ -17,7 +17,7 @@ export async function POST(req: Request) {
       const event = data;
       const slug = event.slug ?? slugify(event.title);
       const { error } = await admin.from("events").upsert({
-        id: event.id?.startsWith("ev-") ? undefined : event.id,
+        id: event.id?.startsWith("ev-") || event.id?.startsWith("evt-") ? undefined : event.id,
         chapter_id: event.chapterId,
         cluster_id: event.clusterId,
         title: event.title,
@@ -49,7 +49,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
-      // Trigger revalidation on Elevates-web
       await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
       return NextResponse.json({ ok: true });
     }
@@ -61,6 +60,72 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
       await revalidateWeb(["events", `event:${slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "project") {
+      const p = data;
+      const slug = p.slug ?? slugify(p.title);
+      const { error } = await admin.from("projects").upsert({
+        id: p.id?.startsWith("proj-") ? undefined : p.id,
+        chapter_id: p.chapterId ?? "c1000000-0000-4000-8000-000000000001",
+        cluster_id: p.clusterId,
+        title: p.title,
+        slug,
+        description: p.description ?? p.tagline,
+        stage: p.stage ?? (p.status === "live" ? "production" : "active"),
+        project_type: p.projectType ?? p.type ?? "internal",
+        repository_url: p.repositoryUrl ?? p.repo,
+        progress: p.progress ?? 100,
+        demo_url: p.demoUrl ?? p.live,
+        is_showcased: p.isShowcased ?? true,
+      });
+
+      if (error) {
+        console.error("Mutation error (project):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["projects", `project:${slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "delete_project") {
+      const { id, slug } = data;
+      const { error } = await admin.from("projects").delete().match({ id });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["projects", `project:${slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "cluster") {
+      const c = data;
+      const slug = c.slug ?? slugify(c.title || c.name);
+      const { error } = await admin.from("clusters").upsert({
+        id: c.id?.startsWith("lab-") || c.id?.startsWith("cl-") ? undefined : c.id,
+        chapter_id: c.chapterId ?? "c1000000-0000-4000-8000-000000000001",
+        name: c.name ?? c.title,
+        slug,
+        description: c.description ?? c.subtitle,
+        access_mode: c.accessMode ?? "open",
+      });
+
+      if (error) {
+        console.error("Mutation error (cluster):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["peer-labs", `cluster:${slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "delete_cluster") {
+      const { id, slug } = data;
+      const { error } = await admin.from("clusters").delete().match({ id });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["peer-labs", `cluster:${slug}`]);
       return NextResponse.json({ ok: true });
     }
 

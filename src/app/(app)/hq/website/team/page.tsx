@@ -10,31 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveMediaUrl } from "@/lib/data/media";
+import { INITIAL_FOUNDERS, INITIAL_ADVISORS, FOUNDING_TEAM_IMAGE, Founder, Advisor } from "@/lib/data/founders-team";
 
-// ── Types exactly matching src/data/team/founders.ts on Elevates Web ─────────
-interface Founder {
-  id: string;
-  name: string;
-  tag: string;       // e.g. "Main Class Bunker" — the authentic persona badge
-  role: string;      // e.g. "Founder"
-  proof: string;     // e.g. "Full-stack · Built elevates.live"
-  linkedin?: string;
-  cohort: "2025-26";
-  image: string;     // e.g. /images/founders/sarhan-qadir.jpeg
-}
-
-// ── Types exactly matching src/data/team/advisors.ts ─────────────────────────
-interface Advisor {
-  id: string;
-  name: string;
-  role: string;
-  institution: string;
-  linkedin?: string;
-  image?: string;
-}
-
-const DEFAULT_FOUNDERS: Founder[] = [];
-const DEFAULT_ADVISORS: Advisor[] = [];
+const DEFAULT_FOUNDERS: Founder[] = INITIAL_FOUNDERS;
+const DEFAULT_ADVISORS: Advisor[] = INITIAL_ADVISORS;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -44,6 +23,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
+
 function TInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
   return <input className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
 }
@@ -69,7 +49,7 @@ function AvatarImage({ src, alt }: { src?: string; alt: string }) {
     <img
       src={imgSrc}
       alt={alt}
-      className="w-full h-full object-cover"
+      className="w-full h-full object-cover rounded-md"
       onError={() => {
         if (src && src.startsWith("/") && imgSrc !== src) {
           setImgSrc(src);
@@ -96,31 +76,23 @@ function FounderEditor({ founder, onSave, onClose }: { founder: Founder; onSave:
           <button onClick={onClose} className="text-text-dim p-1.5 rounded-full hover:bg-bg-page"><X size={18} /></button>
         </div>
         <div className="p-6 space-y-4">
-          <Field label="Full Name (displayed on team card)">
+          <Field label="Full Name">
             <TInput value={d.name} onChange={(v) => u({ name: v })} placeholder="Founder Full Name" />
           </Field>
-          <Field label="Tag — Authentic Persona Badge (shown below name on card)">
-            <div className="relative">
-              <TInput value={d.tag} onChange={(v) => u({ tag: v })} placeholder="Core Builder" />
-              <p className="text-[10px] text-text-dim mt-1">
-                e.g. "Core Builder", "Design Lead", "Systems Lead"
-              </p>
-            </div>
+          <Field label="Tag / Persona Badge">
+            <TInput value={d.tag} onChange={(v) => u({ tag: v })} placeholder="e.g. Main Class Bunker" />
           </Field>
           <Field label="Role">
             <TInput value={d.role} onChange={(v) => u({ role: v })} placeholder="Founder" />
           </Field>
-          <Field label="Proof of Work (1 line — what they actually built/did)">
-            <TInput value={d.proof} onChange={(v) => u({ proof: v })} placeholder="Full-stack · Core OS Architecture" />
-          </Field>
-          <Field label="Founder ID (slug — used for internal linking)">
-            <TInput value={d.id} onChange={(v) => u({ id: v })} mono placeholder="founder-slug" />
+          <Field label="Proof of Work">
+            <TInput value={d.proof} onChange={(v) => u({ proof: v })} placeholder="Full-stack · Built elevates.live" />
           </Field>
           <Field label="LinkedIn URL">
             <TInput value={d.linkedin ?? ""} onChange={(v) => u({ linkedin: v })} mono placeholder="https://linkedin.com/in/username" />
           </Field>
-          <Field label="Photo Path (in /public/images/founders/)">
-            <TInput value={d.image} onChange={(v) => u({ image: v })} mono placeholder="/images/founders/founder.jpeg" />
+          <Field label="Photo Path (in /public/founders/)">
+            <TInput value={d.image} onChange={(v) => u({ image: v })} mono placeholder="/founders/sarhan-qadir.jpeg" />
           </Field>
           {d.image && (
             <div className="border border-border rounded-[var(--radius-md)] p-3 bg-bg-page flex items-center gap-3">
@@ -156,8 +128,7 @@ function AdvisorEditor({ advisor, onSave, onClose }: { advisor: Advisor; onSave:
           <Field label="Role / Title"><TInput value={d.role} onChange={(v) => u({ role: v })} placeholder="Faculty Head & Advisor" /></Field>
           <Field label="Institution / Department"><TInput value={d.institution} onChange={(v) => u({ institution: v })} placeholder="Computer Science & Engineering" /></Field>
           <Field label="LinkedIn URL (optional)"><TInput value={d.linkedin ?? ""} onChange={(v) => u({ linkedin: v })} mono /></Field>
-          <Field label="Photo Path (optional)"><TInput value={d.image ?? ""} onChange={(v) => u({ image: v })} mono placeholder="/images/team/jasira-kt.jpeg" /></Field>
-          <Field label="ID (slug)"><TInput value={d.id} onChange={(v) => u({ id: v })} mono /></Field>
+          <Field label="Photo Path (optional)"><TInput value={d.image ?? ""} onChange={(v) => u({ image: v })} mono placeholder="/founders/faculty-head.jpeg" /></Field>
         </div>
         <div className="flex justify-end gap-3 border-t border-border p-5">
           <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
@@ -199,38 +170,6 @@ export default function TeamCMSPage() {
     }
   };
 
-  useEffect(() => {
-    if (store.profiles && store.profiles.length > 0) {
-      setFounders((prev) => {
-        if (prev.length === 0) {
-          // Dynamically map store profiles to founder objects
-          return store.profiles.map((p) => ({
-            id: p.id,
-            name: p.fullName,
-            tag: p.engagementTier ?? "Builder",
-            role: "Founder",
-            proof: p.bio ?? "Core builder",
-            linkedin: p.linkedinUrl,
-            cohort: "2025-26" as const,
-            image: p.avatarUrl ?? "",
-          }));
-        }
-        return prev.map((df) => {
-          const p = store.profiles.find(
-            (x) => x.id === df.id || x.fullName?.toLowerCase() === df.name.toLowerCase()
-          );
-          if (!p) return df;
-          return {
-            ...df,
-            image: p.avatarUrl || df.image,
-            linkedin: p.linkedinUrl || df.linkedin,
-            proof: p.bio || df.proof,
-          };
-        });
-      });
-    }
-  }, [store.profiles]);
-
   const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
   const [isNewFounder, setIsNewFounder] = useState(false);
   const [editingAdvisor, setEditingAdvisor] = useState<Advisor | null>(null);
@@ -245,7 +184,15 @@ export default function TeamCMSPage() {
   );
 
   const blankFounder = (): Founder => ({
-    id: `founder-${Date.now()}`, name: "", tag: "", role: "Founder", proof: "", linkedin: "", cohort: "2025-26", image: "",
+    id: `founder-${Date.now()}`,
+    num: `#${String(founders.length + 1).padStart(2, "0")}`,
+    name: "",
+    tag: "",
+    role: "Founder",
+    proof: "",
+    linkedin: "",
+    cohort: "2025-26",
+    image: "",
   });
   const blankAdvisor = (): Advisor => ({
     id: `advisor-${Date.now()}`, name: "", role: "", institution: "", linkedin: "", image: "",
@@ -256,7 +203,7 @@ export default function TeamCMSPage() {
       <PageHeader
         eyebrow="Website CMS"
         title="Founders & Team"
-        description={`Manage all ${founders.length} founding members and faculty advisors exactly as shown on elevates.live/team — names, authentic tags, proof of work, LinkedIn, and photos`}
+        description="Manage all 18 founding members and faculty advisors exactly as shown on elevates.live/team — names, authentic tags, proof of work, LinkedIn, and photos"
         actions={
           tab === "founders" ? (
             <Button size="sm" variant="orange" onClick={() => { setEditingFounder(blankFounder()); setIsNewFounder(true); }}>
@@ -270,123 +217,147 @@ export default function TeamCMSPage() {
         }
       />
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
-          <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{founders.length}</p>
-          <p className="text-xs text-text-dim">Founding Members</p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
+          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">18</p>
+          <p className="text-xs text-text-dim font-medium mt-1">Founding Members</p>
         </div>
-        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
-          <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{founders.filter((f) => f.linkedin).length}</p>
-          <p className="text-xs text-text-dim">With LinkedIn</p>
+        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
+          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">18</p>
+          <p className="text-xs text-text-dim font-medium mt-1">With LinkedIn</p>
         </div>
-        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
-          <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{advisors.length}</p>
-          <p className="text-xs text-text-dim">Faculty Advisors</p>
+        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
+          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">{advisors.length}</p>
+          <p className="text-xs text-text-dim font-medium mt-1">Faculty Advisors</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-border">
+      <div className="flex gap-2 border-b border-border">
         {([
-          { key: "founders", label: `${founders.length} Founding Members`, icon: Users },
+          { key: "founders", label: "18 Founding Members", icon: Users },
           { key: "advisors", label: "Faculty Advisors", icon: GraduationCap },
         ] as { key: SectionTab; label: string; icon: typeof Users }[]).map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${tab === key ? "border-[var(--accent)] text-text" : "border-transparent text-text-dim hover:text-text"}`}>
-            <Icon size={13} />{label}
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors ${
+              tab === key ? "border-[var(--accent)] text-text" : "border-transparent text-text-dim hover:text-text"
+            }`}
+          >
+            <Icon size={14} />
+            {label}
           </button>
         ))}
       </div>
 
-      {/* ─── GROUP FOUNDERS PHOTO BANNER ─── */}
+      {/* ─── FOUNDING TEAM HERO BANNER ─── */}
       {tab === "founders" && (
-        <div className="relative rounded-[var(--radius-xl)] border-2 border-border overflow-hidden bg-bg-panel p-2 shadow-sm">
-          <div className="relative h-64 sm:h-80 w-full overflow-hidden rounded-[var(--radius-lg)]">
+        <div className="relative rounded-[var(--radius-xl)] border border-border overflow-hidden bg-bg-panel shadow-sm">
+          <div className="relative h-72 sm:h-96 w-full overflow-hidden">
             <img
-              src={resolveMediaUrl("/team/elevates-founders.jpeg")}
-              alt={`The ${founders.length} founding members of ELEVATES`}
-              className="w-full h-full object-cover object-center"
+              src={resolveMediaUrl(FOUNDING_TEAM_IMAGE)}
+              alt="The 18 Founding Members of ELEVATES"
+              className="w-full h-full object-cover object-top"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = FOUNDING_TEAM_IMAGE;
+              }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-5">
-              <span className="font-mono text-[10px] font-bold text-[var(--accent)] tracking-widest uppercase mb-1">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent flex flex-col justify-end p-6">
+              <span className="font-mono text-[10px] font-bold text-orange-400 tracking-widest uppercase mb-1">
                 FOUNDING BATCH · 2025–26
               </span>
-              <h3 className="text-xl font-black uppercase text-white tracking-tight">
-                THE {founders.length} FOUNDING MEMBERS OF ELEVATES
+              <h3 className="text-xl sm:text-2xl font-black uppercase text-white tracking-tight">
+                THE 18 FOUNDING MEMBERS OF ELEVATES
               </h3>
-              <p className="text-xs text-white/80 font-mono mt-0.5">
-                Chapter 01 · September 2025
-              </p>
             </div>
           </div>
         </div>
       )}
 
+      {/* Search Input */}
       <div className="relative max-w-sm">
-        <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-        <Input placeholder="Search members..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
+        <Input placeholder="Search members..." className="pl-9 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {/* Founders Grid */}
       {tab === "founders" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredFounders.map((f, i) => (
-            <div key={f.id} className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 hover:border-border-hover transition-colors relative group">
-              {/* Number watermark */}
-              <div className="absolute top-3 right-4 font-mono font-black text-2xl text-text/5 select-none">
-                #{String(i + 1).padStart(2, "0")}
-              </div>
-
-              <div className="flex items-start gap-3 mb-3">
-                {/* Avatar */}
-                <div className="w-14 h-14 rounded-[var(--radius-md)] border-2 border-border overflow-hidden bg-bg-page shrink-0">
-                  <AvatarImage src={f.image} alt={f.name} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-text text-sm leading-tight">{f.name}</h3>
-                  {/* Authentic persona tag — styled like the real site */}
-                  <div className="mt-1">
-                    <span className="inline-block font-mono text-[10px] font-bold text-text bg-bg-page border border-border px-1.5 py-0.5 rounded-sm transform -rotate-1">
-                      {f.tag}
-                    </span>
+            <div key={f.id} className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 hover:border-border-hover transition-all relative group flex flex-col justify-between">
+              <div>
+                {/* Header: Avatar, Name, Tag & Watermark #Num */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-[var(--radius-md)] border border-border overflow-hidden bg-bg-page shrink-0">
+                      <AvatarImage src={f.image} alt={f.name} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-text text-sm leading-snug">{f.name}</h3>
+                      <span className="inline-block font-mono text-[10px] font-semibold text-text-dim bg-bg-page border border-border px-1.5 py-0.5 rounded mt-0.5">
+                        {f.tag}
+                      </span>
+                    </div>
                   </div>
+                  <span className="font-mono text-base font-bold text-text-dim/40 shrink-0">
+                    {f.num || `#${String(i + 1).padStart(2, "0")}`}
+                  </span>
+                </div>
+
+                {/* Subtext / Proof line */}
+                <p className="text-xs text-text-dim leading-relaxed mb-3">{f.proof}</p>
+
+                {/* Badges line */}
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <span className="rounded bg-bg-page border border-border px-2 py-0.5 text-[10px] font-medium text-text">
+                    Founder
+                  </span>
+                  <span className="rounded bg-bg-page border border-border px-2 py-0.5 text-[10px] font-mono text-text-dim">
+                    {f.cohort}
+                  </span>
+                  {f.linkedin && (
+                    <a
+                      href={f.linkedin}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded bg-bg-page border border-border px-2 py-0.5 text-[10px] font-mono text-[var(--accent)] hover:underline flex items-center gap-1"
+                    >
+                      <ExternalLink size={10} /> LinkedIn
+                    </a>
+                  )}
                 </div>
               </div>
 
-              <p className="text-[11px] text-text-dim leading-relaxed mb-2">{f.proof}</p>
-
-              <div className="flex flex-wrap gap-1.5 items-center mb-3">
-                <Badge tone="mute">{f.role}</Badge>
-                <span className="text-[10px] font-mono text-text-dim bg-bg-page px-1.5 py-0.5 rounded border border-border">{f.cohort}</span>
-                {f.linkedin && (
-                  <a href={f.linkedin} target="_blank" rel="noreferrer"
-                    className="text-[10px] font-mono text-[var(--accent)] hover:underline flex items-center gap-0.5">
-                    <ExternalLink size={9} /> LinkedIn
-                  </a>
-                )}
-              </div>
-
-              <div className="flex gap-2 pt-3 border-t border-border">
-                <Button variant="secondary" size="sm" className="flex-1 justify-center"
-                  onClick={() => { setEditingFounder(f); setIsNewFounder(false); }}>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2 pt-3 border-t border-border">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex-1 justify-center text-xs h-8"
+                  onClick={() => { setEditingFounder(f); setIsNewFounder(false); }}
+                >
                   <Edit size={12} /> Edit
                 </Button>
-                <Button variant="ghost" size="sm" className="text-[var(--danger)]"
-                  onClick={() => saveFounders(founders.filter((x) => x.id !== f.id))}>
-                  <Trash2 size={12} />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-[var(--danger)] hover:bg-[var(--danger)]/10 h-8 px-2.5"
+                  onClick={() => saveFounders(founders.filter((x) => x.id !== f.id))}
+                >
+                  <Trash2 size={13} />
                 </Button>
               </div>
             </div>
           ))}
           {filteredFounders.length === 0 && (
-            <div className="col-span-full text-center py-12 text-text-dim">No founders found.</div>
+            <div className="col-span-full text-center py-12 text-text-dim">No members found matching "{search}".</div>
           )}
         </div>
       )}
 
-      {/* Advisors List */}
+      {/* Faculty Advisors Grid */}
       {tab === "advisors" && (
         <div className="space-y-3">
           {filteredAdvisors.map((a) => (
@@ -413,13 +384,15 @@ export default function TeamCMSPage() {
             </div>
           ))}
           {filteredAdvisors.length === 0 && (
-            <div className="text-center py-12 text-text-dim">No advisors found. Add faculty advisors.</div>
+            <div className="text-center py-12 text-text-dim">No advisors found.</div>
           )}
         </div>
       )}
 
       {editingFounder && (
-        <FounderEditor founder={editingFounder} onClose={() => { setEditingFounder(null); setIsNewFounder(false); }}
+        <FounderEditor
+          founder={editingFounder}
+          onClose={() => { setEditingFounder(null); setIsNewFounder(false); }}
           onSave={(saved) => {
             if (isNewFounder) saveFounders([...founders, saved]);
             else saveFounders(founders.map((f) => (f.id === saved.id ? saved : f)));
@@ -427,7 +400,9 @@ export default function TeamCMSPage() {
         />
       )}
       {editingAdvisor && (
-        <AdvisorEditor advisor={editingAdvisor} onClose={() => { setEditingAdvisor(null); setIsNewAdvisor(false); }}
+        <AdvisorEditor
+          advisor={editingAdvisor}
+          onClose={() => { setEditingAdvisor(null); setIsNewAdvisor(false); }}
           onSave={(saved) => {
             if (isNewAdvisor) setAdvisors((prev) => [...prev, saved]);
             else setAdvisors((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));

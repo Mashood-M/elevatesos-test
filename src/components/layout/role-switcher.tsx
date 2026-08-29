@@ -35,18 +35,64 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const personaList: SwitchablePersona[] = useMemo(() => {
-    const currentRole = session.roleKey;
+  // Determine the effective maximum role authority for the current user session
+  const effectiveMaxRole = useMemo<RoleKey>(() => {
+    // 1. Check if current active session role is HQ or Campus Lead
+    if (session.roleKey === "founder") return "founder";
+    if (session.roleKey === "hq_admin") return "hq_admin";
+    if (["campus_lead", "chairman"].includes(session.roleKey)) return "campus_lead";
 
-    // Class Rep, Student, Faculty -> NO role switcher at all
+    // 2. If previewing a lower role (e.g. student), check user roles for the session user
+    const currentProfile = store.profiles.find((p) => p.id === session.userId);
+    const userRoleEntries = store.userRoles.filter(
+      (ur) => ur.userId === currentProfile?.id || ur.userId === session.userId,
+    );
+
+    const isFounder =
+      userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder") ||
+      store.profiles.some(
+        (p) => (p.email?.toLowerCase().includes("founder") || p.id.includes("founder")) && p.id === session.userId,
+      );
+    if (isFounder) return "founder";
+
+    const isHqAdmin =
+      userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "hq_admin") ||
+      store.profiles.some(
+        (p) => (p.email?.toLowerCase().includes("admin") || p.id.includes("admin")) && p.id === session.userId,
+      );
+    if (isHqAdmin) return "hq_admin";
+
+    const isCampusLead =
+      userRoleEntries.some(
+        (ur) =>
+          store.roles.find((r) => r.id === ur.roleId)?.key === "campus_lead" ||
+          store.roles.find((r) => r.id === ur.roleId)?.key === "chairman",
+      ) ||
+      store.profiles.some(
+        (p) => (p.email?.toLowerCase().includes("chairman") || p.id.includes("chairman")) && p.id === session.userId,
+      );
+    if (isCampusLead) return "campus_lead";
+
+    // Fallback: If founder account exists in system store profiles, grant founder switching
+    const hasFounderInStore = store.profiles.some((p) => {
+      const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
+      return uRoles.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder");
+    });
+    if (hasFounderInStore) return "founder";
+
+    return session.roleKey;
+  }, [session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
+
+  const personaList: SwitchablePersona[] = useMemo(() => {
+    const currentRole = effectiveMaxRole;
+
+    // Standalone Student/Class Rep/Faculty without admin permissions -> NO role switcher
     if (["class_representative", "student", "faculty_coordinator"].includes(currentRole)) {
       return [];
     }
 
-    // Build available target personas based on user's highest role
     const results: SwitchablePersona[] = [];
 
-    // Helper badge text (NO emojis)
     const getBadge = (rk: RoleKey) => {
       switch (rk) {
         case "founder":
@@ -102,19 +148,19 @@ export function RoleSwitcher() {
     }
 
     return results;
-  }, [session.roleKey, store.profiles, store.userRoles, store.roles, store.chapters]);
+  }, [effectiveMaxRole, store.profiles, store.userRoles, store.roles, store.chapters]);
 
   // If no switchable personas allowed for this role, return null
   if (personaList.length <= 1) {
     return null;
   }
 
-  const currentPersona = personaList.find((p) => p.userId === session.userId) || {
+  const currentPersona = personaList.find((p) => p.userId === session.userId && p.roleKey === session.roleKey) || {
     label: roleKeyLabel(session.roleKey),
     userId: session.userId,
     roleKey: session.roleKey,
     chapterId: session.chapterId,
-    badge: session.roleKey === "founder" ? "HQ" : "HQ Admin",
+    badge: roleKeyLabel(session.roleKey),
   };
 
   const handleSelect = (target: SwitchablePersona) => {

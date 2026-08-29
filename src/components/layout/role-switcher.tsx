@@ -70,12 +70,15 @@ export function RoleSwitcher() {
     return session.roleKey;
   }, [session, store.profiles, store.userRoles, store.roles]);
 
-  // Roles this account is allowed to switch to (hierarchy-based, like the original)
+  // Roles this account is allowed to switch to (hierarchy-based)
   const allowedRoles = useMemo<SwitchableRole[]>(() => {
+    // Founder (HQ) is super admin — always gets the full list, no conditions
+    if (effectiveMaxRole === "founder" || session.roleKey === "founder" || session.authRoleKey === "founder") {
+      return ALL_ROLES;
+    }
     if (["class_representative", "student", "faculty_coordinator"].includes(effectiveMaxRole)) {
       return [];
     }
-    if (effectiveMaxRole === "founder") return ALL_ROLES;
     if (effectiveMaxRole === "hq_admin") return ALL_ROLES.filter((r) => r.roleKey !== "founder");
     if (["campus_lead", "chairman"].includes(effectiveMaxRole)) {
       return ALL_ROLES.filter((r) =>
@@ -83,10 +86,16 @@ export function RoleSwitcher() {
       );
     }
     return [];
-  }, [effectiveMaxRole]);
+  }, [effectiveMaxRole, session.roleKey, session.authRoleKey]);
 
-  // Hide if nothing to switch
-  if (allowedRoles.length <= 1) return null;
+  // Hide switcher only for non-elevated single-role accounts
+  // Founders always keep the panel — they are super admin by default
+  const isFounderAccount =
+    effectiveMaxRole === "founder" ||
+    session.roleKey === "founder" ||
+    session.authRoleKey === "founder";
+
+  if (!isFounderAccount && allowedRoles.length <= 1) return null;
 
   const activeRoleKey = session.roleKey;
   const activeInfo = ALL_ROLES.find((r) => r.roleKey === activeRoleKey) ?? {

@@ -16,6 +16,7 @@ import {
   FallbackWarningBanner,
   type DataSource,
 } from "@/components/ui/fallback-warning-banner";
+import { createClient } from "@/lib/supabase/client";
 import {
   insertChapterRemote,
   loadStoreFromSupabase,
@@ -179,6 +180,7 @@ type StoreContextValue = {
       >
     >,
   ) => void;
+  deleteChapter: (id: string) => void;
   updateProfile: (
     id: string,
     patch: Partial<
@@ -206,7 +208,11 @@ type StoreContextValue = {
     email: string;
     department?: string;
     year?: string;
+    roleKey?: RoleKey;
   }) => Profile | null;
+  approveJoinRequests: (profileIds: string[], roleKey: RoleKey, chapterId: string) => Promise<boolean>;
+  rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
+  batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
     userId: string;
@@ -1578,6 +1584,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
       },
+      deleteChapter: (id) => {
+        setStore((s) => ({
+          ...s,
+          chapters: s.chapters.filter((c) => c.id !== id),
+          activityLogs: [
+            log(s.session.userId, "chapter_deleted", "chapter", id),
+            ...s.activityLogs,
+          ],
+        }));
+        fetch(`/api/provisioning/chapter?id=${id}&actingUserId=${store.session.userId}`, {
+          method: "DELETE",
+        }).catch((err) => console.warn("Remote delete chapter error:", err));
+      },
       updateProfile: (id, patch) => {
         setStore((s) => {
           const exists = s.profiles.some((p) => p.id === id);
@@ -1670,6 +1689,86 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           department: input.department,
           year: input.year,
         });
+      },
+      approveJoinRequests: async (profileIds, roleKey, chapterId) => {
+        if (!profileIds.length) return false;
+        setStore((s) => {
+          const profiles = s.profiles.map((p) =>
+            profileIds.includes(p.id) ? { ...p, status: "active" as const, chapterId } : p,
+          );
+          const existingRoleUserIds = new Set(s.userRoles.map((ur) => ur.userId));
+          const newRoles: UserRole[] = profileIds
+            .filter((pid) => !existingRoleUserIds.has(pid))
+            .map((pid) => ({
+              id: `ur-${pid}-${Date.now()}`,
+              userId: pid,
+              roleId: `role-${roleKey}`,
+              roleKey,
+              chapterId,
+            }));
+          const updatedUserRoles = s.userRoles
+            .map((ur) =>
+              profileIds.includes(ur.userId) ? { ...ur, roleKey, chapterId } : ur,
+            )
+            .concat(newRoles);
+
+          return {
+            ...s,
+            profiles,
+            userRoles: updatedUserRoles,
+          };
+        });
+
+        for (const pid of profileIds) {
+          const prof = store.profiles.find((p) => p.id === pid);
+          if (prof) {
+            fetch("/api/provisioning/user", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                actingUserId: store.session.userId,
+                targetUser: {
+                  fullName: prof.fullName,
+                  email: prof.email,
+                  chapterId,
+                  roleKey,
+                },
+              }),
+            }).catch((err) => console.warn("Remote user approval error:", err));
+          }
+        }
+        return true;
+      },
+      rejectJoinRequests: async (profileIds) => {
+        if (!profileIds.length) return false;
+        setStore((s) => ({
+          ...s,
+          profiles: s.profiles.filter((p) => !profileIds.includes(p.id)),
+        }));
+        return true;
+      },
+      batchUpdateRegistrationStatus: (registrationIds, status, actorId) => {
+        if (!registrationIds.length) return false;
+        setStore((s) => {
+          const updated = s.registrations.map((r) =>
+            registrationIds.includes(r.id) ? { ...r, status } : r,
+          );
+          return {
+            ...s,
+            registrations: updated,
+          };
+        });
+        const supabase = createClient();
+        if (supabase) {
+          supabase
+            .from("event_registrations")
+            .update({ status })
+            .in("id", registrationIds)
+            .then(({ error }) => {
+              if (error) console.warn("Batch update registration error:", error);
+            });
+        }
+        return true;
       },
       inviteToCluster: (input) => {
         const cluster = store.clusters.find((c) => c.id === input.clusterId);

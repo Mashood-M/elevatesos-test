@@ -42,10 +42,11 @@ function slugify(name: string) {
 
 export default function HqChaptersPage() {
   const router = useRouter();
-  const { store, createChapter } = useStore();
+  const { store, createChapter, deleteChapter } = useStore();
   const [draft, setDraft] = useState<DraftChapter>(emptyDraft);
   const [slugTouched, setSlugTouched] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [flash, setFlash] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -240,6 +241,13 @@ export default function HqChaptersPage() {
                           >
                             Dashboard
                           </Link>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(c)}
+                            className="font-medium text-red-400 hover:underline"
+                          >
+                            Delete
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -332,6 +340,37 @@ export default function HqChaptersPage() {
             </Button>
             <Button type="button" variant="orange" onClick={handleCreate}>
               Create chapter
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete chapter"
+        description={`Are you sure you want to permanently delete chapter "${deleteTarget?.name}"? All associated settings will be removed.`}
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-red-400">
+            Warning: This action is permanent and will delete the chapter from the Elevates OS network and database.
+          </p>
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="ghost" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="orange"
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteChapter(deleteTarget.id);
+                  setDeleteTarget(null);
+                }
+              }}
+            >
+              Delete chapter
             </Button>
           </div>
         </div>

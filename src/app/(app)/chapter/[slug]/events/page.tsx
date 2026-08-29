@@ -80,9 +80,16 @@ export default function ChapterEventsPage({
   const { slug } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { store, createEvent, updateRegistrationStatus } = useStore();
+  const { store, createEvent, updateRegistrationStatus, batchUpdateRegistrationStatus } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
+
+  const [selectedRegIds, setSelectedRegIds] = useState<string[]>([]);
+  const toggleSelectReg = (id: string) => {
+    setSelectedRegIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
 
   const [showForm, setShowForm] = useState(false);
   const [statusChip, setStatusChip] = useState<StatusChip>("all");
@@ -247,25 +254,57 @@ export default function ChapterEventsPage({
 
       {(canApprove || canReview) && pendingApproval.length > 0 ? (
         <div className="mb-5 rounded-[var(--radius)] border border-border/80 bg-bg-panel px-4 py-3 shadow-[var(--shadow-sm)]">
-          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-[12px] font-semibold tracking-[-0.01em] text-text">
-              Needs attention
-            </p>
-            <p className="text-[11px] text-text-mute">
-              {pendingApproval.length} registration
-              {pendingApproval.length === 1 ? "" : "s"}
-            </p>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-semibold tracking-[-0.01em] text-text">
+                Needs attention ({pendingApproval.length} pending registration{pendingApproval.length === 1 ? "" : "s"})
+              </p>
+              <p className="text-[11px] text-text-dim">
+                Class Reps and Campus Leads can select multiple student registrations and approve them in batch.
+              </p>
+            </div>
+            {selectedRegIds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  className="h-8 px-3 text-[12px] text-red-400"
+                  onClick={() => {
+                    batchUpdateRegistrationStatus(selectedRegIds, "rejected", session.userId);
+                    setSelectedRegIds([]);
+                  }}
+                >
+                  Reject Selected
+                </Button>
+                <Button
+                  variant="green"
+                  className="h-8 px-3 text-[12px]"
+                  onClick={() => {
+                    batchUpdateRegistrationStatus(selectedRegIds, "approved", session.userId);
+                    setSelectedRegIds([]);
+                  }}
+                >
+                  Approve Selected → QR ({selectedRegIds.length})
+                </Button>
+              </div>
+            )}
           </div>
           <ul className="divide-y divide-border/80">
             {pendingApproval.map((reg) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
               const ev = store.events.find((e) => e.id === reg.eventId);
+              const isSelected = selectedRegIds.includes(reg.id);
               return (
                 <li
                   key={reg.id}
                   className="flex flex-wrap items-center justify-between gap-2 py-2.5"
                 >
-                  <div className="min-w-0">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectReg(reg.id)}
+                      className="rounded border-border"
+                    />
                     <p className="text-[13px] font-medium text-text">
                       {user?.fullName}
                       <span className="font-normal text-text-dim">

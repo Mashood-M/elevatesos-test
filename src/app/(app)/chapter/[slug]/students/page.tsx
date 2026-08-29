@@ -55,6 +55,9 @@ export default function ChapterStudentsPage({
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const { approveJoinRequests, rejectJoinRequests } = useStore();
+
   const [studentList, setStudentList] = useState<PreCollectedStudent[]>(DEFAULT_PRE_COLLECTED);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "unclaimed" | "claimed">("all");
@@ -237,14 +240,67 @@ export default function ChapterStudentsPage({
     }
   };
 
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedStudentIds.length === filteredStudents.length) {
+      setSelectedStudentIds([]);
+    } else {
+      setSelectedStudentIds(filteredStudents.map((s) => s.id));
+    }
+  };
+
+  const handleBatchApprove = async () => {
+    if (!selectedStudentIds.length) return;
+    await approveJoinRequests(selectedStudentIds, "student", activeChapter.id);
+    setSyncSuccessMsg(`✓ Approved ${selectedStudentIds.length} join requests into ${activeChapter.name}!`);
+    setSelectedStudentIds([]);
+    setTimeout(() => setSyncSuccessMsg(""), 4000);
+  };
+
+  const handleBatchReject = async () => {
+    if (!selectedStudentIds.length) return;
+    await rejectJoinRequests(selectedStudentIds);
+    setSyncSuccessMsg(`Rejected ${selectedStudentIds.length} join requests.`);
+    setSelectedStudentIds([]);
+    setTimeout(() => setSyncSuccessMsg(""), 4000);
+  };
+
+  const copyInviteLink = (targetRole: string) => {
+    const url = `${window.location.origin}/join?chapter=${activeChapter.slug}&role=${targetRole}`;
+    navigator.clipboard.writeText(url);
+    setSyncSuccessMsg(`✓ Copied ${targetRole === "class_representative" ? "Class Rep" : "Student"} join link to clipboard!`);
+    setTimeout(() => setSyncSuccessMsg(""), 4000);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow={chapterEyebrow(store.session.roleKey, "people")}
-        title="Student Database & Skill Registry"
-        description="Pre-collect student phone numbers, emails, skills, and departments. When students sign in, their profile and verified skills automatically sync."
+        title="Student Database & Join Requests"
+        description="Manage campus students, pre-collect details via CSV, and review pending Class Rep and Student join requests."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => copyInviteLink("student")}
+              className="flex items-center gap-1.5 text-xs"
+            >
+              Copy Student Invite Link
+            </Button>
+            {["founder", "hq_admin", "campus_lead", "chairman"].includes(store.session.roleKey) && (
+              <Button
+                variant="secondary"
+                onClick={() => copyInviteLink("class_representative")}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                Copy Class Rep Invite Link
+              </Button>
+            )}
             <Button
               variant="secondary"
               onClick={() => setIsBulkOpen(true)}
@@ -319,12 +375,37 @@ export default function ChapterStudentsPage({
         </div>
       </div>
 
+      {/* Multi-Select Action Bar */}
+      {selectedStudentIds.length > 0 && (
+        <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-[var(--accent)] bg-[var(--accent)]/10 p-4">
+          <span className="text-xs font-semibold text-text">
+            {selectedStudentIds.length} candidate(s) selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={handleBatchReject} className="text-xs text-red-400">
+              Reject Selected
+            </Button>
+            <Button variant="orange" onClick={handleBatchApprove} className="text-xs">
+              <CheckCircle size={14} className="mr-1" /> Accept Selected ({selectedStudentIds.length})
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Student List Table */}
       <div className="rounded-[var(--radius-lg)] bg-bg-panel p-5 shadow-[var(--shadow)]">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border text-text-dim">
+                <th className="pb-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selectedStudentIds.length > 0 && selectedStudentIds.length === filteredStudents.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-border"
+                  />
+                </th>
                 <th className="pb-3 font-semibold">Student Name</th>
                 <th className="pb-3 font-semibold">Contact & Phone</th>
                 <th className="pb-3 font-semibold">Department & Year</th>
@@ -336,6 +417,14 @@ export default function ChapterStudentsPage({
             <tbody className="divide-y divide-border">
               {filteredStudents.map((stu) => (
                 <tr key={stu.id} className="group hover:bg-bg-page/50">
+                  <td className="py-3 w-8">
+                    <input
+                      type="checkbox"
+                      checked={selectedStudentIds.includes(stu.id)}
+                      onChange={() => toggleSelectStudent(stu.id)}
+                      className="rounded border-border"
+                    />
+                  </td>
                   <td className="py-3">
                     <div className="flex items-center gap-2.5">
                       <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">

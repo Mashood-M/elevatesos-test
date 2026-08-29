@@ -165,20 +165,21 @@ function LoginForm() {
           .maybeSingle();
         if (chapterRow?.slug) chapterSlug = chapterRow.slug;
       }
-      if (!chapterSlug) {
-        const { data: firstChapter } = await supabase
-          .from("chapters")
-          .select("slug")
-          .eq("status", "active")
-          .limit(1)
-          .maybeSingle();
-        if (firstChapter?.slug) chapterSlug = firstChapter.slug;
-      }
 
       setLoading(false);
 
       // Hard redirect — clears any stale client state and lets middleware verify the session
-      const destination = next ?? homeForRole(roleKey, chapterSlug);
+      let destination = next;
+      if (!destination) {
+        if (["founder", "hq_admin"].includes(roleKey)) {
+          destination = "/hq";
+        } else if (chapterSlug) {
+          destination = `/chapter/${chapterSlug}`;
+        } else {
+          destination = "/join";
+        }
+      }
+
       window.location.href = destination;
     } catch (err: unknown) {
       console.error("Login error:", err);

@@ -135,6 +135,9 @@ export default function ChapterLeadershipPage({
   const [assignError, setAssignError] = useState("");
   const [flash, setFlash] = useState("");
 
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const { approveJoinRequests, rejectJoinRequests } = useStore();
+
   const terms = useMemo(() => {
     if (!chapter) return [];
     const rank = (s: LeadershipStatus) =>
@@ -158,6 +161,16 @@ export default function ChapterLeadershipPage({
       )
       .slice()
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
+  }, [store.profiles, chapter]);
+
+  const pendingCandidates = useMemo(() => {
+    if (!chapter) return [];
+    return store.profiles.filter(
+      (p) =>
+        p.chapterId === chapter.id &&
+        (((p.status as unknown as string) === "unclaimed") ||
+          ((p.status as unknown as string) === "pending")),
+    );
   }, [store.profiles, chapter]);
 
   if (!chapter) return <p className="text-orange">// Chapter not found</p>;
@@ -363,9 +376,22 @@ export default function ChapterLeadershipPage({
               </span>
             ) : null}
             {canManage ? (
-              <Button variant="primary" onClick={startCreateTerm}>
-                {showTermForm && !editingTermId ? "Close form" : "New term"}
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const url = `${window.location.origin}/join?chapter=${chapter.slug}&role=class_representative`;
+                    navigator.clipboard.writeText(url);
+                    flashMsg("✓ Copied Class Rep join link!");
+                  }}
+                  className="text-xs"
+                >
+                  Copy Class Rep Join Link
+                </Button>
+                <Button variant="primary" onClick={startCreateTerm}>
+                  {showTermForm && !editingTermId ? "Close form" : "New term"}
+                </Button>
+              </>
             ) : null}
           </div>
         }
@@ -379,6 +405,112 @@ export default function ChapterLeadershipPage({
           </p>
         </TerminalPanel>
       ) : null}
+
+      {/* Pending Class Rep / Leadership Join Requests */}
+      {canManage && pendingCandidates.length > 0 && (
+        <TerminalPanel
+          title="Pending Class Rep Applications & Join Requests"
+          meta={`${pendingCandidates.length} applicants pending review`}
+          accent="orange"
+          className="mb-8"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <p className="text-xs text-text-dim">
+              Candidates who applied or joined via invitation link. Multi-select and click Accept to appoint as Class Representatives.
+            </p>
+            {selectedCandidateIds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    await rejectJoinRequests(selectedCandidateIds);
+                    flashMsg(`Rejected ${selectedCandidateIds.length} candidate(s).`);
+                    setSelectedCandidateIds([]);
+                  }}
+                  className="text-xs text-red-400"
+                >
+                  Reject Selected
+                </Button>
+                <Button
+                  variant="orange"
+                  onClick={async () => {
+                    await approveJoinRequests(selectedCandidateIds, "class_representative", chapter.id);
+                    flashMsg(`✓ Appointed ${selectedCandidateIds.length} Class Representative(s)!`);
+                    setSelectedCandidateIds([]);
+                  }}
+                  className="text-xs"
+                >
+                  Accept Selected Class Reps ({selectedCandidateIds.length})
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-border text-text-dim">
+                  <th className="pb-2 w-8">
+                    <input
+                      type="checkbox"
+                      checked={selectedCandidateIds.length > 0 && selectedCandidateIds.length === pendingCandidates.length}
+                      onChange={() => {
+                        if (selectedCandidateIds.length === pendingCandidates.length) {
+                          setSelectedCandidateIds([]);
+                        } else {
+                          setSelectedCandidateIds(pendingCandidates.map((c) => c.id));
+                        }
+                      }}
+                      className="rounded border-border"
+                    />
+                  </th>
+                  <th className="pb-2 font-semibold">Candidate Name</th>
+                  <th className="pb-2 font-semibold">Email</th>
+                  <th className="pb-2 font-semibold">Department</th>
+                  <th className="pb-2 font-semibold">Status</th>
+                  <th className="pb-2 font-semibold text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pendingCandidates.map((cand) => (
+                  <tr key={cand.id} className="hover:bg-bg-page/50">
+                    <td className="py-2.5 w-8">
+                      <input
+                        type="checkbox"
+                        checked={selectedCandidateIds.includes(cand.id)}
+                        onChange={() => {
+                          setSelectedCandidateIds((prev) =>
+                            prev.includes(cand.id) ? prev.filter((i) => i !== cand.id) : [...prev, cand.id],
+                          );
+                        }}
+                        className="rounded border-border"
+                      />
+                    </td>
+                    <td className="py-2.5 font-semibold text-text">{cand.fullName}</td>
+                    <td className="py-2.5 text-text-dim">{cand.email}</td>
+                    <td className="py-2.5 text-text-dim">{cand.department || "General"}</td>
+                    <td className="py-2.5">
+                      <Badge tone="orange">Pending</Badge>
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Button
+                        variant="orange"
+                        onClick={async () => {
+                          await approveJoinRequests([cand.id], "class_representative", chapter.id);
+                          flashMsg(`Appointed ${cand.fullName} as Class Representative!`);
+                        }}
+                        className="text-[11px] py-1 px-2.5 h-auto"
+                      >
+                        Approve Class Rep
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </TerminalPanel>
+      )}
 
       {canManage && showTermForm ? (
         <TerminalPanel

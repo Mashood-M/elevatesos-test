@@ -58,14 +58,13 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/workflows") ||
     path.startsWith("/v2") ||
     path.startsWith("/design-system") ||
-    path.startsWith("/profile") ||
     path.startsWith("/eos");
 
-  // Unauthenticated user accessing protected route → redirect to login
+  // Unauthenticated user accessing protected route → redirect to login cleanly
   if (isProtectedApp && !user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
-    redirectUrl.searchParams.set("next", path);
+    redirectUrl.search = "";
     const redirectResponse = NextResponse.redirect(redirectUrl);
     // Copy cookies so session updates aren't lost
     supabaseResponse.cookies.getAll().forEach((c) => {

@@ -29,7 +29,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
 
     // No authenticated user — hard redirect to login using replace (clears stale state)
     if (!userId) {
-      window.location.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      window.location.replace("/login");
       return () => window.removeEventListener("pageshow", onPageShow);
     }
 

@@ -75,14 +75,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     >
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex flex-col overflow-y-auto border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:static lg:w-[var(--rail-width)] lg:translate-x-0 lg:overflow-y-visible",
+          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex h-dvh flex-col border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:sticky lg:top-0 lg:w-[var(--rail-width)] lg:translate-x-0 lg:z-30",
           open
             ? "w-[var(--rail-width-mobile)] translate-x-0 shadow-[var(--shadow)]"
             : "w-[var(--rail-width-mobile)] -translate-x-full",
         )}
       >
         <div
-          className="flex items-center justify-between gap-2 border-b border-[var(--rail-border)] pb-4 pt-5"
+          className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--rail-border)] pb-4 pt-5"
           style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
         >
           <Link href={homeHref} className="flex min-w-0 items-center gap-3">
@@ -109,7 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav
-          className="scrollbar-thin flex-1 space-y-5 overflow-y-auto py-4"
+          className="scrollbar-thin flex-1 min-h-0 space-y-5 overflow-y-auto py-4"
           style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
         >
           {groups.map((group) => (
@@ -144,7 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div
-          className="space-y-3 border-t border-[var(--rail-border)] py-4"
+          className="shrink-0 space-y-3 border-t border-[var(--rail-border)] py-4"
           style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
         >
           <RoleSwitcher />

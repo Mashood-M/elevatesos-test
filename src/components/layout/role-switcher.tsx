@@ -9,13 +9,20 @@ import { roleKeyLabel } from "@/lib/leadership";
 import { cn } from "@/lib/utils";
 import type { RoleKey } from "@/types";
 
-interface SwitchablePersona {
+interface SwitchableRole {
   label: string;
-  userId: string;
   roleKey: RoleKey;
-  chapterId?: string;
   badge: string;
 }
+
+const ALL_ROLES: SwitchableRole[] = [
+  { label: "HQ", roleKey: "founder", badge: "HQ" },
+  { label: "HQ Admin", roleKey: "hq_admin", badge: "HQ Admin" },
+  { label: "Campus Lead", roleKey: "campus_lead", badge: "Campus Lead" },
+  { label: "Class Rep", roleKey: "class_representative", badge: "Class Rep" },
+  { label: "Student", roleKey: "student", badge: "Student" },
+  { label: "Faculty", roleKey: "faculty_coordinator", badge: "Faculty" },
+];
 
 export function RoleSwitcher() {
   const router = useRouter();
@@ -52,26 +59,27 @@ export function RoleSwitcher() {
     const targetUserId = session.authUserId ?? session.userId;
     const authProfile = store.profiles.find((p) => p.id === targetUserId);
     const userRoleEntries = store.userRoles.filter(
-      (ur) => ur.userId === authProfile?.id || ur.userId === targetUserId,
+      (ur: any) => ur.userId === authProfile?.id || ur.userId === targetUserId,
     );
 
     const isFounder =
-      userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder") ||
+      userRoleEntries.some((ur: any) => store.roles.find((r: any) => r.id === ur.roleId)?.key === "founder") ||
       (authProfile?.email?.toLowerCase().includes("founder") ?? false) ||
+      (authProfile?.email?.toLowerCase().includes("admin@elevates.live") ?? false) ||
       (authProfile?.id?.toLowerCase().includes("founder") ?? false);
     if (isFounder) return "founder";
 
     const isHqAdmin =
-      userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "hq_admin") ||
+      userRoleEntries.some((ur: any) => store.roles.find((r: any) => r.id === ur.roleId)?.key === "hq_admin") ||
       (authProfile?.email?.toLowerCase().includes("admin") ?? false) ||
       (authProfile?.id?.toLowerCase().includes("admin") ?? false);
     if (isHqAdmin) return "hq_admin";
 
     const isCampusLead =
       userRoleEntries.some(
-        (ur) =>
-          store.roles.find((r) => r.id === ur.roleId)?.key === "campus_lead" ||
-          store.roles.find((r) => r.id === ur.roleId)?.key === "chairman",
+        (ur: any) =>
+          store.roles.find((r: any) => r.id === ur.roleId)?.key === "campus_lead" ||
+          store.roles.find((r: any) => r.id === ur.roleId)?.key === "chairman",
       ) ||
       (authProfile?.email?.toLowerCase().includes("chairman") ?? false) ||
       (authProfile?.id?.toLowerCase().includes("chairman") ?? false);
@@ -81,94 +89,54 @@ export function RoleSwitcher() {
     return session.roleKey;
   }, [session.authRoleKey, session.authUserId, session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
 
-  const personaList: SwitchablePersona[] = useMemo(() => {
+  const allowedRoles = useMemo<SwitchableRole[]>(() => {
     const currentRole = effectiveMaxRole;
 
-    // Class Rep, Student, Faculty users DO NOT get a role switcher
+    // Single-role accounts (Class Rep, Student, Faculty) do not get a role switcher
     if (["class_representative", "student", "faculty_coordinator"].includes(currentRole)) {
       return [];
     }
 
-    const results: SwitchablePersona[] = [];
-
-    const getBadge = (rk: RoleKey) => {
-      switch (rk) {
-        case "founder":
-          return "HQ";
-        case "hq_admin":
-          return "HQ Admin";
-        case "campus_lead":
-        case "chairman":
-          return "Campus Lead";
-        case "class_representative":
-          return "Class Rep";
-        case "student":
-          return "Student";
-        case "faculty_coordinator":
-          return "Faculty";
-        default:
-          return "User";
-      }
-    };
-
-    // Enforce strict role switching permissions:
-    // 1. HQ (founder): Can switch to ALL roles
-    // 2. HQ Admin (hq_admin): Can switch to all roles EXCEPT HQ (founder)
-    // 3. Campus Lead (campus_lead/chairman): Can switch to Campus Lead, Class Rep, Student only
-    for (const p of store.profiles ?? []) {
-      if ((p.status ?? "active") === "disabled") continue;
-
-      const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
-      const firstRoleId = uRoles[0]?.roleId;
-      const rObj = store.roles.find((r) => r.id === firstRoleId);
-      const roleKey = (rObj?.key ?? "student") as RoleKey;
-
-      let isAllowed = false;
-      if (currentRole === "founder") {
-        isAllowed = true;
-      } else if (currentRole === "hq_admin") {
-        // HQ Admin can switch to any role EXCEPT HQ (founder)
-        isAllowed = roleKey !== "founder";
-      } else if (["campus_lead", "chairman"].includes(currentRole)) {
-        // Campus Lead can switch ONLY to Campus Lead, Class Rep, Student
-        isAllowed = ["campus_lead", "chairman", "class_representative", "student"].includes(roleKey);
-      }
-
-      if (isAllowed) {
-        const ch = store.chapters.find((c) => c.id === p.chapterId);
-        const chName = ch ? ch.name : "HQ Network";
-        results.push({
-          label: `${p.fullName} · ${chName}`,
-          userId: p.id,
-          roleKey,
-          chapterId: p.chapterId,
-          badge: getBadge(roleKey),
-        });
-      }
+    if (currentRole === "founder") {
+      // HQ (Super Admin): Can switch to ALL roles
+      return ALL_ROLES;
     }
 
-    return results;
-  }, [effectiveMaxRole, store.profiles, store.userRoles, store.roles, store.chapters]);
+    if (currentRole === "hq_admin") {
+      // HQ Admin: Can switch to all roles EXCEPT HQ
+      return ALL_ROLES.filter((r) => r.roleKey !== "founder");
+    }
 
-  // If no switchable personas allowed for this user's role authority, hide switcher completely
-  if (personaList.length <= 1) {
+    if (["campus_lead", "chairman"].includes(currentRole)) {
+      // Campus Lead: Can switch ONLY to Campus Lead, Class Rep, Student
+      return ALL_ROLES.filter((r) =>
+        ["campus_lead", "class_representative", "student"].includes(r.roleKey),
+      );
+    }
+
+    return [];
+  }, [effectiveMaxRole]);
+
+  // If no switchable roles allowed for this user's authority level, hide switcher
+  if (allowedRoles.length <= 1) {
     return null;
   }
 
-  const currentPersona = personaList.find(
-    (p) => p.userId === session.userId && p.roleKey === session.roleKey,
-  ) || {
-    label: roleKeyLabel(session.roleKey),
-    userId: session.userId,
-    roleKey: session.roleKey,
-    chapterId: session.chapterId,
-    badge: roleKeyLabel(session.roleKey),
+  const activeRoleKey = session.roleKey;
+  const currentRoleInfo = ALL_ROLES.find((r) => r.roleKey === activeRoleKey) || {
+    label: roleKeyLabel(activeRoleKey),
+    roleKey: activeRoleKey,
+    badge: roleKeyLabel(activeRoleKey),
   };
 
-  const handleSelect = (target: SwitchablePersona) => {
-    setSession(target.userId, target.roleKey, target.chapterId || undefined);
-    const targetChapter = store.chapters.find((c) => c.id === (target.chapterId || undefined));
-    const nextSlug = targetChapter?.slug ?? store.chapters?.[0]?.slug ?? "";
+  const loggedUserId = session.authUserId || session.userId;
+  const loggedUserChapterId = session.chapterId;
+
+  const handleSelect = (target: SwitchableRole) => {
+    // Keep the SAME single user account (e.g. admin@elevates.live), only switch active role!
+    setSession(loggedUserId, target.roleKey, loggedUserChapterId);
+    const targetChapter = store.chapters.find((c) => c.id === loggedUserChapterId) || store.chapters[0];
+    const nextSlug = targetChapter?.slug ?? "eranad-knowledge-city";
     router.push(homeForRole(target.roleKey, nextSlug));
     setIsOpen(false);
   };
@@ -186,10 +154,10 @@ export function RoleSwitcher() {
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="shrink-0 rounded-md bg-[var(--accent)]/20 px-1.5 py-0.5 text-[10px] font-bold text-[var(--accent)]">
-            {currentPersona.badge}
+            {currentRoleInfo.badge}
           </span>
           <span className="truncate text-white font-medium">
-            {roleKeyLabel(currentPersona.roleKey)}
+            {currentRoleInfo.label}
           </span>
         </div>
         <ChevronUp
@@ -203,18 +171,18 @@ export function RoleSwitcher() {
         <div className="absolute left-0 right-0 bottom-full z-[100] mb-2 max-h-72 overflow-y-auto rounded-[16px] border border-border/80 bg-white p-2 shadow-xl ring-1 ring-black/5">
           <div className="mb-2 px-2.5 pt-1.5 pb-1 border-b border-border/60">
             <span className="text-[10px] font-bold uppercase tracking-wider text-text-dim">
-              Switch Role & Persona
+              Switch Active Role
             </span>
           </div>
 
           <div className="space-y-1">
-            {personaList.map((p) => {
-              const isSelected = p.userId === session.userId && p.roleKey === session.roleKey;
+            {allowedRoles.map((r) => {
+              const isSelected = r.roleKey === activeRoleKey;
               return (
                 <button
-                  key={`${p.userId}-${p.roleKey}`}
+                  key={r.roleKey}
                   type="button"
-                  onClick={() => handleSelect(p)}
+                  onClick={() => handleSelect(r)}
                   className={cn(
                     "flex w-full items-center justify-between rounded-[10px] px-2.5 py-2 text-left text-xs transition-colors",
                     isSelected
@@ -224,12 +192,8 @@ export function RoleSwitcher() {
                 >
                   <div className="min-w-0 flex-1 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-text">{roleKeyLabel(p.roleKey)}</span>
-                      <span className="text-[10px] font-semibold text-text-dim">
-                        ({p.badge})
-                      </span>
+                      <span className="font-medium text-text">{r.label}</span>
                     </div>
-                    <p className="truncate text-[11px] text-text-dim">{p.label}</p>
                   </div>
                   {isSelected && <Check size={14} className="shrink-0 text-[var(--accent)]" />}
                 </button>

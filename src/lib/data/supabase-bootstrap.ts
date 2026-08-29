@@ -38,6 +38,7 @@ function emptyStore(): ElevatesStore {
     permissions: [],
     rolePermissions: [],
     userRoles: [],
+    eventPermissions: [],
     leadershipTerms: [],
     leadershipAssignments: [],
     events: [],
@@ -102,6 +103,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: ltRows },
       { data: laRows },
       { data: clusterRows },
+      { data: epRows },
       authUserData,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
@@ -121,6 +123,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("leadership_terms").select("*"),
       supabase.from("leadership_assignments").select("*"),
       supabase.from("clusters").select("*"),
+      supabase.from("event_permissions").select("*"),
       supabase.auth.getUser(),
     ]);
 
@@ -355,6 +358,18 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         title: la.title,
       })) ?? [];
 
+    const eventPermissions =
+      epRows?.map((ep) => ({
+        id: ep.id,
+        eventId: ep.event_id,
+        userId: ep.user_id,
+        permissionType: ep.permission_type,
+        isTemporary: Boolean(ep.is_temporary),
+        grantedBy: ep.granted_by ?? undefined,
+        grantedAt: ep.granted_at,
+        expiresAt: ep.expires_at ?? undefined,
+      })) ?? [];
+
     const clusters =
       clusterRows?.map((cl) => ({
         id: cl.id,
@@ -436,6 +451,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         permissions,
         rolePermissions,
         userRoles,
+        eventPermissions,
         leadershipTerms,
         leadershipAssignments,
         clusters,

@@ -753,6 +753,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       permissions: [],
       rolePermissions: [],
       userRoles: [],
+      eventPermissions: [],
       leadershipTerms: [],
       leadershipAssignments: [],
       events: [],

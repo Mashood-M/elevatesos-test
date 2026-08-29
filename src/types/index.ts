@@ -4,6 +4,7 @@ export type RoleKey =
   | "founder"
   | "hq_admin"
   | "hq_mentor"
+  | "campus_lead"
   | "faculty_coordinator"
   | "chairman"
   | "vice_chairman"
@@ -265,9 +266,13 @@ export interface UserRole {
   id: string;
   userId: string;
   roleId: string;
+  roleKey?: RoleKey;
   chapterId?: string;
   organizationId?: string;
   leadershipTermId?: string;
+  isPermanent?: boolean;
+  validFrom?: string;
+  validTo?: string;
 }
 
 export interface LeadershipTerm {
@@ -355,6 +360,23 @@ export interface EventItem {
   platform?: EventPlatformRef;
   /** Configurable attendance sessions (e.g. 1 session for workshop, 3-4 checkpoints for hackathon) */
   attendanceSessions?: EventAttendanceSession[];
+  managingTeamMode?: "permanent" | "temporary";
+  mediaTeamMode?: "permanent" | "temporary";
+  managingStudentIds?: string[];
+  mediaStudentIds?: string[];
+}
+
+export type EventPermissionType = "manage_event" | "take_attendance" | "manage_media";
+
+export interface EventPermission {
+  id: string;
+  eventId: string;
+  userId: string;
+  permissionType: EventPermissionType;
+  isTemporary: boolean;
+  grantedBy?: string;
+  grantedAt: string;
+  expiresAt?: string;
 }
 
 
@@ -765,6 +787,7 @@ export interface ElevatesStore {
   permissions: Permission[];
   rolePermissions: RolePermission[];
   userRoles: UserRole[];
+  eventPermissions: EventPermission[];
   leadershipTerms: LeadershipTerm[];
   leadershipAssignments: LeadershipAssignment[];
   events: EventItem[];

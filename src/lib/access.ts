@@ -40,6 +40,7 @@ export function resolveChapter(
 }
 
 const EXECUTIVE_ROLES: RoleKey[] = [
+  "campus_lead",
   "chairman",
   "vice_chairman",
   "secretary",
@@ -64,8 +65,6 @@ export function isFacultyRole(roleKey: RoleKey) {
 
 export function homeForRole(roleKey: RoleKey, chapterSlug = "") {
   if (isHqRole(roleKey)) return "/hq";
-  if (isFacultyRole(roleKey)) return "/faculty";
-  if (isExecutiveRole(roleKey)) return "/executive";
   const slug = chapterSlug || "";
   return slug ? `/chapter/${slug}` : "/chapter";
 }

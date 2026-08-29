@@ -61,6 +61,11 @@ export default function ChapterStudentsPage({
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [bulkReport, setBulkReport] = useState<{
+    summary: { total: number; succeeded: number; failed: number };
+    results: { row: number; name: string; email: string; status: "success" | "error"; message: string }[];
+  } | null>(null);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState("");
 
   const [formData, setFormData] = useState({
@@ -146,35 +151,64 @@ export default function ChapterStudentsPage({
     });
   };
 
-  const handleBulkImport = (e: React.FormEvent) => {
+  const handleBulkImport = async (e: React.FormEvent) => {
     e.preventDefault();
-    const lines = bulkText.split("\n").filter((l) => l.trim().length > 0);
-    const imported: PreCollectedStudent[] = [];
+    if (!bulkText.trim()) return;
 
-    lines.forEach((line, idx) => {
-      // CSV format: Name, Email, Phone, Department, Year, Skills
-      const parts = line.split(",").map((p) => p.trim());
-      if (parts.length >= 2) {
-        imported.push({
-          id: `bulk-${Date.now()}-${idx}`,
-          fullName: parts[0] || "Student",
-          email: parts[1] || `student${idx}@student.edu.in`,
-          phone: parts[2] || "+91 90000 00000",
-          department: parts[3] || "Computer Science & Engineering",
-          year: parts[4] || "2nd Year",
-          section: "A",
-          skills: parts[5] ? parts[5].split(";").map((s) => s.trim()) : ["Engineering"],
-          interests: ["Tech"],
-          status: "unclaimed",
-          collectedAt: new Date().toISOString().split("T")[0],
+    setIsBulkLoading(true);
+    setBulkReport(null);
+    try {
+      const res = await fetch("/api/provisioning/bulk-students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actingUserId: store.session.userId,
+          chapterId: activeChapter.id,
+          csvContent: bulkText,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setBulkReport({
+          summary: data.summary,
+          results: data.results,
         });
-      }
-    });
 
-    if (imported.length > 0) {
-      setStudentList((prev) => [...imported, ...prev]);
-      setIsBulkOpen(false);
-      setBulkText("");
+        // Add successful rows locally
+        const imported: PreCollectedStudent[] = [];
+        data.results.forEach((r: any) => {
+          if (r.status === "success") {
+            imported.push({
+              id: `bulk-${Date.now()}-${r.row}`,
+              fullName: r.name,
+              email: r.email,
+              phone: "+91 90000 00000",
+              department: "Computer Science & Engineering",
+              year: "1st Year",
+              section: "A",
+              skills: ["Tech"],
+              interests: ["Community"],
+              status: "claimed",
+              collectedAt: new Date().toISOString().split("T")[0],
+            });
+            createUser({
+              fullName: r.name,
+              email: r.email,
+              chapterId: activeChapter.id,
+              roleKey: "student",
+            });
+          }
+        });
+        if (imported.length > 0) {
+          setStudentList((prev) => [...imported, ...prev]);
+        }
+      } else {
+        alert(`Bulk import error: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`Bulk import exception: ${err.message}`);
+    } finally {
+      setIsBulkLoading(false);
     }
   };
 
@@ -529,34 +563,75 @@ export default function ChapterStudentsPage({
               </button>
             </div>
 
-            <form onSubmit={handleBulkImport} className="mt-4 space-y-4 text-xs">
-              <div className="rounded-[var(--radius-md)] bg-[var(--neutral-100)] p-3 text-[11px] text-text-dim font-mono">
-                Format: Name, Email, Phone, Department, Year, Skills (separated by semicolons)
-                <br />
-                Example: John Doe, john@student.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git
+            {bulkReport ? (
+              <div className="mt-4 space-y-4 text-xs">
+                <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-400">
+                  <span>
+                    Import Complete: {bulkReport.summary.succeeded} succeeded, {bulkReport.summary.failed} failed out of {bulkReport.summary.total} rows.
+                  </span>
+                </div>
+                <div className="max-h-60 overflow-y-auto space-y-2 rounded-[var(--radius-md)] border border-border bg-bg-page p-3">
+                  {bulkReport.results.map((res) => (
+                    <div key={res.row} className="flex items-center justify-between border-b border-border/50 pb-1.5 text-[11px]">
+                      <div>
+                        <span className="font-semibold text-text">Row {res.row}: {res.name}</span>{" "}
+                        <span className="text-text-mute">({res.email})</span>
+                      </div>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          res.status === "success"
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-red-500/20 text-red-400"
+                        }`}
+                      >
+                        {res.status === "success" ? "Success" : res.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button
+                    variant="orange"
+                    onClick={() => {
+                      setIsBulkOpen(false);
+                      setBulkReport(null);
+                      setBulkText("");
+                    }}
+                  >
+                    Done
+                  </Button>
+                </div>
               </div>
+            ) : (
+              <form onSubmit={handleBulkImport} className="mt-4 space-y-4 text-xs">
+                <div className="rounded-[var(--radius-md)] bg-[var(--neutral-100)] p-3 text-[11px] text-text-dim font-mono">
+                  Format: Name, Email, Phone, Department, Year, Skills (separated by semicolons)
+                  <br />
+                  Example: John Doe, john@student.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git
+                </div>
 
-              <div>
-                <label className="font-semibold text-text">CSV Data</label>
-                <textarea
-                  rows={6}
-                  required
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder="Paste multiple rows here..."
-                  className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page p-2.5 font-mono text-xs text-text"
-                />
-              </div>
+                <div>
+                  <label className="font-semibold text-text">CSV Data</label>
+                  <textarea
+                    rows={6}
+                    required
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder="Paste multiple rows here..."
+                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page p-2.5 font-mono text-xs text-text"
+                  />
+                </div>
 
-              <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
-                <Button variant="secondary" type="button" onClick={() => setIsBulkOpen(false)}>
-                  Cancel
-                </Button>
-                <Button variant="orange" type="submit">
-                  Import All
-                </Button>
-              </div>
-            </form>
+                <div className="flex items-center justify-end gap-2 border-t border-border pt-4">
+                  <Button variant="secondary" type="button" onClick={() => setIsBulkOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="orange" type="submit" disabled={isBulkLoading}>
+                    {isBulkLoading ? "Validating & Importing..." : "Import All"}
+                  </Button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

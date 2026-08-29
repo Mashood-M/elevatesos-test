@@ -1,6 +1,7 @@
 import type { RoleKey } from "@/types";
 
 export const ASSIGNABLE_LEADERSHIP_ROLES: RoleKey[] = [
+  "campus_lead",
   "chairman",
   "vice_chairman",
   "secretary",

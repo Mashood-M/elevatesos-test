@@ -139,7 +139,7 @@ export function navGroupsForRole(
         label: "More",
         items: [
           { href: "/hq/developer", label: "Developer API", icon: I.developer },
-          { href: "/hq/notifications", label: "Alerts", icon: I.alerts },
+          { href: "/hq/notifications", label: "Notifications", icon: I.alerts },
           { href: "/hq/settings", label: "Settings", icon: I.settings },
           { href: "/hq/audit", label: "Audit", icon: I.audit },
           { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
@@ -169,7 +169,7 @@ export function navGroupsForRole(
       {
         label: "More",
         items: [
-          { href: "/notifications", label: "Alerts", icon: I.alerts },
+          { href: "/notifications", label: "Notifications", icon: I.alerts },
           { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
@@ -219,7 +219,7 @@ export function navGroupsForRole(
         label: "More",
         items: [
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
-          { href: "/notifications", label: "Alerts", icon: I.alerts },
+          { href: "/notifications", label: "Notifications", icon: I.alerts },
           { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
@@ -236,16 +236,13 @@ export function navGroupsForRole(
         { href: `${base}/events`, label: "Events", icon: I.events },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },
-        { href: `${base}/community`, label: "Community", icon: I.community },
-        { href: `${base}/forms`, label: "Forms", icon: I.forms },
         { href: `${base}/reports`, label: "Reports", icon: I.reports },
         {
           href: `${base}/announcements`,
           label: "Announcements",
           icon: I.announcements,
         },
-        { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
-        { href: "/notifications", label: "Alerts", icon: I.alerts },
+        { href: "/notifications", label: "Notifications", icon: I.alerts },
       ],
     },
     {

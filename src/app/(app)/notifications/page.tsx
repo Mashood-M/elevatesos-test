@@ -24,7 +24,7 @@ export default function NotificationsPage() {
       <PageHeader
         eyebrow="More"
         title="Notifications"
-        description="Alerts for your current session — reports, registrations, approvals, and certificates."
+        description="Notifications for your current session — reports, registrations, approvals, and certificates."
         actions={
           unread > 0 ? (
             <Button

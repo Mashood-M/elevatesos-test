@@ -95,7 +95,7 @@ export default function HqAlertsPage() {
     <div>
       <PageHeader
         eyebrow="More"
-        title="Alerts"
+        title="Notifications"
         description="HQ inbox and network broadcasts — reports, chapter signals, and org-wide announcements."
         actions={
           <div className="flex flex-wrap items-center gap-2">

@@ -88,15 +88,17 @@ export function chapterEyebrow(
   return "Explore";
 }
 
-/** Whether the current role may open this app pathname. */
 export function canAccessPath(
   pathname: string,
   roleKey: RoleKey,
   chapterSlug?: string,
 ): boolean {
+  if (pathname === "/leaderboards") {
+    return roleKey !== "student";
+  }
+
   if (
     pathname.startsWith("/profile/") ||
-    pathname === "/leaderboards" ||
     pathname === "/notifications" ||
     pathname === "/eos" ||
     pathname.startsWith("/eos/") ||
@@ -147,12 +149,14 @@ export function canAccessPath(
       "tasks",
       "resources",
       "calendar",
+      "community",
+      "forms",
     ];
     if (firstSeg && opsRoots.includes(firstSeg)) {
       return isExecutiveRole(roleKey) || isFacultyRole(roleKey);
     }
 
-    // Student-allowed: root + events/forms/clusters/projects/community/announcements/reports
+    // Student-allowed: root + events/clusters/projects/announcements/reports
     return true;
   }
 
@@ -218,10 +222,10 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
       access: "executive",
     },
     { title: "Events", subtitle: "Chapter events", href: `${base}/events`, access: "student" },
-    { title: "Forms", subtitle: "Chapter forms", href: `${base}/forms`, access: "student" },
+    { title: "Forms", subtitle: "Chapter forms", href: `${base}/forms`, access: "executive" },
     { title: "Clusters", subtitle: "Student clusters", href: `${base}/clusters`, access: "student" },
     { title: "Projects", subtitle: "Chapter projects", href: `${base}/projects`, access: "student" },
-    { title: "Community", subtitle: "Member directory", href: `${base}/community`, access: "student" },
+    { title: "Community", subtitle: "Member directory", href: `${base}/community`, access: "executive" },
     {
       title: "Announcements",
       subtitle: "Chapter updates",
@@ -250,12 +254,12 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
 
     // Shared / More
     {
-      title: "Alerts",
+      title: "Notifications",
       subtitle: isHqRole(roleKey) ? "HQ inbox & broadcasts" : "Your inbox",
       href: notificationsHref(roleKey),
       access: "shared",
     },
-    { title: "Leaderboards", subtitle: "Rankings", href: "/leaderboards", access: "shared" },
+    { title: "Leaderboards", subtitle: "Rankings", href: "/leaderboards", access: "executive" },
     {
       title: "Playbook",
       subtitle: "Chapter doctrine",

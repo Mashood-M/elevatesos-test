@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type {
   BrandKit,
   Chapter,
+  DemoUserSession,
   ElevatesStore,
   EventItem,
   FormDefinition,
@@ -383,7 +384,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 
-    let session: { userId: string; roleKey: RoleKey; chapterId?: string };
+    let session: DemoUserSession;
     if (authUser) {
       let matchedProfile = profiles.find((p) => p.id === authUser.id);
       if (!matchedProfile && authUser.email) {
@@ -424,6 +425,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           userId: matchedProfile.id,
           roleKey,
           chapterId: userRoleEntry?.chapterId ?? matchedProfile.chapterId,
+          authUserId: matchedProfile.id,
+          authRoleKey: roleKey,
         };
       } else {
         // Auth user exists but no profile row yet — infer from email or fallback to student
@@ -435,7 +438,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         else if (e.includes("faculty")) fallbackRole = "faculty_coordinator";
         else if (e.includes("cr")) fallbackRole = "class_representative";
 
-        session = { userId: authUser.id, roleKey: fallbackRole };
+        session = {
+          userId: authUser.id,
+          roleKey: fallbackRole,
+          authUserId: authUser.id,
+          authRoleKey: fallbackRole,
+        };
       }
     } else {
       // No authenticated user — empty session (middleware will redirect to /login)

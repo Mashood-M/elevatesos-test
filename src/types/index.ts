@@ -775,6 +775,8 @@ export interface DemoUserSession {
   userId: string;
   roleKey: RoleKey;
   chapterId?: string;
+  authUserId?: string;
+  authRoleKey?: RoleKey;
 }
 
 export interface ElevatesStore {

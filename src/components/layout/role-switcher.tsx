@@ -35,47 +35,51 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Determine the exact maximum role authority for the current user's authenticated account
+  // Determine the exact maximum role authority for the logged-in user account
   const effectiveMaxRole = useMemo<RoleKey>(() => {
-    // 1. If currently active role is an admin level role, use it directly
+    // 1. Check primary auth role key saved on original user login
+    const authRoleKey = session.authRoleKey ?? session.roleKey;
+    if (authRoleKey === "founder") return "founder";
+    if (authRoleKey === "hq_admin") return "hq_admin";
+    if (["campus_lead", "chairman"].includes(authRoleKey)) return "campus_lead";
+
+    // 2. Check current active session role key
     if (session.roleKey === "founder") return "founder";
     if (session.roleKey === "hq_admin") return "hq_admin";
     if (["campus_lead", "chairman"].includes(session.roleKey)) return "campus_lead";
 
-    // 2. If previewing a lower role (e.g., student), check the logged-in user's assigned profile roles
-    const currentProfile = store.profiles.find((p) => p.id === session.userId);
+    // 3. Look up original logged-in user profile in store profiles
+    const targetUserId = session.authUserId ?? session.userId;
+    const authProfile = store.profiles.find((p) => p.id === targetUserId);
     const userRoleEntries = store.userRoles.filter(
-      (ur) => ur.userId === currentProfile?.id || ur.userId === session.userId,
+      (ur) => ur.userId === authProfile?.id || ur.userId === targetUserId,
     );
 
-    // Check if the user has founder / HQ super admin role
     const isFounder =
       userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder") ||
-      (currentProfile?.email?.toLowerCase().includes("founder") ?? false) ||
-      (currentProfile?.id?.toLowerCase().includes("founder") ?? false);
+      (authProfile?.email?.toLowerCase().includes("founder") ?? false) ||
+      (authProfile?.id?.toLowerCase().includes("founder") ?? false);
     if (isFounder) return "founder";
 
-    // Check if the user has HQ Admin role
     const isHqAdmin =
       userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "hq_admin") ||
-      (currentProfile?.email?.toLowerCase().includes("admin") ?? false) ||
-      (currentProfile?.id?.toLowerCase().includes("admin") ?? false);
+      (authProfile?.email?.toLowerCase().includes("admin") ?? false) ||
+      (authProfile?.id?.toLowerCase().includes("admin") ?? false);
     if (isHqAdmin) return "hq_admin";
 
-    // Check if the user has Campus Lead / Chairman role
     const isCampusLead =
       userRoleEntries.some(
         (ur) =>
           store.roles.find((r) => r.id === ur.roleId)?.key === "campus_lead" ||
           store.roles.find((r) => r.id === ur.roleId)?.key === "chairman",
       ) ||
-      (currentProfile?.email?.toLowerCase().includes("chairman") ?? false) ||
-      (currentProfile?.id?.toLowerCase().includes("chairman") ?? false);
+      (authProfile?.email?.toLowerCase().includes("chairman") ?? false) ||
+      (authProfile?.id?.toLowerCase().includes("chairman") ?? false);
     if (isCampusLead) return "campus_lead";
 
     // Standard user (Class Rep, Student, Faculty) with no elevated role
     return session.roleKey;
-  }, [session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
+  }, [session.authRoleKey, session.authUserId, session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
 
   const personaList: SwitchablePersona[] = useMemo(() => {
     const currentRole = effectiveMaxRole;

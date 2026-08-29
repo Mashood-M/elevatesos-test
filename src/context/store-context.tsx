@@ -835,9 +835,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (profile && (profile.status ?? "active") === "disabled") {
             return s;
           }
+          const origAuthUserId = s.session.authUserId || s.session.userId;
+          const origAuthRoleKey = s.session.authRoleKey || s.session.roleKey;
           return {
             ...s,
-            session: { userId, roleKey, chapterId },
+            session: {
+              userId,
+              roleKey,
+              chapterId,
+              authUserId: origAuthUserId,
+              authRoleKey: origAuthRoleKey,
+            },
           };
         });
       },

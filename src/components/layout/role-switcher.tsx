@@ -35,58 +35,52 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Determine the effective maximum role authority for the current user session
+  // Determine the exact maximum role authority for the current user's authenticated account
   const effectiveMaxRole = useMemo<RoleKey>(() => {
-    // 1. Check if current active session role is HQ or Campus Lead
+    // 1. If currently active role is an admin level role, use it directly
     if (session.roleKey === "founder") return "founder";
     if (session.roleKey === "hq_admin") return "hq_admin";
     if (["campus_lead", "chairman"].includes(session.roleKey)) return "campus_lead";
 
-    // 2. If previewing a lower role (e.g. student), check user roles for the session user
+    // 2. If previewing a lower role (e.g., student), check the logged-in user's assigned profile roles
     const currentProfile = store.profiles.find((p) => p.id === session.userId);
     const userRoleEntries = store.userRoles.filter(
       (ur) => ur.userId === currentProfile?.id || ur.userId === session.userId,
     );
 
+    // Check if the user has founder / HQ super admin role
     const isFounder =
       userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder") ||
-      store.profiles.some(
-        (p) => (p.email?.toLowerCase().includes("founder") || p.id.includes("founder")) && p.id === session.userId,
-      );
+      (currentProfile?.email?.toLowerCase().includes("founder") ?? false) ||
+      (currentProfile?.id?.toLowerCase().includes("founder") ?? false);
     if (isFounder) return "founder";
 
+    // Check if the user has HQ Admin role
     const isHqAdmin =
       userRoleEntries.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "hq_admin") ||
-      store.profiles.some(
-        (p) => (p.email?.toLowerCase().includes("admin") || p.id.includes("admin")) && p.id === session.userId,
-      );
+      (currentProfile?.email?.toLowerCase().includes("admin") ?? false) ||
+      (currentProfile?.id?.toLowerCase().includes("admin") ?? false);
     if (isHqAdmin) return "hq_admin";
 
+    // Check if the user has Campus Lead / Chairman role
     const isCampusLead =
       userRoleEntries.some(
         (ur) =>
           store.roles.find((r) => r.id === ur.roleId)?.key === "campus_lead" ||
           store.roles.find((r) => r.id === ur.roleId)?.key === "chairman",
       ) ||
-      store.profiles.some(
-        (p) => (p.email?.toLowerCase().includes("chairman") || p.id.includes("chairman")) && p.id === session.userId,
-      );
+      (currentProfile?.email?.toLowerCase().includes("chairman") ?? false) ||
+      (currentProfile?.id?.toLowerCase().includes("chairman") ?? false);
     if (isCampusLead) return "campus_lead";
 
-    // Fallback: If founder account exists in system store profiles, grant founder switching
-    const hasFounderInStore = store.profiles.some((p) => {
-      const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
-      return uRoles.some((ur) => store.roles.find((r) => r.id === ur.roleId)?.key === "founder");
-    });
-    if (hasFounderInStore) return "founder";
-
+    // Standard user (Class Rep, Student, Faculty) with no elevated role
     return session.roleKey;
   }, [session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
 
   const personaList: SwitchablePersona[] = useMemo(() => {
     const currentRole = effectiveMaxRole;
 
-    // Standalone Student/Class Rep/Faculty without admin permissions -> NO role switcher
+    // Class Rep, Student, Faculty users DO NOT get a role switcher
     if (["class_representative", "student", "faculty_coordinator"].includes(currentRole)) {
       return [];
     }
@@ -113,7 +107,7 @@ export function RoleSwitcher() {
       }
     };
 
-    // Filter personas based on hierarchy rules:
+    // Enforce strict role switching permissions:
     // 1. HQ (founder): Can switch to ALL roles
     // 2. HQ Admin (hq_admin): Can switch to all roles EXCEPT HQ (founder)
     // 3. Campus Lead (campus_lead/chairman): Can switch to Campus Lead, Class Rep, Student only
@@ -129,8 +123,10 @@ export function RoleSwitcher() {
       if (currentRole === "founder") {
         isAllowed = true;
       } else if (currentRole === "hq_admin") {
+        // HQ Admin can switch to any role EXCEPT HQ (founder)
         isAllowed = roleKey !== "founder";
       } else if (["campus_lead", "chairman"].includes(currentRole)) {
+        // Campus Lead can switch ONLY to Campus Lead, Class Rep, Student
         isAllowed = ["campus_lead", "chairman", "class_representative", "student"].includes(roleKey);
       }
 
@@ -150,12 +146,14 @@ export function RoleSwitcher() {
     return results;
   }, [effectiveMaxRole, store.profiles, store.userRoles, store.roles, store.chapters]);
 
-  // If no switchable personas allowed for this role, return null
+  // If no switchable personas allowed for this user's role authority, hide switcher completely
   if (personaList.length <= 1) {
     return null;
   }
 
-  const currentPersona = personaList.find((p) => p.userId === session.userId && p.roleKey === session.roleKey) || {
+  const currentPersona = personaList.find(
+    (p) => p.userId === session.userId && p.roleKey === session.roleKey,
+  ) || {
     label: roleKeyLabel(session.roleKey),
     userId: session.userId,
     roleKey: session.roleKey,

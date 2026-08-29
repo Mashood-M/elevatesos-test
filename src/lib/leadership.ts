@@ -33,8 +33,19 @@ export function isSingletonLeadershipRole(key: RoleKey): boolean {
 /** Display names for Elevates Executive and Leadership roles */
 export function roleKeyLabel(key: RoleKey): string {
   switch (key) {
+    case "founder":
+      return "HQ";
+    case "hq_admin":
+      return "HQ Admin";
+    case "campus_lead":
     case "chairman":
-      return "Chairman (Campus Lead)";
+      return "Campus Lead";
+    case "class_representative":
+      return "Class Rep";
+    case "student":
+      return "Student";
+    case "faculty_coordinator":
+      return "Faculty";
     case "vice_chairman":
       return "Vice Chairman";
     case "secretary":
@@ -55,14 +66,6 @@ export function roleKeyLabel(key: RoleKey): string {
       return "Innovation Team Member";
     case "elevates_coordinator":
       return "Elevates Coordinator";
-    case "class_representative":
-      return "Class Representative";
-    case "faculty_coordinator":
-      return "Faculty Coordinator";
-    case "founder":
-      return "Founder";
-    case "hq_admin":
-      return "HQ Admin";
     default:
       return key
         .split("_")

@@ -11,10 +11,10 @@ import { createClient } from "@/lib/supabase/client";
 import { navGroupsForRole } from "@/lib/nav";
 import { isHqRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
-import type { RoleKey } from "@/types";
-import { Select } from "@/components/ui/input";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
+import { RoleSwitcher } from "@/components/layout/role-switcher";
+import { roleKeyLabel } from "@/lib/leadership";
 
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
@@ -54,28 +54,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : chapter
       ? `${chapter.slug.toUpperCase()} chapter`
       : "Elevates OS";
-  const availablePersonas = useMemo(() => {
-    // Non-HQ users do not get a persona switcher
-    if (!isHqRole(session.roleKey)) {
-      return [];
-    }
-
-    // Purely dynamic persona list derived directly from active database profiles in store
-    return (store.profiles ?? []).map((p) => {
-      const uRoles = store.userRoles.filter((ur) => ur.userId === p.id);
-      const firstRoleId = uRoles[0]?.roleId;
-      const rObj = store.roles.find((r) => r.id === firstRoleId);
-      const roleKey = (rObj?.key ?? "student") as RoleKey;
-      const ch = store.chapters.find((c) => c.id === p.chapterId);
-      const chName = ch ? ch.name : "HQ";
-      return {
-        label: `${p.fullName} (${rObj?.name ?? roleKey}) · ${chName}`,
-        userId: p.id,
-        roleKey,
-        chapterId: p.chapterId,
-      };
-    });
-  }, [session.roleKey, store.profiles, store.userRoles, store.roles, store.chapters]);
 
   async function handleLogout() {
     try {
@@ -181,7 +159,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-[13px] font-semibold">
                   {profile?.fullName}
                 </p>
-                <p className="truncate text-[11px] text-text-mute">{role?.name}</p>
+                <p className="truncate text-[11px] text-text-mute">{roleKeyLabel(session.roleKey)}</p>
               </div>
             </Link>
             <button
@@ -194,41 +172,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <LogOut size={15} />
             </button>
           </div>
-          {availablePersonas.length > 1 ? (
-            <Select
-              className="h-10 w-full rounded-full bg-bg text-[12px]"
-              value={`${session.userId}|${session.roleKey}|${session.chapterId ?? ""}`}
-              onChange={(e) => {
-                const [userId, roleKey, chapterId] = e.target.value.split("|");
-                const nextRole = roleKey as RoleKey;
-                const target = store.profiles.find((p) => p.id === userId);
-                if (target && (target.status ?? "active") === "disabled") {
-                  return;
-                }
-                setSession(userId, nextRole, chapterId || undefined);
-                const nextSlug =
-                  store.chapters.find((c) => c.id === (chapterId || undefined))
-                    ?.slug ?? store.chapters?.[0]?.slug ?? "";
-                router.push(homeForRole(nextRole, nextSlug));
-                setOpen(false);
-              }}
-              aria-label="Switch persona"
-            >
-              {availablePersonas
-                .filter((p) => {
-                  const target = store.profiles.find((pr) => pr.id === p.userId);
-                  return !target || (target.status ?? "active") !== "disabled";
-                })
-                .map((p) => (
-                  <option
-                    key={p.label}
-                    value={`${p.userId}|${p.roleKey}|${p.chapterId ?? ""}`}
-                  >
-                    {p.label}
-                  </option>
-                ))}
-            </Select>
-          ) : null}
+          <RoleSwitcher />
         </div>
       </aside>
 
@@ -298,7 +242,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {firstName}
                   </span>
                   <span className="block truncate text-[10px] text-text-mute">
-                    {role?.name}
+                    {roleKeyLabel(session.roleKey)}
                   </span>
                 </span>
               </Link>

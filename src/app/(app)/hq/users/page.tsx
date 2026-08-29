@@ -11,8 +11,67 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
-import { CheckSquare, Square, ShieldCheck, Sliders, Check } from "lucide-react";
+import { CheckSquare, Square, ShieldCheck } from "lucide-react";
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
+
+// The 6 canonical roles with their powers description
+const SIX_ROLES: {
+  key: RoleKey;
+  label: string;
+  scope: "hq" | "chapter";
+  powers: string;
+}[] = [
+  {
+    key: "founder",
+    label: "HQ",
+    scope: "hq",
+    powers: "Super admin · Full org access · Assign all roles · Switch all roles · Manage chapters & users",
+  },
+  {
+    key: "hq_admin",
+    label: "HQ Admin",
+    scope: "hq",
+    powers: "HQ-assigned intern · Manage chapters · Assign Campus Lead / Class Rep / Student / Faculty · Cannot assign HQ role",
+  },
+  {
+    key: "campus_lead",
+    label: "Campus Lead",
+    scope: "chapter",
+    powers: "Appointed by HQ / HQ Admin · Full chapter dashboard · Assign Class Rep & Student · Role-switch to Class Rep / Student preview",
+  },
+  {
+    key: "class_representative",
+    label: "Class Rep",
+    scope: "chapter",
+    powers: "Assigned by Campus Lead · Attendance, events, and report access · No role switching",
+  },
+  {
+    key: "student",
+    label: "Student",
+    scope: "chapter",
+    powers: "Standard member · Events, clusters, projects, announcements · No role switching",
+  },
+  {
+    key: "faculty_coordinator",
+    label: "Faculty",
+    scope: "chapter",
+    powers: "Faculty window only · Monitor student activities · No role switching",
+  },
+];
+
+/** Which roles the current admin can assign based on their own role */
+function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
+  if (currentRoleKey === "founder") {
+    return SIX_ROLES.map((r) => r.key);
+  }
+  if (currentRoleKey === "hq_admin") {
+    return SIX_ROLES.filter((r) => r.key !== "founder").map((r) => r.key);
+  }
+  if (currentRoleKey === "campus_lead") {
+    return ["class_representative", "student"];
+  }
+  return [];
+}
 
 
 type CreateDraft = {
@@ -45,7 +104,7 @@ function looksLikeEmail(value: string) {
 }
 
 export default function HqUsersPage() {
-  const { store, createUser, updateUser, setUserRoles, setRolePermission } = useStore();
+  const { store, createUser, updateUser, setUserRoles } = useStore();
   const { session } = useCurrentUser();
   const canManage = isSuperAdmin(session.roleKey);
 
@@ -64,7 +123,11 @@ export default function HqUsersPage() {
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [editError, setEditError] = useState("");
   const [flash, setFlash] = useState("");
-  const [permissionsModalUser, setPermissionsModalUser] = useState<Profile | null>(null);
+  const [roleModalUser, setRoleModalUser] = useState<Profile | null>(null);
+  // multi-select: array of selected roleKeys
+  const [roleModalSelected, setRoleModalSelected] = useState<RoleKey[]>([]);
+  // per-role chapter id map: { [roleKey]: chapterId }
+  const [roleModalChapters, setRoleModalChapters] = useState<Record<string, string>>({});
 
   const hqRoles = store.roles.filter((r) => r.scope === "hq");
   const chapterRoles = store.roles.filter((r) => r.scope === "chapter");
@@ -72,22 +135,7 @@ export default function HqUsersPage() {
     q.trim() || filterChapter || filterRole || filterStatus !== "all",
   );
 
-  const grantedByRole = useMemo(() => {
-    const roleById = new Map(store.roles.map((r) => [r.id, r]));
-    const permById = new Map(store.permissions.map((p) => [p.id, p]));
-    const map = new Map<RoleKey, Set<string>>();
-    for (const role of store.roles) {
-      map.set(role.key, new Set());
-    }
-    for (const rp of store.rolePermissions) {
-      if (!rp.allowed) continue;
-      const role = roleById.get(rp.roleId);
-      const perm = permById.get(rp.permissionId);
-      if (!role || !perm) continue;
-      map.get(role.key)?.add(perm.key);
-    }
-    return map;
-  }, [store.roles, store.permissions, store.rolePermissions]);
+  const canAssign = useMemo(() => assignableRoles(session.roleKey), [session.roleKey]);
 
 
   const rows = useMemo(() => {
@@ -596,71 +644,41 @@ export default function HqUsersPage() {
                     </div>
                   ) : null}
 
-                  {/* FOUNDER / SUPER ADMIN PERMISSION TICKS SETUP */}
-                  {canManage ? (
+                  {/* ROLE ASSIGNMENT SECTION */}
+                  {canAssign.length > 0 ? (
                     <div className="md:col-span-2 pt-3 border-t border-border space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold text-text flex items-center gap-1.5">
-                            <ShieldCheck size={15} className="text-cyan" />
-                            Role Permission Ticks Matrix (Founder / Super Admin Setup)
-                          </p>
-                          <p className="text-[11px] text-text-dim">
-                            Granular tick controls for role: <span className="font-mono text-cyan font-semibold">{roleKeyLabel(editDraft.roleKey)}</span>
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              store.permissions.forEach((p) =>
-                                setRolePermission(editDraft.roleKey, p.key, true),
-                              );
-                            }}
-                            className="text-[10px] font-mono bg-bg px-2 py-0.5 rounded border border-border hover:bg-bg-hover text-text"
-                          >
-                            Tick All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              store.permissions.forEach((p) =>
-                                setRolePermission(editDraft.roleKey, p.key, false),
-                              );
-                            }}
-                            className="text-[10px] font-mono bg-bg px-2 py-0.5 rounded border border-border hover:bg-bg-hover text-text-mute"
-                          >
-                            Untick All
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 bg-bg p-3 rounded-[var(--radius-sm)] border border-border max-h-56 overflow-y-auto">
-                        {store.permissions.map((perm) => {
-                          const allowed = grantedByRole.get(editDraft.roleKey)?.has(perm.key) ?? false;
+                      <p className="text-xs font-semibold text-text flex items-center gap-1.5">
+                        <ShieldCheck size={15} className="text-cyan" />
+                        Assign Role
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {SIX_ROLES.filter((r) => canAssign.includes(r.key)).map((role) => {
+                          const isSelected = editDraft.roleKey === role.key;
                           return (
                             <button
-                              key={perm.id}
+                              key={role.key}
                               type="button"
                               onClick={() =>
-                                setRolePermission(editDraft.roleKey, perm.key, !allowed)
+                                setEditDraft((d) =>
+                                  d ? { ...d, roleKey: role.key as RoleKey } : d,
+                                )
                               }
-                              className={`flex items-start gap-2 p-2 rounded text-left transition border ${
-                                allowed
-                                  ? "border-[var(--success)]/30 bg-[var(--success-soft)]/20"
-                                  : "border-border/60 bg-bg-panel hover:bg-bg"
+                              className={`flex items-start gap-2.5 p-3 rounded-[var(--radius-sm)] text-left border transition-all ${
+                                isSelected
+                                  ? "border-[var(--accent)] bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30"
+                                  : "border-border bg-bg-panel hover:bg-bg hover:border-border-hover"
                               }`}
                             >
-                              <span className="mt-0.5">
-                                {allowed ? (
-                                  <CheckSquare size={14} className="text-green" />
+                              <span className="mt-0.5 shrink-0">
+                                {isSelected ? (
+                                  <CheckSquare size={14} className="text-[var(--accent)]" />
                                 ) : (
                                   <Square size={14} className="text-text-mute" />
                                 )}
                               </span>
                               <div className="min-w-0">
-                                <p className="text-[11px] font-semibold text-text truncate">{perm.name}</p>
-                                <p className="text-[9px] font-mono text-text-mute truncate">{perm.key}</p>
+                                <p className="text-[12px] font-semibold text-text">{role.label}</p>
+                                <p className="text-[10px] text-text-dim mt-0.5 leading-snug">{role.powers}</p>
                               </div>
                             </button>
                           );
@@ -753,16 +771,30 @@ export default function HqUsersPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  {canManage ? (
+                  {canAssign.length > 0 ? (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setPermissionsModalUser(profile)}
-                      title="Manage role permissions with tick options"
+                      onClick={() => {
+                        // Pre-populate existing roles & chapter assignments
+                        const urs = store.userRoles.filter((ur) => ur.userId === profile.id);
+                        const existingKeys = urs
+                          .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key)
+                          .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
+                        const chaptersMap: Record<string, string> = {};
+                        urs.forEach((ur) => {
+                          const rkey = store.roles.find((r) => r.id === ur.roleId)?.key;
+                          if (rkey && ur.chapterId) chaptersMap[rkey] = ur.chapterId;
+                        });
+                        setRoleModalSelected(existingKeys.length > 0 ? existingKeys : []);
+                        setRoleModalChapters(chaptersMap);
+                        setRoleModalUser(profile);
+                      }}
+                      title="Assign roles"
                       className="text-cyan flex items-center gap-1"
                     >
-                      <Sliders size={13} />
-                      Permissions
+                      <ShieldCheck size={13} />
+                      Roles
                     </Button>
                   ) : null}
                   <Button
@@ -874,99 +906,118 @@ export default function HqUsersPage() {
         </form>
       </Dialog>
 
-      {/* FOUNDER / SUPER ADMIN PERMISSIONS DIALOG MODAL */}
-      {permissionsModalUser ? (() => {
-        const userRoles = store.userRoles.filter((ur) => ur.userId === permissionsModalUser.id);
-        const roles = userRoles.map((ur) => store.roles.find((r) => r.id === ur.roleId)).filter(Boolean);
-        const activeRole = roles[0] ?? store.roles.find((r) => r.key === "student") ?? store.roles[0];
-
+      {/* ROLE ASSIGNMENT MODAL — multi-select */}
+      {roleModalUser ? (() => {
+        const chapterNeeded = roleModalSelected.filter(
+          (k) => SIX_ROLES.find((r) => r.key === k)?.scope === "chapter",
+        );
+        const canSave =
+          roleModalSelected.length > 0 &&
+          chapterNeeded.every((k) => Boolean(roleModalChapters[k]));
         return (
           <Dialog
-            open={Boolean(permissionsModalUser)}
-            onClose={() => setPermissionsModalUser(null)}
-            title={`Role & Permissions Setup — ${permissionsModalUser.fullName}`}
-            description={`Founder & Super Admin permission ticks manager for ${permissionsModalUser.email}`}
+            open={Boolean(roleModalUser)}
+            onClose={() => setRoleModalUser(null)}
+            title={`Assign Roles — ${roleModalUser.fullName}`}
+            description={`Check all roles to assign to ${roleModalUser.email}. Multiple roles allowed.`}
           >
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded bg-bg border border-border">
-                <div>
-                  <p className="text-xs font-semibold text-text">Active Role: {activeRole?.name}</p>
-                  <p className="text-[11px] text-text-dim">Key: {activeRole?.key} · Scope: {activeRole?.scope}</p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeRole) {
-                        store.permissions.forEach((p) =>
-                          setRolePermission(activeRole.key, p.key, true),
+              {/* Role cards — multi checkbox */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SIX_ROLES.filter((r) => canAssign.includes(r.key)).map((role) => {
+                  const isChecked = roleModalSelected.includes(role.key as RoleKey);
+                  return (
+                    <button
+                      key={role.key}
+                      type="button"
+                      onClick={() => {
+                        setRoleModalSelected((prev) =>
+                          isChecked
+                            ? prev.filter((k) => k !== role.key)
+                            : [...prev, role.key as RoleKey],
                         );
-                      }
-                    }}
-                    className="text-[10px] font-mono bg-bg-panel px-2 py-1 rounded border border-border hover:bg-bg-hover text-text"
-                  >
-                    Tick All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeRole) {
-                        store.permissions.forEach((p) =>
-                          setRolePermission(activeRole.key, p.key, false),
-                        );
-                      }
-                    }}
-                    className="text-[10px] font-mono bg-bg-panel px-2 py-1 rounded border border-border hover:bg-bg-hover text-text-mute"
-                  >
-                    Untick All
-                  </button>
-                </div>
+                      }}
+                      className={`flex items-start gap-3 p-3 rounded-[var(--radius-sm)] text-left border transition-all ${
+                        isChecked
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30"
+                          : "border-border bg-bg-panel hover:bg-bg hover:border-border-hover"
+                      }`}
+                    >
+                      <span className="mt-0.5 shrink-0">
+                        {isChecked ? (
+                          <CheckSquare size={15} className="text-[var(--accent)]" />
+                        ) : (
+                          <Square size={15} className="text-text-mute" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[12px] font-semibold text-text">{role.label}</p>
+                          <span className={`text-[9px] font-mono px-1 py-0.5 rounded ${
+                            role.scope === "hq"
+                              ? "bg-[var(--accent)]/15 text-[var(--accent)]"
+                              : "bg-bg text-text-mute border border-border"
+                          }`}>
+                            {role.scope === "hq" ? "HQ" : "Chapter"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-text-dim mt-0.5 leading-snug">{role.powers}</p>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-text flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-cyan" />
-                  Select Permission Ticks (Click to Grant / Revoke)
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-bg p-3 rounded border border-border max-h-72 overflow-y-auto">
-                  {store.permissions.map((perm) => {
-                    const allowed = activeRole ? (grantedByRole.get(activeRole.key)?.has(perm.key) ?? false) : false;
+              {/* Per-role chapter selectors — one per selected chapter-scoped role */}
+              {chapterNeeded.length > 0 ? (
+                <div className="space-y-2 rounded-[var(--radius-sm)] border border-border bg-bg p-3">
+                  <p className="text-[11px] font-semibold text-text-dim">Select chapter for each chapter-scoped role:</p>
+                  {chapterNeeded.map((rk) => {
+                    const roleInfo = SIX_ROLES.find((r) => r.key === rk);
                     return (
-                      <button
-                        key={perm.id}
-                        type="button"
-                        onClick={() => {
-                          if (activeRole) {
-                            setRolePermission(activeRole.key, perm.key, !allowed);
-                          }
-                        }}
-                        className={`flex items-start gap-2.5 p-2 rounded text-left transition border ${
-                          allowed
-                            ? "border-[var(--success)]/40 bg-[var(--success-soft)]/20"
-                            : "border-border/60 bg-bg-panel hover:bg-bg"
-                        }`}
-                      >
-                        <span className="mt-0.5">
-                          {allowed ? (
-                            <CheckSquare size={15} className="text-green" />
-                          ) : (
-                            <Square size={15} className="text-text-mute" />
-                          )}
+                      <div key={rk} className="flex items-center gap-3">
+                        <span className="w-24 shrink-0 text-[11px] font-semibold text-text">
+                          {roleInfo?.label}
                         </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-text truncate">{perm.name}</p>
-                          <p className="text-[10px] font-mono text-text-mute truncate">{perm.key}</p>
-                          <p className="text-[10px] text-text-dim line-clamp-1">{perm.description}</p>
-                        </div>
-                      </button>
+                        <Select
+                          value={roleModalChapters[rk] ?? ""}
+                          onChange={(e) =>
+                            setRoleModalChapters((prev) => ({ ...prev, [rk]: e.target.value }))
+                          }
+                        >
+                          <option value="">Select chapter…</option>
+                          {store.chapters.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </Select>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
+              ) : null}
 
-              <div className="flex justify-end pt-3 border-t border-border">
-                <Button variant="primary" onClick={() => setPermissionsModalUser(null)}>
-                  Done & Close
+              {roleModalSelected.length === 0 ? (
+                <p className="text-[11px] text-text-mute text-center py-1">Select at least one role above.</p>
+              ) : null}
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <Button variant="ghost" onClick={() => setRoleModalUser(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    if (!roleModalUser || !canSave) return;
+                    const assignments: UserRoleAssignmentInput[] = roleModalSelected.map((rk) => {
+                      const isHq = SIX_ROLES.find((r) => r.key === rk)?.scope === "hq";
+                      return isHq
+                        ? { roleKey: rk }
+                        : { roleKey: rk, chapterId: roleModalChapters[rk] };
+                    });
+                    setUserRoles(roleModalUser.id, assignments);
+                    setRoleModalUser(null);
+                    flashMsg(`${assignments.length} role(s) assigned`);
+                  }}
+                >
+                  Assign {roleModalSelected.length > 0 ? `${roleModalSelected.length} Role${roleModalSelected.length > 1 ? "s" : ""}` : "Role"}
                 </Button>
               </div>
             </div>

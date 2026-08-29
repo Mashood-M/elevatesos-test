@@ -89,33 +89,49 @@ export function RoleSwitcher() {
     return session.roleKey;
   }, [session.authRoleKey, session.authUserId, session.roleKey, session.userId, store.profiles, store.userRoles, store.roles]);
 
+  // Build switchable roles from the account's ACTUAL assigned roles in the store
   const allowedRoles = useMemo<SwitchableRole[]>(() => {
-    const currentRole = effectiveMaxRole;
-
-    // Single-role accounts (Class Rep, Student, Faculty) do not get a role switcher
-    if (["class_representative", "student", "faculty_coordinator"].includes(currentRole)) {
+    // Standard accounts (Class Rep, Student, Faculty) have no role switcher
+    if (["class_representative", "student", "faculty_coordinator"].includes(effectiveMaxRole)) {
       return [];
     }
 
-    if (currentRole === "founder") {
-      // HQ (Super Admin): Can switch to ALL roles
-      return ALL_ROLES;
+    const targetUserId = session.authUserId ?? session.userId;
+    const userRoleEntries = store.userRoles.filter((ur: any) => ur.userId === targetUserId);
+
+    const seen = new Set<RoleKey>();
+    const assignedRoles: SwitchableRole[] = [];
+
+    for (const ur of userRoleEntries) {
+      const roleObj = store.roles.find((r) => r.id === ur.roleId);
+      if (!roleObj) continue;
+      const rk = roleObj.key as RoleKey;
+      if (seen.has(rk)) continue;
+
+      // Enforce hierarchy caps
+      if (effectiveMaxRole === "hq_admin" && rk === "founder") continue;
+      if (
+        ["campus_lead", "chairman"].includes(effectiveMaxRole) &&
+        !["campus_lead", "class_representative", "student"].includes(rk)
+      ) continue;
+
+      seen.add(rk);
+      const staticInfo = ALL_ROLES.find((a) => a.roleKey === rk);
+      assignedRoles.push({
+        label: staticInfo?.label ?? roleKeyLabel(rk),
+        roleKey: rk,
+        badge: staticInfo?.badge ?? roleKeyLabel(rk),
+      });
     }
 
-    if (currentRole === "hq_admin") {
-      // HQ Admin: Can switch to all roles EXCEPT HQ
-      return ALL_ROLES.filter((r) => r.roleKey !== "founder");
+    // Fallback if store not loaded yet — show the session's current role at minimum
+    if (assignedRoles.length === 0) {
+      const fallback = ALL_ROLES.find((r) => r.roleKey === effectiveMaxRole);
+      if (fallback) assignedRoles.push(fallback);
     }
 
-    if (["campus_lead", "chairman"].includes(currentRole)) {
-      // Campus Lead: Can switch ONLY to Campus Lead, Class Rep, Student
-      return ALL_ROLES.filter((r) =>
-        ["campus_lead", "class_representative", "student"].includes(r.roleKey),
-      );
-    }
-
-    return [];
-  }, [effectiveMaxRole]);
+    return assignedRoles;
+  }, [effectiveMaxRole, session.authUserId, session.userId, store.userRoles, store.roles]);
 
   // If no switchable roles allowed for this user's authority level, hide switcher
   if (allowedRoles.length <= 1) {
@@ -133,10 +149,17 @@ export function RoleSwitcher() {
   const loggedUserChapterId = session.chapterId;
 
   const handleSelect = (target: SwitchableRole) => {
-    // Keep the SAME single user account (e.g. admin@elevates.live), only switch active role!
-    setSession(loggedUserId, target.roleKey, loggedUserChapterId);
-    const targetChapter = store.chapters.find((c) => c.id === loggedUserChapterId) || store.chapters[0];
-    const nextSlug = targetChapter?.slug ?? "eranad-knowledge-city";
+    const targetUserId = session.authUserId ?? session.userId;
+    // Find the chapterId stored for this specific role assignment
+    const urForRole = store.userRoles.find(
+      (ur: any) =>
+        ur.userId === targetUserId &&
+        store.roles.find((r) => r.id === ur.roleId)?.key === target.roleKey,
+    );
+    const chapterId = (urForRole as any)?.chapterId ?? loggedUserChapterId;
+    setSession(loggedUserId, target.roleKey, chapterId);
+    const targetChapter = store.chapters.find((c) => c.id === chapterId) || store.chapters[0];
+    const nextSlug = targetChapter?.slug ?? "";
     router.push(homeForRole(target.roleKey, nextSlug));
     setIsOpen(false);
   };

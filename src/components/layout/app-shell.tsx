@@ -147,6 +147,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           className="space-y-3 border-t border-[var(--rail-border)] py-4"
           style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
         >
+          <RoleSwitcher />
           <div className="flex items-center justify-between gap-2 px-0.5">
             <Link
               href={profile ? `/profile/${profile.id}` : "/login"}
@@ -172,7 +173,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <LogOut size={15} />
             </button>
           </div>
-          <RoleSwitcher />
         </div>
       </aside>
 

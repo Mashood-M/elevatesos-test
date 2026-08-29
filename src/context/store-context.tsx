@@ -1772,8 +1772,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .from("event_registrations")
             .update({ status })
             .in("id", registrationIds)
-            .then(({ error }) => {
-              if (error) console.warn("Batch update registration error:", error);
+            .then((res: { error: unknown }) => {
+              if (res.error) console.warn("Batch update registration error:", res.error);
             });
         }
         return true;

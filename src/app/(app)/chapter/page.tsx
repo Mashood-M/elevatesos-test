@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { homeForRole, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
 
 export default function ChapterIndexPage() {
@@ -19,18 +18,10 @@ export default function ChapterIndexPage() {
       store.chapters.find((c) => c.status === "active") ??
       store.chapters[0];
 
-    const slug = chapter?.slug ?? "ekc";
-    
+    const slug = chapter?.slug ?? "eranad-knowledge-city";
+
     if (isHqRole(session.roleKey)) {
       router.replace("/hq");
-      return;
-    }
-    if (isFacultyRole(session.roleKey)) {
-      router.replace("/faculty");
-      return;
-    }
-    if (isExecutiveRole(session.roleKey)) {
-      router.replace("/executive");
       return;
     }
 

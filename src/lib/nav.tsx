@@ -156,8 +156,7 @@ export function navGroupsForRole(
       {
         label: "Faculty",
         items: [
-          { href: "/faculty", label: "Home", icon: I.home },
-          { href: base, label: "Chapter", icon: I.chapter },
+          { href: base, label: "Chapter Overview", icon: I.home },
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
           { href: `${base}/students`, label: "Students", icon: I.students },
@@ -183,8 +182,7 @@ export function navGroupsForRole(
       {
         label: "Home",
         items: [
-          { href: "/executive", label: "Desk", icon: I.desk },
-          { href: base, label: "Chapter", icon: I.chapter },
+          { href: base, label: "Chapter Workspace", icon: I.desk },
           { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
         ],
       },

@@ -141,7 +141,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         }
       : emptyStore().organization;
 
-    const chapters: Chapter[] = (chapterRows ?? []).map((c) => ({
+    const chapters: Chapter[] = (chapterRows ?? []).map((c: Record<string, any>) => ({
       id: c.id,
       organizationId: c.organization_id,
       name: c.name,
@@ -162,7 +162,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     }));
 
     const events: EventItem[] =
-      eventRows?.map((e) => ({
+      eventRows?.map((e: Record<string, any>) => ({
         id: e.id,
         chapterId: e.chapter_id,
         clusterId: e.cluster_id ?? undefined,
@@ -193,7 +193,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const projects: Project[] =
-      projectRows?.map((p) => ({
+      projectRows?.map((p: Record<string, any>) => ({
         id: p.id,
         chapterId: p.chapter_id,
         clusterId: p.cluster_id ?? undefined,
@@ -212,7 +212,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const forms: FormDefinition[] =
-      formRows?.map((f) => ({
+      formRows?.map((f: Record<string, any>) => ({
         id: f.id,
         purpose: f.purpose ?? "custom",
         title: f.title,
@@ -226,7 +226,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const profiles: Profile[] =
-      profileRows?.map((p) => ({
+      profileRows?.map((p: Record<string, any>) => ({
         id: p.id,
         email: p.email,
         fullName: p.full_name,
@@ -252,7 +252,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const reports =
-      reportRows?.map((r) => ({
+      reportRows?.map((r: Record<string, any>) => ({
         id: r.id,
         chapterId: r.chapter_id,
         type: r.type,
@@ -269,7 +269,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const certificates =
-      certRows?.map((c) => ({
+      certRows?.map((c: Record<string, any>) => ({
         id: c.id,
         certificateId: c.certificate_id,
         eventId: c.event_id,
@@ -280,7 +280,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const registrations =
-      regRows?.map((r) => ({
+      regRows?.map((r: Record<string, any>) => ({
         id: r.id,
         eventId: r.event_id,
         userId: r.user_id ?? "guest",
@@ -293,7 +293,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const attendance =
-      attRows?.map((a) => ({
+      attRows?.map((a: Record<string, any>) => ({
         id: a.id,
         eventId: a.event_id,
         registrationId: a.registration_id,
@@ -305,7 +305,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const roles =
-      roleRows?.map((r) => ({
+      roleRows?.map((r: Record<string, any>) => ({
         id: r.id,
         key: r.key,
         name: r.name,
@@ -314,7 +314,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const permissions =
-      permRows?.map((p) => ({
+      permRows?.map((p: Record<string, any>) => ({
         id: p.id,
         key: p.key,
         name: p.name,
@@ -322,14 +322,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const rolePermissions =
-      rpRows?.map((rp) => ({
+      rpRows?.map((rp: Record<string, any>) => ({
         roleId: rp.role_id,
         permissionId: rp.permission_id,
         allowed: Boolean(rp.allowed),
       })) ?? [];
 
     const userRoles =
-      urRows?.map((ur) => ({
+      urRows?.map((ur: Record<string, any>) => ({
         id: ur.id,
         userId: ur.user_id,
         roleId: ur.role_id,
@@ -339,7 +339,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const leadershipTerms =
-      ltRows?.map((lt) => ({
+      ltRows?.map((lt: Record<string, any>) => ({
         id: lt.id,
         chapterId: lt.chapter_id,
         academicYear: lt.academic_year,
@@ -351,7 +351,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const leadershipAssignments =
-      laRows?.map((la) => ({
+      laRows?.map((la: Record<string, any>) => ({
         id: la.id,
         termId: la.term_id,
         userId: la.user_id,
@@ -360,7 +360,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const eventPermissions =
-      epRows?.map((ep) => ({
+      epRows?.map((ep: Record<string, any>) => ({
         id: ep.id,
         eventId: ep.event_id,
         userId: ep.user_id,
@@ -372,7 +372,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })) ?? [];
 
     const clusters =
-      clusterRows?.map((cl) => ({
+      clusterRows?.map((cl: Record<string, any>) => ({
         id: cl.id,
         chapterId: cl.chapter_id,
         name: cl.name,
@@ -395,13 +395,13 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
 
       if (matchedProfile) {
         const userRoleEntry = userRoles.find(
-          (ur) => ur.userId === matchedProfile.id || ur.userId === authUser.id
+          (ur: Record<string, any>) => ur.userId === matchedProfile.id || ur.userId === authUser.id
         );
         
         let roleKey: RoleKey | undefined = undefined;
         if (userRoleEntry) {
           if (userRoleEntry.roleId) {
-            const roleObj = roles.find((r) => r.id === userRoleEntry.roleId);
+            const roleObj = roles.find((r: Record<string, any>) => r.id === userRoleEntry.roleId);
             if (roleObj?.key) roleKey = roleObj.key as RoleKey;
           }
           if (!roleKey && userRoleEntry.roleKey) {

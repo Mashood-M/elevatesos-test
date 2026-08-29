@@ -61,15 +61,19 @@ const SIX_ROLES: {
 
 /** Which roles the current admin can assign based on their own role */
 function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
+  // HQ (founder) — can give all 6 roles
   if (currentRoleKey === "founder") {
     return SIX_ROLES.map((r) => r.key);
   }
+  // HQ Admin — can give Campus Lead, Faculty, Student only
   if (currentRoleKey === "hq_admin") {
-    return SIX_ROLES.filter((r) => r.key !== "founder").map((r) => r.key);
+    return ["campus_lead", "faculty_coordinator", "student"];
   }
+  // Campus Lead — can give Class Rep only
   if (currentRoleKey === "campus_lead") {
-    return ["class_representative", "student"];
+    return ["class_representative"];
   }
+  // Everyone else — no assignment power
   return [];
 }
 

@@ -37,6 +37,8 @@ export default function ChapterSettingsPage({
       isHqRole(session.roleKey) ||
       isFacultyRole(session.roleKey) ||
       hasPermission(store, session.roleKey, "chapter.manage") ||
+      session.roleKey === "campus_lead" ||
+      session.roleKey === "class_representative" ||
       session.roleKey === "chairman" ||
       session.roleKey === "secretary"
     );
@@ -176,22 +178,7 @@ export default function ChapterSettingsPage({
         <p className="mb-4 text-[13px] text-[var(--accent)]">{flash}</p>
       ) : null}
 
-      <TerminalPanel title="Onboarding" meta="Share with campus" className="mb-4">
-        <p className="text-[13px] text-text-dim">
-          Anyone can open the join page to request chapter membership.
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <code className="rounded-[10px] bg-bg px-3 py-2 text-[12px] text-text">
-            {joinPath}
-          </code>
-          <Button type="button" variant="orange" onClick={copyJoinLink}>
-            {joinCopied ? "Copied" : "Copy join link"}
-          </Button>
-          <Link href={joinPath}>
-            <Button variant="ghost">Open join page</Button>
-          </Link>
-        </div>
-      </TerminalPanel>
+
 
       {canManage ? (
         <div className="mb-6 space-y-6">

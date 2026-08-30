@@ -272,6 +272,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <Link
+                href={isHqRole(session.roleKey) || session.roleKey === "campus_lead" || session.roleKey === "class_representative" ? `/chapter/${chapterSlug}/settings` : "/join"}
+                className="hidden sm:flex items-center gap-1.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 px-3 py-1.5 text-[12px] font-semibold text-orange-400 transition"
+              >
+                <span>🔑</span>
+                <span>{isHqRole(session.roleKey) || session.roleKey === "campus_lead" || session.roleKey === "class_representative" ? "Chapter Invites & Form" : "Join Chapter"}</span>
+              </Link>
+
+              <Link
                 href={alertsHref}
                 className="relative flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim hover:text-text shadow-[var(--shadow-sm)]"
                 aria-label="Notifications"

@@ -199,7 +199,8 @@ export function navGroupsForRole(
       {
         label: "People & ops",
         items: [
-          { href: `${base}/students`, label: "Student Database", icon: I.students },
+          { href: `${base}/students`, label: "Student Database & Requests", icon: I.students },
+          { href: `${base}/settings`, label: "Chapter Invites & Custom Form", icon: I.forms },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
           ...(isCampusLeadRole
             ? [{ href: "/hq/users", label: "Manage Roles", icon: I.usersAdmin }]
@@ -211,7 +212,6 @@ export function navGroupsForRole(
             icon: I.announcements,
           },
           { href: `${base}/reports`, label: "Reports", icon: I.reports },
-          { href: `${base}/settings`, label: "Settings", icon: I.settings },
           { href: `${base}/resources`, label: "Resources", icon: I.resources },
         ],
       },
@@ -233,6 +233,7 @@ export function navGroupsForRole(
       label: "Explore",
       items: [
         { href: base, label: "Chapter", icon: I.chapter },
+        { href: "/join", label: "🔑 Join Chapter / Code", icon: I.forms },
         { href: `${base}/events`, label: "Events", icon: I.events },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },

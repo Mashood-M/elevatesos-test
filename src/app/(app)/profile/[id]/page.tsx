@@ -301,7 +301,7 @@ export default function ProfilePage({
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        {/* Class Selection */}
+        {/* Class Selection — only if the student has a chapter */}
         {isOwn && profile.chapterId ? (
           <TerminalPanel
             title="class.order"
@@ -385,6 +385,33 @@ export default function ProfilePage({
                   Select a class above to see your representative(s).
                 </p>
               )}
+            </div>
+          </TerminalPanel>
+        ) : isOwn && !profile.chapterId ? (
+          <TerminalPanel
+            title="chapter.status"
+            meta="independent"
+            accent="orange"
+            className="xl:col-span-2"
+          >
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="flex-1 min-w-[240px]">
+                <p className="text-sm font-semibold text-text mb-1">
+                  Not in any chapter
+                </p>
+                <p className="text-[13px] text-text-dim leading-relaxed">
+                  Your account is set as an <strong>Independent</strong> student — not tied to any specific Elevates chapter.
+                  You can still attend <strong>open events</strong> hosted at any campus and participate fully.
+                  If you join a chapter later, your profile will update automatically.
+                </p>
+              </div>
+              <Badge tone="mute">Independent</Badge>
+            </div>
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-[11px] text-text-mute">
+                To join a chapter, ask a chapter executive or campus lead to add you.
+                Your Elevates ID is still active and will carry over when you join.
+              </p>
             </div>
           </TerminalPanel>
         ) : null}

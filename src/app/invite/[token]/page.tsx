@@ -207,13 +207,19 @@ export default function InviteSignUpPage({
       // 4. Mark the invite token as used
       await markInviteTokenUsed(tokenInfo.id, profileId);
 
+      // 5. Auto sign-in immediately so email confirmation is not needed
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
       setLoading(false);
       setSuccess(true);
 
-      // 5. Redirect to login after short delay
+      // 6. Redirect to student chapter page (already signed in)
       setTimeout(() => {
-        router.push("/login");
-      }, 2500);
+        router.push("/chapter");
+      }, 1500);
     } catch (err) {
       console.error("Sign-up error:", err);
       setError("An unexpected error occurred. Please try again.");
@@ -291,7 +297,7 @@ export default function InviteSignUpPage({
             Welcome to Elevates!
           </h1>
           <p className="mt-3 text-sm text-white/60">
-            Your account has been created. Redirecting you to sign in…
+            Your account is ready. Taking you to your chapter page now…
           </p>
         </div>
       </div>

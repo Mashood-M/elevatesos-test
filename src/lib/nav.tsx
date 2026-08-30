@@ -22,10 +22,8 @@ import {
   Settings,
   Shield,
   SwatchBook,
-  Trophy,
   UserCog,
   Users,
-  UsersRound,
   Waypoints,
   Code2,
 } from "lucide-react";
@@ -51,9 +49,7 @@ const I = {
   developer: <Code2 {...iconProps} />,
   certificates: <GraduationCap {...iconProps} />,
   alerts: <Bell {...iconProps} />,
-
   audit: <Activity {...iconProps} />,
-  leaderboards: <Trophy {...iconProps} />,
   playbook: <Waypoints {...iconProps} />,
   workflows: <ClipboardList {...iconProps} />,
   design: <SwatchBook {...iconProps} />,
@@ -64,7 +60,6 @@ const I = {
   clusters: <Layers {...iconProps} />,
   projects: <FolderKanban {...iconProps} />,
   classes: <GraduationCap {...iconProps} />,
-  community: <UsersRound {...iconProps} />,
   students: <Users {...iconProps} />,
   tasks: <ClipboardList {...iconProps} />,
   announcements: <Megaphone {...iconProps} />,
@@ -92,6 +87,7 @@ export function navGroupsForRole(
 ): NavGroup[] {
   const slug = chapterSlug || "";
   const base = slug ? `/chapter/${slug}` : "/chapter";
+  const isCampusLeadRole = roleKey === "campus_lead";
 
   if (isHqRole(roleKey)) {
     const network: NavItem[] = [
@@ -142,7 +138,6 @@ export function navGroupsForRole(
           { href: "/hq/notifications", label: "Notifications", icon: I.alerts },
           { href: "/hq/settings", label: "Settings", icon: I.settings },
           { href: "/hq/audit", label: "Audit", icon: I.audit },
-          { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/workflows", label: "Demo loops", icon: I.workflows },
           { href: "/design-system", label: "Design system", icon: I.design },
         ],
@@ -170,7 +165,6 @@ export function navGroupsForRole(
         label: "More",
         items: [
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },
@@ -201,9 +195,11 @@ export function navGroupsForRole(
       {
         label: "People & ops",
         items: [
-          { href: `${base}/community`, label: "Community", icon: I.community },
           { href: `${base}/students`, label: "Student Database", icon: I.students },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
+          ...(isCampusLeadRole
+            ? [{ href: "/hq/users", label: "Manage Roles", icon: I.usersAdmin }]
+            : []),
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
             href: `${base}/announcements`,
@@ -220,7 +216,6 @@ export function navGroupsForRole(
         items: [
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/leaderboards", label: "Leaderboards", icon: I.leaderboards },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },

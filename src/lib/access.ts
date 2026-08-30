@@ -93,10 +93,6 @@ export function canAccessPath(
   roleKey: RoleKey,
   chapterSlug?: string,
 ): boolean {
-  if (pathname === "/leaderboards") {
-    return roleKey !== "student";
-  }
-
   if (
     pathname.startsWith("/profile/") ||
     pathname === "/notifications" ||
@@ -113,6 +109,10 @@ export function canAccessPath(
     pathname === "/design-system" ||
     pathname.startsWith("/hq")
   ) {
+    // Campus lead can access the Users page to assign class_rep/student in their chapter
+    if (pathname === "/hq/users") {
+      return isHqRole(roleKey) || roleKey === "campus_lead";
+    }
     return isHqRole(roleKey);
   }
 
@@ -149,7 +149,6 @@ export function canAccessPath(
       "tasks",
       "resources",
       "calendar",
-      "community",
       "forms",
     ];
     if (firstSeg && opsRoots.includes(firstSeg)) {
@@ -225,7 +224,6 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
     { title: "Forms", subtitle: "Chapter forms", href: `${base}/forms`, access: "executive" },
     { title: "Clusters", subtitle: "Student clusters", href: `${base}/clusters`, access: "student" },
     { title: "Projects", subtitle: "Chapter projects", href: `${base}/projects`, access: "student" },
-    { title: "Community", subtitle: "Member directory", href: `${base}/community`, access: "executive" },
     {
       title: "Announcements",
       subtitle: "Chapter updates",
@@ -259,7 +257,6 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
       href: notificationsHref(roleKey),
       access: "shared",
     },
-    { title: "Leaderboards", subtitle: "Rankings", href: "/leaderboards", access: "executive" },
     {
       title: "Playbook",
       subtitle: "Chapter doctrine",

@@ -11,7 +11,8 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
-import { CheckSquare, Square, ShieldCheck } from "lucide-react";
+import { CheckSquare, Square, ShieldCheck, Mail } from "lucide-react";
+
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
 
 // The 6 canonical roles with their powers description
@@ -25,37 +26,37 @@ const SIX_ROLES: {
     key: "founder",
     label: "HQ",
     scope: "hq",
-    powers: "Super admin · Full org access · Assign all roles · Switch all roles · Manage chapters & users",
+    powers: "Super admin · Full org access · Assign all roles (HQ / HQ Admin / Campus Lead / Faculty / Student)",
   },
   {
     key: "hq_admin",
     label: "HQ Admin",
     scope: "hq",
-    powers: "HQ-assigned intern · Manage chapters · Assign Campus Lead / Class Rep / Student / Faculty · Cannot assign HQ role",
+    powers: "Assigned by HQ · Manage chapters · Can assign Campus Lead & Faculty only · Cannot assign HQ or Student",
   },
   {
     key: "campus_lead",
     label: "Campus Lead",
     scope: "chapter",
-    powers: "Appointed by HQ / HQ Admin · Full chapter dashboard · Assign Class Rep & Student · Role-switch to Class Rep / Student preview",
+    powers: "Appointed by HQ or HQ Admin · Full chapter dashboard · Can assign Class Rep & Student within own chapter only",
   },
   {
     key: "class_representative",
     label: "Class Rep",
     scope: "chapter",
-    powers: "Assigned by Campus Lead · Attendance, events, and report access · No role switching",
+    powers: "Assigned by Campus Lead · Attendance, events, and report access · No role-assign power",
   },
   {
     key: "student",
     label: "Student",
     scope: "chapter",
-    powers: "Standard member · Events, clusters, projects, announcements · No role switching",
+    powers: "Assigned by Campus Lead · Events, clusters, projects, announcements · No role-assign power",
   },
   {
     key: "faculty_coordinator",
     label: "Faculty",
     scope: "chapter",
-    powers: "Faculty window only · Monitor student activities · No role switching",
+    powers: "Assigned by HQ Admin · Faculty monitor view · No role-assign power",
   },
 ];
 
@@ -65,13 +66,13 @@ function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
   if (currentRoleKey === "founder") {
     return SIX_ROLES.map((r) => r.key);
   }
-  // HQ Admin — can give Campus Lead, Faculty, Student only
+  // HQ Admin — can give Campus Lead and Faculty only
   if (currentRoleKey === "hq_admin") {
-    return ["campus_lead", "faculty_coordinator", "student"];
+    return ["campus_lead", "faculty_coordinator"];
   }
-  // Campus Lead — can give Class Rep only
+  // Campus Lead — can give Class Rep and Student (within own chapter only)
   if (currentRoleKey === "campus_lead") {
-    return ["class_representative"];
+    return ["class_representative", "student"];
   }
   // Everyone else — no assignment power
   return [];
@@ -110,7 +111,13 @@ function looksLikeEmail(value: string) {
 export default function HqUsersPage() {
   const { store, createUser, updateUser, setUserRoles } = useStore();
   const { session } = useCurrentUser();
-  const canManage = isSuperAdmin(session.roleKey);
+  // founder, hq_admin, AND campus_lead can access this page
+  const canManage =
+    isSuperAdmin(session.roleKey) || session.roleKey === "campus_lead";
+
+  // Campus lead is locked to assigning within their own chapter only
+  const isCampusLead = session.roleKey === "campus_lead";
+  const campusLeadChapterId = isCampusLead ? (session.chapterId ?? "") : "";
 
   const [q, setQ] = useState("");
   const [filterChapter, setFilterChapter] = useState("");
@@ -393,7 +400,7 @@ export default function HqUsersPage() {
         />
         <TerminalPanel title="access.denied">
           <p className="text-sm text-text-dim">
-            User management is limited to Founder and HQ Admin (super admin).
+            User management is limited to HQ (Founder), HQ Admin, and Campus Leads.
           </p>
           <Link href="/hq" className="mt-3 inline-block text-[var(--accent)]">
             Back to HQ
@@ -412,7 +419,7 @@ export default function HqUsersPage() {
       <PageHeader
         eyebrow="Network"
         title="Users"
-        description="Super-admin console — create accounts, assign roles, and disable users across all chapters."
+        description="Assign roles by email or manage the full user directory."
         actions={
           <div className="flex flex-wrap gap-2">
             {flash ? (
@@ -420,12 +427,75 @@ export default function HqUsersPage() {
                 {flash}
               </span>
             ) : null}
-            <Button variant="primary" onClick={openCreate}>
-              Create user
-            </Button>
+            {isSuperAdmin(session.roleKey) && (
+              <Button variant="primary" onClick={openCreate}>
+                Create user
+              </Button>
+            )}
           </div>
         }
       />
+
+      {/* ── EMAIL-BASED ROLE ASSIGN ─────────────────────────────── */}
+      {canAssign.length > 0 && (
+        <TerminalPanel title="assign.role.by.email" className="mb-6">
+          <p className="mb-3 text-[12px] text-text-dim">
+            Type the user&apos;s email address to find their account and open the role assignment panel.
+          </p>
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input
+                type="email"
+                placeholder="student@college.edu"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                id="email-role-assign-input"
+              />
+            </div>
+            {(() => {
+              const matched = q.trim()
+                ? store.profiles.find(
+                    (p) => p.email.toLowerCase() === q.trim().toLowerCase(),
+                  )
+                : undefined;
+              return matched ? (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    const urs = store.userRoles.filter((ur) => ur.userId === matched.id);
+                    const existingKeys = urs
+                      .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
+                      .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
+                    const defaultChap = matched.chapterId || store.chapters[0]?.id || "";
+                    const chaptersMap: Record<string, string> = {};
+                    urs.forEach((ur) => {
+                      const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
+                      if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
+                    });
+                    SIX_ROLES.forEach((r) => {
+                      if (!chaptersMap[r.key] && defaultChap) chaptersMap[r.key] = defaultChap;
+                    });
+                    const initialSelected = existingKeys.length > 0
+                      ? existingKeys
+                      : [canAssign[0]];
+                    setRoleModalSelected(initialSelected);
+                    setRoleModalChapters(chaptersMap);
+                    setRoleModalUser(matched);
+                  }}
+                  className="flex items-center gap-1.5"
+                >
+                  <ShieldCheck size={14} />
+                  Assign Role to {matched.fullName}
+                </Button>
+              ) : q.trim() && looksLikeEmail(q.trim()) ? (
+                <span className="self-center text-[12px] text-text-mute">
+                  No user found with that email
+                </span>
+              ) : null;
+            })()}
+          </div>
+        </TerminalPanel>
+      )}
 
       <TerminalPanel title="filters" className="mb-6">
         <div className="grid gap-3 md:grid-cols-4">
@@ -785,17 +855,25 @@ export default function HqUsersPage() {
                         const existingKeys = urs
                           .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
                           .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
-                        const defaultChap = profile.chapterId || store.chapters[0]?.id || "";
+                        // Campus lead: always force their own chapter
+                        const defaultChap = isCampusLead
+                          ? campusLeadChapterId
+                          : (profile.chapterId || store.chapters[0]?.id || "");
                         const chaptersMap: Record<string, string> = {};
-                        urs.forEach((ur) => {
-                          const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
-                          if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
-                        });
-                        SIX_ROLES.forEach((r) => {
-                          if (!chaptersMap[r.key] && defaultChap) {
-                            chaptersMap[r.key] = defaultChap;
-                          }
-                        });
+                        if (isCampusLead) {
+                          // Lock all chapter-scoped role slots to campus lead's chapter
+                          SIX_ROLES.forEach((r) => { chaptersMap[r.key] = campusLeadChapterId; });
+                        } else {
+                          urs.forEach((ur) => {
+                            const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
+                            if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
+                          });
+                          SIX_ROLES.forEach((r) => {
+                            if (!chaptersMap[r.key] && defaultChap) {
+                              chaptersMap[r.key] = defaultChap;
+                            }
+                          });
+                        }
                         const initialSelected = existingKeys.length > 0
                           ? existingKeys
                           : ([(profile as any).roleKey].filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey)));
@@ -924,7 +1002,13 @@ export default function HqUsersPage() {
         const chapterNeeded = roleModalSelected.filter(
           (k) => SIX_ROLES.find((r) => r.key === k)?.scope === "chapter",
         );
-        const defaultChap = roleModalUser.chapterId || store.chapters[0]?.id || "";
+        // Campus lead: chapter is always their own — no selector shown
+        const lockedChapter = isCampusLead
+          ? store.chapters.find((c) => c.id === campusLeadChapterId)
+          : undefined;
+        const defaultChap = isCampusLead
+          ? campusLeadChapterId
+          : (roleModalUser.chapterId || store.chapters[0]?.id || "");
         const canSave =
           roleModalSelected.length > 0 &&
           chapterNeeded.every((k: RoleKey) => Boolean(roleModalChapters[k] || defaultChap));
@@ -933,7 +1017,11 @@ export default function HqUsersPage() {
             open={Boolean(roleModalUser)}
             onClose={() => setRoleModalUser(null)}
             title={`Assign Roles — ${roleModalUser.fullName}`}
-            description={`Check all roles to assign to ${roleModalUser.email}. Multiple roles allowed.`}
+            description={
+              isCampusLead && lockedChapter
+                ? `Assigning within ${lockedChapter.name} only. Check roles for ${roleModalUser.email}.`
+                : `Check all roles to assign to ${roleModalUser.email}. Multiple roles allowed.`
+            }
           >
             <div className="space-y-4">
               {/* Role cards — multi checkbox */}
@@ -985,31 +1073,44 @@ export default function HqUsersPage() {
                 })}
               </div>
 
-              {/* Per-role chapter selectors — one per selected chapter-scoped role */}
+              {/* Per-role chapter selectors */}
               {chapterNeeded.length > 0 ? (
                 <div className="space-y-2 rounded-[var(--radius-sm)] border border-border bg-bg p-3">
-                  <p className="text-[11px] font-semibold text-text-dim">Select chapter for each chapter-scoped role:</p>
-                  {chapterNeeded.map((rk) => {
-                    const roleInfo = SIX_ROLES.find((r) => r.key === rk);
-                    return (
-                      <div key={rk} className="flex items-center gap-3">
-                        <span className="w-24 shrink-0 text-[11px] font-semibold text-text">
-                          {roleInfo?.label}
-                        </span>
-                        <Select
-                          value={roleModalChapters[rk] || defaultChap}
-                          onChange={(e) =>
-                            setRoleModalChapters((prev) => ({ ...prev, [rk]: e.target.value }))
-                          }
-                        >
-                          <option value="">Select chapter…</option>
-                          {store.chapters.map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </Select>
-                      </div>
-                    );
-                  })}
+                  {isCampusLead && lockedChapter ? (
+                    // Campus lead: show locked chapter badge — no selector
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-semibold text-text-dim">Chapter locked to:</span>
+                      <span className="rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-[11px] font-semibold text-[var(--accent)]">
+                        {lockedChapter.name}
+                      </span>
+                      <span className="text-[10px] text-text-mute">(your chapter only)</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-[11px] font-semibold text-text-dim">Select chapter for each chapter-scoped role:</p>
+                      {chapterNeeded.map((rk) => {
+                        const roleInfo = SIX_ROLES.find((r) => r.key === rk);
+                        return (
+                          <div key={rk} className="flex items-center gap-3">
+                            <span className="w-24 shrink-0 text-[11px] font-semibold text-text">
+                              {roleInfo?.label}
+                            </span>
+                            <Select
+                              value={roleModalChapters[rk] || defaultChap}
+                              onChange={(e) =>
+                                setRoleModalChapters((prev) => ({ ...prev, [rk]: e.target.value }))
+                              }
+                            >
+                              <option value="">Select chapter…</option>
+                              {store.chapters.map((c) => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
                 </div>
               ) : null}
 

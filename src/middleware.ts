@@ -54,7 +54,6 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/executive") ||
     path.startsWith("/faculty") ||
     path.startsWith("/notifications") ||
-    path.startsWith("/leaderboards") ||
     path.startsWith("/workflows") ||
     path.startsWith("/v2") ||
     path.startsWith("/design-system") ||
@@ -100,7 +99,6 @@ export const config = {
     "/executive/:path*",
     "/faculty/:path*",
     "/notifications",
-    "/leaderboards",
     "/workflows",
     "/v2",
     "/design-system",

@@ -2109,7 +2109,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const supabase = createClient();
           if (supabase) {
             (async () => {
-              await supabase.from("user_roles").delete().eq("user_id", userId);
+              // Only delete non-leadership rows — preserve leadership_term_id entries
+              await supabase
+                .from("user_roles")
+                .delete()
+                .eq("user_id", userId)
+                .is("leadership_term_id", null);
               const rowsToInsert = built.map((ur) => ({
                 user_id: userId,
                 role_key: ur.roleKey || (store.roles.find((r) => r.id === ur.roleId)?.key),

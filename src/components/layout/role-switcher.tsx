@@ -15,14 +15,36 @@ interface SwitchableRole {
   description: string;
 }
 
-const ALL_ROLES: SwitchableRole[] = [
-  { label: "HQ", roleKey: "founder", description: "Super admin · Full org access" },
-  { label: "HQ Admin", roleKey: "hq_admin", description: "Manage chapters & users" },
-  { label: "Campus Lead", roleKey: "campus_lead", description: "Chapter admin & oversight" },
-  { label: "Class Rep", roleKey: "class_representative", description: "Attendance & events access" },
-  { label: "Student", roleKey: "student", description: "Standard member view" },
-  { label: "Faculty", roleKey: "faculty_coordinator", description: "Faculty monitor view" },
+/**
+ * Full metadata catalogue — covers every role that can appear in the switcher.
+ * The actual list shown to a user is filtered down to their real Supabase assignments.
+ */
+const ALL_SWITCHABLE_ROLES: SwitchableRole[] = [
+  { label: "HQ",          roleKey: "founder",                description: "Super admin · Full org access" },
+  { label: "HQ Admin",    roleKey: "hq_admin",               description: "Manage chapters & users" },
+  { label: "Campus Lead", roleKey: "campus_lead",            description: "Chapter admin & oversight" },
+  { label: "Class Rep",   roleKey: "class_representative",   description: "Attendance & events access" },
+  { label: "Student",     roleKey: "student",                description: "Standard member view" },
+  { label: "Faculty",     roleKey: "faculty_coordinator",    description: "Faculty monitor view" },
 ];
+
+/**
+ * Role priority order — higher index = higher authority.
+ * We use this to find the single "maximum" role a user has.
+ */
+const ROLE_PRIORITY: RoleKey[] = [
+  "student",
+  "faculty_coordinator",
+  "class_representative",
+  "campus_lead",
+  "hq_admin",
+  "founder",
+];
+
+function roleRank(key: RoleKey): number {
+  const idx = ROLE_PRIORITY.indexOf(key);
+  return idx === -1 ? 0 : idx;
+}
 
 export function RoleSwitcher() {
   const router = useRouter();
@@ -42,63 +64,68 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
-  // Resolve the true maximum authority of this account
-  const effectiveMaxRole = useMemo<RoleKey>(() => {
-    const authRoleKey = session.authRoleKey ?? session.roleKey;
-    if (authRoleKey === "founder") return "founder";
-    if (authRoleKey === "hq_admin") return "hq_admin";
-    if (["campus_lead", "chairman"].includes(authRoleKey)) return "campus_lead";
-    if (session.roleKey === "founder") return "founder";
-    if (session.roleKey === "hq_admin") return "hq_admin";
-    if (["campus_lead", "chairman"].includes(session.roleKey)) return "campus_lead";
-
+  /**
+   * Derive the user's actual role keys from Supabase `user_roles`.
+   * We match by authUserId first, then fallback to session.userId.
+   */
+  const actualRoleKeys = useMemo<RoleKey[]>(() => {
     const uid = session.authUserId ?? session.userId;
-    const profile = store.profiles.find((p) => p.id === uid);
-    const urs = store.userRoles.filter(
-      (ur: any) => ur.userId === profile?.id || ur.userId === uid,
+    if (!uid) return [];
+
+    const userRoleEntries = store.userRoles.filter(
+      (ur: any) => ur.userId === uid,
     );
-    const rkey = (key: string) =>
-      urs.some((ur: any) => store.roles.find((r: any) => r.id === ur.roleId)?.key === key);
 
-    if (
-      rkey("founder") ||
-      profile?.email?.toLowerCase().includes("admin@elevates.live")
-    ) return "founder";
-    if (rkey("hq_admin")) return "hq_admin";
-    if (rkey("campus_lead") || rkey("chairman")) return "campus_lead";
+    const keys: RoleKey[] = userRoleEntries
+      .map((ur: any) => {
+        // Prefer the denormalised role_key column if present
+        if (ur.roleKey) return ur.roleKey as RoleKey;
+        // Otherwise resolve through the roles table
+        const roleObj = store.roles.find((r: any) => r.id === ur.roleId);
+        return (roleObj?.key ?? null) as RoleKey | null;
+      })
+      .filter((k): k is RoleKey => k !== null);
 
-    return session.roleKey;
-  }, [session, store.profiles, store.userRoles, store.roles]);
+    // Also honour the authRoleKey already stored in session (set during hydration)
+    if (session.authRoleKey && !keys.includes(session.authRoleKey)) {
+      keys.push(session.authRoleKey);
+    }
 
-  // Roles this account is allowed to switch to (hierarchy-based)
+    return [...new Set(keys)];
+  }, [session, store.userRoles, store.roles]);
+
+  /**
+   * Find the single highest-authority role this account holds.
+   * Returns null when the user has no elevated roles → switcher is hidden.
+   */
+  const maxRole = useMemo<RoleKey | null>(() => {
+    // Only users with at least one elevated role may see the switcher
+    const elevated: RoleKey[] = ["founder", "hq_admin", "campus_lead"];
+    const elevatedHeld = actualRoleKeys.filter((k) => elevated.includes(k));
+    if (elevatedHeld.length === 0) return null;
+
+    return elevatedHeld.reduce((best, cur) =>
+      roleRank(cur) > roleRank(best) ? cur : best,
+    );
+  }, [actualRoleKeys]);
+
+  /**
+   * Roles shown in the dropdown = the roles this user is ACTUALLY assigned
+   * in Supabase's user_roles table (not a predefined hierarchy set).
+   *
+   * e.g. a campus lead who also has a student row will see both;
+   * an HQ admin with founder + hq_admin + student sees all three.
+   */
   const allowedRoles = useMemo<SwitchableRole[]>(() => {
-    // Founder (HQ) is super admin — always gets the full list, no conditions
-    if (effectiveMaxRole === "founder" || session.roleKey === "founder" || session.authRoleKey === "founder") {
-      return ALL_ROLES;
-    }
-    if (["class_representative", "student", "faculty_coordinator"].includes(effectiveMaxRole)) {
-      return [];
-    }
-    if (effectiveMaxRole === "hq_admin") return ALL_ROLES.filter((r) => r.roleKey !== "founder");
-    if (["campus_lead", "chairman"].includes(effectiveMaxRole)) {
-      return ALL_ROLES.filter((r) =>
-        ["campus_lead", "class_representative", "student"].includes(r.roleKey),
-      );
-    }
-    return [];
-  }, [effectiveMaxRole, session.roleKey, session.authRoleKey]);
+    if (!maxRole) return [];
+    return ALL_SWITCHABLE_ROLES.filter((r) => actualRoleKeys.includes(r.roleKey));
+  }, [maxRole, actualRoleKeys]);
 
-  // Hide switcher only for non-elevated single-role accounts
-  // Founders always keep the panel — they are super admin by default
-  const isFounderAccount =
-    effectiveMaxRole === "founder" ||
-    session.roleKey === "founder" ||
-    session.authRoleKey === "founder";
-
-  if (!isFounderAccount && allowedRoles.length <= 1) return null;
+  // Hide switcher if no elevated role, or only 1 role assigned (nothing to switch to)
+  if (!maxRole || allowedRoles.length <= 1) return null;
 
   const activeRoleKey = session.roleKey;
-  const activeInfo = ALL_ROLES.find((r) => r.roleKey === activeRoleKey) ?? {
+  const activeInfo = ALL_SWITCHABLE_ROLES.find((r) => r.roleKey === activeRoleKey) ?? {
     label: roleKeyLabel(activeRoleKey),
     roleKey: activeRoleKey,
     description: "",
@@ -108,12 +135,13 @@ export function RoleSwitcher() {
   const loggedUserChapterId = session.chapterId;
 
   function handleSelect(target: SwitchableRole) {
-    // Find chapter for this specific role assignment if available
+    // Find the chapter associated with this specific role in user_roles
     const uid = session.authUserId ?? session.userId;
     const urForRole = store.userRoles.find(
       (ur: any) =>
         ur.userId === uid &&
-        store.roles.find((r) => r.id === ur.roleId)?.key === target.roleKey,
+        (ur.roleKey === target.roleKey ||
+          store.roles.find((r) => r.id === ur.roleId)?.key === target.roleKey),
     );
     const chapterId = (urForRole as any)?.chapterId ?? loggedUserChapterId;
     setSession(loggedUserId, target.roleKey, chapterId);

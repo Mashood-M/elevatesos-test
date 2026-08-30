@@ -18,21 +18,21 @@ import { formatDate } from "@/lib/utils";
 const STUDENT_START = [
   {
     step: "01",
-    title: "Open the community",
-    detail: "See who belongs and how progression works",
-    href: "community",
-  },
-  {
-    step: "02",
     title: "Browse events",
     detail: "Register for workshops and challenges",
     href: "events",
   },
   {
-    step: "03",
+    step: "02",
     title: "Explore clusters",
     detail: "Invite-first tracks for builders",
     href: "clusters",
+  },
+  {
+    step: "03",
+    title: "Your projects",
+    detail: "View and contribute to chapter projects",
+    href: "projects",
   },
 ] as const;
 
@@ -103,7 +103,7 @@ export default function ChapterDashboardPage({
         title={chapter.name}
         description={
           isStudent
-            ? `${chapter.college} · explore events, clusters, and the community`
+            ? `${chapter.college} · explore events, clusters, and projects`
             : `${chapter.college} · ${chapter.city} · lead the chapter from here`
         }
         actions={
@@ -124,9 +124,6 @@ export default function ChapterDashboardPage({
                     {canCreateEvent ? "Create event" : "Events"}
                   </Button>
                 </Link>
-                <Link href={`/chapter/${slug}/community`}>
-                  <Button variant="ghost">Community</Button>
-                </Link>
                 <Link href={`/chapter/${slug}/settings`}>
                   <Button variant="ghost">Settings</Button>
                 </Link>
@@ -135,9 +132,6 @@ export default function ChapterDashboardPage({
               <>
                 <Link href="/eos">
                   <Button variant="orange">Playbook</Button>
-                </Link>
-                <Link href={`/chapter/${slug}/community`}>
-                  <Button variant="ghost">Community</Button>
                 </Link>
                 <Link href={`/chapter/${slug}/events`}>
                   <Button variant="ghost">Events</Button>
@@ -186,7 +180,7 @@ export default function ChapterDashboardPage({
               </ol>
             </TerminalPanel>
           ) : (
-            <TerminalPanel title="Playbook" meta="Community path">
+            <TerminalPanel title="Playbook" meta="Chapter doctrine">
               <p className="mb-3 max-w-[56ch] text-[13px] leading-relaxed text-text-dim">
                 Progression is earned; clusters are invite-first after workshops.
               </p>

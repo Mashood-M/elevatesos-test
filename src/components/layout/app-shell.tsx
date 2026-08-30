@@ -21,7 +21,6 @@ function isNavActive(pathname: string, href: string) {
     "/hq",
     "/executive",
     "/faculty",
-    "/leaderboards",
     "/workflows",
     "/notifications",
     "/eos",
@@ -54,6 +53,53 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : chapter
       ? `${chapter.slug.toUpperCase()} chapter`
       : "Elevates OS";
+
+  /**
+   * Highest-priority role the user actually holds across all their Supabase
+   * user_roles assignments — used as the permanent role tag in the nav bottom.
+   * Priority: founder > hq_admin > campus_lead > class_representative >
+   *           faculty_coordinator > student
+   * If they've switched to a lower role (e.g. student view), the tag still
+   * shows their real top role so they always know their authority level.
+   */
+  const highestRoleLabel = useMemo(() => {
+    const ROLE_PRIORITY = [
+      "student",
+      "faculty_coordinator",
+      "class_representative",
+      "campus_lead",
+      "hq_admin",
+      "founder",
+    ] as const;
+    type PR = typeof ROLE_PRIORITY[number];
+
+    const uid = session.authUserId ?? session.userId;
+    if (!uid) return roleKeyLabel(session.roleKey);
+
+    const allKeys: string[] = store.userRoles
+      .filter((ur: any) => ur.userId === uid)
+      .map((ur: any) => {
+        if (ur.roleKey) return ur.roleKey as string;
+        return store.roles.find((r: any) => r.id === ur.roleId)?.key ?? null;
+      })
+      .filter((k): k is string => k !== null);
+
+    // Also include the session's authRoleKey if not already present
+    if (session.authRoleKey && !allKeys.includes(session.authRoleKey)) {
+      allKeys.push(session.authRoleKey);
+    }
+
+    if (allKeys.length === 0) return roleKeyLabel(session.roleKey);
+
+    const best = allKeys.reduce<PR | null>((top, cur) => {
+      const curRank = ROLE_PRIORITY.indexOf(cur as PR);
+      if (curRank === -1) return top;
+      if (!top) return cur as PR;
+      return curRank > ROLE_PRIORITY.indexOf(top) ? (cur as PR) : top;
+    }, null);
+
+    return best ? roleKeyLabel(best) : roleKeyLabel(session.roleKey);
+  }, [session, store.userRoles, store.roles]);
 
   async function handleLogout() {
     try {
@@ -160,7 +206,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-[13px] font-semibold">
                   {profile?.fullName}
                 </p>
-                <p className="truncate text-[11px] text-text-mute">{roleKeyLabel(session.roleKey)}</p>
+                <p className="truncate text-[11px] text-text-mute">{highestRoleLabel}</p>
               </div>
             </Link>
             <button
@@ -242,7 +288,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {firstName}
                   </span>
                   <span className="block truncate text-[10px] text-text-mute">
-                    {roleKeyLabel(session.roleKey)}
+                    {highestRoleLabel}
                   </span>
                 </span>
               </Link>

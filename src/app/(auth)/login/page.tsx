@@ -199,6 +199,13 @@ function LoginForm() {
         </p>
       </div>
 
+      {searchParams.get("reason") === "inactivity" && (
+        <div className="mt-4 rounded-[12px] border border-orange-500/30 bg-orange-500/10 p-3.5 text-[12px]">
+          <p className="font-semibold text-orange-300">You were logged out due to 10 minutes of inactivity.</p>
+          <p className="mt-0.5 text-orange-200/80">Please sign in again to continue working.</p>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="mt-6 space-y-4 rounded-[var(--radius-lg)] bg-white p-7 shadow-sm border border-gray-200"

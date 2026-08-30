@@ -16,6 +16,7 @@ import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 
 export default function ChapterIndexPage() {
   const [mounted, setMounted] = useState(false);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const router = useRouter();
   const { store, hydrated } = useStore();
   const { session } = useCurrentUser();
@@ -67,8 +68,6 @@ export default function ChapterIndexPage() {
   const openEvents = store.events
     .filter((e) => isOpenToAllEvent(e))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
-
-  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
   return (
     <div>

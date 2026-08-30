@@ -103,7 +103,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   };
 
   return (
-    <Dialog open={isOpen} onClose={handleReset}>
+    <Dialog open={isOpen} onClose={handleReset} title="Join Chapter">
       <div className="p-6 max-w-lg w-full bg-bg-panel rounded-[18px] border border-[var(--accent)] shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border pb-3">

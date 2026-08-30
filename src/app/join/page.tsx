@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 
-export default function JoinChapterPage() {
+function JoinChapterContent() {
   const { store, joinChapterCommunity } = useStore();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -140,5 +140,17 @@ export default function JoinChapterPage() {
         initialCode={urlCode}
       />
     </div>
+  );
+}
+
+export default function JoinChapterPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-dvh bg-[var(--charcoal-900)] flex items-center justify-center text-white text-xs font-mono animate-pulse">
+        Loading join portal...
+      </div>
+    }>
+      <JoinChapterContent />
+    </Suspense>
   );
 }

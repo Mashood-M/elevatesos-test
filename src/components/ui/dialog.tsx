@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 type DialogProps = {
   open: boolean;
   onClose: () => void;
-  title: string;
+  title?: string;
   description?: string;
   children: ReactNode;
   className?: string;

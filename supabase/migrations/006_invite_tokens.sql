@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS public.invite_tokens (
   used_by       UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   used_at       TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  expires_at    TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '7 days'),
+  expires_at    TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '1 day'),
   is_active     BOOLEAN NOT NULL DEFAULT true
 );
 

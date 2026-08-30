@@ -8,13 +8,12 @@ import {
   CircleDot,
   Clock,
   Copy,
-  ExternalLink,
   GitBranch,
   Link2,
   MessageCircle,
   Search,
-  Share2,
   Sparkles,
+  Trash2,
   Trophy,
   Users,
 } from "lucide-react";
@@ -24,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { createInviteToken } from "@/lib/data/supabase-bootstrap";
+import { createInviteToken, revokeInviteToken } from "@/lib/data/supabase-bootstrap";
 import { formatDateTime } from "@/lib/utils";
 import { isHqRole } from "@/lib/permissions";
 
@@ -66,6 +65,8 @@ export default function UnifiedReferralsPage() {
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set());
 
   // Search & Filters for HQ/Network tab
   const [q, setQ] = useState("");
@@ -119,8 +120,17 @@ export default function UnifiedReferralsPage() {
 
   function handleShareWhatsApp(token: string) {
     const url = buildInviteUrl(token);
-    const text = `Join me on Elevates OS! Here is your exclusive 7-day invite link to register your student account:\n\n${url}`;
+    const text = `Join me on Elevates OS! Here is your exclusive 24-hour invite link to register your student account:\n\n${url}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+  }
+
+  async function handleRevoke(tokenId: string) {
+    setRevokingId(tokenId);
+    const ok = await revokeInviteToken(tokenId);
+    if (ok) {
+      setRevokedIds((prev) => new Set([...prev, tokenId]));
+    }
+    setRevokingId(null);
   }
 
   const latestActiveTokenObj = myActiveTokens[0] ?? (newToken ? { token: newToken, expiresAt: undefined } : null);
@@ -276,7 +286,8 @@ export default function UnifiedReferralsPage() {
                   <h3 className="text-base font-bold text-text">Generate Invite Link</h3>
                   <p className="mt-1 text-[13px] text-text-dim leading-relaxed">
                     Elevates OS registration is invite-only. Generate a single-use
-                    link below to invite a student. Each link remains valid for <strong>7 days</strong>.
+                    link below. Each link is valid for <strong>24 hours</strong> and
+                    can be revoked at any time.
                   </p>
                 </div>
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
@@ -341,7 +352,7 @@ export default function UnifiedReferralsPage() {
                   className="flex items-center gap-2"
                 >
                   <Link2 size={15} />
-                  {generatingToken ? "Generating Link…" : "Generate New 7-Day Link"}
+                  {generatingToken ? "Generating Link…" : "Generate New 24-Hour Link"}
                 </Button>
               </div>
 
@@ -367,9 +378,11 @@ export default function UnifiedReferralsPage() {
                 <ul className="divide-y divide-border">
                   {myTokens.map((t) => {
                     const invited = t.usedBy ? profiles.find((p) => p.id === t.usedBy) : null;
-                    const expired = !t.usedBy && msUntil(t.expiresAt) <= 0;
+                    const isRevoked = revokedIds.has(t.id) || !t.isActive;
+                    const expired = !t.usedBy && (msUntil(t.expiresAt) <= 0 || isRevoked);
+                    const canRevoke = !t.usedBy && !expired && !isRevoked;
                     return (
-                      <li key={t.id} className="py-3 flex items-center justify-between gap-3">
+                      <li key={t.id} className="py-3 flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           {invited ? (
                             <div>
@@ -386,8 +399,10 @@ export default function UnifiedReferralsPage() {
                               )}
                             </div>
                           ) : (
-                            <p className={`text-[12px] italic ${expired ? "text-red-400" : "text-text-mute"}`}>
-                              {expired ? "Expired Link" : "Pending registration…"}
+                            <p className={`text-[12px] italic ${
+                              isRevoked ? "text-orange-400" : expired ? "text-red-400" : "text-text-mute"
+                            }`}>
+                              {isRevoked ? "Revoked" : expired ? "Expired" : "Pending registration…"}
                             </p>
                           )}
                           <p className="font-mono text-[10px] text-text-mute mt-0.5">
@@ -398,9 +413,25 @@ export default function UnifiedReferralsPage() {
                               : `Created ${formatDateTime(t.createdAt)}`}
                           </p>
                         </div>
-                        <Badge tone={t.usedBy ? "green" : expired ? "mute" : expiryTone(t.expiresAt)}>
-                          {t.usedBy ? "Joined" : expired ? "Expired" : expiryLabel(t.expiresAt) || "Pending"}
-                        </Badge>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge tone={t.usedBy ? "green" : isRevoked ? "orange" : expired ? "mute" : expiryTone(t.expiresAt)}>
+                            {t.usedBy ? "Joined" : isRevoked ? "Revoked" : expired ? "Expired" : expiryLabel(t.expiresAt) || "Pending"}
+                          </Badge>
+                          {canRevoke && (
+                            <button
+                              onClick={() => handleRevoke(t.id)}
+                              disabled={revokingId === t.id}
+                              title="Revoke this invite link"
+                              className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-mute transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                            >
+                              {revokingId === t.id ? (
+                                <span className="animate-spin text-[10px]">⟳</span>
+                              ) : (
+                                <Trash2 size={13} />
+                              )}
+                            </button>
+                          )}
+                        </div>
                       </li>
                     );
                   })}

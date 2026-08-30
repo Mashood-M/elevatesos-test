@@ -554,11 +554,11 @@ export async function publishChapterRemote(chapterId: string) {
   return { ok: !error };
 }
 
-/** Create a new invite token for the current user (referrer). Expires in 7 days. */
+/** Create a new invite token for the current user (referrer). Expires in 24 hours. */
 export async function createInviteToken(createdById: string, chapterId?: string): Promise<string | null> {
   const supabase = createClient();
   if (!supabase) return null;
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(); // 24 hours
   const { data, error } = await supabase
     .from("invite_tokens")
     .insert({
@@ -616,4 +616,19 @@ export async function markInviteTokenUsed(tokenId: string, newUserId: string): P
     .update({ used_by: newUserId, used_at: new Date().toISOString(), is_active: false })
     .eq("id", tokenId);
   return !error;
+}
+
+/** Revoke an invite token — sets is_active=false so the link can no longer be used. */
+export async function revokeInviteToken(tokenId: string): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+  const { error } = await supabase
+    .from("invite_tokens")
+    .update({ is_active: false })
+    .eq("id", tokenId);
+  if (error) {
+    console.error("revokeInviteToken error:", error);
+    return false;
+  }
+  return true;
 }

@@ -262,10 +262,10 @@ export default function ProfilePage({
           {/* Action Buttons */}
           <div className="flex shrink-0 items-center gap-2">
             {isOwn && (
-              <Link href="/invite">
+              <Link href="/referrals">
                 <Button variant="secondary" className="flex items-center gap-2">
                   <Link2 size={14} />
-                  Invite Friends
+                  Referrals
                 </Button>
               </Link>
             )}

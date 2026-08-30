@@ -102,7 +102,7 @@ export function navGroupsForRole(
       { href: "/hq/reports", label: "Reports", icon: I.reports },
       { href: "/hq/certificates", label: "Certificates", icon: I.certificates },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
-      { href: "/hq/referrals", label: "Referrals", icon: I.referrals },
+      { href: "/referrals", label: "Referrals", icon: I.referrals },
     ];
 
     return [
@@ -139,7 +139,6 @@ export function navGroupsForRole(
         items: [
           { href: "/hq/developer", label: "Developer API", icon: I.developer },
           { href: "/hq/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/invite", label: "Invite Friends", icon: I.referrals },
           { href: "/hq/settings", label: "Settings", icon: I.settings },
           { href: "/hq/audit", label: "Audit", icon: I.audit },
           { href: "/workflows", label: "Demo loops", icon: I.workflows },
@@ -169,7 +168,7 @@ export function navGroupsForRole(
         label: "More",
         items: [
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/invite", label: "Invite Friends", icon: I.referrals },
+          { href: "/referrals", label: "Referrals", icon: I.referrals },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },
@@ -221,7 +220,7 @@ export function navGroupsForRole(
         items: [
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/invite", label: "Invite Friends", icon: I.referrals },
+          { href: "/referrals", label: "Referrals", icon: I.referrals },
           { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },
@@ -250,7 +249,7 @@ export function navGroupsForRole(
       label: "My Account",
       items: [
         { href: "/my-qr", label: "My QR Code", icon: I.myQr },
-        { href: "/invite", label: "Invite Friends", icon: I.referrals },
+        { href: "/referrals", label: "Referrals", icon: I.referrals },
         { href: "/eos", label: "Playbook", icon: I.playbook },
       ],
     },

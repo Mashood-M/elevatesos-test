@@ -216,9 +216,9 @@ export default function InviteSignUpPage({
       setLoading(false);
       setSuccess(true);
 
-      // 6. Redirect to student chapter page (already signed in)
+      // 6. Redirect to student chapter page (hard reload so session hydrates cleanly)
       setTimeout(() => {
-        router.push("/chapter");
+        window.location.href = "/chapter";
       }, 1500);
     } catch (err) {
       console.error("Sign-up error:", err);

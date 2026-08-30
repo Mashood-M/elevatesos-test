@@ -142,6 +142,23 @@ export default function ChapterDashboardPage({
         }
       />
 
+      {isStudent && !session.chapterId && (
+        <div className="mb-6 rounded-[14px] border border-cyan-500/30 bg-cyan-500/10 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-cyan-200">
+                Independent Student Account
+              </p>
+              <p className="text-xs text-cyan-300/80 mt-0.5">
+                You are currently an independent student. You can explore open events, clusters, and projects across chapters.
+                A Campus Lead or Class Rep will assign your official college chapter soon!
+              </p>
+            </div>
+            <Badge tone="cyan">Independent</Badge>
+          </div>
+        </div>
+      )}
+
       {showOps ? (
         <SectionGrid className="mb-6">
           <Stat

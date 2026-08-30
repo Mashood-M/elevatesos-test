@@ -13,18 +13,27 @@ export default function ChapterIndexPage() {
   useEffect(() => {
     if (!hydrated) return;
 
-    const chapter =
-      store.chapters.find((c) => c.id === session.chapterId) ??
-      store.chapters.find((c) => c.status === "active") ??
-      store.chapters[0];
-
-    const slug = chapter?.slug ?? "eranad-knowledge-city";
-
+    // HQ roles redirect to HQ dashboard
     if (isHqRole(session.roleKey)) {
       router.replace("/hq");
       return;
     }
 
+    // If student has an assigned chapter, redirect to that chapter
+    if (session.chapterId) {
+      const assignedChapter = store.chapters.find((c) => c.id === session.chapterId);
+      if (assignedChapter?.slug) {
+        router.replace(`/chapter/${assignedChapter.slug}`);
+        return;
+      }
+    }
+
+    // Independent student (no chapter assigned yet) -> show active chapter's public events/workspace
+    const fallbackChapter =
+      store.chapters.find((c) => c.status === "active") ??
+      store.chapters[0];
+
+    const slug = fallbackChapter?.slug ?? "eranad-knowledge-city";
     router.replace(`/chapter/${slug}`);
   }, [router, session, store.chapters, hydrated]);
 

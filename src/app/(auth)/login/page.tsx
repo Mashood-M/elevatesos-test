@@ -176,7 +176,7 @@ function LoginForm() {
         } else if (chapterSlug) {
           destination = `/chapter/${chapterSlug}`;
         } else {
-          destination = "/join";
+          destination = "/chapter";
         }
       }
 

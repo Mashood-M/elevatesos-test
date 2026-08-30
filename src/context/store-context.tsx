@@ -2312,23 +2312,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             d.name.trim().toUpperCase() === name.toUpperCase(),
         );
         if (dup) return null;
+        const generatedId =
+          input.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id)
+            ? input.id
+            : typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : undefined;
+
         const department: Department = {
-          id: input.id ?? `dept-${Date.now()}`,
+          id: generatedId ?? `dept-${Date.now()}`,
           chapterId: input.chapterId,
           name,
         };
 
         const supabase = createClient();
         if (supabase) {
+          const payload: Record<string, any> = {
+            chapter_id: department.chapterId,
+            name: department.name,
+          };
+          if (generatedId) {
+            payload.id = generatedId;
+          }
           supabase
             .from("departments")
-            .insert({
-              id: department.id,
-              chapter_id: department.chapterId,
-              name: department.name,
-            })
+            .insert(payload)
+            .select("id")
+            .single()
             .then((res: any) => {
-              if (res?.error) console.error("Error writing department to Supabase:", res.error?.message);
+              if (res?.error) {
+                console.error("Error writing department to Supabase:", res.error?.message);
+              } else if (res?.data?.id && res.data.id !== department.id) {
+                const serverId = res.data.id;
+                setStore((s) => ({
+                  ...s,
+                  departments: (s.departments ?? []).map((d) => (d.id === department.id ? { ...d, id: serverId } : d)),
+                }));
+              }
             });
         }
 

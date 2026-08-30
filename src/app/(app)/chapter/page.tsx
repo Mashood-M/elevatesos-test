@@ -12,6 +12,7 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { isOpenToAllEvent, canRegisterNow } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
+import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 
 export default function ChapterIndexPage() {
   const [mounted, setMounted] = useState(false);
@@ -67,6 +68,8 @@ export default function ChapterIndexPage() {
     .filter((e) => isOpenToAllEvent(e))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+
   return (
     <div>
       <PageHeader
@@ -75,8 +78,11 @@ export default function ChapterIndexPage() {
         description="Open-to-all workshops, challenges, playbook, and builder tools"
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="orange" onClick={() => setIsJoinModalOpen(true)}>
+              Join Chapter with Code
+            </Button>
             <Link href="/eos">
-              <Button variant="orange">Playbook</Button>
+              <Button variant="secondary">Playbook</Button>
             </Link>
             <Link href="/referrals">
               <Button variant="ghost">Invite Friends</Button>
@@ -94,12 +100,22 @@ export default function ChapterIndexPage() {
             </p>
             <p className="text-xs text-text-dim mt-0.5 leading-relaxed">
               You are currently an independent student. You can participate in all <strong>Open to All</strong> events across chapters.
-              Ask your Campus Lead or Class Representative to add you to your college chapter anytime!
+              Have a college invite code? Click <strong>Join Chapter</strong> to submit your details to your Campus Lead!
             </p>
           </div>
-          <Badge tone="orange">Independent</Badge>
+          <div className="flex items-center gap-2">
+            <Button variant="orange" className="text-xs py-1.5 h-auto" onClick={() => setIsJoinModalOpen(true)}>
+              Enter Invite Code
+            </Button>
+            <Badge tone="orange">Independent</Badge>
+          </div>
         </div>
       </div>
+
+      <ChapterJoinModal
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+      />
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">

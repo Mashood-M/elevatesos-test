@@ -15,6 +15,7 @@ import { hasPermission, healthLabel, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import type { Chapter } from "@/types";
+import { ChapterFormBuilder } from "@/components/chapter/chapter-form-builder";
 
 export default function ChapterSettingsPage({
   params,
@@ -190,6 +191,16 @@ export default function ChapterSettingsPage({
           </Link>
         </div>
       </TerminalPanel>
+
+      {canManage ? (
+        <div className="mb-6">
+          <ChapterFormBuilder
+            chapterId={chapter.id}
+            chapterSlug={chapter.slug}
+            collegeName={chapter.college || chapter.name}
+          />
+        </div>
+      ) : null}
 
       {!canManage ? (
         <p className="mb-4 text-[13px] text-text-dim">

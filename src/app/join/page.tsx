@@ -1,15 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
+import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 
 export default function JoinChapterPage() {
   const { store, joinChapterCommunity } = useStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlCode = searchParams.get("code") || searchParams.get("chapter") || "";
+
+  const [isModalOpen, setIsModalOpen] = useState(Boolean(urlCode));
+
   const activeChapters = useMemo(
     () => store.chapters.filter((c) => c.status === "active"),
     [store.chapters],
@@ -39,7 +45,7 @@ export default function JoinChapterPage() {
       setError("Could not join — check name, email, and chapter.");
       return;
     }
-    router.push(chapter ? `/chapter/${chapter.slug}/community` : "/login");
+    router.push(chapter ? `/chapter/${chapter.slug}` : "/login");
   }
 
   return (
@@ -55,11 +61,21 @@ export default function JoinChapterPage() {
           Join a chapter
         </h1>
         <p className="mt-3 text-[14px] leading-relaxed text-white/50">
-          Every student on campus belongs. No fee, no department gate — grow
-          through workshops and clusters.
+          Have an invite code from your Campus Lead? Click below to enter your code or fill out your college's custom join form.
         </p>
 
-        <div className="mt-10 space-y-4 rounded-[var(--radius)] bg-white/[0.04] p-6 ring-1 ring-white/10">
+        <div className="mt-6">
+          <Button
+            variant="orange"
+            onClick={() => setIsModalOpen(true)}
+            className="w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
+          >
+            🔑 Enter Chapter Invite Code / Custom Form
+          </Button>
+        </div>
+
+        <div className="mt-8 space-y-4 rounded-[var(--radius)] bg-white/[0.04] p-6 ring-1 ring-white/10">
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider">General Student Signup</h2>
           <div>
             <FieldLabel>Campus chapter</FieldLabel>
             <Select
@@ -106,29 +122,23 @@ export default function JoinChapterPage() {
               <Input
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
-                placeholder="1st / 2nd…"
+                placeholder="e.g. 2nd Year"
                 className="border-white/15 bg-black/25 text-white"
               />
             </div>
           </div>
-          {error ? (
-            <p className="text-sm text-[var(--accent)]">{error}</p>
-          ) : null}
-          <Button variant="orange" className="mt-2 h-10 w-full" onClick={submit}>
-            Join community
+          {error ? <p className="text-[13px] text-red-400">{error}</p> : null}
+          <Button variant="primary" className="w-full" onClick={submit}>
+            Request chapter join
           </Button>
         </div>
-
-        <p className="mt-8 text-center text-[13px] text-white/40">
-          <Link href="/eos" className="text-[var(--accent)] hover:text-white">
-            Read the playbook
-          </Link>
-          {" · "}
-          <Link href="/login" className="hover:text-white">
-            Already in the app?
-          </Link>
-        </p>
       </div>
+
+      <ChapterJoinModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        initialCode={urlCode}
+      />
     </div>
   );
 }

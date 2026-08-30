@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { initials } from "@/lib/utils";
+import { CustomJoinRequestsPanel } from "@/components/chapter/custom-join-requests-panel";
 
 interface PreCollectedStudent {
   id: string;
@@ -306,12 +307,8 @@ export default function ChapterStudentsPage({
         }
       />
 
-      {syncSuccessMsg && (
-        <div className="flex items-center gap-2 rounded-[var(--radius-md)] bg-green-500/10 border border-green-500/30 p-3 text-xs font-semibold text-green-600">
-          <CheckCircle size={16} />
-          {syncSuccessMsg}
-        </div>
-      )}
+      {/* Custom Join Requests Review Section */}
+      <CustomJoinRequestsPanel chapterId={activeChapter.id} chapterName={activeChapter.name} />
 
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-4">

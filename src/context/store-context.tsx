@@ -213,6 +213,25 @@ type StoreContextValue = {
   }) => Profile | null;
   approveJoinRequests: (profileIds: string[], roleKey: RoleKey, chapterId: string) => Promise<boolean>;
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
+  saveChapterInviteConfig: (
+    chapterId: string,
+    code: string,
+    enabled: boolean,
+    customFields: import("@/types").CustomFormField[],
+  ) => void;
+  submitCustomJoinRequest: (input: {
+    chapterId: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    inviteCodeUsed: string;
+    answers: Record<string, string>;
+  }) => boolean;
+  batchReviewCustomJoinRequests: (
+    requestIds: string[],
+    status: "approved" | "rejected",
+    chapterId?: string,
+  ) => Promise<boolean>;
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -1756,6 +1775,94 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           profiles: s.profiles.filter((p) => !profileIds.includes(p.id)),
         }));
+        return true;
+      },
+      saveChapterInviteConfig: (chapterId, code, enabled, customFields) => {
+        setStore((s) => {
+          const existing = s.chapterInviteConfigs ?? [];
+          const filtered = existing.filter((c) => c.chapterId !== chapterId);
+          const newConfig: import("@/types").ChapterInviteConfig = {
+            chapterId,
+            code: code.trim().toUpperCase(),
+            enabled,
+            customFields,
+            updatedAt: new Date().toISOString(),
+          };
+          return {
+            ...s,
+            chapterInviteConfigs: [...filtered, newConfig],
+          };
+        });
+      },
+      submitCustomJoinRequest: (input) => {
+        setStore((s) => {
+          const existing = s.customJoinRequests ?? [];
+          const newReq: import("@/types").CustomJoinRequest = {
+            id: `cjr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            chapterId: input.chapterId,
+            userId: input.userId,
+            userName: input.userName,
+            userEmail: input.userEmail,
+            inviteCodeUsed: input.inviteCodeUsed,
+            answers: input.answers,
+            status: "pending",
+            submittedAt: new Date().toISOString(),
+          };
+          return {
+            ...s,
+            customJoinRequests: [newReq, ...existing],
+          };
+        });
+        return true;
+      },
+      batchReviewCustomJoinRequests: async (requestIds, status, chapterId) => {
+        if (!requestIds.length) return false;
+        setStore((s) => {
+          const currentRequests = s.customJoinRequests ?? [];
+          const targetRequests = currentRequests.filter((r) => requestIds.includes(r.id));
+          const targetUserIds = targetRequests.map((r) => r.userId);
+
+          const updatedRequests = currentRequests.map((r) =>
+            requestIds.includes(r.id) ? { ...r, status } : r,
+          );
+
+          let updatedProfiles = s.profiles;
+          let updatedUserRoles = s.userRoles;
+
+          if (status === "approved" && chapterId) {
+            updatedProfiles = s.profiles.map((p) =>
+              targetUserIds.includes(p.id)
+                ? { ...p, chapterId, status: "active" as const }
+                : p,
+            );
+
+            const existingRoleUserIds = new Set(s.userRoles.map((ur) => ur.userId));
+            const newRoles: UserRole[] = targetUserIds
+              .filter((pid) => !existingRoleUserIds.has(pid))
+              .map((pid) => ({
+                id: `ur-${pid}-${Date.now()}`,
+                userId: pid,
+                roleId: "role-student",
+                roleKey: "student" as RoleKey,
+                chapterId,
+              }));
+
+            updatedUserRoles = s.userRoles
+              .map((ur) =>
+                targetUserIds.includes(ur.userId)
+                  ? { ...ur, chapterId, roleKey: "student" as RoleKey }
+                  : ur,
+              )
+              .concat(newRoles);
+          }
+
+          return {
+            ...s,
+            customJoinRequests: updatedRequests,
+            profiles: updatedProfiles,
+            userRoles: updatedUserRoles,
+          };
+        });
         return true;
       },
       batchUpdateRegistrationStatus: (registrationIds, status, actorId) => {

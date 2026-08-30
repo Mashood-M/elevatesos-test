@@ -376,22 +376,9 @@ export default function ChapterLeadershipPage({
               </span>
             ) : null}
             {canManage ? (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const url = `${window.location.origin}/join?chapter=${chapter.slug}&role=class_representative`;
-                    navigator.clipboard.writeText(url);
-                    flashMsg("✓ Copied Class Rep join link!");
-                  }}
-                  className="text-xs"
-                >
-                  Copy Class Rep Join Link
-                </Button>
-                <Button variant="primary" onClick={startCreateTerm}>
-                  {showTermForm && !editingTermId ? "Close form" : "New term"}
-                </Button>
-              </>
+              <Button variant="primary" onClick={startCreateTerm}>
+                {showTermForm && !editingTermId ? "Close form" : "New term"}
+              </Button>
             ) : null}
           </div>
         }

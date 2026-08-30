@@ -270,12 +270,7 @@ export default function ChapterStudentsPage({
     setTimeout(() => setSyncSuccessMsg(""), 4000);
   };
 
-  const copyInviteLink = (targetRole: string) => {
-    const url = `${window.location.origin}/join?chapter=${activeChapter.slug}&role=${targetRole}`;
-    navigator.clipboard.writeText(url);
-    setSyncSuccessMsg(`✓ Copied ${targetRole === "class_representative" ? "Class Rep" : "Student"} join link to clipboard!`);
-    setTimeout(() => setSyncSuccessMsg(""), 4000);
-  };
+
 
   return (
     <div className="space-y-6">
@@ -285,22 +280,14 @@ export default function ChapterStudentsPage({
         description="Manage campus students, pre-collect details via CSV, and review pending Class Rep and Student join requests."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => copyInviteLink("student")}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              Copy Student Invite Link
-            </Button>
-            {["founder", "hq_admin", "campus_lead", "chairman"].includes(store.session.roleKey) && (
+            <Link href="/referrals">
               <Button
                 variant="secondary"
-                onClick={() => copyInviteLink("class_representative")}
                 className="flex items-center gap-1.5 text-xs"
               >
-                Copy Class Rep Invite Link
+                Invite Students
               </Button>
-            )}
+            </Link>
             <Button
               variant="secondary"
               onClick={() => setIsBulkOpen(true)}

@@ -188,6 +188,8 @@ export interface Chapter {
 
 export interface Profile {
   id: string;
+  /** Human-readable unique identifier shown in nav & used for fast search. Format: ELV-XXXXXX */
+  elevatesId?: string;
   email: string;
   fullName: string;
   avatarUrl?: string;
@@ -771,6 +773,18 @@ export interface ActivityLog {
   meta?: string;
 }
 
+export interface InviteToken {
+  id: string;
+  token: string;
+  createdBy: string;
+  chapterId?: string;
+  usedBy?: string;
+  usedAt?: string;
+  createdAt: string;
+  expiresAt?: string;
+  isActive: boolean;
+}
+
 export interface DemoUserSession {
   userId: string;
   roleKey: RoleKey;
@@ -816,6 +830,7 @@ export interface ElevatesStore {
   /** Demo outbound email / WhatsApp queue (no real provider) */
   outboundMessages: OutboundMessage[];
   activityLogs: ActivityLog[];
+  inviteTokens: InviteToken[];
   peerLabs?: Record<string, any>[];
   session: DemoUserSession;
 }

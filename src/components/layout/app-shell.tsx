@@ -207,6 +207,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   {profile?.fullName}
                 </p>
                 <p className="truncate text-[11px] text-text-mute">{highestRoleLabel}</p>
+                {profile?.elevatesId && (
+                  <p className="mt-0.5 inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--accent)]">
+                    {profile.elevatesId}
+                  </p>
+                )}
               </div>
             </Link>
             <button

@@ -63,6 +63,7 @@ function emptyStore(): ElevatesStore {
     notifications: [],
     outboundMessages: [],
     activityLogs: [],
+    inviteTokens: [],
     session: {
       userId: "",
       roleKey: "student" as RoleKey,
@@ -105,6 +106,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: laRows },
       { data: clusterRows },
       { data: epRows },
+      { data: inviteRows },
       authUserData,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
@@ -125,6 +127,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("leadership_assignments").select("*"),
       supabase.from("clusters").select("*"),
       supabase.from("event_permissions").select("*"),
+      supabase.from("invite_tokens").select("*").order("created_at", { ascending: false }),
       supabase.auth.getUser(),
     ]);
 
@@ -228,6 +231,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const profiles: Profile[] =
       profileRows?.map((p: Record<string, any>) => ({
         id: p.id,
+        elevatesId: p.elevates_id ?? undefined,
         email: p.email,
         fullName: p.full_name,
         avatarUrl: p.avatar_url ?? undefined,
@@ -471,6 +475,17 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         certificates,
         registrations,
         attendance,
+        inviteTokens: (inviteRows ?? []).map((t: Record<string, any>) => ({
+          id: t.id,
+          token: t.token,
+          createdBy: t.created_by,
+          chapterId: t.chapter_id ?? undefined,
+          usedBy: t.used_by ?? undefined,
+          usedAt: t.used_at ?? undefined,
+          createdAt: t.created_at,
+          expiresAt: t.expires_at ?? undefined,
+          isActive: t.is_active ?? true,
+        })),
         session,
       },
       _dataSource: "database" as StoreDataSource,
@@ -537,4 +552,68 @@ export async function publishChapterRemote(chapterId: string) {
     .update({ published: true })
     .eq("id", chapterId);
   return { ok: !error };
+}
+
+/** Create a new invite token for the current user (referrer). Expires in 7 days. */
+export async function createInviteToken(createdById: string, chapterId?: string): Promise<string | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("invite_tokens")
+    .insert({
+      created_by: createdById,
+      chapter_id: chapterId ?? null,
+      expires_at: expiresAt,
+    })
+    .select("token")
+    .single();
+  if (error) {
+    console.error("createInviteToken error:", error);
+    return null;
+  }
+  return data?.token ?? null;
+}
+
+/** Validate invite token — returns token row or null if invalid/expired/used. */
+export async function validateInviteToken(token: string): Promise<{
+  id: string;
+  token: string;
+  createdBy: string;
+  chapterId?: string;
+  isActive: boolean;
+  usedBy?: string;
+  expiresAt?: string;
+} | null> {
+  const supabase = createClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("invite_tokens")
+    .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
+    .eq("token", token)
+    .maybeSingle();
+  if (error || !data) return null;
+  if (!data.is_active || data.used_by) return null; // already used or deactivated
+  // Reject if past expiry
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
+  return {
+    id: data.id,
+    token: data.token,
+    createdBy: data.created_by,
+    chapterId: data.chapter_id ?? undefined,
+    isActive: data.is_active,
+    usedBy: data.used_by ?? undefined,
+    expiresAt: data.expires_at ?? undefined,
+  };
+}
+
+/** Mark an invite token as used after successful registration. */
+export async function markInviteTokenUsed(tokenId: string, newUserId: string): Promise<boolean> {
+  const supabase = createClient();
+  if (!supabase) return false;
+  const { error } = await supabase
+    .from("invite_tokens")
+    .update({ used_by: newUserId, used_at: new Date().toISOString(), is_active: false })
+    .eq("id", tokenId);
+  return !error;
 }

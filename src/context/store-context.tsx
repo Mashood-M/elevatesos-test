@@ -33,6 +33,7 @@ import {
   emptyForm,
   ensureRepresentativeQuestion,
   fieldToQuestion,
+  generateElevatesId,
   mintQrCode,
   normalizeStore,
   questionToField,
@@ -576,6 +577,7 @@ function createUserViaJoin(
   const id = `u-${Date.now()}`;
   const profile: Profile = {
     id,
+    elevatesId: generateElevatesId(id),
     email: input.email,
     fullName: input.fullName,
     chapterId: input.chapterId,
@@ -783,6 +785,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       notifications: [],
       outboundMessages: [],
       activityLogs: [],
+      inviteTokens: [],
       session: {
         userId: "",
         roleKey: "student",
@@ -1955,6 +1958,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const id = `u-${Date.now()}`;
         const profile: Profile = {
           id,
+          elevatesId: generateElevatesId(id),
           email,
           fullName,
           chapterId: isHq ? undefined : input.chapterId,

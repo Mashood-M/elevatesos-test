@@ -454,6 +454,22 @@ export function emptyForm(
   };
 }
 
+export function generateElevatesId(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let result = "";
+  let abs = Math.abs(hash);
+  for (let i = 0; i < 6; i++) {
+    result += chars[abs % chars.length];
+    abs = Math.floor((abs + (i + 1) * 13) / chars.length);
+  }
+  return `ELV-${result}`;
+}
+
 export function normalizeStore(store: ElevatesStore): ElevatesStore {
   const organization = ensureOrganizationBrandKit(store.organization);
   let forms = (store.forms ?? []).map((f) =>
@@ -491,6 +507,7 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
 
   const profiles = (store.profiles ?? []).map((p) => ({
     ...p,
+    elevatesId: p.elevatesId || generateElevatesId(p.id || p.email || Math.random().toString()),
     engagementTier: p.engagementTier ?? ("everyone" as const),
     journeyStage: p.journeyStage ?? ("awareness" as const),
   }));
@@ -523,6 +540,7 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     forms,
     formResponses,
     outboundMessages: store.outboundMessages ?? [],
+    inviteTokens: store.inviteTokens ?? [],
   };
 }
 

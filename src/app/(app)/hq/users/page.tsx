@@ -174,7 +174,8 @@ export default function HqUsersPage() {
         if (!needle) return true;
         return (
           row.profile.fullName.toLowerCase().includes(needle) ||
-          row.profile.email.toLowerCase().includes(needle)
+          row.profile.email.toLowerCase().includes(needle) ||
+          (row.profile.elevatesId ?? "").toLowerCase().includes(needle)
         );
       })
       .sort((a, b) => a.profile.fullName.localeCompare(b.profile.fullName));
@@ -820,6 +821,11 @@ export default function HqUsersPage() {
                     >
                       {profile.fullName}
                     </Link>
+                    {profile.elevatesId && (
+                      <span className="font-mono text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-1.5 py-0.5 rounded-[4px]">
+                        {profile.elevatesId}
+                      </span>
+                    )}
                     <Badge tone={status === "active" ? "green" : "mute"}>
                       {status}
                     </Badge>

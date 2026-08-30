@@ -203,9 +203,16 @@ export default function ProfilePage({
               <p className="text-[12px] font-semibold text-[var(--accent)]">
                 Profile
               </p>
-              <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
-                {profile.fullName}
-              </h1>
+              <div className="mt-1 flex flex-wrap items-center gap-2.5">
+                <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
+                  {profile.fullName}
+                </h1>
+                {profile.elevatesId && (
+                  <span className="font-mono text-xs font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 rounded-md">
+                    {profile.elevatesId}
+                  </span>
+                )}
+              </div>
               <p className="mt-1.5 text-sm text-text-dim">
                 {classLabel || "Class not set"}
                 {chapter ? (

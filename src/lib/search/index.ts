@@ -68,9 +68,9 @@ export function buildSearchIndex(
       id: `user-${p.id}`,
       category: "student",
       title: p.fullName,
-      subtitle: [p.department, p.year, chapter?.name].filter(Boolean).join(" · "),
+      subtitle: [p.elevatesId, p.department, p.year, chapter?.name].filter(Boolean).join(" · "),
       href: `/profile/${p.id}`,
-      keywords: `${p.fullName} ${p.email} ${p.skills.join(" ")} ${p.department ?? ""}`.toLowerCase(),
+      keywords: `${p.fullName} ${p.email} ${p.elevatesId ?? ""} ${p.skills.join(" ")} ${p.department ?? ""}`.toLowerCase(),
     });
   }
 

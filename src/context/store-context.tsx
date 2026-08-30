@@ -1769,8 +1769,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
         const codeString = (customCode?.trim() || `${prefix}-${randomSuffix}`).toUpperCase();
 
+        const uuidId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined;
+
         const newCode: import("@/types").ChapterInviteCode = {
-          id: `cic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          id: uuidId ?? `cic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           chapterId,
           code: codeString,
           createdBy: store.session.userId,
@@ -1780,6 +1782,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           usesCount: 0,
         };
 
+        const supabase = createClient();
+        if (supabase) {
+          const payload: Record<string, any> = {
+            token: newCode.code,
+            created_by: newCode.createdBy || null,
+            chapter_id: newCode.chapterId,
+            expires_at: newCode.expiresAt,
+            is_active: true,
+          };
+          if (uuidId) payload.id = uuidId;
+
+          supabase
+            .from("invite_tokens")
+            .insert(payload)
+            .select("id")
+            .single()
+            .then((res: any) => {
+              if (res?.error) {
+                console.error("Error saving invite token to Supabase:", res.error.message);
+              } else if (res?.data?.id && res.data.id !== newCode.id) {
+                const serverId = res.data.id;
+                setStore((s) => ({
+                  ...s,
+                  chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
+                    c.id === newCode.id ? { ...c, id: serverId } : c
+                  ),
+                }));
+              }
+            });
+        }
+
         setStore((s) => ({
           ...s,
           chapterInviteCodes: [newCode, ...(s.chapterInviteCodes ?? [])],
@@ -1788,6 +1821,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return newCode;
       },
       revokeChapterInviteCode: (codeId) => {
+        const supabase = createClient();
+        if (supabase) {
+          supabase
+            .from("invite_tokens")
+            .update({ is_active: false })
+            .eq("id", codeId)
+            .then((res: any) => {
+              if (res?.error) console.error("Error revoking invite token in Supabase:", res.error?.message);
+            });
+        }
+
         setStore((s) => ({
           ...s,
           chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
@@ -1840,9 +1884,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
 
         // Direct join execution! Update user's profile chapterId, department, and userRoles
+        const targetUserId = userId || store.session.userId || store.session.authUserId || "";
+
         setStore((s) => {
           const updatedProfiles = s.profiles.map((p) =>
-            p.id === userId || (s.session.authUserId && p.id === s.session.authUserId)
+            p.id === targetUserId || (s.session.authUserId && p.id === s.session.authUserId)
               ? {
                   ...p,
                   chapterId: targetChapter.id,
@@ -1858,12 +1904,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             matchingCode && c.id === matchingCode.id ? { ...c, usesCount: c.usesCount + 1 } : c
           );
 
-          const hasRole = s.userRoles.some((ur) => ur.userId === userId && ur.chapterId === targetChapter.id);
+          const hasRole = s.userRoles.some((ur) => ur.userId === targetUserId && ur.chapterId === targetChapter.id);
           let updatedUserRoles = s.userRoles;
-          if (!hasRole) {
+          if (!hasRole && targetUserId) {
             const newRole: UserRole = {
-              id: `ur-${userId}-${Date.now()}`,
-              userId,
+              id: `ur-${targetUserId}-${Date.now()}`,
+              userId: targetUserId,
               roleId: "role-student",
               roleKey: "student" as RoleKey,
               chapterId: targetChapter.id,
@@ -1879,6 +1925,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userRoles: updatedUserRoles,
           };
         });
+
+        // Supabase DB Persistence
+        const supabase = createClient();
+        if (supabase && targetUserId) {
+          supabase
+            .from("profiles")
+            .update({
+              chapter_id: targetChapter.id,
+              department: department?.trim() || null,
+              status: "active",
+            })
+            .eq("id", targetUserId)
+            .then((res: any) => {
+              if (res?.error) console.error("Error updating user profile in Supabase:", res.error?.message);
+            });
+
+          supabase
+            .from("user_roles")
+            .upsert({
+              user_id: targetUserId,
+              role_key: "student",
+              chapter_id: targetChapter.id,
+            }, { onConflict: "user_id,role_key,chapter_id" })
+            .then((res: any) => {
+              if (res?.error) console.error("Error updating user role in Supabase:", res.error?.message);
+            });
+
+          if (matchingCode) {
+            supabase
+              .from("invite_tokens")
+              .update({ used_by: targetUserId, used_at: new Date().toISOString() })
+              .eq("id", matchingCode.id)
+              .then((res: any) => {
+                if (res?.error) console.error("Error marking invite code used in Supabase:", res.error?.message);
+              });
+          }
+        }
 
         return {
           success: true,

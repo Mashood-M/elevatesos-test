@@ -44,9 +44,14 @@ export function TicketCard({
           </h3>
           <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>
         </div>
-        <Badge tone={statusTone[event.status] ?? "mute"}>
-          {event.status.replaceAll("_", " ")}
-        </Badge>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") && (
+            <Badge tone="cyan">Open to All</Badge>
+          )}
+          <Badge tone={statusTone[event.status] ?? "mute"}>
+            {event.status.replaceAll("_", " ")}
+          </Badge>
+        </div>
       </div>
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-text-dim">
         <p>{event.venue}</p>

@@ -47,3 +47,41 @@ export function canRegisterNow(
 
   return { ok: true, formId: form.id };
 }
+
+/** Check if an event is open to all students across colleges and chapters. */
+export function isOpenToAllEvent(event: EventItem): boolean {
+  return (
+    event.visibility === "open_to_all" ||
+    event.visibility === "public" ||
+    event.visibility === "all_chapters"
+  );
+}
+
+/** Determine whether a given event is visible to a user based on privacy/visibility rules. */
+export function isEventVisibleToUser(
+  event: EventItem,
+  userChapterId?: string,
+  userRoleKey?: string,
+): boolean {
+  // HQ roles can see all events
+  if (userRoleKey === "founder" || userRoleKey === "hq_admin") {
+    return true;
+  }
+
+  // Closed / private events are hidden unless organizer / HQ
+  if (event.visibility === "closed") {
+    return false;
+  }
+
+  // Open to all events are visible to everyone
+  if (isOpenToAllEvent(event)) {
+    return true;
+  }
+
+  // Chapter-only events are ONLY visible to members of that specific chapter
+  if (event.visibility === "chapter_only") {
+    return Boolean(userChapterId && userChapterId === event.chapterId);
+  }
+
+  return true;
+}

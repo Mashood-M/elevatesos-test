@@ -13,7 +13,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { fromLocalInput, offsetIso, toLocalInput } from "@/lib/datetime";
-import { canRegisterNow } from "@/lib/events";
+import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
 import { getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,7 @@ function emptyCreateForm() {
     venue: "Main Seminar Hall",
     category: "Workshop",
     capacity: "60",
-    visibility: "public" as Visibility,
+    visibility: "open_to_all" as Visibility,
     mode: "in_person" as "in_person" | "online" | "hybrid",
     description: "",
     topics: "",
@@ -126,7 +126,9 @@ export default function ChapterEventsPage({
     );
   }
 
-  const events = store.events.filter((e) => e.chapterId === chapter.id);
+  const events = store.events
+    .filter((e) => e.chapterId === chapter.id)
+    .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
   const mainEvents = events.filter((e) => e.eventType === "main" || !e.parentEventId);
   const q = search.trim().toLowerCase();
   const filteredEvents = events
@@ -637,7 +639,7 @@ export default function ChapterEventsPage({
             </div>
 
             <div>
-              <FieldLabel>Visibility</FieldLabel>
+              <FieldLabel>Event Access & Privacy</FieldLabel>
               <Select
                 value={form.visibility}
                 onChange={(e) =>
@@ -647,10 +649,9 @@ export default function ChapterEventsPage({
                   }))
                 }
               >
-                <option value="public">Public (Main Site & Chapter)</option>
-                <option value="chapter_only">Chapter Members Only</option>
-                <option value="all_chapters">All Elevates Chapters</option>
-                <option value="specific_chapters">Selected Chapters</option>
+                <option value="open_to_all">🌍 Open to All (Anyone inside & outside college/chapter)</option>
+                <option value="chapter_only">🔒 Open for this Chapter (Members of this chapter only)</option>
+                <option value="closed">⛔ Closed (Invite-only / Registration closed)</option>
               </Select>
             </div>
             <div>

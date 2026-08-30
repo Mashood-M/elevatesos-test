@@ -56,7 +56,9 @@ export type EventStatus =
   | "completed"
   | "cancelled";
 export type Visibility =
+  | "open_to_all"
   | "chapter_only"
+  | "closed"
   | "specific_chapters"
   | "all_chapters"
   | "public";

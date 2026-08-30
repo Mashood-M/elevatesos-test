@@ -149,11 +149,8 @@ export default function ChapterClustersPage({
             here.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link href={`/chapter/${slug}/community`}>
-              <Button variant="orange">Open community</Button>
-            </Link>
             {canCreate ? (
-              <Button variant="ghost" onClick={() => setOpen(true)}>
+              <Button variant="orange" onClick={() => setOpen(true)}>
                 Create cluster
               </Button>
             ) : null}

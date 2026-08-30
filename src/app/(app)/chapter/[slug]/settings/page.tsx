@@ -155,9 +155,6 @@ export default function ChapterSettingsPage({
             <Link href={`/chapter/${slug}/calendar`}>
               <Button variant="ghost">Calendar</Button>
             </Link>
-            <Link href={`/chapter/${slug}/community`}>
-              <Button variant="ghost">Community</Button>
-            </Link>
             <Link href={`/chapter/${slug}/students`}>
               <Button variant="ghost">Students</Button>
             </Link>

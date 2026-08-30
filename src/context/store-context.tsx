@@ -1943,13 +1943,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           supabase
             .from("user_roles")
-            .upsert({
+            .insert({
               user_id: targetUserId,
               role_key: "student",
               chapter_id: targetChapter.id,
-            }, { onConflict: "user_id,role_key,chapter_id" })
+            })
             .then((res: any) => {
-              if (res?.error) console.error("Error updating user role in Supabase:", res.error?.message);
+              if (res?.error && !res.error?.message?.includes("duplicate") && !res.error?.details?.includes("already exists")) {
+                console.warn("Supabase user_roles insert notice:", res.error?.message);
+              }
             });
 
           if (matchingCode) {

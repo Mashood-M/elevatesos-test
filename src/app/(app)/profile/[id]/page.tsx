@@ -261,6 +261,14 @@ export default function ProfilePage({
 
           {/* Action Buttons */}
           <div className="flex shrink-0 items-center gap-2">
+            {isOwn && (
+              <Link href="/invite">
+                <Button variant="secondary" className="flex items-center gap-2">
+                  <Link2 size={14} />
+                  Invite Friends
+                </Button>
+              </Link>
+            )}
             {canEdit && (
               <Button
                 variant="orange"

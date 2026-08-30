@@ -139,6 +139,7 @@ export function navGroupsForRole(
         items: [
           { href: "/hq/developer", label: "Developer API", icon: I.developer },
           { href: "/hq/notifications", label: "Notifications", icon: I.alerts },
+          { href: "/invite", label: "Invite Friends", icon: I.referrals },
           { href: "/hq/settings", label: "Settings", icon: I.settings },
           { href: "/hq/audit", label: "Audit", icon: I.audit },
           { href: "/workflows", label: "Demo loops", icon: I.workflows },

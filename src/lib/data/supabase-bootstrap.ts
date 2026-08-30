@@ -107,6 +107,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: clusterRows },
       { data: epRows },
       { data: inviteRows },
+      { data: deptRows },
       authUserData,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
@@ -128,6 +129,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("clusters").select("*"),
       supabase.from("event_permissions").select("*"),
       supabase.from("invite_tokens").select("*").order("created_at", { ascending: false }),
+      supabase.from("departments").select("*"),
       supabase.auth.getUser(),
     ]);
 
@@ -388,6 +390,13 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 
+    const departments: import("@/types").Department[] =
+      deptRows?.map((d: Record<string, any>) => ({
+        id: d.id,
+        chapterId: d.chapter_id ?? d.chapterId ?? "",
+        name: d.name,
+      })) ?? [];
+
     let session: DemoUserSession;
     if (authUser) {
       let matchedProfile = profiles.find((p) => p.id === authUser.id);
@@ -459,6 +468,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         ...emptyStore(),
         organization,
         chapters,
+        departments,
         roles,
         permissions,
         rolePermissions,

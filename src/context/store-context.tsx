@@ -2317,6 +2317,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           chapterId: input.chapterId,
           name,
         };
+
+        const supabase = createClient();
+        if (supabase) {
+          supabase
+            .from("departments")
+            .insert({
+              id: department.id,
+              chapter_id: department.chapterId,
+              name: department.name,
+            })
+            .then((res: any) => {
+              if (res?.error) console.error("Error writing department to Supabase:", res.error?.message);
+            });
+        }
+
         setStore((s) => ({
           ...s,
           departments: [department, ...(s.departments ?? [])],
@@ -2375,6 +2390,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               existing.name.trim().toUpperCase(),
         );
         if (inUse) return false;
+
+        const supabase = createClient();
+        if (supabase) {
+          supabase
+            .from("departments")
+            .delete()
+            .eq("id", id)
+            .then((res: any) => {
+              if (res?.error) console.error("Error deleting department from Supabase:", res.error?.message);
+            });
+        }
+
         setStore((s) => ({
           ...s,
           departments: (s.departments ?? []).filter((d) => d.id !== id),

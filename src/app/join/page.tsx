@@ -8,17 +8,6 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2 } from "lucide-react";
 
-const DEFAULT_DEPTS = [
-  "Computer Science & Engineering (CSE)",
-  "Artificial Intelligence & Data Science (AI & DS)",
-  "Information Technology (IT)",
-  "Electronics & Communication Engineering (ECE)",
-  "Electrical & Electronics Engineering (EEE)",
-  "Mechanical Engineering (ME)",
-  "Civil Engineering (CE)",
-  "Other",
-];
-
 function JoinChapterContent() {
   const { joinChapterWithCode, store } = useStore();
   const { session } = useCurrentUser();
@@ -39,13 +28,10 @@ function JoinChapterContent() {
     ? store.chapters.find((c) => c.id === matchingCode.chapterId)
     : store.chapters.find((c) => c.slug.toUpperCase() === cleanCode);
 
+  // Departments added by Campus Lead from Supabase / store
   const configuredDepts = targetChapter
     ? (store.departments ?? []).filter((d) => d.chapterId === targetChapter.id)
     : [];
-
-  const availableDepts = configuredDepts.length > 0
-    ? [...configuredDepts.map((d) => d.name), "Other"]
-    : DEFAULT_DEPTS;
 
   function handleJoin(e: React.FormEvent) {
     e.preventDefault();
@@ -118,26 +104,46 @@ function JoinChapterContent() {
                 />
               </div>
 
-              <div>
-                <FieldLabel className="flex items-center gap-1.5 text-white/80">
-                  <Building2 size={14} />
-                  <span>2. Select Your Department</span>
-                </FieldLabel>
-                <Select
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
-                >
-                  <option value="" className="bg-[var(--charcoal-900)] text-white">-- Select Department --</option>
-                  {availableDepts.map((d) => (
-                    <option key={d} value={d} className="bg-[var(--charcoal-900)] text-white">
-                      {d}
+              {configuredDepts.length > 0 ? (
+                <div>
+                  <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                    <Building2 size={14} />
+                    <span>2. Select Department (Campus Lead Configured)</span>
+                  </FieldLabel>
+                  <Select
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                  >
+                    <option value="" className="bg-[var(--charcoal-900)] text-white">
+                      -- Select Department --
                     </option>
-                  ))}
-                </Select>
-              </div>
+                    {configuredDepts.map((d) => (
+                      <option key={d.id} value={d.name} className="bg-[var(--charcoal-900)] text-white">
+                        {d.name}
+                      </option>
+                    ))}
+                    <option value="Other" className="bg-[var(--charcoal-900)] text-white">
+                      Other
+                    </option>
+                  </Select>
+                </div>
+              ) : (
+                <div>
+                  <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                    <Building2 size={14} />
+                    <span>2. Academic Department</span>
+                  </FieldLabel>
+                  <Input
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    placeholder="e.g. Computer Science & Engineering"
+                    className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                  />
+                </div>
+              )}
 
-              {department === "Other" && (
+              {department === "Other" && configuredDepts.length > 0 && (
                 <div>
                   <FieldLabel className="text-white/80">Specify Department Name</FieldLabel>
                   <Input

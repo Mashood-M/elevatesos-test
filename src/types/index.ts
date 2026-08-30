@@ -833,37 +833,18 @@ export interface ElevatesStore {
   outboundMessages: OutboundMessage[];
   activityLogs: ActivityLog[];
   inviteTokens: InviteToken[];
-  chapterInviteConfigs?: ChapterInviteConfig[];
-  customJoinRequests?: CustomJoinRequest[];
+  chapterInviteCodes?: ChapterInviteCode[];
   peerLabs?: Record<string, any>[];
   session: DemoUserSession;
 }
 
-export interface CustomFormField {
+export interface ChapterInviteCode {
   id: string;
-  label: string;
-  type: "text" | "textarea" | "select" | "number";
-  required: boolean;
-  options?: string[];
-  placeholder?: string;
-}
-
-export interface ChapterInviteConfig {
   chapterId: string;
   code: string;
-  enabled: boolean;
-  customFields: CustomFormField[];
-  updatedAt: string;
-}
-
-export interface CustomJoinRequest {
-  id: string;
-  chapterId: string;
-  userId: string;
-  userName: string;
-  userEmail: string;
-  inviteCodeUsed: string;
-  answers: Record<string, string>;
-  status: "pending" | "approved" | "rejected";
-  submittedAt: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string; // 3 days validity from creation
+  isRevoked: boolean;
+  usesCount: number;
 }

@@ -213,25 +213,9 @@ type StoreContextValue = {
   }) => Profile | null;
   approveJoinRequests: (profileIds: string[], roleKey: RoleKey, chapterId: string) => Promise<boolean>;
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
-  saveChapterInviteConfig: (
-    chapterId: string,
-    code: string,
-    enabled: boolean,
-    customFields: import("@/types").CustomFormField[],
-  ) => void;
-  submitCustomJoinRequest: (input: {
-    chapterId: string;
-    userId: string;
-    userName: string;
-    userEmail: string;
-    inviteCodeUsed: string;
-    answers: Record<string, string>;
-  }) => boolean;
-  batchReviewCustomJoinRequests: (
-    requestIds: string[],
-    status: "approved" | "rejected",
-    chapterId?: string,
-  ) => Promise<boolean>;
+  generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
+  revokeChapterInviteCode: (codeId: string) => boolean;
+  joinChapterWithCode: (code: string, userId: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -1777,93 +1761,125 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       },
-      saveChapterInviteConfig: (chapterId, code, enabled, customFields) => {
-        setStore((s) => {
-          const existing = s.chapterInviteConfigs ?? [];
-          const filtered = existing.filter((c) => c.chapterId !== chapterId);
-          const newConfig: import("@/types").ChapterInviteConfig = {
-            chapterId,
-            code: code.trim().toUpperCase(),
-            enabled,
-            customFields,
-            updatedAt: new Date().toISOString(),
-          };
-          return {
-            ...s,
-            chapterInviteConfigs: [...filtered, newConfig],
-          };
-        });
+      generateChapterInviteCode: (chapterId, customCode) => {
+        const now = new Date();
+        const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Strictly 3 days validity
+        const chap = store.chapters.find((c) => c.id === chapterId);
+        const prefix = chap?.slug ? chap.slug.substring(0, 4).toUpperCase() : "JOIN";
+        const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const codeString = (customCode?.trim() || `${prefix}-${randomSuffix}`).toUpperCase();
+
+        const newCode: import("@/types").ChapterInviteCode = {
+          id: `cic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          chapterId,
+          code: codeString,
+          createdBy: store.session.userId,
+          createdAt: now.toISOString(),
+          expiresAt: expires.toISOString(),
+          isRevoked: false,
+          usesCount: 0,
+        };
+
+        setStore((s) => ({
+          ...s,
+          chapterInviteCodes: [newCode, ...(s.chapterInviteCodes ?? [])],
+        }));
+
+        return newCode;
       },
-      submitCustomJoinRequest: (input) => {
-        setStore((s) => {
-          const existing = s.customJoinRequests ?? [];
-          const newReq: import("@/types").CustomJoinRequest = {
-            id: `cjr-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-            chapterId: input.chapterId,
-            userId: input.userId,
-            userName: input.userName,
-            userEmail: input.userEmail,
-            inviteCodeUsed: input.inviteCodeUsed,
-            answers: input.answers,
-            status: "pending",
-            submittedAt: new Date().toISOString(),
-          };
-          return {
-            ...s,
-            customJoinRequests: [newReq, ...existing],
-          };
-        });
+      revokeChapterInviteCode: (codeId) => {
+        setStore((s) => ({
+          ...s,
+          chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
+            c.id === codeId ? { ...c, isRevoked: true } : c
+          ),
+        }));
         return true;
       },
-      batchReviewCustomJoinRequests: async (requestIds, status, chapterId) => {
-        if (!requestIds.length) return false;
-        setStore((s) => {
-          const currentRequests = s.customJoinRequests ?? [];
-          const targetRequests = currentRequests.filter((r) => requestIds.includes(r.id));
-          const targetUserIds = targetRequests.map((r) => r.userId);
+      joinChapterWithCode: (inputCode, userId) => {
+        const cleanCode = inputCode.trim().toUpperCase();
+        if (!cleanCode) {
+          return { success: false, message: "Please enter an invite code." };
+        }
 
-          const updatedRequests = currentRequests.map((r) =>
-            requestIds.includes(r.id) ? { ...r, status } : r,
+        const codes = store.chapterInviteCodes ?? [];
+        let matchingCode = codes.find((c) => c.code === cleanCode);
+
+        // Match by chapter slug if no specific code object exists
+        let targetChapter = matchingCode
+          ? store.chapters.find((c) => c.id === matchingCode.chapterId)
+          : store.chapters.find((c) => c.slug.toUpperCase() === cleanCode);
+
+        if (!targetChapter && matchingCode) {
+          targetChapter = store.chapters.find((c) => c.id === matchingCode.chapterId);
+        }
+
+        if (matchingCode) {
+          if (matchingCode.isRevoked) {
+            return {
+              success: false,
+              message: "This invite code has been revoked by the Campus Lead.",
+            };
+          }
+
+          const now = new Date();
+          const expireTime = new Date(matchingCode.expiresAt);
+          if (now > expireTime) {
+            return {
+              success: false,
+              message: "This invite code has expired (3 days validity limit reached). Ask your Campus Lead for a fresh code.",
+            };
+          }
+        }
+
+        if (!targetChapter) {
+          return {
+            success: false,
+            message: "Invalid invite code. Please check with your Campus Lead.",
+          };
+        }
+
+        // Direct join execution! Update user's profile chapterId and userRoles
+        setStore((s) => {
+          const updatedProfiles = s.profiles.map((p) =>
+            p.id === userId || (s.session.authUserId && p.id === s.session.authUserId)
+              ? { ...p, chapterId: targetChapter.id, status: "active" as const }
+              : p
           );
 
-          let updatedProfiles = s.profiles;
+          const updatedSession = { ...s.session, chapterId: targetChapter.id };
+
+          const updatedCodes = (s.chapterInviteCodes ?? []).map((c) =>
+            matchingCode && c.id === matchingCode.id ? { ...c, usesCount: c.usesCount + 1 } : c
+          );
+
+          const hasRole = s.userRoles.some((ur) => ur.userId === userId && ur.chapterId === targetChapter.id);
           let updatedUserRoles = s.userRoles;
-
-          if (status === "approved" && chapterId) {
-            updatedProfiles = s.profiles.map((p) =>
-              targetUserIds.includes(p.id)
-                ? { ...p, chapterId, status: "active" as const }
-                : p,
-            );
-
-            const existingRoleUserIds = new Set(s.userRoles.map((ur) => ur.userId));
-            const newRoles: UserRole[] = targetUserIds
-              .filter((pid) => !existingRoleUserIds.has(pid))
-              .map((pid) => ({
-                id: `ur-${pid}-${Date.now()}`,
-                userId: pid,
-                roleId: "role-student",
-                roleKey: "student" as RoleKey,
-                chapterId,
-              }));
-
-            updatedUserRoles = s.userRoles
-              .map((ur) =>
-                targetUserIds.includes(ur.userId)
-                  ? { ...ur, chapterId, roleKey: "student" as RoleKey }
-                  : ur,
-              )
-              .concat(newRoles);
+          if (!hasRole) {
+            const newRole: UserRole = {
+              id: `ur-${userId}-${Date.now()}`,
+              userId,
+              roleId: "role-student",
+              roleKey: "student" as RoleKey,
+              chapterId: targetChapter.id,
+            };
+            updatedUserRoles = [...s.userRoles, newRole];
           }
 
           return {
             ...s,
-            customJoinRequests: updatedRequests,
             profiles: updatedProfiles,
+            session: updatedSession,
+            chapterInviteCodes: updatedCodes,
             userRoles: updatedUserRoles,
           };
         });
-        return true;
+
+        return {
+          success: true,
+          message: `🎉 Success! You have joined ${targetChapter.name}.`,
+          chapter: targetChapter,
+        };
       },
       batchUpdateRegistrationStatus: (registrationIds, status, actorId) => {
         if (!registrationIds.length) return false;

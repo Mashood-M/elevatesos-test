@@ -5,9 +5,9 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 
-export function FieldLabel({ children }: { children: React.ReactNode }) {
+export function FieldLabel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <label className="mb-1.5 block text-[12px] font-medium text-text-dim">
+    <label className={cn("mb-1.5 block text-[12px] font-medium text-text-dim", className)}>
       {children}
     </label>
   );

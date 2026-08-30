@@ -16,6 +16,7 @@ import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import type { Chapter } from "@/types";
 import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-code-manager";
+import { ChapterDepartmentManager } from "@/components/chapter/chapter-department-manager";
 
 export default function ChapterSettingsPage({
   params,
@@ -193,11 +194,12 @@ export default function ChapterSettingsPage({
       </TerminalPanel>
 
       {canManage ? (
-        <div className="mb-6">
+        <div className="mb-6 space-y-6">
           <ChapterInviteCodeManager
             chapterId={chapter.id}
             chapterSlug={chapter.slug}
           />
+          <ChapterDepartmentManager chapterId={chapter.id} />
         </div>
       ) : null}
 

@@ -4,26 +4,60 @@ import { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { FieldLabel, Input } from "@/components/ui/input";
+import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, ArrowRight, ShieldAlert, Clock, CheckCircle2 } from "lucide-react";
+import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2 } from "lucide-react";
+
+const DEFAULT_DEPTS = [
+  "Computer Science & Engineering (CSE)",
+  "Artificial Intelligence & Data Science (AI & DS)",
+  "Information Technology (IT)",
+  "Electronics & Communication Engineering (ECE)",
+  "Electrical & Electronics Engineering (EEE)",
+  "Mechanical Engineering (ME)",
+  "Civil Engineering (CE)",
+  "Other",
+];
 
 function JoinChapterContent() {
-  const { joinChapterWithCode } = useStore();
+  const { joinChapterWithCode, store } = useStore();
   const { session } = useCurrentUser();
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlCode = searchParams.get("code") || searchParams.get("chapter") || "";
 
   const [inputCode, setInputCode] = useState(urlCode);
+  const [department, setDepartment] = useState("");
+  const [customDept, setCustomDept] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
+
+  // Dynamically resolve target chapter from typed code to fetch Campus Lead configured departments
+  const cleanCode = inputCode.trim().toUpperCase();
+  const matchingCode = (store.chapterInviteCodes ?? []).find((c) => c.code === cleanCode);
+  const targetChapter = matchingCode
+    ? store.chapters.find((c) => c.id === matchingCode.chapterId)
+    : store.chapters.find((c) => c.slug.toUpperCase() === cleanCode);
+
+  const configuredDepts = targetChapter
+    ? (store.departments ?? []).filter((d) => d.chapterId === targetChapter.id)
+    : [];
+
+  const availableDepts = configuredDepts.length > 0
+    ? [...configuredDepts.map((d) => d.name), "Other"]
+    : DEFAULT_DEPTS;
 
   function handleJoin(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg("");
 
-    const result = joinChapterWithCode(inputCode, session.userId);
+    const finalDept = department === "Other" ? customDept.trim() : department.trim();
+    if (!finalDept) {
+      setErrorMsg("Please select or enter your academic department.");
+      return;
+    }
+
+    const result = joinChapterWithCode(inputCode, session.userId, finalDept);
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -54,7 +88,7 @@ function JoinChapterContent() {
             Join College Chapter
           </h1>
           <p className="mt-2 text-[14px] leading-relaxed text-white/50">
-            Enter the unique 3-day invite code provided by your Campus Lead or Class Representative.
+            Enter your 3-day invite code and select your department to join instantly.
           </p>
         </div>
 
@@ -74,7 +108,7 @@ function JoinChapterContent() {
               </div>
 
               <div>
-                <FieldLabel>Unique Invite Code</FieldLabel>
+                <FieldLabel>1. Unique Invite Code</FieldLabel>
                 <Input
                   value={inputCode}
                   onChange={(e) => setInputCode(e.target.value.toUpperCase())}
@@ -83,6 +117,37 @@ function JoinChapterContent() {
                   autoFocus
                 />
               </div>
+
+              <div>
+                <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                  <Building2 size={14} />
+                  <span>2. Select Your Department</span>
+                </FieldLabel>
+                <Select
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                >
+                  <option value="" className="bg-[var(--charcoal-900)] text-white">-- Select Department --</option>
+                  {availableDepts.map((d) => (
+                    <option key={d} value={d} className="bg-[var(--charcoal-900)] text-white">
+                      {d}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              {department === "Other" && (
+                <div>
+                  <FieldLabel className="text-white/80">Specify Department Name</FieldLabel>
+                  <Input
+                    value={customDept}
+                    onChange={(e) => setCustomDept(e.target.value)}
+                    placeholder="e.g. Biotechnology Engineering"
+                    className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                  />
+                </div>
+              )}
 
               <Button
                 type="submit"
@@ -98,7 +163,7 @@ function JoinChapterContent() {
               <CheckCircle2 size={52} className="mx-auto text-emerald-400" />
               <h3 className="font-bold text-xl text-white">🎉 Welcome to {successChapter.name}!</h3>
               <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto">
-                You are now a registered student member of <strong>{successChapter.college || successChapter.name}</strong>.
+                You are now a registered student member of <strong>{successChapter.college || successChapter.name}</strong> under <strong>{department === "Other" ? customDept : department}</strong>.
               </p>
               <Button variant="orange" onClick={handleGoToChapter} className="w-full py-3 font-bold">
                 Go to Chapter Dashboard →

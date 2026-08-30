@@ -215,7 +215,7 @@ type StoreContextValue = {
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
   generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
   revokeChapterInviteCode: (codeId: string) => boolean;
-  joinChapterWithCode: (code: string, userId: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
+  joinChapterWithCode: (code: string, userId: string, department?: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -1796,7 +1796,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       },
-      joinChapterWithCode: (inputCode, userId) => {
+      joinChapterWithCode: (inputCode, userId, department) => {
         const cleanCode = inputCode.trim().toUpperCase();
         if (!cleanCode) {
           return { success: false, message: "Please enter an invite code." };
@@ -1839,11 +1839,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        // Direct join execution! Update user's profile chapterId and userRoles
+        // Direct join execution! Update user's profile chapterId, department, and userRoles
         setStore((s) => {
           const updatedProfiles = s.profiles.map((p) =>
             p.id === userId || (s.session.authUserId && p.id === s.session.authUserId)
-              ? { ...p, chapterId: targetChapter.id, status: "active" as const }
+              ? {
+                  ...p,
+                  chapterId: targetChapter.id,
+                  department: department?.trim() || p.department,
+                  status: "active" as const,
+                }
               : p
           );
 

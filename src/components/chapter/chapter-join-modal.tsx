@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input, FieldLabel } from "@/components/ui/input";
+import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, Sparkles, CheckCircle2, ArrowRight, X, Clock, ShieldAlert } from "lucide-react";
+import { KeyRound, CheckCircle2, ArrowRight, X, Clock, ShieldAlert, Building2 } from "lucide-react";
 
 interface Props {
   isOpen: boolean;
@@ -14,20 +14,54 @@ interface Props {
   initialCode?: string;
 }
 
+const DEFAULT_DEPTS = [
+  "Computer Science & Engineering (CSE)",
+  "Artificial Intelligence & Data Science (AI & DS)",
+  "Information Technology (IT)",
+  "Electronics & Communication Engineering (ECE)",
+  "Electrical & Electronics Engineering (EEE)",
+  "Mechanical Engineering (ME)",
+  "Civil Engineering (CE)",
+  "Other",
+];
+
 export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   const router = useRouter();
-  const { joinChapterWithCode } = useStore();
+  const { joinChapterWithCode, store } = useStore();
   const { session } = useCurrentUser();
 
   const [inviteCode, setInviteCode] = useState(initialCode);
+  const [department, setDepartment] = useState("");
+  const [customDept, setCustomDept] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
+
+  // Dynamically resolve target chapter from typed code to fetch Campus Lead configured departments
+  const cleanCode = inviteCode.trim().toUpperCase();
+  const matchingCode = (store.chapterInviteCodes ?? []).find((c) => c.code === cleanCode);
+  const targetChapter = matchingCode
+    ? store.chapters.find((c) => c.id === matchingCode.chapterId)
+    : store.chapters.find((c) => c.slug.toUpperCase() === cleanCode);
+
+  const configuredDepts = targetChapter
+    ? (store.departments ?? []).filter((d) => d.chapterId === targetChapter.id)
+    : [];
+
+  const availableDepts = configuredDepts.length > 0
+    ? [...configuredDepts.map((d) => d.name), "Other"]
+    : DEFAULT_DEPTS;
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
-    const result = joinChapterWithCode(inviteCode, session.userId);
+    const finalDept = department === "Other" ? customDept.trim() : department.trim();
+    if (!finalDept) {
+      setErrorMsg("Please select or enter your academic department.");
+      return;
+    }
+
+    const result = joinChapterWithCode(inviteCode, session.userId, finalDept);
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -40,6 +74,8 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
 
   const handleReset = () => {
     setInviteCode("");
+    setDepartment("");
+    setCustomDept("");
     setErrorMsg("");
     setSuccessChapter(null);
     onClose();
@@ -82,12 +118,14 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
                 <span>3-Day Valid Invite Code</span>
               </div>
               <p className="text-xs text-text-mute leading-relaxed">
-                Enter your Campus Lead's unique 3-day invite code to directly join your college chapter.
+                {targetChapter
+                  ? `Joining ${targetChapter.name}. Select your department and enter your invite code below.`
+                  : "Enter your Campus Lead's unique 3-day invite code and select your department to join."}
               </p>
             </div>
 
             <div>
-              <FieldLabel>Unique Chapter Invite Code</FieldLabel>
+              <FieldLabel>1. Unique Chapter Invite Code</FieldLabel>
               <Input
                 value={inviteCode}
                 onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
@@ -96,6 +134,37 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
                 autoFocus
               />
             </div>
+
+            <div>
+              <FieldLabel className="flex items-center gap-1.5">
+                <Building2 size={13} />
+                <span>2. Select Your Department</span>
+              </FieldLabel>
+              <Select
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="text-xs"
+              >
+                <option value="">-- Choose Department --</option>
+                {availableDepts.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            {department === "Other" && (
+              <div>
+                <FieldLabel>Specify Department Name</FieldLabel>
+                <Input
+                  value={customDept}
+                  onChange={(e) => setCustomDept(e.target.value)}
+                  placeholder="e.g. Biotechnology Engineering"
+                  className="text-xs"
+                />
+              </div>
+            )}
 
             <Button
               type="submit"
@@ -110,7 +179,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
             <CheckCircle2 size={52} className="mx-auto text-emerald-400" />
             <h4 className="font-bold text-xl text-text">🎉 Welcome to {successChapter.name}!</h4>
             <p className="text-xs text-text-mute leading-relaxed max-w-xs mx-auto">
-              Your account has been successfully assigned to <strong>{successChapter.college || successChapter.name}</strong>. You now have full member access to events, projects, and chapter tools.
+              Your account has been assigned to <strong>{successChapter.college || successChapter.name}</strong> under the <strong>{department === "Other" ? customDept : department}</strong> department.
             </p>
             <Button variant="orange" onClick={handleGoToChapter} className="w-full py-2.5 font-bold">
               Go to Chapter Dashboard →

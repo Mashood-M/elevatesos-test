@@ -99,7 +99,7 @@ export default function ChapterIndexPage() {
             </p>
             <p className="text-xs text-text-dim mt-0.5 leading-relaxed">
               You are currently an independent student. You can participate in all <strong>Open to All</strong> events across chapters.
-              Have a college invite code? Click <strong>Join Chapter</strong> to submit your details to your Campus Lead!
+              Have a college invite code? Click <strong>Enter Invite Code</strong> to instantly join your college chapter!
             </p>
           </div>
           <div className="flex items-center gap-2">

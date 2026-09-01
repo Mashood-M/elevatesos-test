@@ -118,7 +118,7 @@ export default function HqChaptersPage() {
       <PageHeader
         eyebrow="Network"
         title="Chapter management"
-        description="Spin up chapters, monitor health scores, and track onboarding across the Elevates network."
+        description="Spin up chapters, monitor activity scores, and track onboarding across the Elevates network."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="orange" onClick={openCreate}>
@@ -185,7 +185,7 @@ export default function HqChaptersPage() {
                   <th className="pb-2 pr-4">College</th>
                   <th className="pb-2 pr-4">City</th>
                   <th className="pb-2 pr-4">Status</th>
-                  <th className="pb-2 pr-4">Health</th>
+                  <th className="pb-2 pr-4">Activity Score</th>
                   <th className="pb-2 pr-4">Members</th>
                   <th className="pb-2 pr-4">Founded</th>
                   <th className="pb-2">Actions</th>

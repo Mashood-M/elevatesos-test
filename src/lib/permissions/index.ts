@@ -44,12 +44,14 @@ export function isCampusLead(roleKey: RoleKey) {
   return roleKey === "campus_lead";
 }
 
-export function healthLabel(score: number) {
+export function activityLabel(score: number) {
   if (score >= 90) return "Excellent";
   if (score >= 75) return "Strong";
   if (score >= 60) return "Stable";
   return "Needs Attention";
 }
+
+export const healthLabel = activityLabel;
 
 export function executiveScore(store: ElevatesStore, userId: string) {
   const tasks = store.tasks.filter((t) => t.assigneeId === userId);

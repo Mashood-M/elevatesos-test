@@ -165,7 +165,7 @@ export default function ChapterDashboardPage({
       {showOps ? (
         <SectionGrid className="mb-6">
           <Stat
-            label="Health"
+            label="Activity score"
             value={`${activityScore}%`}
             hint={chapter.status.replaceAll("_", " ")}
             accent="orange"
@@ -295,7 +295,7 @@ export default function ChapterDashboardPage({
 
         <div className="space-y-5">
           {showOps ? (
-            <TerminalPanel title="Chapter health">
+            <TerminalPanel title="Activity score">
               <ProgressBar value={activityScore} label="Overall score" />
               <dl className="mt-5 space-y-3 text-[13px]">
                 <div className="flex justify-between">

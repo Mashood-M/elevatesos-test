@@ -60,7 +60,7 @@ export default function ChapterAnalyticsPage({
   );
 
   const activityScore = calculateChapterActivityScore(store, chapter.id);
-  const healthData = [{ name: "Health", value: activityScore, fill: NEON.green }];
+  const activityData = [{ name: "Activity", value: activityScore, fill: NEON.green }];
 
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
   const clusterMembers = new Set(
@@ -92,7 +92,7 @@ export default function ChapterAnalyticsPage({
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Health Score" value={`${activityScore}%`} accent="green" hint={healthLabel(activityScore)} />
+        <Stat label="Activity Score" value={`${activityScore}%`} accent="green" hint={healthLabel(activityScore)} />
         <Stat label="Students reached" value={members.length} accent="cyan" />
         <Stat label="Active+ members" value={activePlus} accent="magenta" />
         <Stat label="Cluster members" value={clusterMembers} accent="orange" />
@@ -110,11 +110,11 @@ export default function ChapterAnalyticsPage({
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <TerminalPanel title="health.score">
+        <TerminalPanel title="activity.score">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={healthData} startAngle={90} endAngle={-270}>
+                <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={activityData} startAngle={90} endAngle={-270}>
                   <RadialBar dataKey="value" cornerRadius={4} />
                 </RadialBarChart>
               </ResponsiveContainer>

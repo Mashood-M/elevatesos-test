@@ -28,7 +28,7 @@ export default function DesignSystemPage() {
         <Stat label="Components" value={12} hint="Core UI kit" accent="orange" />
         <Stat label="Brand colors" value={4} hint="orange · charcoal · sage · indigo" />
         <Stat label="Ticket events" value={store.events.length} />
-        <Stat label="Health target" value="90+" hint="Chapter excellence" />
+        <Stat label="Activity target" value="90+" hint="Chapter excellence" />
       </div>
 
       <div className="mt-8 grid gap-5 xl:grid-cols-2">

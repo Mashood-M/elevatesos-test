@@ -69,7 +69,7 @@ export default function HqAnalyticsPage() {
       <PageHeader
         eyebrow="Overview"
         title="Organization Analytics"
-        description="Cross-chapter metrics, health scores, and engagement trends from live Elevates network data."
+        description="Cross-chapter metrics, activity scores, and engagement trends from live Elevates network data."
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -150,7 +150,7 @@ export default function HqAnalyticsPage() {
         </TerminalPanel>
 
         <TerminalPanel
-          title="health.scores"
+          title="activity.scores"
           accent="green"
           className="xl:col-span-2"
           meta={`${chapterRows.length} chapters`}

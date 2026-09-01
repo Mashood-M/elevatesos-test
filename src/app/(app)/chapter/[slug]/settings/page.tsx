@@ -11,7 +11,8 @@ import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { hasPermission, healthLabel, isHqRole } from "@/lib/permissions";
+import { calculateChapterActivityScore } from "@/lib/analytics";
+import { activityLabel, hasPermission, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import type { Chapter } from "@/types";
@@ -201,9 +202,9 @@ export default function ChapterSettingsPage({
         <Stat label="Executives" value={executives.length} />
         <Stat label="Clusters" value={clusters.length} />
         <Stat
-          label="Health"
-          value={`${chapter.healthScore}%`}
-          hint={healthLabel(chapter.healthScore)}
+          label="Activity score"
+          value={`${calculateChapterActivityScore(store, chapter.id)}%`}
+          hint={activityLabel(calculateChapterActivityScore(store, chapter.id))}
         />
       </div>
 
@@ -328,10 +329,10 @@ export default function ChapterSettingsPage({
             </dl>
           </TerminalPanel>
 
-          <TerminalPanel title="Health">
+          <TerminalPanel title="Activity Score">
             <ProgressBar
-              value={chapter.healthScore}
-              label={healthLabel(chapter.healthScore)}
+              value={calculateChapterActivityScore(store, chapter.id)}
+              label={activityLabel(calculateChapterActivityScore(store, chapter.id))}
             />
             {canManage && isHqRole(session.roleKey) ? (
               <div className="mt-3 flex items-end gap-2">

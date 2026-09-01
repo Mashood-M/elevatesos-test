@@ -18,7 +18,7 @@ const roadmap = [
     title: "Advanced Analytics",
     status: "planned" as const,
     progress: 10,
-    items: ["Predictive health scores", "Cross-chapter benchmarks", "Export dashboards"],
+    items: ["Predictive activity scores", "Cross-chapter benchmarks", "Export dashboards"],
   },
   {
     phase: "Q1 2027",

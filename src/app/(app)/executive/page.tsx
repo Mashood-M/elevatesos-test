@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { executiveScore, hasPermission, healthLabel } from "@/lib/permissions";
+import { calculateChapterActivityScore } from "@/lib/analytics";
+import { activityLabel, executiveScore, hasPermission } from "@/lib/permissions";
 import { roleKeyLabel } from "@/lib/leadership";
 import { formatDateTime } from "@/lib/utils";
 import type { RoleKey } from "@/types";
@@ -25,7 +26,7 @@ const roleConfig: Partial<
     accent: "cyan",
     focus: [
       "Executive Team oversight & role delegation",
-      "Chapter health & strategic roadmap",
+      "Chapter activity & strategic roadmap",
       "Leadership term cycle & monthly reports",
       "Executive approvals & team governance",
     ],
@@ -294,9 +295,9 @@ export default function ExecutivePage() {
           <Stat label="Events" value={chapterEvents.length} />
         )}
         <Stat
-          label="Chapter health"
-          value={chapter ? `${chapter.healthScore}%` : "—"}
-          hint={chapter ? healthLabel(chapter.healthScore) : undefined}
+          label="Activity score"
+          value={chapter ? `${calculateChapterActivityScore(store, chapter.id)}%` : "—"}
+          hint={chapter ? activityLabel(calculateChapterActivityScore(store, chapter.id)) : undefined}
         />
       </div>
 
@@ -529,8 +530,8 @@ export default function ExecutivePage() {
           {chapter ? (
             <div className="mt-4">
               <ProgressBar
-                value={chapter.healthScore}
-                label={healthLabel(chapter.healthScore)}
+                value={calculateChapterActivityScore(store, chapter.id)}
+                label={activityLabel(calculateChapterActivityScore(store, chapter.id))}
               />
             </div>
           ) : null}

@@ -99,7 +99,7 @@ export default function HqDashboardPage() {
       <PageHeader
         eyebrow="Overview"
         title={`Good day, ${firstName}`}
-        description="Network overview — chapter health, campus leads, and items waiting on HQ."
+        description="Network overview — chapter activity, campus leads, and items waiting on HQ."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Link href="/hq/analytics">
@@ -141,7 +141,7 @@ export default function HqDashboardPage() {
       <div className="mt-6 grid gap-5 lg:grid-cols-[1.45fr_1fr]">
         <TerminalPanel
           title="Chapters"
-          meta="By health"
+          meta="By activity score"
           action={
             <Link
               href="/hq/chapters"

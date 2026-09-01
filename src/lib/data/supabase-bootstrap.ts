@@ -536,7 +536,7 @@ export async function insertChapterRemote(input: {
       college: input.college,
       city: input.city,
       status: input.status,
-      health_score: 40,
+      health_score: 0,
       founded_at: new Date().toISOString().slice(0, 10),
     })
     .select("*")

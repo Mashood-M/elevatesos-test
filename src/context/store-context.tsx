@@ -1539,7 +1539,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           college: trimmed.college,
           city: trimmed.city,
           status: trimmed.status,
-          healthScore: 40,
+          healthScore: 0,
           memberCount: 0,
           eventCount: 0,
           projectCount: 0,

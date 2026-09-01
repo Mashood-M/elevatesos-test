@@ -38,9 +38,9 @@ export function calculateChapterActivityScore(
 
   const chapterEvents = store.events.filter((e) => e.chapterId === chapterId);
 
-  // If no events recorded in store at all for this chapter, fallback to chapter.healthScore
+  // If no events recorded in store at all for this chapter, initial score is 0
   if (chapterEvents.length === 0) {
-    return chapter.healthScore ?? 0;
+    return 0;
   }
 
   // Group events by YYYY-MM

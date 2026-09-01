@@ -51,7 +51,7 @@ export function buildSearchIndex(
       id: `ch-${c.id}`,
       category: "chapter",
       title: c.name,
-      subtitle: `${c.college} · ${c.city} · health ${c.healthScore}%`,
+      subtitle: `${c.college} · ${c.city} · activity ${c.healthScore}%`,
       href: `/chapter/${c.slug}`,
       keywords: `${c.name} ${c.college} ${c.city} ${c.slug}`.toLowerCase(),
     });

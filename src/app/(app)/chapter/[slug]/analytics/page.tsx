@@ -19,7 +19,10 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
-import { monthlyEngagementFromStore } from "@/lib/analytics";
+import {
+  calculateChapterActivityScore,
+  monthlyEngagementFromStore,
+} from "@/lib/analytics";
 import { chapterEyebrow } from "@/lib/access";
 import { deriveEngagementTier } from "@/lib/eos/progression";
 import { healthLabel } from "@/lib/permissions";
@@ -56,7 +59,8 @@ export default function ChapterAnalyticsPage({
     6,
   );
 
-  const healthData = [{ name: "Health", value: chapter.healthScore, fill: NEON.green }];
+  const activityScore = calculateChapterActivityScore(store, chapter.id);
+  const healthData = [{ name: "Health", value: activityScore, fill: NEON.green }];
 
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
   const clusterMembers = new Set(
@@ -88,7 +92,7 @@ export default function ChapterAnalyticsPage({
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Health Score" value={`${chapter.healthScore}%`} accent="green" hint={healthLabel(chapter.healthScore)} />
+        <Stat label="Health Score" value={`${activityScore}%`} accent="green" hint={healthLabel(activityScore)} />
         <Stat label="Students reached" value={members.length} accent="cyan" />
         <Stat label="Active+ members" value={activePlus} accent="magenta" />
         <Stat label="Cluster members" value={clusterMembers} accent="orange" />
@@ -116,7 +120,7 @@ export default function ChapterAnalyticsPage({
               </ResponsiveContainer>
             </div>
             <div>
-              <ProgressBar value={chapter.healthScore} label={healthLabel(chapter.healthScore)} accent="green" />
+              <ProgressBar value={activityScore} label={healthLabel(activityScore)} accent="green" />
               <ul className="mt-4 space-y-1 text-[11px] text-text-dim">
                 <li>Members: {chapter.memberCount}</li>
                 <li>Projects: {chapter.projectCount}</li>

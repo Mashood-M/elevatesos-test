@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
+import { calculateChapterActivityScore } from "@/lib/analytics";
 import { healthLabel } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 
@@ -193,6 +194,7 @@ export default function HqChaptersPage() {
               <tbody>
                 {filtered.map((c) => {
                   const members = memberCountFor(c.id);
+                  const score = calculateChapterActivityScore(store, c.id);
                   return (
                     <tr
                       key={c.id}
@@ -223,7 +225,7 @@ export default function HqChaptersPage() {
                         </Badge>
                       </td>
                       <td className="py-3 pr-4">
-                        {c.healthScore}% · {healthLabel(c.healthScore)}
+                        {score}% · {healthLabel(score)}
                       </td>
                       <td className="py-3 pr-4">{members}</td>
                       <td className="py-3 pr-4">{formatDate(c.foundedAt)}</td>

@@ -13,6 +13,7 @@ import { SectionGrid } from "@/components/layout/page-frame";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
 
 const STUDENT_START = [
@@ -58,6 +59,8 @@ export default function ChapterDashboardPage({
       </div>
     );
   }
+
+  const activityScore = chapter ? calculateChapterActivityScore(store, chapter.id) : 0;
 
   if (!chapter) {
     return (
@@ -163,7 +166,7 @@ export default function ChapterDashboardPage({
         <SectionGrid className="mb-6">
           <Stat
             label="Health"
-            value={`${chapter.healthScore}%`}
+            value={`${activityScore}%`}
             hint={chapter.status.replaceAll("_", " ")}
             accent="orange"
           />
@@ -293,7 +296,7 @@ export default function ChapterDashboardPage({
         <div className="space-y-5">
           {showOps ? (
             <TerminalPanel title="Chapter health">
-              <ProgressBar value={chapter.healthScore} label="Overall score" />
+              <ProgressBar value={activityScore} label="Overall score" />
               <dl className="mt-5 space-y-3 text-[13px]">
                 <div className="flex justify-between">
                   <dt className="text-text-dim">Status</dt>

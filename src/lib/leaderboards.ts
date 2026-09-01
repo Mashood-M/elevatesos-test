@@ -101,15 +101,26 @@ export function buildCoordinatorLeaders(
   return withRanks(rows);
 }
 
+import { calculateChapterActivityScore } from "@/lib/analytics";
+
 export function buildChapterLeaders(store: ElevatesStore): LeaderEntry[] {
   const rows = [...store.chapters]
-    .sort((a, b) => b.healthScore - a.healthScore)
+    .map((c) => {
+      const score = calculateChapterActivityScore(store, c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        score,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
     .map((c) => ({
       id: c.id,
       name: c.name,
-      value: `${c.healthScore}%`,
+      value: `${c.score}%`,
       href: `/chapter/${c.slug}`,
-      meta: healthLabel(c.healthScore),
+      meta: healthLabel(c.score),
     }));
   return withRanks(rows);
 }
@@ -212,17 +223,18 @@ export function buildLeaderboardHqStats(
 ): LeaderboardHqStats {
   const chapters = buildChapterLeaders(store);
   const students = buildStudentLeaders(store, 50);
-  const topChapter = store.chapters
+  const topChapterObj = store.chapters
     .slice()
-    .sort((a, b) => b.healthScore - a.healthScore)[0];
+    .map((c) => ({ chapter: c, score: calculateChapterActivityScore(store, c.id) }))
+    .sort((a, b) => b.score - a.score)[0];
   const totalMemberPoints = students.reduce(
     (sum, s) => sum + (typeof s.value === "number" ? s.value : 0),
     0,
   );
   return {
     chapterCount: store.chapters.length,
-    topChapterName: topChapter?.name ?? "—",
-    topChapterHealth: topChapter?.healthScore ?? 0,
+    topChapterName: topChapterObj?.chapter.name ?? "—",
+    topChapterHealth: topChapterObj?.score ?? 0,
     topMemberName: students[0]?.name ?? "—",
     topMemberPoints:
       typeof students[0]?.value === "number" ? students[0].value : 0,

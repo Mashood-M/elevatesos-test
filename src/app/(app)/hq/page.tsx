@@ -11,7 +11,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { SectionGrid } from "@/components/layout/page-frame";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterMetricsFromStore } from "@/lib/analytics";
+import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { healthLabel } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
 
@@ -44,8 +44,12 @@ export default function HqDashboardPage() {
 
   const chaptersByHealth = useMemo(
     () =>
-      [...store.chapters].sort((a, b) => b.healthScore - a.healthScore),
-    [store.chapters],
+      [...store.chapters].sort(
+        (a, b) =>
+          calculateChapterActivityScore(store, b.id) -
+          calculateChapterActivityScore(store, a.id),
+      ),
+    [store],
   );
 
   const campusLeads = useMemo(() => {
@@ -155,50 +159,53 @@ export default function HqDashboardPage() {
             <ul className="divide-y divide-border/80">
               {chaptersByHealth.map((c) => {
                 const metrics = metricsById.get(c.id);
+                const chapterScore = calculateChapterActivityScore(store, c.id);
                 return (
                   <li key={c.id}>
                     <Link
                       href={`/chapter/${c.slug}`}
                       className="flex items-center gap-3 py-4 transition hover:opacity-90"
                     >
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--charcoal-900)] font-[family-name:var(--font-mono)] text-[11px] font-semibold text-white">
-                        {c.slug.slice(0, 2).toUpperCase()}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold tracking-[-0.01em]">
-                            {c.name}
-                          </span>
-                          <Badge
-                            tone={
-                              c.healthScore >= 90
-                                ? "green"
-                                : c.healthScore >= 75
-                                  ? "cyan"
-                                  : "orange"
-                            }
-                          >
-                            {c.healthScore}%
-                          </Badge>
-                          {c.status === "onboarding" ? (
-                            <Badge tone="mute">onboarding</Badge>
-                          ) : null}
+                      <div className="flex w-full items-start justify-between gap-3">
+                        <span className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--charcoal-900)] font-[family-name:var(--font-mono)] text-[11px] font-semibold text-white">
+                          {c.slug.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold tracking-[-0.01em]">
+                              {c.name}
+                            </span>
+                            <Badge
+                              tone={
+                                chapterScore >= 90
+                                  ? "green"
+                                  : chapterScore >= 75
+                                    ? "cyan"
+                                    : "orange"
+                              }
+                            >
+                              {chapterScore}%
+                            </Badge>
+                            {c.status === "onboarding" ? (
+                              <Badge tone="mute">onboarding</Badge>
+                            ) : null}
+                          </div>
+                          <p className="mt-0.5 truncate text-[12px] text-text-mute">
+                            {c.college} · {metrics?.members ?? 0} members ·{" "}
+                            {metrics?.events ?? 0} events
+                          </p>
+                          <div className="mt-2.5 max-w-sm">
+                            <ProgressBar
+                              value={chapterScore}
+                              label={healthLabel(chapterScore)}
+                            />
+                          </div>
                         </div>
-                        <p className="mt-0.5 truncate text-[12px] text-text-mute">
-                          {c.college} · {metrics?.members ?? 0} members ·{" "}
-                          {metrics?.events ?? 0} events
-                        </p>
-                        <div className="mt-2.5 max-w-sm">
-                          <ProgressBar
-                            value={c.healthScore}
-                            label={healthLabel(c.healthScore)}
-                          />
-                        </div>
+                        <ArrowUpRight
+                          size={16}
+                          className="mt-1 shrink-0 text-text-mute"
+                        />
                       </div>
-                      <ArrowUpRight
-                        size={16}
-                        className="shrink-0 text-text-mute"
-                      />
                     </Link>
                   </li>
                 );

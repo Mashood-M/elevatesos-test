@@ -23,11 +23,9 @@ export type MonthlyEngagement = {
 };
 
 /**
- * Calculates Activity Score (Health Score) for a chapter dynamically based on event output and attendance rate.
- * Logic:
- * - Target: Minimum 2 events per month (2 events/month = 100% quota ratio).
- * - Attendance: Average attendance percentage across events (checked-in / registered).
- * - Score = (Event Quota Ratio) * (Average Attendance Rate) * 100.
+ * Calculates Activity Score for a chapter dynamically based on monthly event turnout and total capacity.
+ * Equation per month:
+ * Chapter Activity Score (%) = (Σ Attendees across month's events) / (Σ Total seats across month's events) * 100
  */
 export function calculateChapterActivityScore(
   store: ElevatesStore,
@@ -52,23 +50,17 @@ export function calculateChapterActivityScore(
     eventsByMonth.set(monthKey, list);
   }
 
-  // Calculate monthly scores
+  // Calculate score per month using equation: (Σ Attendees) / (Σ Total Seats) * 100
   let totalMonthlyScoreSum = 0;
   let monthsCount = 0;
 
   eventsByMonth.forEach((monthEvents) => {
     monthsCount++;
 
-    // 1. Event Target Ratio: Minimum 2 events per month -> 100% quota
-    const eventQuotaRatio = Math.min(1.0, monthEvents.length / 2);
+    let sumAttendees = 0;
+    let sumTotalSeats = 0;
 
-    // 2. Attendance & Capacity Score per event:
-    // - Seat Fill Rate = enrolment (registrations) / total seats (capacity), capped at 100%
-    // - Turnout Rate = checked-in attendance / enrolment (registrations), capped at 100%
-    // - Event Performance = Seat Fill Rate * Turnout Rate
-    let eventPerformanceSum = 0;
     for (const ev of monthEvents) {
-      const regs = store.registrations.filter((r) => r.eventId === ev.id);
       const atts = store.attendance.filter(
         (a) =>
           a.eventId === ev.id &&
@@ -76,25 +68,13 @@ export function calculateChapterActivityScore(
       );
 
       const capacity = ev.capacity && ev.capacity > 0 ? ev.capacity : 100;
-      const enrolmentCount = regs.length;
-      const attendanceCount = atts.length;
-
-      const fillRate = Math.min(1.0, enrolmentCount / capacity);
-      const turnoutRate =
-        enrolmentCount > 0
-          ? Math.min(1.0, attendanceCount / enrolmentCount)
-          : attendanceCount > 0
-          ? 1.0
-          : 0.0;
-
-      const eventPerformance = fillRate * turnoutRate;
-      eventPerformanceSum += eventPerformance;
+      sumAttendees += atts.length;
+      sumTotalSeats += capacity;
     }
 
-    const avgAttendanceRateInMonth =
-      monthEvents.length > 0 ? eventPerformanceSum / monthEvents.length : 0.0;
+    const monthlyScore =
+      sumTotalSeats > 0 ? (sumAttendees / sumTotalSeats) * 100 : 0;
 
-    const monthlyScore = eventQuotaRatio * avgAttendanceRateInMonth * 100;
     totalMonthlyScoreSum += monthlyScore;
   });
 

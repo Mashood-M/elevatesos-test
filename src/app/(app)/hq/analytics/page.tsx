@@ -43,6 +43,8 @@ export default function HqAnalyticsPage() {
     [store],
   );
 
+  const totalChapters = store.chapters.length;
+
   const totalMembers = store.profiles.length > 0
     ? store.profiles.length
     : store.chapters.reduce((s, c) => s + (c.memberCount || 0), 0);
@@ -51,18 +53,9 @@ export default function HqAnalyticsPage() {
     ? store.events.length
     : store.chapters.reduce((s, c) => s + (c.eventCount || 0), 0);
 
-  const totalCertificates = store.certificates.length;
-
   const pendingReports = store.reports.filter(
     (r) => r.status === "submitted",
   ).length;
-
-  const avgHealth = store.chapters.length
-    ? Math.round(
-        store.chapters.reduce((s, c) => s + (c.healthScore || 0), 0) /
-          store.chapters.length,
-      )
-    : 0;
 
   const barData = chapterRows.map((c) => ({
     name: c.slug.toUpperCase(),
@@ -79,28 +72,18 @@ export default function HqAnalyticsPage() {
         description="Cross-chapter metrics, health scores, and engagement trends from live Elevates network data."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Stat label="Total Members" value={totalMembers} accent="cyan" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Total Chapters" value={totalChapters} accent="cyan" />
+        <Stat label="Total Members" value={totalMembers} accent="magenta" />
         <Stat
           label="Total Events"
           value={totalEvents}
-          accent="magenta"
-        />
-        <Stat
-          label="Certificates"
-          value={totalCertificates}
           accent="green"
         />
         <Stat
           label="Pending reports"
           value={pendingReports}
           accent="orange"
-        />
-        <Stat
-          label="Avg Health"
-          value={`${avgHealth}%`}
-          accent="orange"
-          hint={store.chapters.length ? healthLabel(avgHealth) : "No chapters"}
         />
       </div>
 

@@ -101,7 +101,7 @@ export default function UnifiedReferralsPage() {
   async function handleGenerateLink() {
     setError("");
     setGeneratingToken(true);
-    const token = await createInviteToken(userId, chapterId);
+    const token = await createInviteToken(userId);
     if (!token) {
       setError("Could not generate invite link. Please check your connection.");
       setGeneratingToken(false);

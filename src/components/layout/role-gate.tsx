@@ -4,16 +4,18 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/context/store-context";
 import { canAccessPath, homeForRole } from "@/lib/access";
+import { isHqRole } from "@/lib/permissions";
 
 export function RoleGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { store, hydrated } = useStore();
   const { userId, roleKey, chapterId } = store.session;
-  const chapterSlug =
-    store.chapters.find((c) => c.id === chapterId)?.slug ??
-    store.chapters[0]?.slug ??
-    "";
+  const chapterSlug = chapterId
+    ? (store.chapters.find((c) => c.id === chapterId)?.slug ?? "")
+    : isHqRole(roleKey)
+      ? (store.chapters[0]?.slug ?? "")
+      : "";
 
   useEffect(() => {
     // Handle back button / BFCache restoration after logout

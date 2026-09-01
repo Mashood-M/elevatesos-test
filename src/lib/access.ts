@@ -13,8 +13,10 @@ export function resolveChapter(
     chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
   } else if (userChapterId) {
     chapter = store.chapters.find((c) => c.id === userChapterId);
-  } else {
+  } else if (roleKey && isHqRole(roleKey)) {
     chapter = store.chapters.find((c) => c.status === "active") ?? store.chapters[0];
+  } else {
+    return undefined;
   }
 
   if (!chapter) return undefined;

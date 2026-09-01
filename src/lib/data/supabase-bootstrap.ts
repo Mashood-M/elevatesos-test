@@ -574,16 +574,22 @@ export async function publishChapterRemote(chapterId: string) {
   return { ok: !error };
 }
 
-/** Create a new invite token for the current user (referrer). Expires in 24 hours. */
-export async function createInviteToken(createdById: string, chapterId?: string): Promise<string | null> {
+/** Create a new unique invite token for student referrals (independent student signup). Expires in 24 hours. */
+export async function createInviteToken(createdById: string): Promise<string | null> {
   const supabase = createClient();
   if (!supabase) return null;
   const expiresAt = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+  const randomToken =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? `ref-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`
+      : `ref-${Math.random().toString(36).substring(2, 10)}${Date.now().toString(36).substring(4)}`;
+
   const { data, error } = await supabase
     .from("invite_tokens")
     .insert({
       created_by: createdById,
-      chapter_id: chapterId ?? null,
+      chapter_id: null,
+      token: randomToken,
       expires_at: expiresAt,
     })
     .select("token")

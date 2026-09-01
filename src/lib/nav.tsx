@@ -200,7 +200,7 @@ export function navGroupsForRole(
         label: "People & ops",
         items: [
           { href: `${base}/students`, label: "Student Roster", icon: I.students },
-          { href: `${base}/settings`, label: "Chapter Invites & Codes", icon: I.forms },
+          { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
           ...(isCampusLeadRole
             ? [{ href: "/hq/users", label: "Manage Roles", icon: I.usersAdmin }]

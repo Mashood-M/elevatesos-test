@@ -1765,9 +1765,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Strictly 3 days validity
         const chap = store.chapters.find((c) => c.id === chapterId);
-        const prefix = chap?.slug ? chap.slug.substring(0, 4).toUpperCase() : "JOIN";
-        const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
-        const codeString = (customCode?.trim() || `${prefix}-${randomSuffix}`).toUpperCase();
+        
+        // Derive college short code prefix
+        let prefix = "ELEV";
+        if (chap) {
+          const rawName = (chap.college || chap.name || "").trim();
+          const words = rawName
+            .replace(/[^a-zA-Z0-9\s]/g, "")
+            .split(/\s+/)
+            .filter((w) => !["of", "and", "the", "for", "in", "at", "campus", "chapter"].includes(w.toLowerCase()));
+
+          if (words.length >= 2) {
+            const initials = words.map((w) => w[0].toUpperCase()).join("").slice(0, 5);
+            if (initials.length >= 2) prefix = initials;
+          } else if (words.length === 1 && words[0].length >= 3) {
+            prefix = words[0].slice(0, 4).toUpperCase();
+          } else {
+            prefix = chap.slug.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "ELEV";
+          }
+        }
+
+        // Collect existing codes to enforce strict uniqueness across all generated codes
+        const existingCodes = new Set(
+          (store.chapterInviteCodes ?? []).map((c) => c.code.toUpperCase())
+        );
+        (store.inviteTokens ?? []).forEach((t) => existingCodes.add(t.token.toUpperCase()));
+
+        let codeString = "";
+        if (customCode?.trim()) {
+          codeString = customCode.trim().toUpperCase();
+        } else {
+          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+          do {
+            let randomSuffix = "";
+            for (let i = 0; i < 6; i++) {
+              randomSuffix += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            codeString = `${prefix}-${randomSuffix}`;
+          } while (existingCodes.has(codeString));
+        }
 
         const uuidId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined;
 

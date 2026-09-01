@@ -39,8 +39,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  const chapter = store.chapters.find((c) => c.id === session.chapterId);
-  const chapterSlug = chapter?.slug ?? store.chapters?.[0]?.slug ?? "";
+  const chapter = session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : undefined;
+  const chapterSlug = session.chapterId
+    ? (chapter?.slug ?? "")
+    : isHqRole(session.roleKey)
+      ? (store.chapters?.[0]?.slug ?? "")
+      : "";
   const groups = navGroupsForRole(session.roleKey, chapterSlug);
   const unread = store.notifications.filter(
     (n) => n.userId === session.userId && !n.read,

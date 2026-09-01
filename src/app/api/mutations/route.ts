@@ -2,19 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
-
-function isUuid(val?: string | null): boolean {
-  if (!val) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
-}
-
-function genUuid(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
+import { isUuid, genUuid } from "@/lib/uuid";
 
 export async function POST(req: Request) {
   try {

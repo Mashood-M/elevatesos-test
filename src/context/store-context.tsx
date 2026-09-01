@@ -21,6 +21,7 @@ import {
   insertChapterRemote,
   loadStoreFromSupabase,
 } from "@/lib/data/supabase-bootstrap";
+import { isUuid, genUuid } from "@/lib/uuid";
 import {
   persistOrganization,
   persistChapter,
@@ -502,7 +503,7 @@ function log(
   meta?: string,
 ) {
   const item = {
-    id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    id: genUuid(),
     actorId,
     action,
     entity,
@@ -510,7 +511,9 @@ function log(
     createdAt: new Date().toISOString(),
     ...(meta?.trim() ? { meta: meta.trim() } : {}),
   };
-  void persistActivityLog(item);
+  void persistActivityLog(item).then((res) => {
+    if (!res.ok) console.warn("Activity log remote write failed:", res.error);
+  });
   return item;
 }
 
@@ -520,9 +523,9 @@ function notifyUsers(
 ): NotificationItem[] {
   const now = new Date().toISOString();
   const unique = [...new Set(userIds.filter(Boolean))];
-  return unique.map((userId, i) => {
+  return unique.map((userId) => {
     const item = {
-      id: `n-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      id: genUuid(),
       userId,
       title: input.title,
       body: input.body,
@@ -530,7 +533,9 @@ function notifyUsers(
       createdAt: now,
       href: input.href,
     };
-    void persistNotification(item);
+    void persistNotification(item).then((res) => {
+      if (!res.ok) console.warn("Notification remote write failed:", res.error);
+    });
     return item;
   });
 }
@@ -607,11 +612,19 @@ function applyReportReview(
     ],
   }));
 
-  void persistReport({
+  persistReport({
     ...existing,
     status,
     hqComment,
     approvedBy,
+  }).then((res) => {
+    if (!res.ok) {
+      console.error(`Failed to persist report review for ${reportId}:`, res.error);
+      setStore((s) => ({
+        ...s,
+        reports: s.reports.map((r) => (r.id === reportId ? existing : r)),
+      }));
+    }
   });
 
   return true;
@@ -1038,11 +1051,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (result.ok) {
           const reg = store.registrations.find((r) => r.id === id);
           if (reg) {
-            void persistRegistration({
+            const updatedReg = {
               ...reg,
               status: result.status,
               reviewedBy: actorId,
               approvedBy: result.status === "approved" ? actorId : reg.approvedBy,
+            };
+            persistRegistration(updatedReg).then((res) => {
+              if (!res.ok) {
+                console.error(`Failed to update registration ${id} in Supabase:`, res.error);
+                setStore((s) => ({
+                  ...s,
+                  registrations: s.registrations.map((r) => (r.id === id ? reg : r)),
+                }));
+              }
             });
           }
         }
@@ -1082,7 +1104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           const sName = sessionName || (session === "single" ? "Event Check-In" : session);
           const record = {
-            id: existing?.id ?? `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: existing?.id && isUuid(existing.id) ? existing.id : genUuid(),
             eventId: reg.eventId,
             registrationId,
             userId: reg.userId,
@@ -1100,8 +1122,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               )
             : [record, ...s.attendance];
           const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
-          newCerts.forEach((c) => void persistCertificate(c));
-          void persistAttendance(record);
+          persistAttendance(record).then((res) => {
+            if (!res.ok) {
+              console.error("Attendance check-in failed in Supabase:", res.error);
+              setStore((prev) => ({
+                ...prev,
+                attendance: existing
+                  ? prev.attendance.map((a) => (a.id === existing.id ? existing : a))
+                  : prev.attendance.filter((a) => a.id !== record.id),
+              }));
+            } else {
+              newCerts.forEach((c) => void persistCertificate(c));
+            }
+          });
           return {
             ...s,
             attendance,
@@ -1128,7 +1161,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
             const sName = sessionName || (session === "single" ? "Event Check-In" : session);
             const record = {
-              id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              id: genUuid(),
               eventId: reg.eventId,
               registrationId,
               userId: reg.userId,
@@ -1141,8 +1174,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               checkedInBy: actorId,
             };
             const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
-            newCerts.forEach((c) => void persistCertificate(c));
-            void persistAttendance(record);
+            persistAttendance(record).then((res) => {
+              if (!res.ok) {
+                console.error("Attendance insert failed in Supabase:", res.error);
+                setStore((prev) => ({
+                  ...prev,
+                  attendance: prev.attendance.filter((a) => a.id !== record.id),
+                }));
+              } else {
+                newCerts.forEach((c) => void persistCertificate(c));
+              }
+            });
             return {
               ...s,
               attendance: [record, ...s.attendance],
@@ -1161,8 +1203,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             existing.userId,
             status,
           );
-          newCerts.forEach((c) => void persistCertificate(c));
-          void persistAttendance(record);
+          persistAttendance(record).then((res) => {
+            if (!res.ok) {
+              console.error("Attendance update failed in Supabase:", res.error);
+              setStore((prev) => ({
+                ...prev,
+                attendance: prev.attendance.map((a) => (a.id === existing.id ? existing : a)),
+              }));
+            } else {
+              newCerts.forEach((c) => void persistCertificate(c));
+            }
+          });
           return {
             ...s,
             attendance,
@@ -1173,16 +1224,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
 
       updateTaskStatus: (id, status) => {
+        const prevTask = store.tasks.find((t) => t.id === id);
+        if (!prevTask) return;
+        const prevStatus = prevTask.status;
         setStore((s) => ({
           ...s,
           tasks: s.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
         }));
-        const existing = store.tasks.find((t) => t.id === id);
-        if (existing) {
-          void persistTask({ ...existing, status });
-        }
+        persistTask({ ...prevTask, status }).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update task ${id} status in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: prevStatus } : t)),
+            }));
+          }
+        });
       },
       approveEvent: (eventId) => {
+        const ev = store.events.find((e) => e.id === eventId);
+        if (!ev) return;
+        const prevStatus = ev.status;
         setStore((s) => ({
           ...s,
           events: s.events.map((e) =>
@@ -1191,10 +1253,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         }));
-        const ev = store.events.find((e) => e.id === eventId);
-        if (ev) {
-          void persistEvent({ ...ev, status: "registration_open" });
-        }
+        persistEvent({ ...ev, status: "registration_open" }).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to approve event ${eventId} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              events: s.events.map((e) => (e.id === eventId ? { ...e, status: prevStatus } : e)),
+            }));
+          }
+        });
       },
       approveReport: (reportId, comment, actorId) => {
         applyReportReview(store, setStore, reportId, "approve", comment, actorId);
@@ -1209,26 +1276,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           actorId,
         ),
       createEvent: (event) => {
+        const eventId = isUuid(event.id) ? event.id : genUuid();
         const forms = defaultFormsForEvent(
-          event.id,
+          eventId,
           event.chapterId,
           event.title,
         );
         const regFields = forms[0].questions.map(questionToField);
-        // Faculty never required to publish — coerce legacy pending_approval.
         const status =
           event.status === "pending_approval"
             ? ("registration_open" as const)
             : event.status;
-        const normalized = { ...event, status };
-        void persistEvent(normalized);
-        forms.forEach((f) => void persistForm(f));
+        const normalized = { ...event, id: eventId, status };
         setStore((s) => ({
           ...s,
           events: [normalized, ...s.events],
           forms: [...forms, ...(s.forms ?? [])],
           eventForms: [
-            { eventId: event.id, fields: regFields },
+            { eventId, fields: regFields },
             ...s.eventForms,
           ],
           activityLogs: [
@@ -1236,42 +1301,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               s.session.userId,
               "event_created",
               "event",
-              normalized.id,
+              eventId,
               normalized.title,
             ),
             ...s.activityLogs,
           ],
         }));
+        persistEvent(normalized).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to persist event to Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              events: s.events.filter((e) => e.id !== eventId),
+              forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
+              eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
+            }));
+          } else {
+            forms.forEach((f) => void persistForm(f));
+          }
+        });
       },
       updateEvent: (id, patch) => {
-        setStore((s) => {
-          const prev = s.events.find((e) => e.id === id);
-          if (!prev) return s;
-          const { id: _id, chapterId: _chapterId, ...safe } = patch;
-          void _id;
-          void _chapterId;
-          if (safe.status === "pending_approval") {
-            safe.status = "registration_open";
+        const prev = store.events.find((e) => e.id === id);
+        if (!prev) return;
+        const { id: _id, chapterId: _chapterId, ...safe } = patch;
+        void _id;
+        void _chapterId;
+        if (safe.status === "pending_approval") {
+          safe.status = "registration_open";
+        }
+        const nextTitle = safe.title ?? prev.title;
+        const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
+        setStore((s) => ({
+          ...s,
+          events: s.events.map((e) =>
+            e.id === id ? updatedEvent : e,
+          ),
+          activityLogs: [
+            log(s.session.userId, "event_updated", "event", id, nextTitle),
+            ...s.activityLogs,
+          ],
+        }));
+        persistEvent(updatedEvent).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update event ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              events: s.events.map((e) => (e.id === id ? prev : e)),
+            }));
           }
-          const nextTitle = safe.title ?? prev.title;
-          const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
-          void persistEvent(updatedEvent);
-          return {
-            ...s,
-            events: s.events.map((e) =>
-              e.id === id ? updatedEvent : e,
-            ),
-            activityLogs: [
-              log(s.session.userId, "event_updated", "event", id, nextTitle),
-              ...s.activityLogs,
-            ],
-          };
         });
       },
       registerForEvent: (registration) => {
         let result: { ok: true } | { ok: false; message: string } = {
           ok: true,
         };
+        const regId = isUuid(registration.id) ? registration.id : genUuid();
+        const normalized = { ...registration, id: regId, qrCode: registration.qrCode || "" };
         setStore((s) => {
           const event = s.events.find((e) => e.id === registration.eventId);
           if (!event) {
@@ -1318,13 +1404,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return {
             ...s,
             registrations: [
-              { ...registration, qrCode: registration.qrCode || "" },
+              normalized,
               ...s.registrations,
             ],
           };
         });
         if (result.ok) {
-          void persistRegistration(registration);
+          persistRegistration(normalized).then((res) => {
+            if (!res.ok) {
+              console.error("Failed to persist registration in Supabase:", res.error);
+              setStore((s) => ({
+                ...s,
+                registrations: s.registrations.filter((r) => r.id !== regId),
+              }));
+            }
+          });
         }
         return result;
       },
@@ -1360,7 +1454,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             forms.unshift(targetForm);
           }
-          void persistForm(targetForm);
+          persistForm(targetForm).then((res) => {
+            if (!res.ok) console.error("Failed to save event form in Supabase:", res.error);
+          });
           const exists = s.eventForms.some((f) => f.eventId === eventId);
           return {
             ...s,
@@ -1394,7 +1490,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             targetForm = forms[idx];
           } else {
             targetForm = {
-              id: `form-${purpose}-${eventId}`,
+              id: genUuid(),
               purpose,
               title: title ?? purpose,
               chapterId,
@@ -1406,7 +1502,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             forms.unshift(targetForm);
           }
-          void persistForm(targetForm);
+          persistForm(targetForm).then((res) => {
+            if (!res.ok) console.error("Failed to save form in Supabase:", res.error);
+          });
           let eventForms = s.eventForms;
           if (purpose === "registration") {
             const exists = eventForms.some((f) => f.eventId === eventId);
@@ -1421,120 +1519,179 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       createForm: (input) => {
         const base = emptyForm(input.chapterId, input.purpose ?? "custom");
+        const formId = input.id && isUuid(input.id) ? input.id : genUuid();
         const form: FormDefinition = {
           ...base,
           ...input,
-          id: input.id ?? base.id,
+          id: formId,
           questions: input.questions ?? base.questions,
           status: input.status ?? "draft",
           createdAt: input.createdAt ?? base.createdAt,
           updatedAt: new Date().toISOString(),
         };
         setStore((s) => ({ ...s, forms: [form, ...(s.forms ?? [])] }));
-        void persistForm(form);
+        persistForm(form).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create form in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              forms: (s.forms ?? []).filter((f) => f.id !== formId),
+            }));
+          }
+        });
         return form;
       },
       updateForm: (id, patch) => {
         const now = new Date().toISOString();
+        const prevForm = (store.forms ?? []).find((f) => f.id === id);
+        if (!prevForm) return;
+        const updatedForm = { ...prevForm, ...patch, id: prevForm.id, updatedAt: now };
         setStore((s) => {
           const forms = (s.forms ?? []).map((f) =>
-            f.id === id ? { ...f, ...patch, id: f.id, updatedAt: now } : f,
+            f.id === id ? updatedForm : f,
           );
-          const nextForm = forms.find((f) => f.id === id);
-          if (nextForm) void persistForm(nextForm);
           let eventForms = s.eventForms;
           if (
-            nextForm?.purpose === "registration" &&
-            nextForm.eventId &&
+            updatedForm.purpose === "registration" &&
+            updatedForm.eventId &&
             (patch.questions || patch.eventId !== undefined)
           ) {
-            const fields = nextForm.questions.map(questionToField);
+            const fields = updatedForm.questions.map(questionToField);
             const exists = eventForms.some(
-              (ef) => ef.eventId === nextForm.eventId,
+              (ef) => ef.eventId === updatedForm.eventId,
             );
             eventForms = exists
               ? eventForms.map((ef) =>
-                  ef.eventId === nextForm.eventId
-                    ? { eventId: nextForm.eventId!, fields }
+                  ef.eventId === updatedForm.eventId
+                    ? { eventId: updatedForm.eventId!, fields }
                     : ef,
                 )
-              : [{ eventId: nextForm.eventId, fields }, ...eventForms];
+              : [{ eventId: updatedForm.eventId, fields }, ...eventForms];
           }
           return { ...s, forms, eventForms };
         });
+        persistForm(updatedForm).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update form ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              forms: (s.forms ?? []).map((f) => (f.id === id ? prevForm : f)),
+            }));
+          }
+        });
       },
       deleteForm: (id) => {
+        const prevForm = (store.forms ?? []).find((f) => f.id === id);
+        const prevResponses = (store.formResponses ?? []).filter((r) => r.formId === id);
         setStore((s) => ({
           ...s,
           forms: (s.forms ?? []).filter((f) => f.id !== id),
           formResponses: (s.formResponses ?? []).filter((r) => r.formId !== id),
         }));
-        void deleteFormRemote(id);
+        deleteFormRemote(id).then((res) => {
+          if (!res.ok && prevForm) {
+            console.error(`Failed to delete form ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              forms: [prevForm, ...(s.forms ?? [])],
+              formResponses: [...prevResponses, ...(s.formResponses ?? [])],
+            }));
+          }
+        });
       },
       duplicateForm: (id) => {
         const source = store.forms?.find((f) => f.id === id);
         if (!source) return null;
         const now = new Date().toISOString();
+        const copyId = genUuid();
         const copy: FormDefinition = {
           ...source,
-          id: `form-${Date.now()}`,
+          id: copyId,
           title: `${source.title} (copy)`,
           status: "draft",
           eventId: undefined,
           questions: source.questions.map((q) => ({
             ...q,
-            id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: genUuid(),
           })),
           createdAt: now,
           updatedAt: now,
         };
         setStore((s) => ({ ...s, forms: [copy, ...(s.forms ?? [])] }));
+        persistForm(copy).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to persist duplicated form in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              forms: (s.forms ?? []).filter((f) => f.id !== copyId),
+            }));
+          }
+        });
         return copy;
       },
       saveFormQuestions: (id, questions) => {
         const now = new Date().toISOString();
+        const existing = (store.forms ?? []).find((f) => f.id === id);
+        if (!existing) return;
+        let nextQuestions = questions;
+        if (existing.purpose === "registration") {
+          nextQuestions = ensureRepresentativeQuestion({
+            ...existing,
+            questions,
+          }).questions;
+        }
+        const updatedForm = { ...existing, questions: nextQuestions, updatedAt: now };
         setStore((s) => {
-          const existing = (s.forms ?? []).find((f) => f.id === id);
-          let nextQuestions = questions;
-          if (existing?.purpose === "registration") {
-            nextQuestions = ensureRepresentativeQuestion({
-              ...existing,
-              questions,
-            }).questions;
-          }
           const forms = (s.forms ?? []).map((f) =>
-            f.id === id
-              ? { ...f, questions: nextQuestions, updatedAt: now }
-              : f,
+            f.id === id ? updatedForm : f,
           );
-          const form = forms.find((f) => f.id === id);
           let eventForms = s.eventForms;
-          if (form?.purpose === "registration" && form.eventId) {
+          if (updatedForm.purpose === "registration" && updatedForm.eventId) {
             const fields = nextQuestions.map(questionToField);
-            const exists = eventForms.some((ef) => ef.eventId === form.eventId);
+            const exists = eventForms.some((ef) => ef.eventId === updatedForm.eventId);
             eventForms = exists
               ? eventForms.map((ef) =>
-                  ef.eventId === form.eventId
-                    ? { eventId: form.eventId!, fields }
+                  ef.eventId === updatedForm.eventId
+                    ? { eventId: updatedForm.eventId!, fields }
                     : ef,
                 )
-              : [{ eventId: form.eventId, fields }, ...eventForms];
+              : [{ eventId: updatedForm.eventId, fields }, ...eventForms];
           }
           return { ...s, forms, eventForms };
         });
+        persistForm(updatedForm).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to save questions for form ${id}:`, res.error);
+            setStore((s) => ({
+              ...s,
+              forms: (s.forms ?? []).map((f) => (f.id === id ? existing : f)),
+            }));
+          }
+        });
       },
       setFormStatus: (id, status) => {
+        const prev = (store.forms ?? []).find((f) => f.id === id);
+        if (!prev) return;
+        const updated = { ...prev, status, updatedAt: new Date().toISOString() };
         setStore((s) => ({
           ...s,
           forms: (s.forms ?? []).map((f) =>
-            f.id === id
-              ? { ...f, status, updatedAt: new Date().toISOString() }
-              : f,
+            f.id === id ? updated : f,
           ),
         }));
+        persistForm(updated).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update form status for ${id}:`, res.error);
+            setStore((s) => ({
+              ...s,
+              forms: (s.forms ?? []).map((f) => (f.id === id ? prev : f)),
+            }));
+          }
+        });
       },
       submitFormResponse: (input) => {
         let created: FormResponse | null = null;
+        const responseId = genUuid();
         setStore((s) => {
           const form = (s.forms ?? []).find((f) => f.id === input.formId);
           if (!form || form.status !== "open") return s;
@@ -1558,7 +1715,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           created = {
             ...input,
-            id: `fres-${Date.now()}`,
+            id: responseId,
             submittedAt: new Date().toISOString(),
           };
           return {
@@ -1566,18 +1723,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             formResponses: [created, ...(s.formResponses ?? [])],
           };
         });
-        if (created) void persistFormResponse(created);
+        if (created) {
+          persistFormResponse(created).then((res) => {
+            if (!res.ok) {
+              console.error("Failed to persist form response in Supabase:", res.error);
+              setStore((s) => ({
+                ...s,
+                formResponses: (s.formResponses ?? []).filter((r) => r.id !== responseId),
+              }));
+            }
+          });
+        }
         return created;
       },
       deleteFormResponse: (id) => {
+        const prev = (store.formResponses ?? []).find((r) => r.id === id);
         setStore((s) => ({
           ...s,
           formResponses: (s.formResponses ?? []).filter((r) => r.id !== id),
         }));
-        void deleteFormResponseRemote(id);
+        deleteFormResponseRemote(id).then((res) => {
+          if (!res.ok && prev) {
+            console.error(`Failed to delete form response ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              formResponses: [prev, ...(s.formResponses ?? [])],
+            }));
+          }
+        });
       },
       issueCertificate: (eventId, userId) => {
         let result: CheckInResult = { ok: true };
+        const certId = genUuid();
         setStore((s) => {
           if (
             s.certificates.some(
@@ -1607,7 +1784,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           const certificateId = `ELV-MANUAL-${Date.now().toString().slice(-6)}`;
           const cert = {
-            id: `cert-${Date.now()}`,
+            id: certId,
             certificateId,
             eventId,
             userId,
@@ -1615,7 +1792,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             verificationQr: `VERIFY-${certificateId}`,
             digitalSignature: `sig_${certificateId.toLowerCase()}`,
           };
-          void persistCertificate(cert);
+          persistCertificate(cert).then((res) => {
+            if (!res.ok) {
+              console.error("Failed to issue certificate in Supabase:", res.error);
+              setStore((prev) => ({
+                ...prev,
+                certificates: prev.certificates.filter((c) => c.id !== certId),
+              }));
+            }
+          });
           return {
             ...s,
             certificates: [
@@ -1634,8 +1819,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           city: input.city.trim(),
           status: input.status,
         };
+        const chapterId = genUuid();
         const chapter: Chapter = {
-          id: `ch-${Date.now()}`,
+          id: chapterId,
           organizationId: store.organization.id,
           name: trimmed.name,
           slug: trimmed.slug,
@@ -1648,22 +1834,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           projectCount: 0,
           foundedAt: new Date().toISOString(),
         };
-        if (!isDemoMode()) {
-          void insertChapterRemote({
-            ...trimmed,
-            organizationId: store.organization.id,
-          }).then((row) => {
-            if (!row) return;
-            setStore((s) => ({
-              ...s,
-              chapters: s.chapters.map((c) =>
-                c.id === chapter.id
-                  ? { ...c, id: row.id, organizationId: row.organization_id }
-                  : c,
-              ),
-            }));
-          });
-        }
         setStore((s) => ({
           ...s,
           chapters: [
@@ -1676,7 +1846,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
           notifications: [
             {
-              id: `n-${Date.now()}`,
+              id: genUuid(),
               userId: s.session.userId,
               title: "Chapter created",
               body: `${chapter.name} is onboarding.`,
@@ -1687,28 +1857,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.notifications,
           ],
         }));
+        if (!isDemoMode()) {
+          persistChapter(chapter).then((res) => {
+            if (!res.ok) {
+              console.error("Failed to persist chapter in Supabase:", res.error);
+              setStore((s) => ({
+                ...s,
+                chapters: s.chapters.filter((c) => c.id !== chapterId),
+              }));
+            }
+          });
+        }
         return chapter;
       },
       updateChapter: (id, patch) => {
-        setStore((s) => {
-          const nextChapters = s.chapters.map((c) =>
-            c.id === id ? { ...c, ...patch } : c,
-          );
-          const updated = nextChapters.find((c) => c.id === id);
-          if (updated) {
-            void persistChapter(updated);
+        const prevChapter = store.chapters.find((c) => c.id === id);
+        if (!prevChapter) return;
+        const updated = { ...prevChapter, ...patch, id: prevChapter.id };
+        setStore((s) => ({
+          ...s,
+          chapters: s.chapters.map((c) => (c.id === id ? updated : c)),
+          activityLogs: [
+            log(s.session.userId, "chapter_updated", "chapter", id),
+            ...s.activityLogs,
+          ],
+        }));
+        persistChapter(updated).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update chapter ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              chapters: s.chapters.map((c) => (c.id === id ? prevChapter : c)),
+            }));
           }
-          return {
-            ...s,
-            chapters: nextChapters,
-            activityLogs: [
-              log(s.session.userId, "chapter_updated", "chapter", id),
-              ...s.activityLogs,
-            ],
-          };
         });
       },
       deleteChapter: (id) => {
+        const prev = store.chapters.find((c) => c.id === id);
         setStore((s) => ({
           ...s,
           chapters: s.chapters.filter((c) => c.id !== id),
@@ -1717,45 +1902,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        deleteChapterRemote(id, prev?.slug).then((res) => {
+          if (!res.ok && prev) {
+            console.error(`Failed to delete chapter ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              chapters: [prev, ...s.chapters],
+            }));
+          }
+        });
         fetch(`/api/provisioning/chapter?id=${id}&actingUserId=${store.session.userId}`, {
           method: "DELETE",
         }).catch((err) => console.warn("Remote delete chapter error:", err));
       },
       updateProfile: (id, patch) => {
-        void persistProfile({ id, ...patch });
+        const prev = store.profiles.find((p) => p.id === id);
+        const updated = prev ? { ...prev, ...patch } : { id, fullName: "User", email: "user@elevates.live", chapterId: store.session.chapterId, skills: [], interests: [], points: 0, badges: [], ...patch } as Profile;
         setStore((s) => {
           const exists = s.profiles.some((p) => p.id === id);
-          if (!exists) {
-            const newProf: Profile = {
-              id,
-              fullName: "User",
-              email: "user@elevates.live",
-              chapterId: s.session.chapterId,
-              skills: [],
-              interests: [],
-              points: 0,
-              badges: [],
-              ...patch,
-            } as Profile;
-            return {
-              ...s,
-              profiles: [...s.profiles, newProf],
-              activityLogs: [
-                log(s.session.userId, "profile_created", "profile", id),
-                ...s.activityLogs,
-              ],
-            };
-          }
           return {
             ...s,
-            profiles: s.profiles.map((p) =>
-              p.id === id ? { ...p, ...patch } : p,
-            ),
+            profiles: exists ? s.profiles.map((p) => (p.id === id ? updated : p)) : [...s.profiles, updated],
             activityLogs: [
-              log(s.session.userId, "profile_updated", "profile", id),
+              log(s.session.userId, exists ? "profile_updated" : "profile_created", "profile", id),
               ...s.activityLogs,
             ],
           };
+        });
+        persistProfile(updated).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to persist profile ${id} in Supabase:`, res.error);
+            if (prev) {
+              setStore((s) => ({
+                ...s,
+                profiles: s.profiles.map((p) => (p.id === id ? prev : p)),
+              }));
+            }
+          }
         });
       },
       joinChapterCommunity: (input) => {
@@ -2464,6 +2647,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setUserRoles: (userId, assignments) => {
         const profile = store.profiles.find((p) => p.id === userId);
         if (!profile) return false;
+        const prevUserRoles = store.userRoles;
         const built: UserRole[] = [];
         for (const a of assignments) {
           let role = store.roles.find((r) => r.key === a.roleKey);
@@ -2479,7 +2663,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           if (role.scope === "hq" || isHq) {
             built.push({
-              id: `ur-${Date.now()}-${built.length}`,
+              id: genUuid(),
               userId,
               roleId: role.id,
               roleKey: a.roleKey,
@@ -2488,7 +2672,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           } else {
             const chapId = a.chapterId || profile.chapterId || store.chapters[0]?.id || "";
             built.push({
-              id: `ur-${Date.now()}-${built.length}`,
+              id: genUuid(),
               userId,
               roleId: role.id,
               roleKey: a.roleKey,
@@ -2512,32 +2696,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
 
-        // Sync to Supabase DB if available
-        try {
-          const supabase = createClient();
-          if (supabase) {
-            (async () => {
-              // Only delete non-leadership rows — preserve leadership_term_id entries
-              await supabase
-                .from("user_roles")
-                .delete()
-                .eq("user_id", userId)
-                .is("leadership_term_id", null);
-              const rowsToInsert = built.map((ur) => ({
-                user_id: userId,
-                role_key: ur.roleKey || (store.roles.find((r) => r.id === ur.roleId)?.key),
-                role_id: ur.roleId.startsWith("role-") ? null : ur.roleId,
-                chapter_id: ur.chapterId || null,
-                organization_id: ur.organizationId || store.organization.id,
-              }));
-              if (rowsToInsert.length > 0) {
-                await supabase.from("user_roles").insert(rowsToInsert);
-              }
-            })();
+        persistUserRoles(userId, assignments, store.organization.id).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to persist user roles for ${userId} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              userRoles: prevUserRoles,
+            }));
           }
-        } catch (err) {
-          console.warn("Supabase user_roles sync notice:", err);
-        }
+        });
 
         return true;
       },
@@ -2589,14 +2756,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (exists) return null;
 
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id ?? "");
+        const deptId = input.id && isUuid(input.id) ? input.id : genUuid();
         const department: Department = {
-          id: (isUuid ? input.id : undefined) ?? `dept-${Date.now()}`,
+          id: deptId,
           chapterId: input.chapterId,
           name,
         };
-
-        void persistDepartment(department);
 
         setStore((s) => ({
           ...s,
@@ -2606,6 +2771,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+
+        persistDepartment(department).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create department in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              departments: (s.departments ?? []).filter((d) => d.id !== deptId),
+            }));
+          }
+        });
+
         return department;
       },
       updateDepartment: (id, patch) => {
@@ -2621,7 +2797,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (dup) return false;
         const oldName = existing.name;
-        void persistDepartment({ id, chapterId: existing.chapterId, name });
+        const updatedDept = { id, chapterId: existing.chapterId, name };
         setStore((s) => ({
           ...s,
           departments: (s.departments ?? []).map((d) =>
@@ -2645,6 +2821,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+
+        persistDepartment(updatedDept).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update department ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              departments: (s.departments ?? []).map((d) => (d.id === id ? existing : d)),
+            }));
+          }
+        });
+
         return true;
       },
       deleteDepartment: (id) => {
@@ -2658,8 +2845,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (inUse) return false;
 
-        void deleteDepartmentRemote(id);
-
         setStore((s) => ({
           ...s,
           departments: (s.departments ?? []).filter((d) => d.id !== id),
@@ -2668,6 +2853,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+
+        deleteDepartmentRemote(id).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to delete department ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              departments: [existing, ...(s.departments ?? [])],
+            }));
+          }
+        });
+
         return true;
       },
       createClassCohort: (input) => {
@@ -2704,15 +2900,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
         );
         if (!repsOk) return null;
+        const cohortId = input.id && isUuid(input.id) ? input.id : genUuid();
         const cohort: ClassCohort = {
-          id: input.id ?? `cc-${Date.now()}`,
+          id: cohortId,
           chapterId: input.chapterId,
           department,
           year,
           section,
           repIds,
         };
-        void persistClassCohort(cohort);
         setStore((s) => ({
           ...s,
           classCohorts: [cohort, ...(s.classCohorts ?? [])],
@@ -2721,6 +2917,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistClassCohort(cohort).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create class cohort in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              classCohorts: (s.classCohorts ?? []).filter((c) => c.id !== cohortId),
+            }));
+          }
+        });
         return cohort;
       },
       updateClassCohort: (id, patch) => {
@@ -2764,7 +2969,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
         );
         if (!repsOk) return false;
-        void persistClassCohort(next);
         setStore((s) => ({
           ...s,
           classCohorts: (s.classCohorts ?? []).map((c) =>
@@ -2775,9 +2979,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistClassCohort(next).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update class cohort ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              classCohorts: (s.classCohorts ?? []).map((c) => (c.id === id ? existing : c)),
+            }));
+          }
+        });
         return true;
       },
       deleteClassCohort: (id) => {
+        const existing = store.classCohorts?.find((c) => c.id === id);
         setStore((s) => ({
           ...s,
           classCohorts: (s.classCohorts ?? []).filter((c) => c.id !== id),
@@ -2786,7 +3000,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        void deleteClassCohortRemote(id);
+        deleteClassCohortRemote(id).then((res) => {
+          if (!res.ok && existing) {
+            console.error(`Failed to delete class cohort ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              classCohorts: [existing, ...(s.classCohorts ?? [])],
+            }));
+          }
+        });
       },
       createLeadershipTerm: (input) => {
         const academicYear = input.academicYear.trim();
@@ -2796,9 +3018,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!input.chapterId || !academicYear || !title || !startDate || !endDate) {
           return null;
         }
+        const termId = genUuid();
         const status: LeadershipStatus = input.status ?? "upcoming";
         const term: LeadershipTerm = {
-          id: `lt-${Date.now()}`,
+          id: termId,
           chapterId: input.chapterId,
           academicYear,
           title,
@@ -2807,7 +3030,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           status,
           handoverNotes: input.handoverNotes?.trim() || undefined,
         };
-        void persistLeadershipTerm(term);
         setStore((s) => {
           let terms = [...s.leadershipTerms, term];
           let userRoles = s.userRoles;
@@ -2842,6 +3064,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        persistLeadershipTerm(term).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create leadership term in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipTerms: s.leadershipTerms.filter((t) => t.id !== termId),
+            }));
+          }
+        });
         return term;
       },
       updateLeadershipTerm: (id, patch) => {
@@ -2862,7 +3093,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!next.academicYear || !next.title || !next.startDate || !next.endDate) {
           return false;
         }
-        void persistLeadershipTerm(next);
         setStore((s) => {
           let terms = s.leadershipTerms.map((t) => (t.id === id ? next : t));
           let userRoles = s.userRoles;
@@ -2895,7 +3125,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               assignments,
             );
           } else if (existing.status === "active") {
-            // Demoted from active → clear term-linked demo roles
             userRoles = s.userRoles.filter(
               (ur) => ur.leadershipTermId !== id,
             );
@@ -2910,12 +3139,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        persistLeadershipTerm(next).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update leadership term ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipTerms: s.leadershipTerms.map((t) => (t.id === id ? existing : t)),
+            }));
+          }
+        });
         return true;
       },
       archiveLeadershipTerm: (id) => {
         const existing = store.leadershipTerms.find((t) => t.id === id);
         if (!existing || existing.status === "archived") return false;
-        void persistLeadershipTerm({ ...existing, status: "archived" });
         setStore((s) => ({
           ...s,
           leadershipTerms: s.leadershipTerms.map((t) =>
@@ -2927,6 +3164,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistLeadershipTerm({ ...existing, status: "archived" }).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to archive leadership term ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipTerms: s.leadershipTerms.map((t) => (t.id === id ? existing : t)),
+            }));
+          }
+        });
         return true;
       },
       addLeadershipAssignment: (input) => {
@@ -2945,14 +3191,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           if (taken) return null;
         }
+        const assignmentId = genUuid();
         const assignment: LeadershipAssignment = {
-          id: `la-${Date.now()}`,
+          id: assignmentId,
           termId: input.termId,
           userId: input.userId,
           roleKey: input.roleKey,
           title,
         };
-        void persistLeadershipAssignment(assignment);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term.status === "active") {
@@ -2972,6 +3218,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ...s.activityLogs,
             ],
           };
+        });
+        persistLeadershipAssignment(assignment).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create leadership assignment in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipAssignments: s.leadershipAssignments.filter((a) => a.id !== assignmentId),
+            }));
+          }
         });
         return assignment;
       },
@@ -3001,7 +3256,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           if (taken) return false;
         }
-        void persistLeadershipAssignment(next);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term.status === "active") {
@@ -3030,13 +3284,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        persistLeadershipAssignment(next).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update leadership assignment ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipAssignments: s.leadershipAssignments.map((a) => (a.id === id ? existing : a)),
+            }));
+          }
+        });
         return true;
       },
       removeLeadershipAssignment: (id) => {
         const existing = store.leadershipAssignments.find((a) => a.id === id);
         if (!existing) return false;
         const term = store.leadershipTerms.find((t) => t.id === existing.termId);
-        void deleteLeadershipAssignmentRemote(id);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term?.status === "active") {
@@ -3059,11 +3321,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        deleteLeadershipAssignmentRemote(id).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to delete leadership assignment ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              leadershipAssignments: [...s.leadershipAssignments, existing],
+            }));
+          }
+        });
         return true;
       },
       createCluster: (input) => {
+        const clusterId = genUuid();
         const cluster: Cluster = {
-          id: `cl-${Date.now()}`,
+          id: clusterId,
           chapterId: input.chapterId,
           name: input.name,
           slug: input.slug,
@@ -3079,7 +3351,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             { week: 4, title: "Demo day", done: false },
           ],
         };
-        void persistCluster(cluster);
         setStore((s) => ({
           ...s,
           clusters: [cluster, ...s.clusters],
@@ -3088,19 +3359,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistCluster(cluster).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create cluster in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.filter((c) => c.id !== clusterId),
+            }));
+          }
+        });
         return cluster;
       },
       updateCluster: (id, patch) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === id ? { ...c, ...patch } : c,
-          );
-          const updated = nextClusters.find((c) => c.id === id);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const existing = store.clusters.find((c) => c.id === id);
+        if (!existing) return;
+        const updated = { ...existing, ...patch, id: existing.id };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === id ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update cluster ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === id ? existing : c)),
+            }));
+          }
         });
       },
       joinCluster: (clusterId, userId) => {
@@ -3108,131 +3393,116 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!cluster) return;
         const mode = cluster.accessMode ?? "invite";
         if (mode !== "open") return;
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId && !c.memberIds.includes(userId)
-              ? { ...c, memberIds: [...c.memberIds, userId] }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const updated = {
+          ...cluster,
+          memberIds: cluster.memberIds.includes(userId) ? cluster.memberIds : [...cluster.memberIds, userId],
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to join cluster in Supabase:", res.error);
         });
       },
       leaveCluster: (clusterId, userId) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId
-              ? {
-                  ...c,
-                  memberIds: c.memberIds.filter((id) => id !== userId),
-                  leaderId: c.leaderId === userId ? undefined : c.leaderId,
-                }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const updated = {
+          ...cluster,
+          memberIds: cluster.memberIds.filter((id) => id !== userId),
+          leaderId: cluster.leaderId === userId ? undefined : cluster.leaderId,
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to leave cluster in Supabase:", res.error);
         });
       },
       addClusterMember: (clusterId, userId) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId && !c.memberIds.includes(userId)
-              ? { ...c, memberIds: [...c.memberIds, userId] }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const updated = {
+          ...cluster,
+          memberIds: cluster.memberIds.includes(userId) ? cluster.memberIds : [...cluster.memberIds, userId],
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to add cluster member in Supabase:", res.error);
         });
       },
       removeClusterMember: (clusterId, userId) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId
-              ? {
-                  ...c,
-                  memberIds: c.memberIds.filter((id) => id !== userId),
-                  leaderId: c.leaderId === userId ? undefined : c.leaderId,
-                }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const updated = {
+          ...cluster,
+          memberIds: cluster.memberIds.filter((id) => id !== userId),
+          leaderId: cluster.leaderId === userId ? undefined : cluster.leaderId,
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to remove cluster member in Supabase:", res.error);
         });
       },
       toggleRoadmapWeek: (clusterId, week) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId
-              ? {
-                  ...c,
-                  roadmap: c.roadmap.map((w) =>
-                    w.week === week ? { ...w, done: !w.done } : w,
-                  ),
-                }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const updated = {
+          ...cluster,
+          roadmap: cluster.roadmap.map((w) => (w.week === week ? { ...w, done: !w.done } : w)),
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to update roadmap week in Supabase:", res.error);
         });
       },
       addRoadmapWeek: (clusterId, title) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) => {
-            if (c.id !== clusterId) return c;
-            const week =
-              c.roadmap.reduce((m, w) => Math.max(m, w.week), 0) + 1;
-            return {
-              ...c,
-              roadmap: [...c.roadmap, { week, title, done: false }],
-            };
-          });
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const week = cluster.roadmap.reduce((m, w) => Math.max(m, w.week), 0) + 1;
+        const updated = {
+          ...cluster,
+          roadmap: [...cluster.roadmap, { week, title, done: false }],
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to add roadmap week in Supabase:", res.error);
         });
       },
       removeRoadmapWeek: (clusterId, week) => {
-        setStore((s) => {
-          const nextClusters = s.clusters.map((c) =>
-            c.id === clusterId
-              ? { ...c, roadmap: c.roadmap.filter((w) => w.week !== week) }
-              : c,
-          );
-          const updated = nextClusters.find((c) => c.id === clusterId);
-          if (updated) void persistCluster(updated);
-          return {
-            ...s,
-            clusters: nextClusters,
-          };
+        const cluster = store.clusters.find((c) => c.id === clusterId);
+        if (!cluster) return;
+        const updated = {
+          ...cluster,
+          roadmap: cluster.roadmap.filter((w) => w.week !== week),
+        };
+        setStore((s) => ({
+          ...s,
+          clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
+        }));
+        persistCluster(updated).then((res) => {
+          if (!res.ok) console.error("Failed to remove roadmap week in Supabase:", res.error);
         });
       },
       createReportDraft: (input) => {
         const now = new Date().toISOString();
+        const reportId = genUuid();
         const report: Report = {
-          id: `rep-${Date.now()}`,
+          id: reportId,
           chapterId: input.chapterId,
           type: input.type,
           title: input.title.trim() || "Untitled report",
@@ -3247,7 +3517,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: input.submittedBy,
         };
-        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3256,6 +3525,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistReport(report).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create report draft in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              reports: s.reports.filter((r) => r.id !== reportId),
+            }));
+          }
+        });
         return report;
       },
       updateReportDocument: (id, patch, actorId) => {
@@ -3288,7 +3566,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: actorId,
         };
-        void persistReport(updatedReport);
         setStore((s) => ({
           ...s,
           reports: s.reports.map((r) => (r.id === id ? updatedReport : r)),
@@ -3297,6 +3574,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistReport(updatedReport).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update report document ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              reports: s.reports.map((r) => (r.id === id ? existing : r)),
+            }));
+          }
+        });
         return true;
       },
       submitReportDraft: (id, actorId) => {
@@ -3323,7 +3609,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: actorId,
         };
-        void persistReport(submittedReport);
         setStore((s) => ({
           ...s,
           reports: s.reports.map((r) => (r.id === id ? submittedReport : r)),
@@ -3333,14 +3618,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistReport(submittedReport).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to submit report draft ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              reports: s.reports.map((r) => (r.id === id ? existing : r)),
+            }));
+          }
+        });
         return true;
       },
       generateStudentEventReport: (input) => {
         if (!store.events.some((e) => e.id === input.eventId)) return null;
         if (!store.chapters.some((c) => c.id === input.chapterId)) return null;
         const now = new Date().toISOString();
+        const reportId = genUuid();
         const report: Report = {
-          id: `rep-${Date.now()}`,
+          id: reportId,
           chapterId: input.chapterId,
           type: "event",
           title: input.title.trim(),
@@ -3355,7 +3650,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: input.submittedBy,
         };
-        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3369,12 +3663,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistReport(report).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to generate student event report in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              reports: s.reports.filter((r) => r.id !== reportId),
+            }));
+          }
+        });
         return report;
       },
       submitReport: (input) => {
         const now = new Date().toISOString();
+        const reportId = genUuid();
         const report: Report = {
-          id: `rep-${Date.now()}`,
+          id: reportId,
           chapterId: input.chapterId,
           type: input.type,
           title: input.title.trim(),
@@ -3394,7 +3698,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
           href: "/hq/reports",
         });
-        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3404,6 +3707,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistReport(report).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to submit report in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              reports: s.reports.filter((r) => r.id !== reportId),
+            }));
+          }
+        });
         return report;
       },
       createAnnouncement: (input) => {
@@ -3415,11 +3727,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const title = input.title.trim();
         const body = input.body.trim();
         if (!title || !body) return null;
+        const annId = genUuid();
         const announcement: Announcement = {
           ...input,
           title,
           body,
-          id: `ann-${Date.now()}`,
+          id: annId,
           createdAt: new Date().toISOString(),
         };
         const fanout: NotificationItem[] = [];
@@ -3523,7 +3836,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
           }
         }
-        void persistAnnouncement(announcement);
         setStore((s) => ({
           ...s,
           announcements: [announcement, ...s.announcements],
@@ -3540,14 +3852,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistAnnouncement(announcement).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to publish announcement in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              announcements: s.announcements.filter((a) => a.id !== annId),
+            }));
+          }
+        });
         return announcement;
       },
       createResource: (input) => {
         const title = input.title.trim();
         const url = input.url.trim();
         if (!title || !url) return null;
+        const resourceId = genUuid();
         const resource: Resource = {
-          id: `res-${Date.now()}`,
+          id: resourceId,
           organizationId: store.organization.id,
           title,
           category: input.category,
@@ -3556,7 +3878,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           uploadedAt: new Date().toISOString(),
           url,
         };
-        void persistResource(resource);
         setStore((s) => ({
           ...s,
           resources: [resource, ...s.resources],
@@ -3571,6 +3892,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistResource(resource).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to upload resource in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              resources: s.resources.filter((r) => r.id !== resourceId),
+            }));
+          }
+        });
         return resource;
       },
       updateResource: (id, patch) => {
@@ -3583,7 +3913,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...(patch.description !== undefined ? { description: patch.description.trim() } : {}),
           ...(patch.url !== undefined ? { url: patch.url.trim() || existing.url } : {}),
         };
-        void persistResource(updated);
         setStore((s) => ({
           ...s,
           resources: s.resources.map((r) => (r.id === id ? updated : r)),
@@ -3592,11 +3921,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistResource(updated).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update resource ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              resources: s.resources.map((r) => (r.id === id ? existing : r)),
+            }));
+          }
+        });
         return true;
       },
       deleteResource: (id) => {
-        if (!store.resources.some((r) => r.id === id)) return false;
-        void deleteResourceRemote(id);
+        const existing = store.resources.find((r) => r.id === id);
+        if (!existing) return false;
         setStore((s) => ({
           ...s,
           resources: s.resources.filter((r) => r.id !== id),
@@ -3605,6 +3943,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        deleteResourceRemote(id).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to delete resource ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              resources: [existing, ...s.resources],
+            }));
+          }
+        });
         return true;
       },
       createResourceCategory: (label) => {
@@ -3673,13 +4020,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...store.organization,
           brandKit: input.brandKit,
         });
+        const prevOrg = store.organization;
         const orgData = {
           ...store.organization,
           name,
           tagline: input.tagline.trim(),
           brandKit,
         };
-        void persistOrganization(orgData);
         setStore((s) => ({
           ...s,
           organization: orgData,
@@ -3694,6 +4041,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistOrganization(orgData).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to update organization brand kit in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              organization: prevOrg,
+            }));
+          }
+        });
         return true;
       },
       createGuideline: (input) => {
@@ -3704,11 +4060,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const category = input.category.trim();
         const body = input.body.trim();
         if (!title || !category || !body) return null;
+        const guidelineId = genUuid();
         const sections = input.sections
           .map((s) => s.trim())
           .filter(Boolean);
         const guideline: Guideline = {
-          id: `pol-${Date.now()}`,
+          id: guidelineId,
           organizationId: store.organization.id,
           title,
           category,
@@ -3721,7 +4078,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedBy: store.session.userId,
           updatedAt: new Date().toISOString(),
         };
-        void persistGuideline(guideline);
         setStore((s) => ({
           ...s,
           guidelines: [guideline, ...(s.guidelines ?? [])],
@@ -3736,6 +4092,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistGuideline(guideline).then((res) => {
+          if (!res.ok) {
+            console.error("Failed to create guideline in Supabase:", res.error);
+            setStore((s) => ({
+              ...s,
+              guidelines: (s.guidelines ?? []).filter((g) => g.id !== guidelineId),
+            }));
+          }
+        });
         return guideline;
       },
       updateGuideline: (id, patch) => {
@@ -3777,7 +4142,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedBy: store.session.userId,
           updatedAt: new Date().toISOString(),
         };
-        void persistGuideline(next);
         setStore((s) => ({
           ...s,
           guidelines: (s.guidelines ?? []).map((g) => (g.id === id ? next : g)),
@@ -3786,14 +4150,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        persistGuideline(next).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to update guideline ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              guidelines: (s.guidelines ?? []).map((g) => (g.id === id ? existing : g)),
+            }));
+          }
+        });
         return true;
       },
       deleteGuideline: (id) => {
         if (!hasPermission(store, store.session.roleKey, "org.manage")) {
           return false;
         }
-        if (!(store.guidelines ?? []).some((g) => g.id === id)) return false;
-        void deleteGuidelineRemote(id);
+        const existing = (store.guidelines ?? []).find((g) => g.id === id);
+        if (!existing) return false;
         setStore((s) => ({
           ...s,
           guidelines: (s.guidelines ?? []).filter((g) => g.id !== id),
@@ -3802,16 +4175,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        deleteGuidelineRemote(id).then((res) => {
+          if (!res.ok) {
+            console.error(`Failed to delete guideline ${id} in Supabase:`, res.error);
+            setStore((s) => ({
+              ...s,
+              guidelines: [existing, ...(s.guidelines ?? [])],
+            }));
+          }
+        });
         return true;
       },
       markNotificationRead: (id) => {
-        void markNotificationReadRemote(id);
         setStore((s) => ({
           ...s,
           notifications: s.notifications.map((n) =>
             n.id === id ? { ...n, read: true } : n,
           ),
         }));
+        markNotificationReadRemote(id).then((res) => {
+          if (!res.ok) console.warn("Failed to mark notification read in Supabase:", res.error);
+        });
       },
       markAllNotificationsRead: (userId) => {
         setStore((s) => ({

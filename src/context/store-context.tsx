@@ -22,9 +22,47 @@ import {
   loadStoreFromSupabase,
 } from "@/lib/data/supabase-bootstrap";
 import {
+  persistOrganization,
+  persistChapter,
+  deleteChapterRemote,
   persistEvent,
+  deleteEventRemote,
+  persistProject,
+  deleteProjectRemote,
+  persistCluster,
+  deleteClusterRemote,
+  persistRegistration,
+  deleteRegistrationRemote,
+  persistAttendance,
+  persistBulkAttendance,
+  persistCertificate,
   persistForm,
+  deleteFormRemote,
   persistFormResponse,
+  deleteFormResponseRemote,
+  persistReport,
+  deleteReportRemote,
+  persistTask,
+  deleteTaskRemote,
+  persistGuideline,
+  deleteGuidelineRemote,
+  persistResource,
+  deleteResourceRemote,
+  persistDepartment,
+  deleteDepartmentRemote,
+  persistClassCohort,
+  deleteClassCohortRemote,
+  persistLeadershipTerm,
+  persistLeadershipAssignment,
+  deleteLeadershipAssignmentRemote,
+  persistActivityLog,
+  persistNotification,
+  markNotificationReadRemote,
+  persistAnnouncement,
+  persistEventPermission,
+  deleteEventPermissionRemote,
+  persistProfile,
+  persistUserRoles,
 } from "@/lib/data/mutations";
 import {
   answerableQuestions,
@@ -463,7 +501,7 @@ function log(
   entityId: string,
   meta?: string,
 ) {
-  return {
+  const item = {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     actorId,
     action,
@@ -472,6 +510,8 @@ function log(
     createdAt: new Date().toISOString(),
     ...(meta?.trim() ? { meta: meta.trim() } : {}),
   };
+  void persistActivityLog(item);
+  return item;
 }
 
 function notifyUsers(
@@ -480,15 +520,19 @@ function notifyUsers(
 ): NotificationItem[] {
   const now = new Date().toISOString();
   const unique = [...new Set(userIds.filter(Boolean))];
-  return unique.map((userId, i) => ({
-    id: `n-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
-    userId,
-    title: input.title,
-    body: input.body,
-    read: false,
-    createdAt: now,
-    href: input.href,
-  }));
+  return unique.map((userId, i) => {
+    const item = {
+      id: `n-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      userId,
+      title: input.title,
+      body: input.body,
+      read: false,
+      createdAt: now,
+      href: input.href,
+    };
+    void persistNotification(item);
+    return item;
+  });
 }
 
 function hqUserIds(store: ElevatesStore): string[] {
@@ -534,6 +578,15 @@ function applyReportReview(
         ? "report_correction_requested"
         : "report_rejected";
   const note = comment.trim();
+  const hqComment =
+    note ||
+    (decision === "approve"
+      ? "Approved by HQ."
+      : decision === "correction"
+        ? "Please revise and resubmit."
+        : "Rejected by HQ.");
+  const approvedBy = decision === "approve" ? actorId : undefined;
+
   setStore((s) => ({
     ...s,
     reports: s.reports.map((r) =>
@@ -541,13 +594,7 @@ function applyReportReview(
         ? {
             ...r,
             status,
-            hqComment:
-              note ||
-              (decision === "approve"
-                ? "Approved by HQ."
-                : decision === "correction"
-                  ? "Please revise and resubmit."
-                  : "Rejected by HQ."),
+            hqComment,
             ...(decision === "approve"
               ? { approvedBy: actorId }
               : { approvedBy: undefined }),
@@ -559,6 +606,14 @@ function applyReportReview(
       ...s.activityLogs,
     ],
   }));
+
+  void persistReport({
+    ...existing,
+    status,
+    hqComment,
+    approvedBy,
+  });
+
   return true;
 }
 
@@ -980,6 +1035,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        if (result.ok) {
+          const reg = store.registrations.find((r) => r.id === id);
+          if (reg) {
+            void persistRegistration({
+              ...reg,
+              status: result.status,
+              reviewedBy: actorId,
+              approvedBy: result.status === "approved" ? actorId : reg.approvedBy,
+            });
+          }
+        }
         return result;
       },
       checkIn: (registrationId, status, method, actorId, expectedEventId, session = "single", sessionName) => {
@@ -1033,10 +1099,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 a.id === existing.id ? record : a,
               )
             : [record, ...s.attendance];
+          const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
+          newCerts.forEach((c) => void persistCertificate(c));
+          void persistAttendance(record);
           return {
             ...s,
             attendance,
-            certificates: maybeIssueCert(s, reg.eventId, reg.userId, status),
+            certificates: newCerts,
             activityLogs: [
               log(actorId, "check_in", "attendance", registrationId),
               ...s.activityLogs,
@@ -1071,37 +1140,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               checkedInAt: new Date().toISOString(),
               checkedInBy: actorId,
             };
+            const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
+            newCerts.forEach((c) => void persistCertificate(c));
+            void persistAttendance(record);
             return {
               ...s,
               attendance: [record, ...s.attendance],
-              certificates: maybeIssueCert(s, reg.eventId, reg.userId, status),
+              certificates: newCerts,
             };
           }
+          const record = { ...existing, status, checkedInBy: actorId };
           const attendance = s.attendance.map((a) =>
             a.id === existing.id
-              ? { ...a, status, checkedInBy: actorId }
+              ? record
               : a,
           );
+          const newCerts = maybeIssueCert(
+            s,
+            existing.eventId,
+            existing.userId,
+            status,
+          );
+          newCerts.forEach((c) => void persistCertificate(c));
+          void persistAttendance(record);
           return {
             ...s,
             attendance,
-            certificates: maybeIssueCert(
-              s,
-              existing.eventId,
-              existing.userId,
-              status,
-            ),
+            certificates: newCerts,
           };
         });
         return result;
       },
-
 
       updateTaskStatus: (id, status) => {
         setStore((s) => ({
           ...s,
           tasks: s.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
         }));
+        const existing = store.tasks.find((t) => t.id === id);
+        if (existing) {
+          void persistTask({ ...existing, status });
+        }
       },
       approveEvent: (eventId) => {
         setStore((s) => ({
@@ -1112,6 +1191,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         }));
+        const ev = store.events.find((e) => e.id === eventId);
+        if (ev) {
+          void persistEvent({ ...ev, status: "registration_open" });
+        }
       },
       approveReport: (reportId, comment, actorId) => {
         applyReportReview(store, setStore, reportId, "approve", comment, actorId);
@@ -1139,6 +1222,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             : event.status;
         const normalized = { ...event, status };
         void persistEvent(normalized);
+        forms.forEach((f) => void persistForm(f));
         setStore((s) => ({
           ...s,
           events: [normalized, ...s.events],
@@ -1170,10 +1254,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             safe.status = "registration_open";
           }
           const nextTitle = safe.title ?? prev.title;
+          const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
+          void persistEvent(updatedEvent);
           return {
             ...s,
             events: s.events.map((e) =>
-              e.id === id ? { ...e, ...safe, id: e.id, chapterId: e.chapterId } : e,
+              e.id === id ? updatedEvent : e,
             ),
             activityLogs: [
               log(s.session.userId, "event_updated", "event", id, nextTitle),
@@ -1237,6 +1323,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        if (result.ok) {
+          void persistRegistration(registration);
+        }
         return result;
       },
       saveEventForm: (eventId, fields) => {
@@ -1247,16 +1336,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const idx = forms.findIndex(
             (f) => f.eventId === eventId && f.purpose === "registration",
           );
+          let targetForm: FormDefinition;
           if (idx >= 0) {
             forms[idx] = {
               ...forms[idx],
               questions,
               updatedAt: now,
             };
+            targetForm = forms[idx];
           } else {
             const chapterId =
               s.events.find((e) => e.id === eventId)?.chapterId ?? s.chapters?.[0]?.id ?? "";
-            forms.unshift({
+            targetForm = {
               id: `form-reg-${eventId}`,
               purpose: "registration",
               title: "Registration",
@@ -1266,8 +1357,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               questions,
               createdAt: now,
               updatedAt: now,
-            });
+            };
+            forms.unshift(targetForm);
           }
+          void persistForm(targetForm);
           const exists = s.eventForms.some((f) => f.eventId === eventId);
           return {
             ...s,
@@ -1290,6 +1383,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           const chapterId =
             s.events.find((e) => e.id === eventId)?.chapterId ?? s.chapters?.[0]?.id ?? "";
+          let targetForm: FormDefinition;
           if (idx >= 0) {
             forms[idx] = {
               ...forms[idx],
@@ -1297,8 +1391,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               title: title ?? forms[idx].title,
               updatedAt: now,
             };
+            targetForm = forms[idx];
           } else {
-            forms.unshift({
+            targetForm = {
               id: `form-${purpose}-${eventId}`,
               purpose,
               title: title ?? purpose,
@@ -1308,8 +1403,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               questions,
               createdAt: now,
               updatedAt: now,
-            });
+            };
+            forms.unshift(targetForm);
           }
+          void persistForm(targetForm);
           let eventForms = s.eventForms;
           if (purpose === "registration") {
             const exists = eventForms.some((f) => f.eventId === eventId);
@@ -1344,6 +1441,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             f.id === id ? { ...f, ...patch, id: f.id, updatedAt: now } : f,
           );
           const nextForm = forms.find((f) => f.id === id);
+          if (nextForm) void persistForm(nextForm);
           let eventForms = s.eventForms;
           if (
             nextForm?.purpose === "registration" &&
@@ -1371,6 +1469,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           forms: (s.forms ?? []).filter((f) => f.id !== id),
           formResponses: (s.formResponses ?? []).filter((r) => r.formId !== id),
         }));
+        void deleteFormRemote(id);
       },
       duplicateForm: (id) => {
         const source = store.forms?.find((f) => f.id === id);
@@ -1475,6 +1574,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           formResponses: (s.formResponses ?? []).filter((r) => r.id !== id),
         }));
+        void deleteFormResponseRemote(id);
       },
       issueCertificate: (eventId, userId) => {
         let result: CheckInResult = { ok: true };
@@ -1506,18 +1606,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return s;
           }
           const certificateId = `ELV-MANUAL-${Date.now().toString().slice(-6)}`;
+          const cert = {
+            id: `cert-${Date.now()}`,
+            certificateId,
+            eventId,
+            userId,
+            issuedAt: new Date().toISOString(),
+            verificationQr: `VERIFY-${certificateId}`,
+            digitalSignature: `sig_${certificateId.toLowerCase()}`,
+          };
+          void persistCertificate(cert);
           return {
             ...s,
             certificates: [
-              {
-                id: `cert-${Date.now()}`,
-                certificateId,
-                eventId,
-                userId,
-                issuedAt: new Date().toISOString(),
-                verificationQr: `VERIFY-${certificateId}`,
-                digitalSignature: `sig_${certificateId.toLowerCase()}`,
-              },
+              cert,
               ...s.certificates,
             ],
           };
@@ -1588,16 +1690,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return chapter;
       },
       updateChapter: (id, patch) => {
-        setStore((s) => ({
-          ...s,
-          chapters: s.chapters.map((c) =>
+        setStore((s) => {
+          const nextChapters = s.chapters.map((c) =>
             c.id === id ? { ...c, ...patch } : c,
-          ),
-          activityLogs: [
-            log(s.session.userId, "chapter_updated", "chapter", id),
-            ...s.activityLogs,
-          ],
-        }));
+          );
+          const updated = nextChapters.find((c) => c.id === id);
+          if (updated) {
+            void persistChapter(updated);
+          }
+          return {
+            ...s,
+            chapters: nextChapters,
+            activityLogs: [
+              log(s.session.userId, "chapter_updated", "chapter", id),
+              ...s.activityLogs,
+            ],
+          };
+        });
       },
       deleteChapter: (id) => {
         setStore((s) => ({
@@ -1613,6 +1722,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }).catch((err) => console.warn("Remote delete chapter error:", err));
       },
       updateProfile: (id, patch) => {
+        void persistProfile({ id, ...patch });
         setStore((s) => {
           const exists = s.profiles.some((p) => p.id === id);
           if (!exists) {
@@ -1760,6 +1870,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           profiles: s.profiles.filter((p) => !profileIds.includes(p.id)),
         }));
+        for (const pid of profileIds) {
+          fetch(`/api/provisioning/user?id=${encodeURIComponent(pid)}&actingUserId=${encodeURIComponent(store.session.userId)}`, {
+            method: "DELETE",
+          }).catch((err) => console.warn("Remote reject join request error:", err));
+        }
         return true;
       },
       generateChapterInviteCode: (chapterId, customCode) => {
@@ -2240,6 +2355,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        fetch("/api/provisioning/user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actingUserId: store.session.userId,
+            targetUser: {
+              id,
+              fullName,
+              email,
+              chapterId: input.chapterId || store.chapters[0]?.id || "c1000000-0000-4000-8000-000000000001",
+              roleKey: input.roleKey,
+            },
+          }),
+        }).catch((err) => console.warn("Remote user create error:", err));
         return profile;
       },
       updateUser: (id, patch) => {
@@ -2326,24 +2455,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
 
-        const supabase = createClient();
-        if (supabase) {
-          supabase
-            .from("user_roles")
-            .delete()
-            .eq("user_id", id)
-            .then(() => {
-              supabase
-                .from("profiles")
-                .delete()
-                .eq("id", id)
-                .then((res: any) => {
-                  if (res?.error) {
-                    console.error("Error deleting profile in Supabase:", res.error.message);
-                  }
-                });
-            });
-        }
+        fetch(`/api/provisioning/user?id=${encodeURIComponent(id)}&actingUserId=${encodeURIComponent(store.session.userId)}`, {
+          method: "DELETE",
+        }).catch((err) => console.warn("Remote delete user error:", err));
+
         return true;
       },
       setUserRoles: (userId, assignments) => {
@@ -2466,52 +2581,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       createDepartment: (input) => {
         const name = input.name.trim();
-        if (!name) return null;
-        const dup = (store.departments ?? []).some(
+        if (!input.chapterId || !name) return null;
+        const exists = (store.departments ?? []).some(
           (d) =>
             d.chapterId === input.chapterId &&
             d.name.trim().toUpperCase() === name.toUpperCase(),
         );
-        if (dup) return null;
-        const generatedId =
-          input.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id)
-            ? input.id
-            : typeof crypto !== "undefined" && crypto.randomUUID
-              ? crypto.randomUUID()
-              : undefined;
+        if (exists) return null;
 
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id ?? "");
         const department: Department = {
-          id: generatedId ?? `dept-${Date.now()}`,
+          id: (isUuid ? input.id : undefined) ?? `dept-${Date.now()}`,
           chapterId: input.chapterId,
           name,
         };
 
-        const supabase = createClient();
-        if (supabase) {
-          const payload: Record<string, any> = {
-            chapter_id: department.chapterId,
-            name: department.name,
-          };
-          if (generatedId) {
-            payload.id = generatedId;
-          }
-          supabase
-            .from("departments")
-            .insert(payload)
-            .select("id")
-            .single()
-            .then((res: any) => {
-              if (res?.error) {
-                console.error("Error writing department to Supabase:", res.error?.message);
-              } else if (res?.data?.id && res.data.id !== department.id) {
-                const serverId = res.data.id;
-                setStore((s) => ({
-                  ...s,
-                  departments: (s.departments ?? []).map((d) => (d.id === department.id ? { ...d, id: serverId } : d)),
-                }));
-              }
-            });
-        }
+        void persistDepartment(department);
 
         setStore((s) => ({
           ...s,
@@ -2536,6 +2621,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (dup) return false;
         const oldName = existing.name;
+        void persistDepartment({ id, chapterId: existing.chapterId, name });
         setStore((s) => ({
           ...s,
           departments: (s.departments ?? []).map((d) =>
@@ -2572,16 +2658,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (inUse) return false;
 
-        const supabase = createClient();
-        if (supabase) {
-          supabase
-            .from("departments")
-            .delete()
-            .eq("id", id)
-            .then((res: any) => {
-              if (res?.error) console.error("Error deleting department from Supabase:", res.error?.message);
-            });
-        }
+        void deleteDepartmentRemote(id);
 
         setStore((s) => ({
           ...s,
@@ -2635,6 +2712,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           section,
           repIds,
         };
+        void persistClassCohort(cohort);
         setStore((s) => ({
           ...s,
           classCohorts: [cohort, ...(s.classCohorts ?? [])],
@@ -2686,6 +2764,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
         );
         if (!repsOk) return false;
+        void persistClassCohort(next);
         setStore((s) => ({
           ...s,
           classCohorts: (s.classCohorts ?? []).map((c) =>
@@ -2707,6 +2786,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
+        void deleteClassCohortRemote(id);
       },
       createLeadershipTerm: (input) => {
         const academicYear = input.academicYear.trim();
@@ -2727,6 +2807,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           status,
           handoverNotes: input.handoverNotes?.trim() || undefined,
         };
+        void persistLeadershipTerm(term);
         setStore((s) => {
           let terms = [...s.leadershipTerms, term];
           let userRoles = s.userRoles;
@@ -2781,6 +2862,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!next.academicYear || !next.title || !next.startDate || !next.endDate) {
           return false;
         }
+        void persistLeadershipTerm(next);
         setStore((s) => {
           let terms = s.leadershipTerms.map((t) => (t.id === id ? next : t));
           let userRoles = s.userRoles;
@@ -2833,6 +2915,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       archiveLeadershipTerm: (id) => {
         const existing = store.leadershipTerms.find((t) => t.id === id);
         if (!existing || existing.status === "archived") return false;
+        void persistLeadershipTerm({ ...existing, status: "archived" });
         setStore((s) => ({
           ...s,
           leadershipTerms: s.leadershipTerms.map((t) =>
@@ -2869,6 +2952,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           roleKey: input.roleKey,
           title,
         };
+        void persistLeadershipAssignment(assignment);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term.status === "active") {
@@ -2917,6 +3001,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           );
           if (taken) return false;
         }
+        void persistLeadershipAssignment(next);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term.status === "active") {
@@ -2951,6 +3036,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const existing = store.leadershipAssignments.find((a) => a.id === id);
         if (!existing) return false;
         const term = store.leadershipTerms.find((t) => t.id === existing.termId);
+        void deleteLeadershipAssignmentRemote(id);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term?.status === "active") {
@@ -2993,6 +3079,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             { week: 4, title: "Demo day", done: false },
           ],
         };
+        void persistCluster(cluster);
         setStore((s) => ({
           ...s,
           clusters: [cluster, ...s.clusters],
@@ -3004,40 +3091,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return cluster;
       },
       updateCluster: (id, patch) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === id ? { ...c, ...patch } : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === id);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       joinCluster: (clusterId, userId) => {
         const cluster = store.clusters.find((c) => c.id === clusterId);
         if (!cluster) return;
         const mode = cluster.accessMode ?? "invite";
         if (mode !== "open") return;
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId && !c.memberIds.includes(userId)
               ? { ...c, memberIds: [...c.memberIds, userId] }
               : c,
-          ),
-          profiles: s.profiles.map((p) =>
-            p.id === userId
-              ? {
-                  ...p,
-                  engagementTier: "cluster" as EngagementTier,
-                  journeyStage: "cluster" as JourneyStage,
-                }
-              : p,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       leaveCluster: (clusterId, userId) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId
               ? {
                   ...c,
@@ -3045,23 +3132,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   leaderId: c.leaderId === userId ? undefined : c.leaderId,
                 }
               : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       addClusterMember: (clusterId, userId) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId && !c.memberIds.includes(userId)
               ? { ...c, memberIds: [...c.memberIds, userId] }
               : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       removeClusterMember: (clusterId, userId) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId
               ? {
                   ...c,
@@ -3069,13 +3166,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   leaderId: c.leaderId === userId ? undefined : c.leaderId,
                 }
               : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       toggleRoadmapWeek: (clusterId, week) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId
               ? {
                   ...c,
@@ -3084,13 +3186,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   ),
                 }
               : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       addRoadmapWeek: (clusterId, title) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) => {
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) => {
             if (c.id !== clusterId) return c;
             const week =
               c.roadmap.reduce((m, w) => Math.max(m, w.week), 0) + 1;
@@ -3098,18 +3205,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ...c,
               roadmap: [...c.roadmap, { week, title, done: false }],
             };
-          }),
-        }));
+          });
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       removeRoadmapWeek: (clusterId, week) => {
-        setStore((s) => ({
-          ...s,
-          clusters: s.clusters.map((c) =>
+        setStore((s) => {
+          const nextClusters = s.clusters.map((c) =>
             c.id === clusterId
               ? { ...c, roadmap: c.roadmap.filter((w) => w.week !== week) }
               : c,
-          ),
-        }));
+          );
+          const updated = nextClusters.find((c) => c.id === clusterId);
+          if (updated) void persistCluster(updated);
+          return {
+            ...s,
+            clusters: nextClusters,
+          };
+        });
       },
       createReportDraft: (input) => {
         const now = new Date().toISOString();
@@ -3129,6 +3247,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: input.submittedBy,
         };
+        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3149,31 +3268,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return false;
         }
         const now = new Date().toISOString();
+        const updatedReport: Report = {
+          ...existing,
+          ...(patch.title !== undefined
+            ? { title: patch.title.trim() || existing.title }
+            : {}),
+          ...(patch.type !== undefined ? { type: patch.type } : {}),
+          ...(patch.summary !== undefined
+            ? { summary: patch.summary.trim() || undefined }
+            : {}),
+          ...(patch.bodyHtml !== undefined
+            ? { bodyHtml: patch.bodyHtml }
+            : {}),
+          ...(patch.bodyJson !== undefined
+            ? { bodyJson: patch.bodyJson }
+            : {}),
+          ...(patch.images !== undefined ? { images: patch.images } : {}),
+          ...(patch.eventId !== undefined ? { eventId: patch.eventId } : {}),
+          updatedAt: now,
+          updatedBy: actorId,
+        };
+        void persistReport(updatedReport);
         setStore((s) => ({
           ...s,
-          reports: s.reports.map((r) => {
-            if (r.id !== id) return r;
-            return {
-              ...r,
-              ...(patch.title !== undefined
-                ? { title: patch.title.trim() || r.title }
-                : {}),
-              ...(patch.type !== undefined ? { type: patch.type } : {}),
-              ...(patch.summary !== undefined
-                ? { summary: patch.summary.trim() || undefined }
-                : {}),
-              ...(patch.bodyHtml !== undefined
-                ? { bodyHtml: patch.bodyHtml }
-                : {}),
-              ...(patch.bodyJson !== undefined
-                ? { bodyJson: patch.bodyJson }
-                : {}),
-              ...(patch.images !== undefined ? { images: patch.images } : {}),
-              ...(patch.eventId !== undefined ? { eventId: patch.eventId } : {}),
-              updatedAt: now,
-              updatedBy: actorId,
-            };
-          }),
+          reports: s.reports.map((r) => (r.id === id ? updatedReport : r)),
           activityLogs: [
             log(actorId, "report_document_updated", "report", id),
             ...s.activityLogs,
@@ -3197,20 +3315,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
           href: "/hq/reports",
         });
+        const submittedReport: Report = {
+          ...existing,
+          status: "submitted" as const,
+          submittedAt: now,
+          submittedBy: actorId,
+          updatedAt: now,
+          updatedBy: actorId,
+        };
+        void persistReport(submittedReport);
         setStore((s) => ({
           ...s,
-          reports: s.reports.map((r) =>
-            r.id === id
-              ? {
-                  ...r,
-                  status: "submitted" as const,
-                  submittedAt: now,
-                  submittedBy: actorId,
-                  updatedAt: now,
-                  updatedBy: actorId,
-                }
-              : r,
-          ),
+          reports: s.reports.map((r) => (r.id === id ? submittedReport : r)),
           notifications: [...hqAlerts, ...s.notifications],
           activityLogs: [
             log(actorId, "report_submitted", "report", id),
@@ -3239,6 +3355,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
           updatedBy: input.submittedBy,
         };
+        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3277,6 +3394,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
           href: "/hq/reports",
         });
+        void persistReport(report);
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
@@ -3405,6 +3523,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
           }
         }
+        void persistAnnouncement(announcement);
         setStore((s) => ({
           ...s,
           announcements: [announcement, ...s.announcements],
@@ -3437,6 +3556,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           uploadedAt: new Date().toISOString(),
           url,
         };
+        void persistResource(resource);
         setStore((s) => ({
           ...s,
           resources: [resource, ...s.resources],
@@ -3454,27 +3574,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return resource;
       },
       updateResource: (id, patch) => {
-        if (!store.resources.some((r) => r.id === id)) return false;
+        const existing = store.resources.find((r) => r.id === id);
+        if (!existing) return false;
+        const updated = {
+          ...existing,
+          ...(patch.title !== undefined ? { title: patch.title.trim() || existing.title } : {}),
+          ...(patch.category !== undefined ? { category: patch.category } : {}),
+          ...(patch.description !== undefined ? { description: patch.description.trim() } : {}),
+          ...(patch.url !== undefined ? { url: patch.url.trim() || existing.url } : {}),
+        };
+        void persistResource(updated);
         setStore((s) => ({
           ...s,
-          resources: s.resources.map((r) => {
-            if (r.id !== id) return r;
-            return {
-              ...r,
-              ...(patch.title !== undefined
-                ? { title: patch.title.trim() || r.title }
-                : {}),
-              ...(patch.category !== undefined
-                ? { category: patch.category }
-                : {}),
-              ...(patch.description !== undefined
-                ? { description: patch.description.trim() }
-                : {}),
-              ...(patch.url !== undefined
-                ? { url: patch.url.trim() || r.url }
-                : {}),
-            };
-          }),
+          resources: s.resources.map((r) => (r.id === id ? updated : r)),
           activityLogs: [
             log(s.session.userId, "resource_updated", "resource", id),
             ...s.activityLogs,
@@ -3484,6 +3596,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       deleteResource: (id) => {
         if (!store.resources.some((r) => r.id === id)) return false;
+        void deleteResourceRemote(id);
         setStore((s) => ({
           ...s,
           resources: s.resources.filter((r) => r.id !== id),
@@ -3560,14 +3673,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...store.organization,
           brandKit: input.brandKit,
         });
+        const orgData = {
+          ...store.organization,
+          name,
+          tagline: input.tagline.trim(),
+          brandKit,
+        };
+        void persistOrganization(orgData);
         setStore((s) => ({
           ...s,
-          organization: {
-            ...s.organization,
-            name,
-            tagline: input.tagline.trim(),
-            brandKit,
-          },
+          organization: orgData,
           activityLogs: [
             log(
               s.session.userId,
@@ -3606,6 +3721,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedBy: store.session.userId,
           updatedAt: new Date().toISOString(),
         };
+        void persistGuideline(guideline);
         setStore((s) => ({
           ...s,
           guidelines: [guideline, ...(s.guidelines ?? [])],
@@ -3626,46 +3742,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!hasPermission(store, store.session.roleKey, "org.manage")) {
           return false;
         }
-        if (!(store.guidelines ?? []).some((g) => g.id === id)) return false;
+        const existing = (store.guidelines ?? []).find((g) => g.id === id);
+        if (!existing) return false;
+        const next: Guideline = {
+          ...existing,
+          ...(patch.title !== undefined
+            ? { title: patch.title.trim() || existing.title }
+            : {}),
+          ...(patch.category !== undefined
+            ? { category: patch.category.trim() || existing.category }
+            : {}),
+          ...(patch.version !== undefined
+            ? { version: patch.version.trim() || existing.version }
+            : {}),
+          ...(patch.summary !== undefined
+            ? { summary: patch.summary.trim() }
+            : {}),
+          ...(patch.sections !== undefined
+            ? {
+                sections: patch.sections
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+              }
+            : {}),
+          ...(patch.body !== undefined
+            ? { body: patch.body.trim() || existing.body }
+            : {}),
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.relatedHref !== undefined
+            ? {
+                relatedHref: patch.relatedHref.trim() || undefined,
+              }
+            : {}),
+          updatedBy: store.session.userId,
+          updatedAt: new Date().toISOString(),
+        };
+        void persistGuideline(next);
         setStore((s) => ({
           ...s,
-          guidelines: (s.guidelines ?? []).map((g) => {
-            if (g.id !== id) return g;
-            const next: Guideline = {
-              ...g,
-              ...(patch.title !== undefined
-                ? { title: patch.title.trim() || g.title }
-                : {}),
-              ...(patch.category !== undefined
-                ? { category: patch.category.trim() || g.category }
-                : {}),
-              ...(patch.version !== undefined
-                ? { version: patch.version.trim() || g.version }
-                : {}),
-              ...(patch.summary !== undefined
-                ? { summary: patch.summary.trim() }
-                : {}),
-              ...(patch.sections !== undefined
-                ? {
-                    sections: patch.sections
-                      .map((x) => x.trim())
-                      .filter(Boolean),
-                  }
-                : {}),
-              ...(patch.body !== undefined
-                ? { body: patch.body.trim() || g.body }
-                : {}),
-              ...(patch.status !== undefined ? { status: patch.status } : {}),
-              ...(patch.relatedHref !== undefined
-                ? {
-                    relatedHref: patch.relatedHref.trim() || undefined,
-                  }
-                : {}),
-              updatedBy: s.session.userId,
-              updatedAt: new Date().toISOString(),
-            };
-            return next;
-          }),
+          guidelines: (s.guidelines ?? []).map((g) => (g.id === id ? next : g)),
           activityLogs: [
             log(s.session.userId, "guideline_updated", "guideline", id),
             ...s.activityLogs,
@@ -3678,6 +3793,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return false;
         }
         if (!(store.guidelines ?? []).some((g) => g.id === id)) return false;
+        void deleteGuidelineRemote(id);
         setStore((s) => ({
           ...s,
           guidelines: (s.guidelines ?? []).filter((g) => g.id !== id),
@@ -3689,6 +3805,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true;
       },
       markNotificationRead: (id) => {
+        void markNotificationReadRemote(id);
         setStore((s) => ({
           ...s,
           notifications: s.notifications.map((n) =>

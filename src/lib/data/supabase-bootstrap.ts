@@ -108,6 +108,15 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: epRows },
       { data: inviteRows },
       { data: deptRows },
+      { data: guidelineRows },
+      { data: resourceRows },
+      { data: taskRows },
+      { data: announcementRows },
+      { data: notifRows },
+      { data: activityRows },
+      { data: cohortRows },
+      { data: formRespRows },
+      { data: laAppRows },
       authUserData,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
@@ -130,6 +139,15 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("event_permissions").select("*"),
       supabase.from("invite_tokens").select("*").order("created_at", { ascending: false }),
       supabase.from("departments").select("*"),
+      supabase.from("guidelines").select("*"),
+      supabase.from("resources").select("*"),
+      supabase.from("tasks").select("*"),
+      supabase.from("announcements").select("*"),
+      supabase.from("notifications").select("*").order("created_at", { ascending: false }),
+      supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
+      supabase.from("class_cohorts").select("*"),
+      supabase.from("form_responses").select("*"),
+      supabase.from("leadership_applications").select("*"),
       supabase.auth.getUser(),
     ]);
 
@@ -397,6 +415,114 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         name: d.name,
       })) ?? [];
 
+    const guidelines: import("@/types").Guideline[] =
+      guidelineRows?.map((g: Record<string, any>) => ({
+        id: g.id,
+        organizationId: g.organization_id ?? "00000000-0000-0000-0000-000000000001",
+        title: g.title,
+        category: g.category ?? "General",
+        version: g.version ?? "1.0",
+        summary: g.summary ?? "",
+        sections: Array.isArray(g.sections) ? g.sections : [],
+        body: g.body ?? "",
+        status: g.status ?? "published",
+        relatedHref: g.related_href ?? undefined,
+        updatedBy: g.updated_by ?? "",
+        updatedAt: g.updated_at ?? new Date().toISOString(),
+      })) ?? [];
+
+    const resources: import("@/types").Resource[] =
+      resourceRows?.map((r: Record<string, any>) => ({
+        id: r.id,
+        organizationId: r.organization_id ?? "00000000-0000-0000-0000-000000000001",
+        title: r.title,
+        category: r.category ?? "General",
+        description: r.description ?? "",
+        uploadedBy: r.uploaded_by ?? "",
+        uploadedAt: r.uploaded_at ?? new Date().toISOString(),
+        url: r.url,
+      })) ?? [];
+
+    const tasks: import("@/types").Task[] =
+      taskRows?.map((t: Record<string, any>) => ({
+        id: t.id,
+        chapterId: t.chapter_id,
+        eventId: t.event_id ?? undefined,
+        title: t.title,
+        category: t.category ?? "documentation",
+        assigneeId: t.assignee_id ?? "",
+        status: t.status ?? "pending",
+        dueDate: t.due_date ?? new Date().toISOString(),
+      })) ?? [];
+
+    const announcements: import("@/types").Announcement[] =
+      announcementRows?.map((a: Record<string, any>) => ({
+        id: a.id,
+        audience: a.audience ?? "global",
+        chapterId: a.chapter_id ?? undefined,
+        clusterId: a.cluster_id ?? undefined,
+        title: a.title,
+        body: a.body,
+        authorId: a.author_id ?? "",
+        createdAt: a.created_at ?? new Date().toISOString(),
+      })) ?? [];
+
+    const notifications: import("@/types").NotificationItem[] =
+      notifRows?.map((n: Record<string, any>) => ({
+        id: n.id,
+        userId: n.user_id,
+        title: n.title,
+        body: n.body,
+        read: Boolean(n.read),
+        createdAt: n.created_at ?? new Date().toISOString(),
+        href: n.href ?? undefined,
+      })) ?? [];
+
+    const activityLogs: import("@/types").ActivityLog[] =
+      activityRows?.map((al: Record<string, any>) => ({
+        id: al.id,
+        actorId: al.actor_id ?? "",
+        action: al.action,
+        entity: al.entity,
+        entityId: al.entity_id,
+        meta: al.meta ?? undefined,
+        createdAt: al.created_at ?? new Date().toISOString(),
+      })) ?? [];
+
+    const classCohorts: import("@/types").ClassCohort[] =
+      cohortRows?.map((cc: Record<string, any>) => ({
+        id: cc.id,
+        chapterId: cc.chapter_id,
+        department: cc.department,
+        year: cc.year,
+        section: cc.section,
+        repIds: cc.representative_id ? [cc.representative_id] : [],
+      })) ?? [];
+
+    const formResponses: import("@/types").FormResponse[] =
+      formRespRows?.map((fr: Record<string, any>) => ({
+        id: fr.id,
+        formId: fr.form_id,
+        userId: fr.user_id,
+        eventId: fr.event_id ?? undefined,
+        answers: typeof fr.answers === "object" && fr.answers ? fr.answers : {},
+        submittedAt: fr.submitted_at ?? new Date().toISOString(),
+      })) ?? [];
+
+    const leadershipApplications: import("@/types").LeadershipApplication[] =
+      laAppRows?.map((la: Record<string, any>) => ({
+        id: la.id,
+        termId: la.term_id ?? "",
+        chapterId: la.chapter_id,
+        userId: la.user_id,
+        roleKey: la.role_key,
+        title: la.title ?? "",
+        status: la.status ?? "pending",
+        statement: la.statement ?? undefined,
+        createdAt: la.submitted_at ?? new Date().toISOString(),
+        updatedAt: la.submitted_at ?? new Date().toISOString(),
+      })) ?? [];
+
     let session: DemoUserSession;
     if (authUser) {
       let matchedProfile = profiles.find((p) => p.id === authUser.id);
@@ -469,6 +595,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         organization,
         chapters,
         departments,
+        classCohorts,
         roles,
         permissions,
         rolePermissions,
@@ -476,15 +603,23 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         eventPermissions,
         leadershipTerms,
         leadershipAssignments,
+        leadershipApplications,
         clusters,
         events,
         projects,
         forms,
+        formResponses,
         profiles,
         reports,
         certificates,
         registrations,
         attendance,
+        guidelines,
+        resources,
+        tasks,
+        announcements,
+        notifications,
+        activityLogs,
         inviteTokens: (inviteRows ?? []).map((t: Record<string, any>) => ({
           id: t.id,
           token: t.token,

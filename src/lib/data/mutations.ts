@@ -1,195 +1,202 @@
-import type { Chapter, EventItem, FormDefinition, FormResponse } from "@/types";
+import type {
+  AttendanceRecord,
+  Certificate,
+  Chapter,
+  ClassCohort,
+  Cluster,
+  Department,
+  EventItem,
+  EventPermission,
+  EventRegistration,
+  FormDefinition,
+  FormResponse,
+  Guideline,
+  LeadershipAssignment,
+  LeadershipTerm,
+  NotificationItem,
+  Profile,
+  Project,
+  Report,
+  Resource,
+  Task,
+  UserRole,
+} from "@/types";
 import { isDemoMode } from "@/lib/mode";
-import { createServiceClient } from "@/lib/supabase/service";
-import { slugify } from "@/lib/public/http";
-import { revalidateWeb } from "@/lib/public/catalog";
 
+export async function sendMutation(type: string, data: any): Promise<boolean> {
+  if (isDemoMode()) return true;
+  try {
+    if (typeof window !== "undefined") {
+      const res = await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, data }),
+      });
+      return res.ok;
+    }
+  } catch (err) {
+    console.warn(`Remote mutation (${type}) error:`, err);
+  }
+  return false;
+}
+
+// 0. Organization
+export async function persistOrganization(org: any) {
+  return sendMutation("organization", org);
+}
+
+// 1. Chapter
 export async function persistChapter(chapter: Chapter) {
-  if (isDemoMode()) return;
-  if (typeof window !== "undefined") {
-    try {
-      await fetch("/api/mutations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "chapter", data: chapter }),
-      });
-    } catch (e) {
-      console.error("Failed to persist chapter via API:", e);
-    }
-    return;
-  }
-  const admin = createServiceClient();
-  if (!admin) return;
-  await admin.from("chapters").upsert({
-    id: chapter.id.startsWith("ch-") ? undefined : chapter.id,
-    organization_id: chapter.organizationId,
-    name: chapter.name,
-    slug: chapter.slug,
-    college: chapter.college,
-    city: chapter.city,
-    status: chapter.status,
-    health_score: chapter.healthScore,
-    published: chapter.published ?? false,
-    district: chapter.district,
-    logo_url: chapter.logoUrl,
-  });
+  return sendMutation("chapter", chapter);
+}
+export async function deleteChapterRemote(id: string, slug?: string) {
+  return sendMutation("delete_chapter", { id, slug });
 }
 
+// 2. Event
 export async function persistEvent(event: EventItem) {
-  if (isDemoMode()) return;
-  if (typeof window !== "undefined") {
-    try {
-      await fetch("/api/mutations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "event", data: event }),
-      });
-    } catch (e) {
-      console.error("Failed to persist event via API:", e);
-    }
-    return;
-  }
-  const admin = createServiceClient();
-  if (!admin) return;
-  const slug = event.slug ?? slugify(event.title);
-  await admin.from("events").upsert({
-    id: event.id.startsWith("ev-") ? undefined : event.id,
-    chapter_id: event.chapterId,
-    cluster_id: event.clusterId,
-    title: event.title,
-    description: event.description,
-    venue: event.venue,
-    starts_at: event.startsAt,
-    ends_at: event.endsAt,
-    faculty_id: event.facultyId,
-    organizer_id: event.organizerId?.startsWith("usr-") ? "d1000000-0000-4000-8000-000000000001" : event.organizerId,
-    capacity: event.capacity,
-    waitlist_capacity: event.waitlistCapacity,
-    visibility: event.visibility,
-    registration_start: event.registrationStart,
-    registration_end: event.registrationEnd,
-    status: event.status,
-    certificate_enabled: event.certificateEnabled,
-    ticket_no: event.ticketNo,
-    category: event.category,
-    slug,
-    published_at: event.publishedAt ?? (event.visibility === "public" ? new Date().toISOString() : null),
-    summary: event.summary ?? event.description,
-    banner_url: event.bannerUrl,
-    mode: event.mode ?? "in_person",
-  });
-  if (event.visibility === "public" || event.publishedAt) {
-    await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
-  }
+  return sendMutation("event", event);
+}
+export async function deleteEventRemote(id: string, slug?: string) {
+  return sendMutation("delete_event", { id, slug });
 }
 
+// 3. Project
+export async function persistProject(project: Project) {
+  return sendMutation("project", project);
+}
+export async function deleteProjectRemote(id: string, slug?: string) {
+  return sendMutation("delete_project", { id, slug });
+}
+
+// 4. Cluster
+export async function persistCluster(cluster: Cluster) {
+  return sendMutation("cluster", cluster);
+}
+export async function deleteClusterRemote(id: string, slug?: string) {
+  return sendMutation("delete_cluster", { id, slug });
+}
+
+// 5. Registration
+export async function persistRegistration(reg: EventRegistration | Partial<EventRegistration>) {
+  return sendMutation("registration", reg);
+}
+export async function deleteRegistrationRemote(id: string) {
+  return sendMutation("delete_registration", { id });
+}
+
+// 6. Attendance & Certificates
+export async function persistAttendance(attendance: AttendanceRecord | Partial<AttendanceRecord> | Record<string, any>) {
+  return sendMutation("attendance", attendance);
+}
+export async function persistBulkAttendance(records: (AttendanceRecord | Record<string, any>)[]) {
+  return sendMutation("bulk_attendance", { records });
+}
+export async function persistCertificate(cert: Certificate | Partial<Certificate>) {
+  return sendMutation("certificate", cert);
+}
+
+// 7. Forms & Responses
 export async function persistForm(form: FormDefinition) {
-  if (isDemoMode()) return;
-  const admin = createServiceClient();
-  if (!admin) return;
-  await admin.from("forms").upsert({
-    id: form.id.startsWith("form-") ? undefined : form.id,
-    chapter_id: form.chapterId,
-    event_id: form.eventId,
-    slug: slugify(form.title) + "-" + form.id.slice(0, 6),
-    title: form.title,
-    description: form.description,
-    purpose: form.purpose,
-    schema: form.questions,
-    status: form.status,
-    is_public: form.status === "open",
-  });
+  return sendMutation("form", form);
 }
-
+export async function deleteFormRemote(id: string) {
+  return sendMutation("delete_form", { id });
+}
 export async function persistFormResponse(response: FormResponse) {
-  if (isDemoMode()) return;
-  const admin = createServiceClient();
-  if (!admin) return;
-  await admin.from("form_responses").insert({
-    form_id: response.formId,
-    respondent_id: response.userId,
-    answers: response.answers,
-  });
+  return sendMutation("form_response", response);
+}
+export async function deleteFormResponseRemote(id: string) {
+  return sendMutation("delete_form_response", { id });
 }
 
-export async function persistAttendance(attendance: {
-  id?: string;
-  eventId: string;
-  registrationId: string;
-  userId: string;
-  status: string;
-  method: string;
-  checkedInBy: string;
+// 8. Reports & Tasks
+export async function persistReport(report: Report | Partial<Report> | Record<string, any>) {
+  return sendMutation("report", report);
+}
+export async function deleteReportRemote(id: string) {
+  return sendMutation("delete_report", { id });
+}
+export async function persistTask(task: Task | Partial<Task> | Record<string, any>) {
+  return sendMutation("task", task);
+}
+export async function deleteTaskRemote(id: string) {
+  return sendMutation("delete_task", { id });
+}
+
+// 9. Guidelines & Resources
+export async function persistGuideline(guideline: Guideline | Partial<Guideline>) {
+  return sendMutation("guideline", guideline);
+}
+export async function deleteGuidelineRemote(id: string) {
+  return sendMutation("delete_guideline", { id });
+}
+export async function persistResource(resource: Resource | Partial<Resource>) {
+  return sendMutation("resource", resource);
+}
+export async function deleteResourceRemote(id: string) {
+  return sendMutation("delete_resource", { id });
+}
+
+// 10. Departments & Class Cohorts
+export async function persistDepartment(dept: Department | Partial<Department>) {
+  return sendMutation("department", dept);
+}
+export async function deleteDepartmentRemote(id: string) {
+  return sendMutation("delete_department", { id });
+}
+export async function persistClassCohort(cohort: ClassCohort | Partial<ClassCohort>) {
+  return sendMutation("class_cohort", cohort);
+}
+export async function deleteClassCohortRemote(id: string) {
+  return sendMutation("delete_class_cohort", { id });
+}
+
+// 11. Leadership Terms & Assignments
+export async function persistLeadershipTerm(term: LeadershipTerm | Partial<LeadershipTerm>) {
+  return sendMutation("leadership_term", term);
+}
+export async function persistLeadershipAssignment(la: LeadershipAssignment | Partial<LeadershipAssignment>) {
+  return sendMutation("leadership_assignment", la);
+}
+export async function deleteLeadershipAssignmentRemote(id: string) {
+  return sendMutation("delete_leadership_assignment", { id });
+}
+
+// 12. Activity Logs
+export async function persistActivityLog(logItem: {
+  actorId?: string;
+  userId?: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  meta?: any;
+  createdAt?: string;
 }) {
-  if (isDemoMode()) return;
-  const admin = createServiceClient();
-  if (!admin) return;
-  try {
-    await admin.from("attendance").insert({
-      event_id: attendance.eventId,
-      registration_id: attendance.registrationId.startsWith("reg-") ? undefined : attendance.registrationId,
-      user_id: attendance.userId.startsWith("usr-") ? undefined : attendance.userId,
-      status: attendance.status,
-      method: attendance.method === "qr" ? "qr_scan" : attendance.method,
-      checked_in_by: attendance.checkedInBy.startsWith("usr-") ? undefined : attendance.checkedInBy,
-    });
-  } catch (err) {
-    console.error("Failed to persist attendance to Supabase:", err);
-  }
+  return sendMutation("activity_log", logItem);
 }
 
-export async function persistReport(report: {
-  chapterId: string;
-  eventId?: string;
-  type: string;
-  title: string;
-  status: string;
-  submittedBy: string;
-  hqComment?: string;
-  approvedBy?: string;
-}) {
-  if (isDemoMode()) return;
-  const admin = createServiceClient();
-  if (!admin) return;
-  try {
-    await admin.from("reports").insert({
-      chapter_id: report.chapterId,
-      type: report.type,
-      title: report.title,
-      status: report.status,
-      submitted_by: report.submittedBy.startsWith("usr-") ? undefined : report.submittedBy,
-      hq_comment: report.hqComment,
-      approved_by: report.approvedBy ? (report.approvedBy.startsWith("usr-") ? undefined : report.approvedBy) : undefined,
-    });
-  } catch (err) {
-    console.error("Failed to persist report to Supabase:", err);
-  }
+// 13. Notifications & Announcements
+export async function persistNotification(notif: NotificationItem | Partial<NotificationItem>) {
+  return sendMutation("notification", notif);
+}
+export async function markNotificationReadRemote(id: string) {
+  return sendMutation("mark_notification_read", { id });
+}
+export async function persistAnnouncement(ann: Record<string, any>) {
+  return sendMutation("announcement", ann);
 }
 
-export async function persistTask(task: {
-  chapterId: string;
-  eventId?: string;
-  title: string;
-  category: string;
-  assigneeId: string;
-  status: string;
-  dueDate?: string;
-}) {
-  if (isDemoMode()) return;
-  const admin = createServiceClient();
-  if (!admin) return;
-  try {
-    await admin.from("tasks").insert({
-      chapter_id: task.chapterId,
-      event_id: task.eventId,
-      title: task.title,
-      category: task.category,
-      assignee_id: task.assigneeId.startsWith("usr-") ? undefined : task.assigneeId,
-      status: task.status,
-      due_date: task.dueDate,
-    });
-  } catch (err) {
-    console.error("Failed to persist task to Supabase:", err);
-  }
+// 14. Permissions & Profiles
+export async function persistEventPermission(ep: EventPermission | Partial<EventPermission>) {
+  return sendMutation("event_permission", ep);
 }
-
+export async function deleteEventPermissionRemote(id: string) {
+  return sendMutation("delete_event_permission", { id });
+}
+export async function persistProfile(profile: Profile | Partial<Profile>) {
+  return sendMutation("profile", profile);
+}
+export async function persistUserRoles(userId: string, assignments: any[], organizationId?: string) {
+  return sendMutation("user_roles", { userId, assignments, organizationId });
+}

@@ -9,6 +9,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
@@ -45,6 +46,7 @@ export default function ProfilePage({
   const [cohortId, setCohortId] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   // Edit form state
   const [editName, setEditName] = useState("");
@@ -284,16 +286,7 @@ export default function ProfilePage({
             {isHqRole(session.roleKey) && (
               <Button
                 variant="danger"
-                onClick={() => {
-                  if (
-                    confirm(
-                      `Are you sure you want to permanently delete profile for "${profile.fullName}" (${profile.email})? This action cannot be undone.`
-                    )
-                  ) {
-                    deleteUser(profile.id);
-                    router.push("/hq/users");
-                  }
-                }}
+                onClick={() => setDeleteConfirmOpen(true)}
                 className="flex items-center gap-1.5"
               >
                 <Trash2 size={14} />
@@ -746,6 +739,19 @@ export default function ProfilePage({
           </div>
         </form>
       </Dialog>
+
+      <TypeConfirmModal
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        title="Delete User Profile"
+        description={`Are you sure you want to permanently delete profile for "${profile.fullName}" (${profile.email})? This action cannot be undone.`}
+        confirmWord="DELETE"
+        actionLabel="Delete User"
+        onConfirm={() => {
+          deleteUser(profile.id);
+          router.push("/hq/users");
+        }}
+      />
     </div>
   );
 }

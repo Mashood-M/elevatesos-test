@@ -22,6 +22,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
+import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { createInviteToken, revokeInviteToken } from "@/lib/data/supabase-bootstrap";
 import { formatDateTime } from "@/lib/utils";
@@ -78,6 +79,7 @@ export default function UnifiedReferralsPage() {
   // All tokens
   const allTokens = store.inviteTokens ?? [];
   const profiles = store.profiles;
+  const [revokeTokenTarget, setRevokeTokenTarget] = useState<string | null>(null);
 
   // Tokens created by current user
   const myTokens = useMemo(
@@ -419,7 +421,7 @@ export default function UnifiedReferralsPage() {
                           </Badge>
                           {canRevoke && (
                             <button
-                              onClick={() => handleRevoke(t.id)}
+                              onClick={() => setRevokeTokenTarget(t.id)}
                               disabled={revokingId === t.id}
                               title="Revoke this invite link"
                               className="flex h-7 w-7 items-center justify-center rounded-md border border-border text-text-mute transition-colors hover:border-red-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
@@ -648,6 +650,20 @@ export default function UnifiedReferralsPage() {
           </div>
         </div>
       )}
+
+      <TypeConfirmModal
+        open={Boolean(revokeTokenTarget)}
+        onClose={() => setRevokeTokenTarget(null)}
+        title="Revoke Referral Link"
+        description="Are you sure you want to revoke this referral invite link? Anyone with this link will no longer be able to sign up using it."
+        confirmWord="REVOKE"
+        actionLabel="Revoke Link"
+        onConfirm={() => {
+          if (revokeTokenTarget) {
+            handleRevoke(revokeTokenTarget);
+          }
+        }}
+      />
     </div>
   );
 }

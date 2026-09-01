@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useStore } from "@/context/store-context";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
+import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { Copy, Check, ShieldAlert, KeyRound, Clock, Ban } from "lucide-react";
 
 export function ChapterInviteCodeManager({
@@ -17,6 +18,7 @@ export function ChapterInviteCodeManager({
   const [customCodeInput, setCustomCodeInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<import("@/types").ChapterInviteCode | null>(null);
 
   const inviteCodes = useMemo(() => {
     const all = store.chapterInviteCodes ?? [];
@@ -185,10 +187,7 @@ export function ChapterInviteCodeManager({
                         {!codeObj.isRevoked && !isExpired ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              revokeChapterInviteCode(codeObj.id);
-                              setMsg({ text: `Revoked invite code "${codeObj.code}".`, type: "error" });
-                            }}
+                            onClick={() => setRevokeTarget(codeObj)}
                             className="inline-flex items-center gap-1 rounded bg-red-500/10 border border-red-500/20 px-2.5 py-1 text-[11px] font-semibold text-red-400 hover:bg-red-500/20 transition"
                           >
                             <Ban size={12} />
@@ -206,6 +205,21 @@ export function ChapterInviteCodeManager({
           </div>
         )}
       </div>
+
+      <TypeConfirmModal
+        open={Boolean(revokeTarget)}
+        onClose={() => setRevokeTarget(null)}
+        title="Revoke Chapter Invite Code"
+        description={`Are you sure you want to revoke invite code "${revokeTarget?.code}"? Students will no longer be able to use this code to join.`}
+        confirmWord="REVOKE"
+        actionLabel="Revoke Code"
+        onConfirm={() => {
+          if (revokeTarget) {
+            revokeChapterInviteCode(revokeTarget.id);
+            setMsg({ text: `Revoked invite code "${revokeTarget.code}".`, type: "error" });
+          }
+        }}
+      />
     </div>
   );
 }

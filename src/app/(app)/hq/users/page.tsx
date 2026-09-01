@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -135,6 +136,7 @@ export default function HqUsersPage() {
   const [editError, setEditError] = useState("");
   const [flash, setFlash] = useState("");
   const [roleModalUser, setRoleModalUser] = useState<Profile | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null);
   // multi-select: array of selected roleKeys
   const [roleModalSelected, setRoleModalSelected] = useState<RoleKey[]>([]);
   // per-role chapter id map: { [roleKey]: chapterId }
@@ -771,23 +773,11 @@ export default function HqUsersPage() {
               <Button type="submit" variant="primary">
                 Save user
               </Button>
-              {isSuperAdmin(session.roleKey) && (
+              {isSuperAdmin(session.roleKey) && editProfile && (
                 <Button
                   type="button"
                   variant="danger"
-                  onClick={() => {
-                    if (
-                      editingId &&
-                      confirm(
-                        `Are you sure you want to permanently delete profile for "${editDraft.fullName}" (${editDraft.email})? This action cannot be undone.`
-                      )
-                    ) {
-                      deleteUser(editingId);
-                      setEditingId(null);
-                      setEditDraft(null);
-                      flashMsg("User deleted");
-                    }
-                  }}
+                  onClick={() => setDeleteTarget(editProfile)}
                 >
                   Delete user
                 </Button>
@@ -930,16 +920,7 @@ export default function HqUsersPage() {
                       variant="ghost"
                       size="sm"
                       className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      onClick={() => {
-                        if (
-                          confirm(
-                            `Are you sure you want to permanently delete user "${profile.fullName}" (${profile.email})?`
-                          )
-                        ) {
-                          deleteUser(profile.id);
-                          flashMsg("User deleted");
-                        }
-                      }}
+                      onClick={() => setDeleteTarget(profile)}
                     >
                       Delete
                     </Button>
@@ -1194,6 +1175,25 @@ export default function HqUsersPage() {
           </Dialog>
         );
       })() : null}
+
+      <TypeConfirmModal
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete User Account"
+        description={`Are you sure you want to permanently delete profile for "${deleteTarget?.fullName}" (${deleteTarget?.email})?`}
+        confirmWord="DELETE"
+        actionLabel="Delete User"
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteUser(deleteTarget.id);
+            if (editingId === deleteTarget.id) {
+              setEditingId(null);
+              setEditDraft(null);
+            }
+            flashMsg("User deleted");
+          }
+        }}
+      />
     </div>
   );
 }

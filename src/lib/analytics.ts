@@ -23,9 +23,11 @@ export type MonthlyEngagement = {
 };
 
 /**
- * Calculates Activity Score for a chapter dynamically based on monthly event turnout and total capacity.
- * Equation per month:
- * Chapter Activity Score (%) = (Σ Attendees across month's events) / (Σ Total seats across month's events) * 100
+ * Calculates Chapter Activity Score dynamically following a 3-step algorithm:
+ * Step 1: Calculate attendance percentage for each valid individual event: (Attendees / Seats) * 100
+ *         (Skip events with 0 total seats or no capacity set).
+ * Step 2: Calculate monthly activity score by averaging valid event percentages in that month.
+ * Step 3: Compute overall chapter activity score by averaging all monthly activity scores.
  */
 export function calculateChapterActivityScore(
   store: ElevatesStore,
@@ -35,11 +37,7 @@ export function calculateChapterActivityScore(
   if (!chapter) return 0;
 
   const chapterEvents = store.events.filter((e) => e.chapterId === chapterId);
-
-  // If no events recorded in store at all for this chapter, initial score is 0
-  if (chapterEvents.length === 0) {
-    return 0;
-  }
+  if (chapterEvents.length === 0) return 0;
 
   // Group events by YYYY-MM
   const eventsByMonth = new Map<string, typeof chapterEvents>();
@@ -50,38 +48,87 @@ export function calculateChapterActivityScore(
     eventsByMonth.set(monthKey, list);
   }
 
-  // Calculate score per month using equation: (Σ Attendees) / (Σ Total Seats) * 100
   let totalMonthlyScoreSum = 0;
   let monthsCount = 0;
 
   eventsByMonth.forEach((monthEvents) => {
-    monthsCount++;
-
-    let sumAttendees = 0;
-    let sumTotalSeats = 0;
+    let validEventCount = 0;
+    let eventPercentagesSum = 0;
 
     for (const ev of monthEvents) {
+      const seats = ev.capacity ?? 0;
+      // Step 1: Skip if zero total seats or unconfigured capacity
+      if (seats <= 0) continue;
+
       const atts = store.attendance.filter(
         (a) =>
           a.eventId === ev.id &&
           ["present", "late", "volunteer", "speaker"].includes(a.status),
       );
 
-      const capacity = ev.capacity && ev.capacity > 0 ? ev.capacity : 100;
-      sumAttendees += atts.length;
-      sumTotalSeats += capacity;
+      const eventAttendancePercentage = (atts.length / seats) * 100;
+      eventPercentagesSum += eventAttendancePercentage;
+      validEventCount++;
     }
 
-    const monthlyScore =
-      sumTotalSeats > 0 ? (sumAttendees / sumTotalSeats) * 100 : 0;
-
-    totalMonthlyScoreSum += monthlyScore;
+    // Step 2 & 3: Monthly score is average of valid event percentages in that month
+    if (validEventCount > 0) {
+      const monthlyScore = eventPercentagesSum / validEventCount;
+      totalMonthlyScoreSum += monthlyScore;
+      monthsCount++;
+    }
   });
 
-  const finalScore =
-    monthsCount > 0 ? Math.round(totalMonthlyScoreSum / monthsCount) : 0;
+  if (monthsCount === 0) return 0;
 
-  return Math.min(100, Math.max(0, finalScore));
+  const finalScore = totalMonthlyScoreSum / monthsCount;
+  return Math.min(100, Math.max(0, Math.round(finalScore)));
+}
+
+/** Helper function to calculate monthly activity score trends */
+export function calculateMonthlyActivityScores(
+  store: ElevatesStore,
+  chapterId: string,
+): { month: string; score: number }[] {
+  const chapterEvents = store.events.filter((e) => e.chapterId === chapterId);
+  const eventsByMonth = new Map<string, typeof chapterEvents>();
+
+  for (const ev of chapterEvents) {
+    const monthKey = ev.startsAt ? ev.startsAt.slice(0, 7) : "recent";
+    const list = eventsByMonth.get(monthKey) ?? [];
+    list.push(ev);
+    eventsByMonth.set(monthKey, list);
+  }
+
+  const results: { month: string; score: number }[] = [];
+
+  eventsByMonth.forEach((monthEvents, month) => {
+    let validEventCount = 0;
+    let eventPercentagesSum = 0;
+
+    for (const ev of monthEvents) {
+      const seats = ev.capacity ?? 0;
+      if (seats <= 0) continue;
+
+      const atts = store.attendance.filter(
+        (a) =>
+          a.eventId === ev.id &&
+          ["present", "late", "volunteer", "speaker"].includes(a.status),
+      );
+
+      eventPercentagesSum += (atts.length / seats) * 100;
+      validEventCount++;
+    }
+
+    if (validEventCount > 0) {
+      results.push({
+        month,
+        score: Math.round((eventPercentagesSum / validEventCount) * 10) / 10,
+      });
+    }
+  });
+
+  return results.sort((a, b) => a.month.localeCompare(b.month));
 }
 
 export function chapterMetricsFromStore(store: ElevatesStore): ChapterMetricRow[] {

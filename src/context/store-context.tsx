@@ -260,6 +260,7 @@ type StoreContextValue = {
       Pick<Profile, "fullName" | "email" | "chapterId" | "status" | "bio">
     >,
   ) => boolean;
+  deleteUser: (id: string) => boolean;
   setUserRoles: (
     userId: string,
     assignments: UserRoleAssignmentInput[],
@@ -2304,6 +2305,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        return true;
+      },
+      deleteUser: (id) => {
+        const p = store.profiles.find((p) => p.id === id);
+        if (!p) return false;
+
+        setStore((s) => ({
+          ...s,
+          profiles: s.profiles.filter((prof) => prof.id !== id),
+          userRoles: s.userRoles.filter((ur) => ur.userId !== id),
+          attendance: (s.attendance ?? []).filter((a) => a.userId !== id),
+          registrations: (s.registrations ?? []).filter((r) => r.userId !== id),
+          chapters: s.chapters.map((c) =>
+            c.id === p.chapterId ? { ...c, memberCount: Math.max(0, c.memberCount - 1) } : c
+          ),
+          activityLogs: [
+            log(s.session.userId, "user_deleted", "profile", id),
+            ...s.activityLogs,
+          ],
+        }));
+
+        const supabase = createClient();
+        if (supabase) {
+          supabase
+            .from("user_roles")
+            .delete()
+            .eq("user_id", id)
+            .then(() => {
+              supabase
+                .from("profiles")
+                .delete()
+                .eq("id", id)
+                .then((res: any) => {
+                  if (res?.error) {
+                    console.error("Error deleting profile in Supabase:", res.error.message);
+                  }
+                });
+            });
+        }
         return true;
       },
       setUserRoles: (userId, assignments) => {

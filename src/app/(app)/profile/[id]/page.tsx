@@ -3,7 +3,8 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { resolveMediaUrl } from "@/lib/data/media";
 import Link from "next/link";
-import { Edit3, Globe, Link2, Mail, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Edit3, Globe, Link2, Mail, Phone, Trash2 } from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,8 @@ export default function ProfilePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { store, updateProfile } = useStore();
+  const router = useRouter();
+  const { store, updateProfile, deleteUser } = useStore();
   const { session } = useCurrentUser();
   const profile = store.profiles.find(
     (p) => p.id === id || (p.email && p.email.toLowerCase() === id.toLowerCase())
@@ -277,6 +279,25 @@ export default function ProfilePage({
               >
                 <Edit3 size={14} />
                 Edit profile
+              </Button>
+            )}
+            {isHqRole(session.roleKey) && (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Are you sure you want to permanently delete profile for "${profile.fullName}" (${profile.email})? This action cannot be undone.`
+                    )
+                  ) {
+                    deleteUser(profile.id);
+                    router.push("/hq/users");
+                  }
+                }}
+                className="flex items-center gap-1.5"
+              >
+                <Trash2 size={14} />
+                Delete User
               </Button>
             )}
             {savedFlash && (
@@ -598,6 +619,19 @@ export default function ProfilePage({
         description="Update your personal details, bio, skills, and links."
       >
         <form onSubmit={handleSaveProfile} className="space-y-4 pt-2">
+          <div>
+            <FieldLabel>Email Address (Read-only)</FieldLabel>
+            <Input
+              value={profile.email || ""}
+              disabled
+              readOnly
+              className="bg-white/5 text-text-dim cursor-not-allowed border-border font-mono text-xs opacity-75"
+            />
+            <p className="mt-1 text-[11px] text-text-mute">
+              Email address is fixed and cannot be edited.
+            </p>
+          </div>
+
           <div>
             <FieldLabel>Full Name</FieldLabel>
             <Input

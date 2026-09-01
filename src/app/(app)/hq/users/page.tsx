@@ -109,7 +109,7 @@ function looksLikeEmail(value: string) {
 }
 
 export default function HqUsersPage() {
-  const { store, createUser, updateUser, setUserRoles } = useStore();
+  const { store, createUser, updateUser, setUserRoles, deleteUser } = useStore();
   const { session } = useCurrentUser();
   // founder, hq_admin, AND campus_lead can access this page
   const canManage =
@@ -771,6 +771,27 @@ export default function HqUsersPage() {
               <Button type="submit" variant="primary">
                 Save user
               </Button>
+              {isSuperAdmin(session.roleKey) && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    if (
+                      editingId &&
+                      confirm(
+                        `Are you sure you want to permanently delete profile for "${editDraft.fullName}" (${editDraft.email})? This action cannot be undone.`
+                      )
+                    ) {
+                      deleteUser(editingId);
+                      setEditingId(null);
+                      setEditDraft(null);
+                      flashMsg("User deleted");
+                    }
+                  }}
+                >
+                  Delete user
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -904,6 +925,25 @@ export default function HqUsersPage() {
                   <Button variant="ghost" size="sm" onClick={() => startEdit(profile)}>
                     Edit
                   </Button>
+                  {isSuperAdmin(session.roleKey) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `Are you sure you want to permanently delete user "${profile.fullName}" (${profile.email})?`
+                          )
+                        ) {
+                          deleteUser(profile.id);
+                          flashMsg("User deleted");
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </div>
 
               </li>

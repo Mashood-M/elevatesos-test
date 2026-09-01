@@ -62,8 +62,11 @@ export function calculateChapterActivityScore(
     // 1. Event Target Ratio: Minimum 2 events per month -> 100% quota
     const eventQuotaRatio = Math.min(1.0, monthEvents.length / 2);
 
-    // 2. Attendance rate across events in this month
-    let eventAttendanceRatesSum = 0;
+    // 2. Attendance & Capacity Score per event:
+    // - Seat Fill Rate = enrolment (registrations) / total seats (capacity), capped at 100%
+    // - Turnout Rate = checked-in attendance / enrolment (registrations), capped at 100%
+    // - Event Performance = Seat Fill Rate * Turnout Rate
+    let eventPerformanceSum = 0;
     for (const ev of monthEvents) {
       const regs = store.registrations.filter((r) => r.eventId === ev.id);
       const atts = store.attendance.filter(
@@ -72,18 +75,24 @@ export function calculateChapterActivityScore(
           ["present", "late", "volunteer", "speaker"].includes(a.status),
       );
 
-      if (regs.length > 0) {
-        const rate = Math.min(1.0, atts.length / regs.length);
-        eventAttendanceRatesSum += rate;
-      } else if (atts.length > 0) {
-        eventAttendanceRatesSum += 1.0;
-      } else {
-        eventAttendanceRatesSum += 1.0;
-      }
+      const capacity = ev.capacity && ev.capacity > 0 ? ev.capacity : 100;
+      const enrolmentCount = regs.length;
+      const attendanceCount = atts.length;
+
+      const fillRate = Math.min(1.0, enrolmentCount / capacity);
+      const turnoutRate =
+        enrolmentCount > 0
+          ? Math.min(1.0, attendanceCount / enrolmentCount)
+          : attendanceCount > 0
+          ? 1.0
+          : 0.0;
+
+      const eventPerformance = fillRate * turnoutRate;
+      eventPerformanceSum += eventPerformance;
     }
 
     const avgAttendanceRateInMonth =
-      monthEvents.length > 0 ? eventAttendanceRatesSum / monthEvents.length : 1.0;
+      monthEvents.length > 0 ? eventPerformanceSum / monthEvents.length : 0.0;
 
     const monthlyScore = eventQuotaRatio * avgAttendanceRateInMonth * 100;
     totalMonthlyScoreSum += monthlyScore;

@@ -167,7 +167,7 @@ export default function InviteSignUpPage({
         return;
       }
 
-      // 2. Create profile row
+      // 2. Create profile row (Unassigned independent student initially)
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .insert({
@@ -175,7 +175,7 @@ export default function InviteSignUpPage({
           email: cleanEmail,
           full_name: name,
           status: "active",
-          chapter_id: tokenInfo.chapterId ?? null,
+          chapter_id: null,
         })
         .select("id")
         .single();
@@ -187,7 +187,7 @@ export default function InviteSignUpPage({
 
       const profileId = profileData?.id ?? authUser.id;
 
-      // 3. Assign student role
+      // 3. Assign student role (without chapter assignment until invite code entered)
       // Fetch the student role id first
       const { data: roleRow } = await supabase
         .from("roles")
@@ -200,7 +200,7 @@ export default function InviteSignUpPage({
           user_id: profileId,
           role_id: roleRow.id,
           role_key: "student",
-          chapter_id: tokenInfo.chapterId ?? null,
+          chapter_id: null,
         });
       }
 
@@ -297,7 +297,7 @@ export default function InviteSignUpPage({
             Welcome to Elevates!
           </h1>
           <p className="mt-3 text-sm text-white/60">
-            Your account is ready. Taking you to your chapter page now…
+            Your account is ready. Taking you to your student hub where you can join a college chapter using an invite code…
           </p>
         </div>
       </div>

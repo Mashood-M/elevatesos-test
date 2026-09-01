@@ -9,6 +9,10 @@ export function hasPermission(
   roleKey: RoleKey,
   permission: PermissionKey,
 ): boolean {
+  // If the authenticated user is an HQ founder or super admin, grant full control for testing and managing
+  if (store.session?.authRoleKey === "founder" || isSuperAdmin(store.session?.authRoleKey || "student")) {
+    return true;
+  }
   const role = getRoleByKey(store, roleKey);
   const perm = store.permissions.find((p) => p.key === permission);
   if (!role || !perm) return false;

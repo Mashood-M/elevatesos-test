@@ -36,7 +36,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     }
 
     // User is logged in but doesn't have permission for this path
-    if (!canAccessPath(pathname, roleKey, chapterSlug)) {
+    if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey)) {
       router.replace(homeForRole(roleKey, chapterSlug));
     }
 

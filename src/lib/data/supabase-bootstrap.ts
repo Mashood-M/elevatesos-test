@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { ensureTestChapter } from "@/lib/chapters";
 import type {
   BrandKit,
   Chapter,
@@ -164,25 +165,27 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         }
       : emptyStore().organization;
 
-    const chapters: Chapter[] = (chapterRows ?? []).map((c: Record<string, any>) => ({
-      id: c.id,
-      organizationId: c.organization_id,
-      name: c.name,
-      slug: c.slug,
-      college: c.college,
-      city: c.city ?? "",
-      status: c.status,
-      healthScore: Number(c.health_score ?? 0),
-      memberCount: Number(c.member_count ?? 0),
-      eventCount: Number(c.event_count ?? 0),
-      projectCount: Number(c.project_count ?? 0),
-      foundedAt: c.founded_at ?? new Date().toISOString(),
-      facultyId: c.faculty_id ?? undefined,
-      notes: c.notes ?? undefined,
-      published: Boolean(c.published),
-      logoUrl: c.logo_url ?? undefined,
-      district: c.district ?? undefined,
-    }));
+    const chapters: Chapter[] = ensureTestChapter(
+      (chapterRows ?? []).map((c: Record<string, any>) => ({
+        id: c.id,
+        organizationId: c.organization_id,
+        name: c.name,
+        slug: c.slug,
+        college: c.college,
+        city: c.city ?? "",
+        status: c.status,
+        healthScore: Number(c.health_score ?? 0),
+        memberCount: Number(c.member_count ?? 0),
+        eventCount: Number(c.event_count ?? 0),
+        projectCount: Number(c.project_count ?? 0),
+        foundedAt: c.founded_at ?? new Date().toISOString(),
+        facultyId: c.faculty_id ?? undefined,
+        notes: c.notes ?? undefined,
+        published: Boolean(c.published),
+        logoUrl: c.logo_url ?? undefined,
+        district: c.district ?? undefined,
+      })),
+    );
 
     const events: EventItem[] =
       eventRows?.map((e: Record<string, any>) => ({

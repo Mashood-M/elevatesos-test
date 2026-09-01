@@ -2,7 +2,7 @@ import { isHqRole, isSuperAdmin } from "@/lib/permissions";
 import type { Chapter, RoleKey } from "@/types";
 
 export function resolveChapter(
-  store: { chapters: Chapter[] },
+  store: { chapters: Chapter[]; session?: { authRoleKey?: RoleKey; roleKey?: RoleKey; chapterId?: string } },
   slug?: string,
   roleKey?: RoleKey,
   userChapterId?: string,
@@ -21,8 +21,10 @@ export function resolveChapter(
 
   if (!chapter) return undefined;
 
+  const isAuthHq = Boolean(store.session?.authRoleKey && isHqRole(store.session.authRoleKey));
+
   // Non-HQ roles (students, class reps, executives, faculty) can ONLY view their own assigned college chapter:
-  if (roleKey && !isHqRole(roleKey)) {
+  if (roleKey && !isHqRole(roleKey) && !isAuthHq) {
     if (userChapterId) {
       const assignedChapter = store.chapters.find((c) => c.id === userChapterId);
       if (assignedChapter && chapter.id !== assignedChapter.id && chapter.slug !== assignedChapter.slug) {
@@ -33,7 +35,7 @@ export function resolveChapter(
 
   // If chapter is not open/active: HQ and HQ Admin only can see and manage it.
   if (chapter.status !== "active") {
-    if (!roleKey || !isHqRole(roleKey)) {
+    if ((!roleKey || !isHqRole(roleKey)) && !isAuthHq) {
       return undefined;
     }
   }
@@ -94,7 +96,13 @@ export function canAccessPath(
   pathname: string,
   roleKey: RoleKey,
   chapterSlug?: string,
+  authRoleKey?: RoleKey,
 ): boolean {
+  // If the authenticated user is an HQ founder or admin testing a role, grant full access
+  if (authRoleKey && isHqRole(authRoleKey)) {
+    return true;
+  }
+
   if (
     pathname.startsWith("/profile/") ||
     pathname === "/notifications" ||

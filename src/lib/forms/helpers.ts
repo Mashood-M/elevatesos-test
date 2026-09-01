@@ -1,4 +1,5 @@
 import { ensureOrganizationBrandKit } from "@/lib/brand/kit";
+import { ensureTestChapter } from "@/lib/chapters";
 import {
   DEFAULT_RESOURCE_CATEGORIES,
   humanizeCategoryKey,
@@ -526,6 +527,7 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
   return {
     ...store,
     organization,
+    chapters: ensureTestChapter(store.chapters ?? []),
     profiles,
     departments: store.departments ?? [],
     classCohorts,

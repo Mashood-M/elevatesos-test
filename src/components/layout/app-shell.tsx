@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Bell, LogOut, Menu, Search, X } from "lucide-react";
+import { Bell, LogOut, Menu, Search, X, MapPin } from "lucide-react";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
 import { useSupabaseAuth } from "@/lib/mode";
@@ -14,6 +14,7 @@ import { cn, initials } from "@/lib/utils";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
+import { ChapterSelectorModal } from "@/components/layout/chapter-selector-modal";
 import { roleKeyLabel } from "@/lib/leadership";
 
 function isNavActive(pathname: string, href: string) {
@@ -38,6 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, role, session } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [chapterModalOpen, setChapterModalOpen] = useState(false);
 
   const chapter = session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : undefined;
   const chapterSlug = session.chapterId
@@ -254,13 +256,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Menu size={18} />
               </button>
-              <div className="hidden min-w-0 sm:block">
-                <p className="truncate text-[13px] font-semibold text-text">
-                  {role?.name ?? "Workspace"}
-                </p>
-                <p className="truncate text-[11px] text-text-mute">
-                  {contextLabel}
-                </p>
+              <div className="hidden min-w-0 sm:flex sm:items-center sm:gap-2">
+                <div>
+                  <p className="truncate text-[13px] font-semibold text-text">
+                    {role?.name ?? "Workspace"}
+                  </p>
+                  <p className="truncate text-[11px] text-text-mute">
+                    {contextLabel}
+                  </p>
+                </div>
+                {chapter && (
+                  <button
+                    type="button"
+                    onClick={() => setChapterModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-bg-hover/80 px-2.5 py-1 text-[11px] font-semibold text-text hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition shadow-sm"
+                    title="Switch active chapter"
+                  >
+                    <MapPin size={11} className="text-[var(--accent)] shrink-0" />
+                    <span className="max-w-[120px] truncate">{chapter.name}</span>
+                    <span className="text-[9px] text-text-mute">▾</span>
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -338,6 +354,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <ChapterSelectorModal
+        isOpen={chapterModalOpen}
+        onClose={() => setChapterModalOpen(false)}
+        targetRoleKey={session.roleKey}
+      />
     </div>
   );
 }

@@ -3,6 +3,89 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
+interface GetUserResult {
+  user: any | null;
+  isNetworkError: boolean;
+  isAuthError: boolean;
+}
+
+/**
+ * Executes supabase.auth.getUser() with a short timeout and retry mechanism.
+ * Distinguishes between explicit authentication errors (e.g. expired/invalid JWT)
+ * and network/connectivity failures (e.g. offline, DNS failure, timeout).
+ */
+async function getUserWithRetryAndTimeout(
+  supabase: ReturnType<typeof createServerClient>,
+  timeoutMs = 3500,
+  retries = 1
+): Promise<GetUserResult> {
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const userPromise = supabase.auth.getUser();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error("NETWORK_TIMEOUT"));
+        }, timeoutMs);
+        userPromise.finally(() => clearTimeout(timer));
+      });
+
+      const { data, error } = await Promise.race([userPromise, timeoutPromise]);
+
+      if (error) {
+        const errMsg = error.message?.toLowerCase() || "";
+        const errStatus = (error as any).status;
+        const isNetwork =
+          errMsg.includes("fetch") ||
+          errMsg.includes("network") ||
+          errMsg.includes("timeout") ||
+          errMsg.includes("econnrefused") ||
+          errMsg.includes("enotfound") ||
+          errStatus === 0 ||
+          errStatus >= 500;
+
+        if (isNetwork) {
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 400));
+            continue;
+          }
+          return { user: null, isNetworkError: true, isAuthError: false };
+        }
+
+        // Explicit authentication failure (invalid / expired token)
+        return { user: null, isNetworkError: false, isAuthError: true };
+      }
+
+      return { user: data?.user ?? null, isNetworkError: false, isAuthError: false };
+    } catch (err: any) {
+      lastErr = err;
+      const errMsg = err?.message?.toLowerCase() || "";
+      const isNetwork =
+        errMsg.includes("network_timeout") ||
+        errMsg.includes("fetch") ||
+        errMsg.includes("network") ||
+        errMsg.includes("timeout") ||
+        errMsg.includes("econnrefused") ||
+        errMsg.includes("enotfound") ||
+        err?.name === "AbortError";
+
+      if (isNetwork && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+
+      if (isNetwork) {
+        return { user: null, isNetworkError: true, isAuthError: false };
+      }
+
+      return { user: null, isNetworkError: false, isAuthError: true };
+    }
+  }
+
+  return { user: null, isNetworkError: true, isAuthError: false };
+}
+
 export async function middleware(request: NextRequest) {
   const configured = isSupabaseConfigured();
 
@@ -42,9 +125,7 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 3500, 1);
 
   const path = request.nextUrl.pathname;
 
@@ -59,8 +140,25 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/design-system") ||
     path.startsWith("/eos");
 
-  // Unauthenticated user accessing protected route → redirect to login cleanly
+  // Check if auth session cookies exist on the incoming request
+  const hasAuthCookie = request.cookies.getAll().some(
+    (c) =>
+      c.name.startsWith("sb-") ||
+      c.name.includes("auth-token") ||
+      c.name.includes("supabase")
+  );
+
+  // Unauthenticated user or invalid session accessing protected route
   if (isProtectedApp && !user) {
+    // If getUser failed due to network/connectivity issues OR timed out, AND session cookies exist:
+    // Do NOT force-redirect to /login. Allow request through using existing session cookie.
+    if (isNetworkError && hasAuthCookie) {
+      supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+      supabaseResponse.headers.set("Pragma", "no-cache");
+      return supabaseResponse;
+    }
+
+    // Explicit invalid/expired session or missing auth cookies → redirect to /login cleanly
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
@@ -72,7 +170,7 @@ export async function middleware(request: NextRequest) {
     return redirectResponse;
   }
 
-  // Already-authenticated user visiting /login → redirect to /chapter index for proper role-based routing
+  // Already-authenticated user visiting /login → redirect to /chapter index
   if (path === "/login" && user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/chapter";

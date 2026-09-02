@@ -167,18 +167,21 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // Upsert role
-      const { error: roleErr } = await admin.from("user_roles").upsert(
-        {
-          user_id: userId,
-          role_key: "student",
-          role_id: roleId,
-          chapter_id: chapterId,
-          organization_id: "00000000-0000-0000-0000-000000000001",
-          is_permanent: true,
-        },
-        { onConflict: "user_id,role_key,chapter_id" },
-      );
+      // Insert role (delete existing student role for user first to avoid ON CONFLICT failure)
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId)
+        .is("leadership_term_id", null);
+
+      const { error: roleErr } = await admin.from("user_roles").insert({
+        user_id: userId,
+        role_key: "student",
+        role_id: roleId,
+        chapter_id: chapterId,
+        organization_id: "00000000-0000-0000-0000-000000000001",
+        is_permanent: true,
+      });
 
       if (roleErr) {
         console.warn("Bulk user_role notice:", roleErr.message);

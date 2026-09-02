@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { StoreProvider } from "@/context/store-context";
 import { InactivityTimer } from "@/components/auth/inactivity-timer";
+import { OfflineIndicator } from "@/components/ui/offline-indicator";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({
       <body className="min-h-full antialiased">
         <StoreProvider>
           <InactivityTimer />
+          <OfflineIndicator />
           {children}
         </StoreProvider>
       </body>

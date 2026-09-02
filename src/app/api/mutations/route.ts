@@ -694,19 +694,76 @@ export async function POST(req: Request) {
 
     if (type === "user_roles") {
       const { userId, assignments, organizationId } = data;
-      if (isUuid(userId) && Array.isArray(assignments)) {
-        await admin.from("user_roles").delete().eq("user_id", userId).is("leadership_term_id", null);
-        const rows = assignments.map((a: any) => ({
-          user_id: userId,
-          role_key: a.roleKey,
-          chapter_id: isUuid(a.chapterId) ? a.chapterId : null,
-          organization_id: isUuid(a.organizationId) ? a.organizationId : (isUuid(organizationId) ? organizationId : "00000000-0000-0000-0000-000000000001"),
-          is_permanent: true,
-        }));
-        if (rows.length > 0) {
-          await admin.from("user_roles").insert(rows);
+      if (!isUuid(userId) || !Array.isArray(assignments)) {
+        return NextResponse.json({ ok: false, error: "Invalid user_roles parameters" }, { status: 400 });
+      }
+
+      // 1. Fetch all roles from database to map role_key -> role_id
+      const { data: dbRoles } = await admin.from("roles").select("id, key");
+      const roleIdMap = new Map<string, string>();
+      if (dbRoles) {
+        for (const r of dbRoles) {
+          if (r.key && r.id) roleIdMap.set(r.key, r.id);
         }
       }
+
+      // 2. Delete existing non-leadership user_roles for this user
+      const { error: delError } = await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId)
+        .is("leadership_term_id", null);
+
+      if (delError) {
+        console.error("Error deleting old user_roles:", delError);
+        return NextResponse.json({ ok: false, error: delError.message }, { status: 400 });
+      }
+
+      let primaryChapterId: string | null = null;
+
+      const rows = assignments.map((a: any) => {
+        const chapId = isUuid(a.chapterId) ? a.chapterId : null;
+        if (chapId && !primaryChapterId) {
+          primaryChapterId = chapId;
+        }
+
+        let roleId = roleIdMap.get(a.roleKey) || null;
+        if (!roleId && a.roleKey === "campus_lead") {
+          roleId = roleIdMap.get("chairman") || null;
+        } else if (!roleId && a.roleKey === "chairman") {
+          roleId = roleIdMap.get("campus_lead") || null;
+        }
+
+        return {
+          user_id: userId,
+          role_key: a.roleKey,
+          role_id: roleId,
+          chapter_id: chapId,
+          organization_id: isUuid(a.organizationId)
+            ? a.organizationId
+            : isUuid(organizationId)
+            ? organizationId
+            : "00000000-0000-0000-0000-000000000001",
+          is_permanent: true,
+        };
+      });
+
+      if (rows.length > 0) {
+        const { error: insError } = await admin.from("user_roles").insert(rows);
+        if (insError) {
+          console.error("Error inserting user_roles into Supabase:", insError);
+          return NextResponse.json({ ok: false, error: insError.message }, { status: 400 });
+        }
+      }
+
+      // 3. Keep profiles.chapter_id synchronized if chapter assigned
+      if (primaryChapterId) {
+        await admin
+          .from("profiles")
+          .update({ chapter_id: primaryChapterId })
+          .eq("id", userId);
+      }
+
       return NextResponse.json({ ok: true });
     }
 

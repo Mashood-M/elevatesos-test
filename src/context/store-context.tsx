@@ -2728,6 +2728,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+
+        void runPersist(
+          persistProfile({ id, ...patch }),
+          { errorMessage: `Failed to persist user update for ${id}` }
+        );
+
         return true;
       },
       deleteUser: (id) => {
@@ -2760,6 +2766,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!profile) return false;
         const prevUserRoles = store.userRoles;
         const built: UserRole[] = [];
+        let assignedChapId: string | undefined = undefined;
+
         for (const a of assignments) {
           let role = store.roles.find((r) => r.key === a.roleKey);
           const isHq = ["founder", "hq_admin"].includes(a.roleKey);
@@ -2782,6 +2790,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
           } else {
             const chapId = a.chapterId || profile.chapterId || store.chapters[0]?.id || "";
+            if (chapId) assignedChapId = chapId;
             built.push({
               id: genUuid(),
               userId,
@@ -2797,8 +2806,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const leadershipLinked = s.userRoles.filter(
             (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
           );
+          const updatedProfiles = assignedChapId
+            ? s.profiles.map((p) => (p.id === userId ? { ...p, chapterId: assignedChapId } : p))
+            : s.profiles;
           return {
             ...s,
+            profiles: updatedProfiles,
             userRoles: [...others, ...built, ...leadershipLinked],
             activityLogs: [
               log(s.session.userId, "user_roles_set", "profile", userId),

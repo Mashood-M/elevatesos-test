@@ -137,21 +137,31 @@ export async function POST(req: Request) {
       .eq("key", requestedRole)
       .maybeSingle();
 
-    // 5. Upsert user_roles
-    const { error: roleError } = await admin.from("user_roles").upsert(
-      {
-        user_id: userId,
-        role_key: requestedRole,
-        role_id: roleRow?.id ?? null,
-        chapter_id: targetUser.chapterId,
-        organization_id: "00000000-0000-0000-0000-000000000001",
-        is_permanent: true,
-      },
-      { onConflict: "user_id,role_key,chapter_id" },
-    );
+    let roleId = roleRow?.id ?? null;
+    if (!roleId && requestedRole === "campus_lead") {
+      const { data: chairmanRole } = await admin.from("roles").select("id").eq("key", "chairman").maybeSingle();
+      roleId = chairmanRole?.id ?? null;
+    }
+
+    // 5. Delete existing non-leadership user_roles for user, then insert new role
+    await admin
+      .from("user_roles")
+      .delete()
+      .eq("user_id", userId)
+      .is("leadership_term_id", null);
+
+    const { error: roleError } = await admin.from("user_roles").insert({
+      user_id: userId,
+      role_key: requestedRole,
+      role_id: roleId,
+      chapter_id: targetUser.chapterId,
+      organization_id: "00000000-0000-0000-0000-000000000001",
+      is_permanent: true,
+    });
 
     if (roleError) {
-      console.warn("user_roles upsert notice:", roleError.message);
+      console.error("user_roles insert error in provisioning user:", roleError.message);
+      return NextResponse.json({ ok: false, error: roleError.message }, { status: 400 });
     }
 
     return NextResponse.json({

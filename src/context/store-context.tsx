@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from "react";
 
+import { X } from "lucide-react";
 import { loadDemoStore, saveDemoStore } from "@/lib/demo/persist";
 import {
   FallbackWarningBanner,
@@ -493,6 +494,61 @@ type StoreContextValue = {
   resetDemoStore: () => void;
 };
 
+
+export type ToastItem = {
+  id: string;
+  message: string;
+  type: "error" | "success" | "info";
+};
+
+let toastEmitter: ((toast: ToastItem) => void) | null = null;
+
+export function showToast(message: string, type: "error" | "success" | "info" = "error") {
+  if (toastEmitter) {
+    toastEmitter({ id: genUuid(), message, type });
+  } else if (typeof window !== "undefined") {
+    console.error(`[Toast ${type.toUpperCase()}] ${message}`);
+  }
+}
+
+export type RunPersistOptions = {
+  rollback?: () => void;
+  errorMessage: string;
+};
+
+export async function runPersist(
+  promise: Promise<any>,
+  opts: RunPersistOptions
+): Promise<boolean> {
+  try {
+    const res = await promise;
+    let ok = true;
+    let errorDetail = "";
+
+    if (typeof res === "boolean") {
+      ok = res;
+    } else if (res && typeof res === "object") {
+      ok = res.ok !== false;
+      if (res.error) {
+        errorDetail = `: ${res.error}`;
+      }
+    }
+
+    if (!ok) {
+      const msg = `${opts.errorMessage}${errorDetail}`;
+      showToast(msg, "error");
+      opts.rollback?.();
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    const msg = `${opts.errorMessage}: ${err?.message || "Unknown error"}`;
+    showToast(msg, "error");
+    opts.rollback?.();
+    return false;
+  }
+}
+
 const StoreContext = createContext<StoreContextValue | null>(null);
 
 function log(
@@ -511,8 +567,8 @@ function log(
     createdAt: new Date().toISOString(),
     ...(meta?.trim() ? { meta: meta.trim() } : {}),
   };
-  void persistActivityLog(item).then((res) => {
-    if (!res.ok) console.warn("Activity log remote write failed:", res.error);
+  void runPersist(persistActivityLog(item), {
+    errorMessage: "Activity log remote write failed",
   });
   return item;
 }
@@ -533,8 +589,8 @@ function notifyUsers(
       createdAt: now,
       href: input.href,
     };
-    void persistNotification(item).then((res) => {
-      if (!res.ok) console.warn("Notification remote write failed:", res.error);
+    void runPersist(persistNotification(item), {
+      errorMessage: "Notification remote write failed",
     });
     return item;
   });
@@ -612,20 +668,23 @@ function applyReportReview(
     ],
   }));
 
-  persistReport({
-    ...existing,
-    status,
-    hqComment,
-    approvedBy,
-  }).then((res) => {
-    if (!res.ok) {
-      console.error(`Failed to persist report review for ${reportId}:`, res.error);
-      setStore((s) => ({
-        ...s,
-        reports: s.reports.map((r) => (r.id === reportId ? existing : r)),
-      }));
+  void runPersist(
+    persistReport({
+      ...existing,
+      status,
+      hqComment,
+      approvedBy,
+    }),
+    {
+      errorMessage: `Failed to persist report review for ${existing.title}`,
+      rollback: () => {
+        setStore((s) => ({
+          ...s,
+          reports: s.reports.map((r) => (r.id === reportId ? existing : r)),
+        }));
+      },
     }
-  });
+  );
 
   return true;
 }
@@ -808,6 +867,19 @@ function maybeIssueCert(
 
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  useEffect(() => {
+    toastEmitter = (toast) => {
+      setToasts((prev) => [...prev, toast]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+      }, 4000);
+    };
+    return () => {
+      toastEmitter = null;
+    };
+  }, []);
   const [store, setStore] = useState<ElevatesStore>(() =>
     normalizeStore({
       organization: {
@@ -1057,14 +1129,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               reviewedBy: actorId,
               approvedBy: result.status === "approved" ? actorId : reg.approvedBy,
             };
-            persistRegistration(updatedReg).then((res) => {
-              if (!res.ok) {
-                console.error(`Failed to update registration ${id} in Supabase:`, res.error);
+            void runPersist(persistRegistration(updatedReg), {
+              errorMessage: `Failed to update registration status for ${id}`,
+              rollback: () => {
                 setStore((s) => ({
                   ...s,
                   registrations: s.registrations.map((r) => (r.id === id ? reg : r)),
                 }));
-              }
+              },
             });
           }
         }
@@ -1122,17 +1194,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               )
             : [record, ...s.attendance];
           const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
-          persistAttendance(record).then((res) => {
-            if (!res.ok) {
-              console.error("Attendance check-in failed in Supabase:", res.error);
+          void runPersist(persistAttendance(record), {
+            errorMessage: `Attendance check-in failed for registration ${registrationId}`,
+            rollback: () => {
               setStore((prev) => ({
                 ...prev,
                 attendance: existing
                   ? prev.attendance.map((a) => (a.id === existing.id ? existing : a))
                   : prev.attendance.filter((a) => a.id !== record.id),
               }));
-            } else {
-              newCerts.forEach((c) => void persistCertificate(c));
+            },
+          }).then((ok) => {
+            if (ok) {
+              newCerts.forEach((c) =>
+                void runPersist(persistCertificate(c), {
+                  errorMessage: `Failed to issue certificate for user ${c.userId}`,
+                })
+              );
             }
           });
           return {
@@ -1174,15 +1252,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               checkedInBy: actorId,
             };
             const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
-            persistAttendance(record).then((res) => {
-              if (!res.ok) {
-                console.error("Attendance insert failed in Supabase:", res.error);
+            void runPersist(persistAttendance(record), {
+              errorMessage: `Failed to record attendance for ${registrationId}`,
+              rollback: () => {
                 setStore((prev) => ({
                   ...prev,
                   attendance: prev.attendance.filter((a) => a.id !== record.id),
                 }));
-              } else {
-                newCerts.forEach((c) => void persistCertificate(c));
+              },
+            }).then((ok) => {
+              if (ok) {
+                newCerts.forEach((c) =>
+                  void runPersist(persistCertificate(c), {
+                    errorMessage: `Failed to issue certificate for user ${c.userId}`,
+                  })
+                );
               }
             });
             return {
@@ -1203,15 +1287,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             existing.userId,
             status,
           );
-          persistAttendance(record).then((res) => {
-            if (!res.ok) {
-              console.error("Attendance update failed in Supabase:", res.error);
+          void runPersist(persistAttendance(record), {
+            errorMessage: `Failed to update attendance for ${registrationId}`,
+            rollback: () => {
               setStore((prev) => ({
                 ...prev,
                 attendance: prev.attendance.map((a) => (a.id === existing.id ? existing : a)),
               }));
-            } else {
-              newCerts.forEach((c) => void persistCertificate(c));
+            },
+          }).then((ok) => {
+            if (ok) {
+              newCerts.forEach((c) =>
+                void runPersist(persistCertificate(c), {
+                  errorMessage: `Failed to issue certificate for user ${c.userId}`,
+                })
+              );
             }
           });
           return {
@@ -1231,14 +1321,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           tasks: s.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
         }));
-        persistTask({ ...prevTask, status }).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update task ${id} status in Supabase:`, res.error);
+        void runPersist(persistTask({ ...prevTask, status }), {
+          errorMessage: `Failed to update status for task "${prevTask.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               tasks: s.tasks.map((t) => (t.id === id ? { ...t, status: prevStatus } : t)),
             }));
-          }
+          },
         });
       },
       approveEvent: (eventId) => {
@@ -1253,14 +1343,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : e,
           ),
         }));
-        persistEvent({ ...ev, status: "registration_open" }).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to approve event ${eventId} in Supabase:`, res.error);
+        void runPersist(persistEvent({ ...ev, status: "registration_open" }), {
+          errorMessage: `Failed to approve event "${ev.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               events: s.events.map((e) => (e.id === eventId ? { ...e, status: prevStatus } : e)),
             }));
-          }
+          },
         });
       },
       approveReport: (reportId, comment, actorId) => {
@@ -1307,17 +1397,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistEvent(normalized).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to persist event to Supabase:", res.error);
+        void runPersist(persistEvent(normalized), {
+          errorMessage: `Failed to create event "${normalized.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               events: s.events.filter((e) => e.id !== eventId),
               forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
               eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
             }));
-          } else {
-            forms.forEach((f) => void persistForm(f));
+          },
+        }).then((ok) => {
+          if (ok) {
+            forms.forEach((f) =>
+              void runPersist(persistForm(f), {
+                errorMessage: `Failed to persist form "${f.title}"`,
+              })
+            );
           }
         });
       },
@@ -1342,14 +1438,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistEvent(updatedEvent).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update event ${id} in Supabase:`, res.error);
+        void runPersist(persistEvent(updatedEvent), {
+          errorMessage: `Failed to update event "${updatedEvent.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               events: s.events.map((e) => (e.id === id ? prev : e)),
             }));
-          }
+          },
         });
       },
       registerForEvent: (registration) => {
@@ -1410,14 +1506,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
         if (result.ok) {
-          persistRegistration(normalized).then((res) => {
-            if (!res.ok) {
-              console.error("Failed to persist registration in Supabase:", res.error);
+          void runPersist(persistRegistration(normalized), {
+            errorMessage: "Failed to save registration",
+            rollback: () => {
               setStore((s) => ({
                 ...s,
                 registrations: s.registrations.filter((r) => r.id !== regId),
               }));
-            }
+            },
           });
         }
         return result;
@@ -1454,8 +1550,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             forms.unshift(targetForm);
           }
-          persistForm(targetForm).then((res) => {
-            if (!res.ok) console.error("Failed to save event form in Supabase:", res.error);
+          void runPersist(persistForm(targetForm), {
+            errorMessage: `Failed to save event form "${targetForm.title}"`,
           });
           const exists = s.eventForms.some((f) => f.eventId === eventId);
           return {
@@ -1502,8 +1598,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             forms.unshift(targetForm);
           }
-          persistForm(targetForm).then((res) => {
-            if (!res.ok) console.error("Failed to save form in Supabase:", res.error);
+          void runPersist(persistForm(targetForm), {
+            errorMessage: `Failed to save form "${targetForm.title}"`,
           });
           let eventForms = s.eventForms;
           if (purpose === "registration") {
@@ -1530,14 +1626,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: new Date().toISOString(),
         };
         setStore((s) => ({ ...s, forms: [form, ...(s.forms ?? [])] }));
-        persistForm(form).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create form in Supabase:", res.error);
+        void runPersist(persistForm(form), {
+          errorMessage: `Failed to create form "${form.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               forms: (s.forms ?? []).filter((f) => f.id !== formId),
             }));
-          }
+          },
         });
         return form;
       },
@@ -1570,14 +1666,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           return { ...s, forms, eventForms };
         });
-        persistForm(updatedForm).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update form ${id} in Supabase:`, res.error);
+        void runPersist(persistForm(updatedForm), {
+          errorMessage: `Failed to update form "${updatedForm.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               forms: (s.forms ?? []).map((f) => (f.id === id ? prevForm : f)),
             }));
-          }
+          },
         });
       },
       deleteForm: (id) => {
@@ -1588,15 +1684,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           forms: (s.forms ?? []).filter((f) => f.id !== id),
           formResponses: (s.formResponses ?? []).filter((r) => r.formId !== id),
         }));
-        deleteFormRemote(id).then((res) => {
-          if (!res.ok && prevForm) {
-            console.error(`Failed to delete form ${id} in Supabase:`, res.error);
-            setStore((s) => ({
-              ...s,
-              forms: [prevForm, ...(s.forms ?? [])],
-              formResponses: [...prevResponses, ...(s.formResponses ?? [])],
-            }));
-          }
+        void runPersist(deleteFormRemote(id), {
+          errorMessage: "Failed to delete form",
+          rollback: () => {
+            if (prevForm) {
+              setStore((s) => ({
+                ...s,
+                forms: [prevForm, ...(s.forms ?? [])],
+                formResponses: [...prevResponses, ...(s.formResponses ?? [])],
+              }));
+            }
+          },
         });
       },
       duplicateForm: (id) => {
@@ -1618,14 +1716,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         };
         setStore((s) => ({ ...s, forms: [copy, ...(s.forms ?? [])] }));
-        persistForm(copy).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to persist duplicated form in Supabase:", res.error);
+        void runPersist(persistForm(copy), {
+          errorMessage: `Failed to duplicate form "${source.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               forms: (s.forms ?? []).filter((f) => f.id !== copyId),
             }));
-          }
+          },
         });
         return copy;
       },
@@ -1659,14 +1757,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           return { ...s, forms, eventForms };
         });
-        persistForm(updatedForm).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to save questions for form ${id}:`, res.error);
+        void runPersist(persistForm(updatedForm), {
+          errorMessage: `Failed to save questions for form "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               forms: (s.forms ?? []).map((f) => (f.id === id ? existing : f)),
             }));
-          }
+          },
         });
       },
       setFormStatus: (id, status) => {
@@ -1679,14 +1777,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             f.id === id ? updated : f,
           ),
         }));
-        persistForm(updated).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update form status for ${id}:`, res.error);
+        void runPersist(persistForm(updated), {
+          errorMessage: `Failed to update status for form "${prev.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               forms: (s.forms ?? []).map((f) => (f.id === id ? prev : f)),
             }));
-          }
+          },
         });
       },
       submitFormResponse: (input) => {
@@ -1724,14 +1822,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
         if (created) {
-          persistFormResponse(created).then((res) => {
-            if (!res.ok) {
-              console.error("Failed to persist form response in Supabase:", res.error);
+          void runPersist(persistFormResponse(created), {
+            errorMessage: "Failed to submit form response",
+            rollback: () => {
               setStore((s) => ({
                 ...s,
                 formResponses: (s.formResponses ?? []).filter((r) => r.id !== responseId),
               }));
-            }
+            },
           });
         }
         return created;
@@ -1742,14 +1840,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           formResponses: (s.formResponses ?? []).filter((r) => r.id !== id),
         }));
-        deleteFormResponseRemote(id).then((res) => {
-          if (!res.ok && prev) {
-            console.error(`Failed to delete form response ${id} in Supabase:`, res.error);
-            setStore((s) => ({
-              ...s,
-              formResponses: [prev, ...(s.formResponses ?? [])],
-            }));
-          }
+        void runPersist(deleteFormResponseRemote(id), {
+          errorMessage: "Failed to delete form response",
+          rollback: () => {
+            if (prev) {
+              setStore((s) => ({
+                ...s,
+                formResponses: [prev, ...(s.formResponses ?? [])],
+              }));
+            }
+          },
         });
       },
       issueCertificate: (eventId, userId) => {
@@ -1792,14 +1892,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             verificationQr: `VERIFY-${certificateId}`,
             digitalSignature: `sig_${certificateId.toLowerCase()}`,
           };
-          persistCertificate(cert).then((res) => {
-            if (!res.ok) {
-              console.error("Failed to issue certificate in Supabase:", res.error);
+          void runPersist(persistCertificate(cert), {
+            errorMessage: "Failed to issue certificate",
+            rollback: () => {
               setStore((prev) => ({
                 ...prev,
                 certificates: prev.certificates.filter((c) => c.id !== certId),
               }));
-            }
+            },
           });
           return {
             ...s,
@@ -1858,14 +1958,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
         if (!isDemoMode()) {
-          persistChapter(chapter).then((res) => {
-            if (!res.ok) {
-              console.error("Failed to persist chapter in Supabase:", res.error);
+          void runPersist(persistChapter(chapter), {
+            errorMessage: `Failed to create chapter "${chapter.name}"`,
+            rollback: () => {
               setStore((s) => ({
                 ...s,
                 chapters: s.chapters.filter((c) => c.id !== chapterId),
               }));
-            }
+            },
           });
         }
         return chapter;
@@ -1882,14 +1982,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistChapter(updated).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update chapter ${id} in Supabase:`, res.error);
+        void runPersist(persistChapter(updated), {
+          errorMessage: `Failed to update chapter "${updated.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               chapters: s.chapters.map((c) => (c.id === id ? prevChapter : c)),
             }));
-          }
+          },
         });
       },
       deleteChapter: (id) => {
@@ -1902,14 +2002,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        deleteChapterRemote(id, prev?.slug).then((res) => {
-          if (!res.ok && prev) {
-            console.error(`Failed to delete chapter ${id} in Supabase:`, res.error);
-            setStore((s) => ({
-              ...s,
-              chapters: [prev, ...s.chapters],
-            }));
-          }
+        void runPersist(deleteChapterRemote(id, prev?.slug), {
+          errorMessage: `Failed to delete chapter "${prev?.name ?? id}"`,
+          rollback: () => {
+            if (prev) {
+              setStore((s) => ({
+                ...s,
+                chapters: [prev, ...s.chapters],
+              }));
+            }
+          },
         });
         fetch(`/api/provisioning/chapter?id=${id}&actingUserId=${store.session.userId}`, {
           method: "DELETE",
@@ -1929,16 +2031,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        persistProfile(updated).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to persist profile ${id} in Supabase:`, res.error);
+        void runPersist(persistProfile(updated), {
+          errorMessage: `Failed to update profile for "${updated.fullName}"`,
+          rollback: () => {
             if (prev) {
               setStore((s) => ({
                 ...s,
                 profiles: s.profiles.map((p) => (p.id === id ? prev : p)),
               }));
             }
-          }
+          },
         });
       },
       joinChapterCommunity: (input) => {
@@ -2308,6 +2410,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       batchUpdateRegistrationStatus: (registrationIds, status, actorId) => {
         if (!registrationIds.length) return false;
+        const prevRegistrations = store.registrations;
         setStore((s) => {
           const updated = s.registrations.map((r) =>
             registrationIds.includes(r.id) ? { ...r, status } : r,
@@ -2319,13 +2422,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
         const supabase = createClient();
         if (supabase) {
-          supabase
-            .from("event_registrations")
-            .update({ status })
-            .in("id", registrationIds)
-            .then((res: { error: unknown }) => {
-              if (res.error) console.warn("Batch update registration error:", res.error);
-            });
+          void runPersist(
+            supabase
+              .from("event_registrations")
+              .update({ status })
+              .in("id", registrationIds),
+            {
+              errorMessage: `Failed to update registration status for ${registrationIds.length} registration(s)`,
+              rollback: () => {
+                setStore((s) => ({
+                  ...s,
+                  registrations: prevRegistrations,
+                }));
+              },
+            }
+          );
         }
         return true;
       },
@@ -2696,15 +2807,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
 
-        persistUserRoles(userId, assignments, store.organization.id).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to persist user roles for ${userId} in Supabase:`, res.error);
-            setStore((s) => ({
-              ...s,
-              userRoles: prevUserRoles,
-            }));
+        void runPersist(
+          persistUserRoles(userId, assignments, store.organization.id),
+          {
+            errorMessage: `Failed to update roles for user ${userId}`,
+            rollback: () => {
+              setStore((s) => ({
+                ...s,
+                userRoles: prevUserRoles,
+              }));
+            },
           }
-        });
+        );
 
         return true;
       },
@@ -2772,14 +2886,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
 
-        persistDepartment(department).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create department in Supabase:", res.error);
+        void runPersist(persistDepartment(department), {
+          errorMessage: `Failed to create department "${department.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               departments: (s.departments ?? []).filter((d) => d.id !== deptId),
             }));
-          }
+          },
         });
 
         return department;
@@ -2822,14 +2936,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
 
-        persistDepartment(updatedDept).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update department ${id} in Supabase:`, res.error);
+        void runPersist(persistDepartment(updatedDept), {
+          errorMessage: `Failed to update department "${updatedDept.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               departments: (s.departments ?? []).map((d) => (d.id === id ? existing : d)),
             }));
-          }
+          },
         });
 
         return true;
@@ -2854,14 +2968,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
 
-        deleteDepartmentRemote(id).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to delete department ${id} in Supabase:`, res.error);
+        void runPersist(deleteDepartmentRemote(id), {
+          errorMessage: `Failed to delete department "${existing.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               departments: [existing, ...(s.departments ?? [])],
             }));
-          }
+          },
         });
 
         return true;
@@ -2917,14 +3031,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistClassCohort(cohort).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create class cohort in Supabase:", res.error);
+        void runPersist(persistClassCohort(cohort), {
+          errorMessage: `Failed to create class cohort ${cohort.department} ${cohort.year}-${cohort.section}`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               classCohorts: (s.classCohorts ?? []).filter((c) => c.id !== cohortId),
             }));
-          }
+          },
         });
         return cohort;
       },
@@ -2979,14 +3093,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistClassCohort(next).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update class cohort ${id} in Supabase:`, res.error);
+        void runPersist(persistClassCohort(next), {
+          errorMessage: `Failed to update class cohort ${next.department} ${next.year}-${next.section}`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               classCohorts: (s.classCohorts ?? []).map((c) => (c.id === id ? existing : c)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3000,14 +3114,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        deleteClassCohortRemote(id).then((res) => {
-          if (!res.ok && existing) {
-            console.error(`Failed to delete class cohort ${id} in Supabase:`, res.error);
-            setStore((s) => ({
-              ...s,
-              classCohorts: [existing, ...(s.classCohorts ?? [])],
-            }));
-          }
+        void runPersist(deleteClassCohortRemote(id), {
+          errorMessage: "Failed to delete class cohort",
+          rollback: () => {
+            if (existing) {
+              setStore((s) => ({
+                ...s,
+                classCohorts: [existing, ...(s.classCohorts ?? [])],
+              }));
+            }
+          },
         });
       },
       createLeadershipTerm: (input) => {
@@ -3064,14 +3180,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        persistLeadershipTerm(term).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create leadership term in Supabase:", res.error);
+        void runPersist(persistLeadershipTerm(term), {
+          errorMessage: `Failed to create leadership term "${term.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipTerms: s.leadershipTerms.filter((t) => t.id !== termId),
             }));
-          }
+          },
         });
         return term;
       },
@@ -3139,14 +3255,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        persistLeadershipTerm(next).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update leadership term ${id} in Supabase:`, res.error);
+        void runPersist(persistLeadershipTerm(next), {
+          errorMessage: `Failed to update leadership term "${next.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipTerms: s.leadershipTerms.map((t) => (t.id === id ? existing : t)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3164,14 +3280,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistLeadershipTerm({ ...existing, status: "archived" }).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to archive leadership term ${id} in Supabase:`, res.error);
+        void runPersist(persistLeadershipTerm({ ...existing, status: "archived" }), {
+          errorMessage: `Failed to archive leadership term "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipTerms: s.leadershipTerms.map((t) => (t.id === id ? existing : t)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3219,14 +3335,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        persistLeadershipAssignment(assignment).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create leadership assignment in Supabase:", res.error);
+        void runPersist(persistLeadershipAssignment(assignment), {
+          errorMessage: `Failed to add leadership assignment "${assignment.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipAssignments: s.leadershipAssignments.filter((a) => a.id !== assignmentId),
             }));
-          }
+          },
         });
         return assignment;
       },
@@ -3284,14 +3400,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        persistLeadershipAssignment(next).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update leadership assignment ${id} in Supabase:`, res.error);
+        void runPersist(persistLeadershipAssignment(next), {
+          errorMessage: `Failed to update leadership assignment "${next.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipAssignments: s.leadershipAssignments.map((a) => (a.id === id ? existing : a)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3321,14 +3437,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
-        deleteLeadershipAssignmentRemote(id).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to delete leadership assignment ${id} in Supabase:`, res.error);
+        void runPersist(deleteLeadershipAssignmentRemote(id), {
+          errorMessage: `Failed to remove leadership assignment "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               leadershipAssignments: [...s.leadershipAssignments, existing],
             }));
-          }
+          },
         });
         return true;
       },
@@ -3359,14 +3475,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistCluster(cluster).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create cluster in Supabase:", res.error);
+        void runPersist(persistCluster(cluster), {
+          errorMessage: `Failed to create cluster "${cluster.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               clusters: s.clusters.filter((c) => c.id !== clusterId),
             }));
-          }
+          },
         });
         return cluster;
       },
@@ -3378,14 +3494,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === id ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update cluster ${id} in Supabase:`, res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to update cluster "${updated.name}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               clusters: s.clusters.map((c) => (c.id === id ? existing : c)),
             }));
-          }
+          },
         });
       },
       joinCluster: (clusterId, userId) => {
@@ -3401,8 +3517,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to join cluster in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to join cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       leaveCluster: (clusterId, userId) => {
@@ -3417,8 +3539,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to leave cluster in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to leave cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       addClusterMember: (clusterId, userId) => {
@@ -3432,8 +3560,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to add cluster member in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to add member to cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       removeClusterMember: (clusterId, userId) => {
@@ -3448,8 +3582,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to remove cluster member in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to remove member from cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       toggleRoadmapWeek: (clusterId, week) => {
@@ -3463,8 +3603,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to update roadmap week in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to update roadmap week for cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       addRoadmapWeek: (clusterId, title) => {
@@ -3479,8 +3625,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to add roadmap week in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to add roadmap week to cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       removeRoadmapWeek: (clusterId, week) => {
@@ -3494,8 +3646,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           clusters: s.clusters.map((c) => (c.id === clusterId ? updated : c)),
         }));
-        persistCluster(updated).then((res) => {
-          if (!res.ok) console.error("Failed to remove roadmap week in Supabase:", res.error);
+        void runPersist(persistCluster(updated), {
+          errorMessage: `Failed to remove roadmap week from cluster "${cluster.name}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              clusters: s.clusters.map((c) => (c.id === clusterId ? cluster : c)),
+            }));
+          },
         });
       },
       createReportDraft: (input) => {
@@ -3525,14 +3683,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistReport(report).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create report draft in Supabase:", res.error);
+        void runPersist(persistReport(report), {
+          errorMessage: `Failed to create report draft "${report.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               reports: s.reports.filter((r) => r.id !== reportId),
             }));
-          }
+          },
         });
         return report;
       },
@@ -3574,14 +3732,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistReport(updatedReport).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update report document ${id} in Supabase:`, res.error);
+        void runPersist(persistReport(updatedReport), {
+          errorMessage: `Failed to update report "${updatedReport.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               reports: s.reports.map((r) => (r.id === id ? existing : r)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3618,14 +3776,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistReport(submittedReport).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to submit report draft ${id} in Supabase:`, res.error);
+        void runPersist(persistReport(submittedReport), {
+          errorMessage: `Failed to submit report draft "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               reports: s.reports.map((r) => (r.id === id ? existing : r)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3663,14 +3821,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistReport(report).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to generate student event report in Supabase:", res.error);
+        void runPersist(persistReport(report), {
+          errorMessage: `Failed to generate report "${report.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               reports: s.reports.filter((r) => r.id !== reportId),
             }));
-          }
+          },
         });
         return report;
       },
@@ -3707,14 +3865,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistReport(report).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to submit report in Supabase:", res.error);
+        void runPersist(persistReport(report), {
+          errorMessage: `Failed to submit report "${report.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               reports: s.reports.filter((r) => r.id !== reportId),
             }));
-          }
+          },
         });
         return report;
       },
@@ -3852,14 +4010,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistAnnouncement(announcement).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to publish announcement in Supabase:", res.error);
+        void runPersist(persistAnnouncement(announcement), {
+          errorMessage: `Failed to publish announcement "${announcement.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               announcements: s.announcements.filter((a) => a.id !== annId),
             }));
-          }
+          },
         });
         return announcement;
       },
@@ -3892,14 +4050,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistResource(resource).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to upload resource in Supabase:", res.error);
+        void runPersist(persistResource(resource), {
+          errorMessage: `Failed to create resource "${resource.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               resources: s.resources.filter((r) => r.id !== resourceId),
             }));
-          }
+          },
         });
         return resource;
       },
@@ -3921,14 +4079,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistResource(updated).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update resource ${id} in Supabase:`, res.error);
+        void runPersist(persistResource(updated), {
+          errorMessage: `Failed to update resource "${updated.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               resources: s.resources.map((r) => (r.id === id ? existing : r)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -3943,14 +4101,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        deleteResourceRemote(id).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to delete resource ${id} in Supabase:`, res.error);
+        void runPersist(deleteResourceRemote(id), {
+          errorMessage: `Failed to delete resource "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               resources: [existing, ...s.resources],
             }));
-          }
+          },
         });
         return true;
       },
@@ -4041,14 +4199,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistOrganization(orgData).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to update organization brand kit in Supabase:", res.error);
+        void runPersist(persistOrganization(orgData), {
+          errorMessage: "Failed to update organization brand kit",
+          rollback: () => {
             setStore((s) => ({
               ...s,
               organization: prevOrg,
             }));
-          }
+          },
         });
         return true;
       },
@@ -4092,14 +4250,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistGuideline(guideline).then((res) => {
-          if (!res.ok) {
-            console.error("Failed to create guideline in Supabase:", res.error);
+        void runPersist(persistGuideline(guideline), {
+          errorMessage: `Failed to create guideline "${guideline.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               guidelines: (s.guidelines ?? []).filter((g) => g.id !== guidelineId),
             }));
-          }
+          },
         });
         return guideline;
       },
@@ -4150,14 +4308,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        persistGuideline(next).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to update guideline ${id} in Supabase:`, res.error);
+        void runPersist(persistGuideline(next), {
+          errorMessage: `Failed to update guideline "${next.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               guidelines: (s.guidelines ?? []).map((g) => (g.id === id ? existing : g)),
             }));
-          }
+          },
         });
         return true;
       },
@@ -4175,14 +4333,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.activityLogs,
           ],
         }));
-        deleteGuidelineRemote(id).then((res) => {
-          if (!res.ok) {
-            console.error(`Failed to delete guideline ${id} in Supabase:`, res.error);
+        void runPersist(deleteGuidelineRemote(id), {
+          errorMessage: `Failed to delete guideline "${existing.title}"`,
+          rollback: () => {
             setStore((s) => ({
               ...s,
               guidelines: [existing, ...(s.guidelines ?? [])],
             }));
-          }
+          },
         });
         return true;
       },
@@ -4193,8 +4351,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             n.id === id ? { ...n, read: true } : n,
           ),
         }));
-        markNotificationReadRemote(id).then((res) => {
-          if (!res.ok) console.warn("Failed to mark notification read in Supabase:", res.error);
+        void runPersist(markNotificationReadRemote(id), {
+          errorMessage: "Failed to mark notification as read",
         });
       },
       markAllNotificationsRead: (userId) => {

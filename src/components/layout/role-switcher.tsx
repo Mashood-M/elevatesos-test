@@ -346,141 +346,143 @@ export function RoleSwitcher() {
               </div>
             )}
 
-            {/* 2. CHAPTER SELECT BOX (Clean & Compact with Arrow + Confirm/Deselect) */}
-            <div className="border-t border-[var(--border)] pt-2">
-              <div className="flex items-center justify-between px-1 mb-1">
-                <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-mute)]">
-                  Chapter
-                </span>
-                {isConfirmed && (
-                  <span className="text-[8px] font-semibold text-emerald-500">
-                    Confirmed
+            {/* 2. CHAPTER SELECT BOX (Only visible to HQ users — non-HQ users are fixed to their assigned chapter) */}
+            {isHqUser && (
+              <div className="border-t border-[var(--border)] pt-2">
+                <div className="flex items-center justify-between px-1 mb-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-mute)]">
+                    Chapter
                   </span>
-                )}
-              </div>
+                  {isConfirmed && (
+                    <span className="text-[8px] font-semibold text-emerald-500">
+                      Confirmed
+                    </span>
+                  )}
+                </div>
 
-              {/* Box with selected chapter / search + Arrow + Tick/Cross button */}
-              <div className="relative rounded-[9px] border border-[var(--border)] bg-[var(--bg)] p-1 transition-all">
-                <div className="flex items-center justify-between gap-1.5">
-                  {/* Left: Search input when list is open, OR selected chapter text */}
-                  {isListOpen ? (
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0 px-1">
-                      <Search size={12} className="shrink-0 text-[var(--text-mute)]" />
-                      <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search chapter..."
-                        className="w-full bg-transparent text-[11px] text-[var(--text)] placeholder:text-[var(--text-mute)] focus:outline-none"
-                      />
-                    </div>
-                  ) : (
-                    <div
-                      onClick={handleToggleList}
-                      className="flex items-center gap-1.5 flex-1 min-w-0 px-1 py-0.5 cursor-pointer"
-                    >
-                      {isTestChapter(selectedChapter) ? (
-                        <FlaskConical size={12} className="shrink-0 text-amber-500" />
-                      ) : (
-                        <Building2 size={12} className="shrink-0 text-[var(--text-mute)]" />
-                      )}
-                      <span className="truncate text-[11px] font-semibold text-[var(--text)]">
-                        {selectedChapter.name}
-                      </span>
-                      {isTestChapter(selectedChapter) && (
-                        <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.1 text-[7px] font-bold uppercase text-amber-600 dark:text-amber-300">
-                          Test
+                {/* Box with selected chapter / search + Arrow + Tick/Cross button */}
+                <div className="relative rounded-[9px] border border-[var(--border)] bg-[var(--bg)] p-1 transition-all">
+                  <div className="flex items-center justify-between gap-1.5">
+                    {/* Left: Search input when list is open, OR selected chapter text */}
+                    {isListOpen ? (
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0 px-1">
+                        <Search size={12} className="shrink-0 text-[var(--text-mute)]" />
+                        <input
+                          ref={searchInputRef}
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search chapter..."
+                          className="w-full bg-transparent text-[11px] text-[var(--text)] placeholder:text-[var(--text-mute)] focus:outline-none"
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        onClick={handleToggleList}
+                        className="flex items-center gap-1.5 flex-1 min-w-0 px-1 py-0.5 cursor-pointer"
+                      >
+                        {isTestChapter(selectedChapter) ? (
+                          <FlaskConical size={12} className="shrink-0 text-amber-500" />
+                        ) : (
+                          <Building2 size={12} className="shrink-0 text-[var(--text-mute)]" />
+                        )}
+                        <span className="truncate text-[11px] font-semibold text-[var(--text)]">
+                          {selectedChapter.name}
                         </span>
+                        {isTestChapter(selectedChapter) && (
+                          <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.1 text-[7px] font-bold uppercase text-amber-600 dark:text-amber-300">
+                            Test
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Right: Down Arrow button + Tick/Cross button */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Down Arrow / Collapse button */}
+                      <button
+                        type="button"
+                        onClick={handleToggleList}
+                        title={isListOpen ? "Collapse chapter list" : "Expand chapter list"}
+                        className="rounded p-1 text-[var(--text-mute)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition"
+                        aria-label="Toggle chapter list"
+                      >
+                        {isListOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </button>
+
+                      {/* Side Checkmark (Confirm) / Cross (Deselect) button */}
+                      <button
+                        type="button"
+                        onClick={handleConfirmToggle}
+                        title={isConfirmed ? "Deselect chapter" : "Confirm chapter"}
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded-[5px] transition",
+                          isConfirmed
+                            ? "bg-emerald-500/15 text-emerald-500 hover:bg-red-500/15 hover:text-red-500"
+                            : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90",
+                        )}
+                        aria-label={isConfirmed ? "Deselect chapter" : "Confirm chapter"}
+                      >
+                        {isConfirmed ? <X size={11} /> : <Check size={11} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dropdown list when expanded */}
+                  {isListOpen && (
+                    <div className="mt-1.5 border-t border-[var(--border)] pt-1 max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
+                      {/* Test Chapter */}
+                      {testChapter && (
+                        <button
+                          type="button"
+                          onClick={() => handleSelectChapter(testChapter)}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition",
+                            "bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20",
+                            selectedChapter.id === testChapter.id && "font-bold ring-1 ring-amber-500/50",
+                          )}
+                        >
+                          <span className="truncate flex items-center gap-1">
+                            <FlaskConical size={10} className="text-amber-500" />
+                            {testChapter.name}
+                          </span>
+                          {selectedChapter.id === testChapter.id && (
+                            <Check size={10} className="text-amber-600 shrink-0" />
+                          )}
+                        </button>
+                      )}
+
+                      {/* Other Chapters */}
+                      {otherChapters.map((c) => {
+                        const isSel = selectedChapter.id === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => handleSelectChapter(c)}
+                            className={cn(
+                              "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition hover:bg-[var(--bg-hover)]",
+                              isSel
+                                ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)]"
+                                : "text-[var(--text)]",
+                            )}
+                          >
+                            <span className="truncate">{c.name}</span>
+                            {isSel && <Check size={10} className="text-[var(--accent)] shrink-0" />}
+                          </button>
+                        );
+                      })}
+
+                      {otherChapters.length === 0 && !testChapter && (
+                        <p className="py-1 text-center text-[9px] text-[var(--text-mute)]">
+                          No matches found
+                        </p>
                       )}
                     </div>
                   )}
-
-                  {/* Right: Down Arrow button + Tick/Cross button */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    {/* Down Arrow / Collapse button */}
-                    <button
-                      type="button"
-                      onClick={handleToggleList}
-                      title={isListOpen ? "Collapse chapter list" : "Expand chapter list"}
-                      className="rounded p-1 text-[var(--text-mute)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition"
-                      aria-label="Toggle chapter list"
-                    >
-                      {isListOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    </button>
-
-                    {/* Side Checkmark (Confirm) / Cross (Deselect) button */}
-                    <button
-                      type="button"
-                      onClick={handleConfirmToggle}
-                      title={isConfirmed ? "Deselect chapter" : "Confirm chapter"}
-                      className={cn(
-                        "flex h-5 w-5 items-center justify-center rounded-[5px] transition",
-                        isConfirmed
-                          ? "bg-emerald-500/15 text-emerald-500 hover:bg-red-500/15 hover:text-red-500"
-                          : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90",
-                      )}
-                      aria-label={isConfirmed ? "Deselect chapter" : "Confirm chapter"}
-                    >
-                      {isConfirmed ? <X size={11} /> : <Check size={11} />}
-                    </button>
-                  </div>
                 </div>
-
-                {/* Dropdown list when expanded */}
-                {isListOpen && (
-                  <div className="mt-1.5 border-t border-[var(--border)] pt-1 max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
-                    {/* Test Chapter */}
-                    {testChapter && (
-                      <button
-                        type="button"
-                        onClick={() => handleSelectChapter(testChapter)}
-                        className={cn(
-                          "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition",
-                          "bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20",
-                          selectedChapter.id === testChapter.id && "font-bold ring-1 ring-amber-500/50",
-                        )}
-                      >
-                        <span className="truncate flex items-center gap-1">
-                          <FlaskConical size={10} className="text-amber-500" />
-                          {testChapter.name}
-                        </span>
-                        {selectedChapter.id === testChapter.id && (
-                          <Check size={10} className="text-amber-600 shrink-0" />
-                        )}
-                      </button>
-                    )}
-
-                    {/* Other Chapters */}
-                    {otherChapters.map((c) => {
-                      const isSel = selectedChapter.id === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => handleSelectChapter(c)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition hover:bg-[var(--bg-hover)]",
-                            isSel
-                              ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)]"
-                              : "text-[var(--text)]",
-                          )}
-                        >
-                          <span className="truncate">{c.name}</span>
-                          {isSel && <Check size={10} className="text-[var(--accent)] shrink-0" />}
-                        </button>
-                      );
-                    })}
-
-                    {otherChapters.length === 0 && !testChapter && (
-                      <p className="py-1 text-center text-[9px] text-[var(--text-mute)]">
-                        No matches found
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
-            </div>
+            )}
 
             {/* 3. CHAPTER ROLES (Campus Lead, Class Rep, Student, Faculty) */}
             {availableChapterRoles.length > 0 && (

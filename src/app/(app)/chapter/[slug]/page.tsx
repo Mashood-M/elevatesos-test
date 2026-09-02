@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { SectionGrid } from "@/components/layout/page-frame";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
+import { isEventVisibleToUser } from "@/lib/events";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
@@ -86,7 +87,9 @@ export default function ChapterDashboardPage({
   const canCreateEvent = hasPermission(store, session.roleKey, "event.create");
 
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
-  const events = store.events.filter((e) => e.chapterId === chapter.id);
+  const events = store.events
+    .filter((e) => e.chapterId === chapter.id)
+    .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
   const tasks = store.tasks.filter((t) => t.chapterId === chapter.id);
   const openTasks = tasks.filter((t) => t.status !== "completed");

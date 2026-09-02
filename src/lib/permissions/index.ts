@@ -4,13 +4,25 @@ export function getRoleByKey(store: ElevatesStore, key: RoleKey) {
   return store.roles.find((r) => r.key === key);
 }
 
+export function canCreateEvent(roleKey: RoleKey): boolean {
+  return (
+    roleKey === "founder" ||
+    roleKey === "hq_admin" ||
+    roleKey === "campus_lead" ||
+    roleKey === "chairman"
+  );
+}
+
 export function hasPermission(
   store: ElevatesStore,
   roleKey: RoleKey,
   permission: PermissionKey,
 ): boolean {
-  // If the authenticated user is an HQ founder or super admin, grant full control for testing and managing
-  if (store.session?.authRoleKey === "founder" || isSuperAdmin(store.session?.authRoleKey || "student")) {
+  if (permission === "event.create") {
+    return canCreateEvent(roleKey);
+  }
+  // If the active role is HQ founder or super admin, grant full control
+  if (isSuperAdmin(roleKey)) {
     return true;
   }
   const role = getRoleByKey(store, roleKey);

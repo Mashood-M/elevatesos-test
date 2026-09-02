@@ -265,7 +265,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     {contextLabel}
                   </p>
                 </div>
-                {chapter && (
+                {chapter && isHqRole(session.roleKey) && (
                   <button
                     type="button"
                     onClick={() => setChapterModalOpen(true)}

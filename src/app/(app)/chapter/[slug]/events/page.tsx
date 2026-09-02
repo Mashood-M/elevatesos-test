@@ -14,7 +14,7 @@ import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { fromLocalInput, offsetIso, toLocalInput } from "@/lib/datetime";
 import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
-import { getEventForm } from "@/lib/forms/helpers";
+import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { EventAttendanceSession, EventItem, EventStatus, Visibility } from "@/types";
@@ -80,7 +80,7 @@ export default function ChapterEventsPage({
   const { slug } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { store, createEvent, updateRegistrationStatus, batchUpdateRegistrationStatus } = useStore();
+  const { store, createEvent, updateEvent, createForm, setFormStatus, updateRegistrationStatus, batchUpdateRegistrationStatus } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
@@ -232,6 +232,25 @@ export default function ChapterEventsPage({
     closeCreate();
     setForm(emptyCreateForm());
     router.push(`/chapter/${slug}/events/${id}`);
+  }
+
+  function publishEventFromList(eventItem: EventItem) {
+    const existing = getEventForm(store, eventItem.id, "registration");
+    if (!existing) {
+      const template = defaultFormsForEvent(
+        eventItem.id,
+        chapter!.id,
+        eventItem.title,
+      ).find((f) => f.purpose === "registration")!;
+      createForm({
+        ...template,
+        id: template.id,
+        status: "open",
+      });
+    } else if (existing.status !== "open") {
+      setFormStatus(existing.id, "open");
+    }
+    updateEvent(eventItem.id, { status: "registration_open" });
   }
 
   return (
@@ -473,7 +492,15 @@ export default function ChapterEventsPage({
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
                     <>
-                      {eligibility.ok ? (
+                      {ev.status === "draft" && canManage ? (
+                        <Button
+                          variant="orange"
+                          className="h-9 px-4"
+                          onClick={() => publishEventFromList(ev)}
+                        >
+                          Publish event
+                        </Button>
+                      ) : eligibility.ok ? (
                         <Link href={`/f/${eligibility.formId}`}>
                           <Button variant="orange" className="h-9 px-4">
                             Register
@@ -651,7 +678,6 @@ export default function ChapterEventsPage({
               >
                 <option value="open_to_all">🌍 Open to All (Anyone inside & outside college/chapter)</option>
                 <option value="chapter_only">🔒 Open for this Chapter (Members of this chapter only)</option>
-                <option value="closed">⛔ Closed (Invite-only / Registration closed)</option>
               </Select>
             </div>
             <div>

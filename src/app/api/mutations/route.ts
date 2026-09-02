@@ -4,6 +4,9 @@ import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
 
+// Default Root Organization UUID seeded in database migration 001/002
+const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
 export async function POST(req: Request) {
   try {
     const admin = createServiceClient();
@@ -17,11 +20,18 @@ export async function POST(req: Request) {
     // 1. EVENT MUTATIONS
     if (type === "event") {
       const event = data;
+      if (!isUuid(event.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
+      if (!isUuid(event.organizerId)) {
+        return NextResponse.json({ ok: false, error: "organizerId is required and must be a valid UUID" }, { status: 400 });
+      }
+
       const slug = event.slug ?? slugify(event.title || "event");
       const eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : genUuid());
       const { error } = await admin.from("events").upsert({
         id: eventId,
-        chapter_id: isUuid(event.chapterId) ? event.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: event.chapterId,
         cluster_id: isUuid(event.clusterId) ? event.clusterId : null,
         title: event.title,
         description: event.description,
@@ -29,7 +39,7 @@ export async function POST(req: Request) {
         starts_at: event.startsAt,
         ends_at: event.endsAt,
         faculty_id: isUuid(event.facultyId) ? event.facultyId : null,
-        organizer_id: isUuid(event.organizerId) ? event.organizerId : "d1000000-0000-4000-8000-000000000001",
+        organizer_id: event.organizerId,
         capacity: event.capacity ?? 100,
         waitlist_capacity: event.waitlistCapacity ?? 20,
         visibility: event.visibility ?? "chapter_only",
@@ -69,11 +79,14 @@ export async function POST(req: Request) {
     // 2. PROJECT MUTATIONS
     if (type === "project") {
       const p = data;
+      if (!isUuid(p.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const slug = p.slug ?? slugify(p.title || "project");
       const projId = isUuid(p.id) ? p.id : genUuid();
       const { error } = await admin.from("projects").upsert({
         id: projId,
-        chapter_id: isUuid(p.chapterId) ? p.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: p.chapterId,
         cluster_id: isUuid(p.clusterId) ? p.clusterId : null,
         title: p.title,
         slug,
@@ -107,11 +120,14 @@ export async function POST(req: Request) {
     // 3. CLUSTER MUTATIONS
     if (type === "cluster") {
       const c = data;
+      if (!isUuid(c.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const slug = c.slug ?? slugify(c.title || c.name || "cluster");
       const clusterId = isUuid(c.id) ? c.id : genUuid();
       const { error } = await admin.from("clusters").upsert({
         id: clusterId,
-        chapter_id: isUuid(c.chapterId) ? c.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: c.chapterId,
         name: c.name ?? c.title,
         slug,
         description: c.description ?? c.subtitle,
@@ -140,7 +156,7 @@ export async function POST(req: Request) {
     // 3.5. ORGANIZATION MUTATIONS
     if (type === "organization") {
       const org = data;
-      const orgId = isUuid(org.id) ? org.id : "00000000-0000-0000-0000-000000000001";
+      const orgId = isUuid(org.id) ? org.id : DEFAULT_ORG_ID;
       const { error } = await admin.from("organizations").upsert({
         id: orgId,
         name: org.name,
@@ -160,7 +176,7 @@ export async function POST(req: Request) {
       const chapterId = isUuid(chapter.id) ? chapter.id : genUuid();
       const { error } = await admin.from("chapters").upsert({
         id: chapterId,
-        organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : "00000000-0000-0000-0000-000000000001",
+        organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : DEFAULT_ORG_ID,
         name: chapter.name,
         slug: chapter.slug,
         college: chapter.college,
@@ -284,10 +300,13 @@ export async function POST(req: Request) {
     // 8. FORM MUTATIONS
     if (type === "form") {
       const form = data;
+      if (!isUuid(form.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const formId = isUuid(form.id) ? form.id : genUuid();
       const { error } = await admin.from("forms").upsert({
         id: formId,
-        chapter_id: isUuid(form.chapterId) ? form.chapterId : null,
+        chapter_id: form.chapterId,
         event_id: isUuid(form.eventId) ? form.eventId : null,
         slug: form.slug ?? slugify(form.title || "form"),
         title: form.title,
@@ -345,10 +364,13 @@ export async function POST(req: Request) {
     // 10. REPORT MUTATIONS
     if (type === "report") {
       const rep = data;
+      if (!isUuid(rep.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const reportId = isUuid(rep.id) ? rep.id : genUuid();
       const { error } = await admin.from("reports").upsert({
         id: reportId,
-        chapter_id: isUuid(rep.chapterId) ? rep.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: rep.chapterId,
         event_id: isUuid(rep.eventId) ? rep.eventId : null,
         type: rep.type ?? "event",
         title: rep.title,
@@ -383,10 +405,13 @@ export async function POST(req: Request) {
     // 11. TASK MUTATIONS
     if (type === "task") {
       const task = data;
+      if (!isUuid(task.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const taskId = isUuid(task.id) ? task.id : genUuid();
       const { error } = await admin.from("tasks").upsert({
         id: taskId,
-        chapter_id: isUuid(task.chapterId) ? task.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: task.chapterId,
         event_id: isUuid(task.eventId) ? task.eventId : null,
         title: task.title,
         category: task.category ?? "documentation",
@@ -416,7 +441,7 @@ export async function POST(req: Request) {
       const guidelineId = isUuid(g.id) ? g.id : genUuid();
       const { error } = await admin.from("guidelines").upsert({
         id: guidelineId,
-        organization_id: isUuid(g.organizationId) ? g.organizationId : "00000000-0000-0000-0000-000000000001",
+        organization_id: isUuid(g.organizationId) ? g.organizationId : DEFAULT_ORG_ID,
         title: g.title,
         category: g.category ?? "General",
         version: g.version ?? "1.0",
@@ -450,7 +475,7 @@ export async function POST(req: Request) {
       const resourceId = isUuid(res.id) ? res.id : genUuid();
       const { error } = await admin.from("resources").upsert({
         id: resourceId,
-        organization_id: isUuid(res.organizationId) ? res.organizationId : "00000000-0000-0000-0000-000000000001",
+        organization_id: isUuid(res.organizationId) ? res.organizationId : DEFAULT_ORG_ID,
         title: res.title,
         category: res.category ?? "General",
         description: res.description,
@@ -476,10 +501,13 @@ export async function POST(req: Request) {
     // 14. DEPARTMENT MUTATIONS
     if (type === "department") {
       const dept = data;
+      if (!isUuid(dept.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const deptId = isUuid(dept.id) ? dept.id : genUuid();
       const { error } = await admin.from("departments").upsert({
         id: deptId,
-        chapter_id: isUuid(dept.chapterId) ? dept.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: dept.chapterId,
         name: dept.name,
       });
 
@@ -501,11 +529,14 @@ export async function POST(req: Request) {
     // 15. CLASS COHORT MUTATIONS
     if (type === "class_cohort") {
       const cohort = data;
+      if (!isUuid(cohort.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const cohortId = isUuid(cohort.id) ? cohort.id : genUuid();
       const repId = Array.isArray(cohort.repIds) && cohort.repIds.length > 0 && isUuid(cohort.repIds[0]) ? cohort.repIds[0] : (isUuid(cohort.representativeId) ? cohort.representativeId : null);
       const { error } = await admin.from("class_cohorts").upsert({
         id: cohortId,
-        chapter_id: isUuid(cohort.chapterId) ? cohort.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: cohort.chapterId,
         department: cohort.department,
         year: cohort.year,
         section: cohort.section,
@@ -530,10 +561,13 @@ export async function POST(req: Request) {
     // 16. LEADERSHIP TERM & ASSIGNMENT MUTATIONS
     if (type === "leadership_term") {
       const term = data;
+      if (!isUuid(term.chapterId)) {
+        return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
       const termId = isUuid(term.id) ? term.id : genUuid();
       const { error } = await admin.from("leadership_terms").upsert({
         id: termId,
-        chapter_id: isUuid(term.chapterId) ? term.chapterId : "c1000000-0000-4000-8000-000000000001",
+        chapter_id: term.chapterId,
         academic_year: term.academicYear,
         title: term.title,
         start_date: term.startDate,
@@ -743,7 +777,7 @@ export async function POST(req: Request) {
             ? a.organizationId
             : isUuid(organizationId)
             ? organizationId
-            : "00000000-0000-0000-0000-000000000001",
+            : DEFAULT_ORG_ID,
           is_permanent: true,
         };
       });

@@ -544,39 +544,68 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       }
 
       if (matchedProfile) {
-        const userRoleEntry = userRoles.find(
+        const userRoleEntries = userRoles.filter(
           (ur: Record<string, any>) => ur.userId === matchedProfile.id || ur.userId === authUser.id
         );
         
-        let roleKey: RoleKey | undefined = undefined;
-        if (userRoleEntry) {
-          if (userRoleEntry.roleId) {
-            const roleObj = roles.find((r: Record<string, any>) => r.id === userRoleEntry.roleId);
-            if (roleObj?.key) roleKey = roleObj.key as RoleKey;
-          }
-          if (!roleKey && userRoleEntry.roleKey) {
-            roleKey = userRoleEntry.roleKey as RoleKey;
-          }
-        }
+        const ROLE_PRIORITY: RoleKey[] = [
+          "student",
+          "faculty_coordinator",
+          "class_representative",
+          "campus_lead",
+          "hq_admin",
+          "founder",
+        ];
 
-        // If no explicit role entry found in user_roles, infer from profile email/id
-        if (!roleKey) {
+        const assignedKeys: RoleKey[] = userRoleEntries
+          .map((ur: Record<string, any>) => {
+            if (ur.roleKey) return ur.roleKey as RoleKey;
+            if (ur.role_key) return ur.role_key as RoleKey;
+            const rObj = roles.find((r: Record<string, any>) => r.id === ur.role_id || r.id === ur.roleId);
+            return (rObj?.key ?? null) as RoleKey | null;
+          })
+          .filter((k: RoleKey | null): k is RoleKey => k !== null);
+
+        if (assignedKeys.length === 0) {
           const e = (matchedProfile.email || authUser.email || "").toLowerCase();
           const pId = matchedProfile.id.toLowerCase();
-          if (e.includes("founder") || pId.includes("founder")) roleKey = "founder";
-          else if (e.includes("admin") || pId.includes("admin")) roleKey = "hq_admin";
-          else if (e.includes("chairman") || pId.includes("chairman")) roleKey = "chairman";
-          else if (e.includes("faculty") || pId.includes("faculty")) roleKey = "faculty_coordinator";
-          else if (e.includes("cr") || pId.includes("cr")) roleKey = "class_representative";
-          else roleKey = "student";
+          if (e.includes("founder") || pId.includes("founder")) assignedKeys.push("founder");
+          else if (e.includes("admin") || pId.includes("admin")) assignedKeys.push("hq_admin");
+          else if (e.includes("chairman") || pId.includes("chairman")) assignedKeys.push("chairman");
+          else if (e.includes("lead") || pId.includes("lead")) assignedKeys.push("campus_lead");
+          else if (e.includes("faculty") || pId.includes("faculty")) assignedKeys.push("faculty_coordinator");
+          else if (e.includes("cr") || pId.includes("cr")) assignedKeys.push("class_representative");
+          else assignedKeys.push("student");
+        }
+
+        const topRoleKey = assignedKeys.reduce<RoleKey>((best, cur) => {
+          const curIdx = ROLE_PRIORITY.indexOf(cur);
+          const bestIdx = ROLE_PRIORITY.indexOf(best);
+          return curIdx > bestIdx ? cur : best;
+        }, assignedKeys[0] || "student");
+
+        let activeRoleKey = topRoleKey;
+        let activeChapterId = userRoleEntries[0]?.chapterId ?? userRoleEntries[0]?.chapter_id ?? matchedProfile.chapterId;
+
+        if (typeof window !== "undefined") {
+          const savedRoleKey = localStorage.getItem("elevates_active_role_key") as RoleKey | null;
+          const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
+          const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
+          
+          if (savedRoleKey && (isHqUser || assignedKeys.includes(savedRoleKey))) {
+            activeRoleKey = savedRoleKey;
+          }
+          if (savedChapterId) {
+            activeChapterId = savedChapterId;
+          }
         }
 
         session = {
           userId: matchedProfile.id,
-          roleKey,
-          chapterId: userRoleEntry?.chapterId ?? matchedProfile.chapterId,
+          roleKey: activeRoleKey,
+          chapterId: activeChapterId,
           authUserId: matchedProfile.id,
-          authRoleKey: roleKey,
+          authRoleKey: topRoleKey,
         };
       } else {
         // Auth user exists but no profile row yet — infer from email or fallback to student
@@ -585,6 +614,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         if (e.includes("founder")) fallbackRole = "founder";
         else if (e.includes("admin")) fallbackRole = "hq_admin";
         else if (e.includes("chairman")) fallbackRole = "chairman";
+        else if (e.includes("lead")) fallbackRole = "campus_lead";
         else if (e.includes("faculty")) fallbackRole = "faculty_coordinator";
         else if (e.includes("cr")) fallbackRole = "class_representative";
 

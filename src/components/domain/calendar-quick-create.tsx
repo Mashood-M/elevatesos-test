@@ -173,14 +173,13 @@ export function CalendarQuickCreate({
           />
         </div>
         <div>
-          <FieldLabel>Visibility</FieldLabel>
+          <FieldLabel>Event Access & Privacy</FieldLabel>
           <Select
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as Visibility)}
           >
-            <option value="chapter_only">Chapter only</option>
-            <option value="all_chapters">All chapters</option>
-            <option value="public">Public</option>
+            <option value="open_to_all">🌍 Open to All (Anyone inside & outside college/chapter)</option>
+            <option value="chapter_only">🔒 Open for this Chapter (Members of this chapter only)</option>
           </Select>
         </div>
         <div className="sm:col-span-2">

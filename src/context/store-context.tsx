@@ -977,6 +977,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       store,
       hydrated,
       setSession: (userId, roleKey, chapterId) => {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("elevates_active_role_key", roleKey);
+          if (chapterId) {
+            localStorage.setItem("elevates_active_chapter_id", chapterId);
+            localStorage.setItem("elevates_locked_chapter_id", chapterId);
+          }
+        }
         setStore((s) => {
           const profile = s.profiles.find((p) => p.id === userId);
           if (profile && (profile.status ?? "active") === "disabled") {
@@ -1386,9 +1393,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ),
       createEvent: (event) => {
         const eventId = isUuid(event.id) ? event.id : genUuid();
+        const activeUserId = isUuid(store.session.userId)
+          ? store.session.userId
+          : isUuid(store.session.authUserId)
+          ? store.session.authUserId
+          : undefined;
+        const organizerId = isUuid(event.organizerId) ? event.organizerId : activeUserId;
+        const chapterId = isUuid(event.chapterId)
+          ? event.chapterId
+          : store.chapters.find((c) => isUuid(c.id))?.id;
+
         const forms = defaultFormsForEvent(
           eventId,
-          event.chapterId,
+          chapterId || event.chapterId,
           event.title,
         );
         const regFields = forms[0].questions.map(questionToField);
@@ -1396,7 +1413,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           event.status === "pending_approval"
             ? ("registration_open" as const)
             : event.status;
-        const normalized = { ...event, id: eventId, status };
+        const normalized = {
+          ...event,
+          id: eventId,
+          chapterId: chapterId || event.chapterId,
+          organizerId: organizerId || event.organizerId,
+          status,
+        };
         setStore((s) => ({
           ...s,
           events: [normalized, ...s.events],

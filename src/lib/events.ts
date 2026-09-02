@@ -63,14 +63,25 @@ export function isEventVisibleToUser(
   userChapterId?: string,
   userRoleKey?: string,
 ): boolean {
+  const isManager =
+    userRoleKey === "founder" ||
+    userRoleKey === "hq_admin" ||
+    userRoleKey === "campus_lead" ||
+    userRoleKey === "chairman";
+
+  // Draft / un-published events are HIDDEN by default from non-managers until published
+  if (event.status === "draft" || event.status === "pending_approval") {
+    if (!isManager) return false;
+  }
+
   // HQ roles can see all events
   if (userRoleKey === "founder" || userRoleKey === "hq_admin") {
     return true;
   }
 
-  // Closed / private events are hidden unless organizer / HQ
+  // Closed / private events are hidden unless manager
   if (event.visibility === "closed") {
-    return false;
+    return isManager;
   }
 
   // Open to all events are visible to everyone

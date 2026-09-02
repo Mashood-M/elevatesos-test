@@ -678,6 +678,7 @@ export default function ChapterEventsPage({
               >
                 <option value="open_to_all">🌍 Open to All (Anyone inside & outside college/chapter)</option>
                 <option value="chapter_only">🔒 Open for this Chapter (Members of this chapter only)</option>
+                <option value="closed">⛔ Closed (Invite-only / Registration closed)</option>
               </Select>
             </div>
             <div>

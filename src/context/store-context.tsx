@@ -984,6 +984,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           const origAuthUserId = s.session.authUserId || s.session.userId;
           const origAuthRoleKey = s.session.authRoleKey || s.session.roleKey;
+
+          // Non-HQ users cannot switch to roles they are not explicitly assigned
+          const isHqAuth = origAuthRoleKey && isHqRole(origAuthRoleKey);
+          if (!isHqAuth) {
+            const assignedRoleKeys = s.userRoles
+              .filter((ur) => ur.userId === userId || ur.userId === origAuthUserId)
+              .map((ur) => {
+                if (ur.roleKey) return ur.roleKey;
+                const rObj = s.roles.find((r) => r.id === ur.roleId);
+                return rObj?.key;
+              })
+              .filter(Boolean);
+
+            if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(roleKey)) {
+              console.warn(`Permission denied: User ${userId} cannot switch to unassigned role '${roleKey}'`);
+              return s;
+            }
+          }
+
           return {
             ...s,
             session: {

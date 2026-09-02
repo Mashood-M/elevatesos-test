@@ -102,31 +102,36 @@ export function RoleSwitcher() {
     if (session.authRoleKey && !keys.includes(session.authRoleKey)) {
       keys.push(session.authRoleKey);
     }
+    if (session.roleKey && !keys.includes(session.roleKey)) {
+      keys.push(session.roleKey);
+    }
 
     return [...new Set(keys)];
   }, [session, store.userRoles, store.roles]);
 
-  const maxRole = useMemo<RoleKey | null>(() => {
-    const elevated: RoleKey[] = ["founder", "hq_admin", "campus_lead"];
-    const elevatedHeld = actualRoleKeys.filter((k) => elevated.includes(k));
-    if (elevatedHeld.length === 0) {
-      if (session.authRoleKey && elevated.includes(session.authRoleKey)) {
-        return session.authRoleKey;
-      }
-      return null;
-    }
-
-    return elevatedHeld.reduce((best, cur) =>
-      roleRank(cur) > roleRank(best) ? cur : best,
+  const isHqUser = useMemo(() => {
+    return (
+      actualRoleKeys.includes("founder") ||
+      actualRoleKeys.includes("hq_admin") ||
+      Boolean(session.authRoleKey && isHqRole(session.authRoleKey))
     );
   }, [actualRoleKeys, session.authRoleKey]);
 
-  const isHqUser =
-    maxRole === "founder" ||
-    maxRole === "hq_admin" ||
-    (session.authRoleKey && isHqRole(session.authRoleKey));
+  const availableRoles = useMemo<SwitchableRole[]>(() => {
+    if (isHqUser) {
+      return ALL_SWITCHABLE_ROLES;
+    }
+    const allowed = new Set(actualRoleKeys);
+    return ALL_SWITCHABLE_ROLES.filter((r) => allowed.has(r.roleKey));
+  }, [isHqUser, actualRoleKeys]);
 
-  if (!maxRole) return null;
+  const availableHqRoles = useMemo(() => {
+    return availableRoles.filter((r) => !r.isChapterScoped);
+  }, [availableRoles]);
+
+  const availableChapterRoles = useMemo(() => {
+    return availableRoles.filter((r) => r.isChapterScoped);
+  }, [availableRoles]);
 
   const activeRoleKey = session.roleKey;
   const activeInfo = ALL_SWITCHABLE_ROLES.find((r) => r.roleKey === activeRoleKey) ?? {
@@ -305,39 +310,41 @@ export function RoleSwitcher() {
 
           <div className="max-h-[72vh] overflow-y-auto p-2 space-y-2 scrollbar-thin">
             {/* 1. HQ ROLES */}
-            <div className="space-y-0.5">
-              {HQ_ROLES.map((r) => {
-                const isActive = r.roleKey === activeRoleKey;
-                return (
-                  <button
-                    key={r.roleKey}
-                    type="button"
-                    onClick={() => handleSelectRole(r)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left text-[12px] font-medium transition",
-                      isActive
-                        ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)] ring-1 ring-[var(--accent)]/20"
-                        : "hover:bg-[var(--bg-hover)] text-[var(--text)]",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[8px] font-extrabold",
-                          isActive
-                            ? "bg-[var(--accent)] text-white"
-                            : "bg-[var(--bg)] text-[var(--text-dim)] border border-[var(--border)]",
-                        )}
-                      >
-                        {r.label.slice(0, 2).toUpperCase()}
-                      </span>
-                      <span className="truncate">{r.label}</span>
-                    </div>
-                    {isActive && <Check size={12} className="shrink-0 text-[var(--accent)]" />}
-                  </button>
-                );
-              })}
-            </div>
+            {availableHqRoles.length > 0 && (
+              <div className="space-y-0.5">
+                {availableHqRoles.map((r) => {
+                  const isActive = r.roleKey === activeRoleKey;
+                  return (
+                    <button
+                      key={r.roleKey}
+                      type="button"
+                      onClick={() => handleSelectRole(r)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left text-[12px] font-medium transition",
+                        isActive
+                          ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)] ring-1 ring-[var(--accent)]/20"
+                          : "hover:bg-[var(--bg-hover)] text-[var(--text)]",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[8px] font-extrabold",
+                            isActive
+                              ? "bg-[var(--accent)] text-white"
+                              : "bg-[var(--bg)] text-[var(--text-dim)] border border-[var(--border)]",
+                          )}
+                        >
+                          {r.label.slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="truncate">{r.label}</span>
+                      </div>
+                      {isActive && <Check size={12} className="shrink-0 text-[var(--accent)]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* 2. CHAPTER SELECT BOX (Clean & Compact with Arrow + Confirm/Deselect) */}
             <div className="border-t border-[var(--border)] pt-2">
@@ -476,42 +483,44 @@ export function RoleSwitcher() {
             </div>
 
             {/* 3. CHAPTER ROLES (Campus Lead, Class Rep, Student, Faculty) */}
-            <div className="border-t border-[var(--border)] pt-2 space-y-0.5">
-              <span className="px-1 text-[9px] font-bold uppercase tracking-wider text-[var(--text-mute)] block mb-1">
-                Roles ({CHAPTER_ROLES.length})
-              </span>
-              {CHAPTER_ROLES.map((r) => {
-                const isActive = r.roleKey === activeRoleKey;
-                return (
-                  <button
-                    key={r.roleKey}
-                    type="button"
-                    onClick={() => handleSelectRole(r)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left text-[12px] font-medium transition",
-                      isActive
-                        ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)] ring-1 ring-[var(--accent)]/20"
-                        : "hover:bg-[var(--bg-hover)] text-[var(--text)]",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[8px] font-extrabold",
-                          isActive
-                            ? "bg-[var(--accent)] text-white"
-                            : "bg-[var(--bg)] text-[var(--text-dim)] border border-[var(--border)]",
-                        )}
-                      >
-                        {r.label.slice(0, 2).toUpperCase()}
-                      </span>
-                      <span className="truncate">{r.label}</span>
-                    </div>
-                    {isActive && <Check size={12} className="shrink-0 text-[var(--accent)]" />}
-                  </button>
-                );
-              })}
-            </div>
+            {availableChapterRoles.length > 0 && (
+              <div className="border-t border-[var(--border)] pt-2 space-y-0.5">
+                <span className="px-1 text-[9px] font-bold uppercase tracking-wider text-[var(--text-mute)] block mb-1">
+                  Roles ({availableChapterRoles.length})
+                </span>
+                {availableChapterRoles.map((r) => {
+                  const isActive = r.roleKey === activeRoleKey;
+                  return (
+                    <button
+                      key={r.roleKey}
+                      type="button"
+                      onClick={() => handleSelectRole(r)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left text-[12px] font-medium transition",
+                        isActive
+                          ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)] ring-1 ring-[var(--accent)]/20"
+                          : "hover:bg-[var(--bg-hover)] text-[var(--text)]",
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] text-[8px] font-extrabold",
+                            isActive
+                              ? "bg-[var(--accent)] text-white"
+                              : "bg-[var(--bg)] text-[var(--text-dim)] border border-[var(--border)]",
+                          )}
+                        >
+                          {r.label.slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className="truncate">{r.label}</span>
+                      </div>
+                      {isActive && <Check size={12} className="shrink-0 text-[var(--accent)]" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -125,8 +125,6 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  let { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 3500, 1);
-
   const path = request.nextUrl.pathname;
 
   const isProtectedApp =
@@ -140,6 +138,24 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/design-system") ||
     path.startsWith("/eos");
 
+  // Fast check local session from cookies first
+  let user: any = null;
+  let isNetworkError = false;
+
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session?.user) {
+      user = sessionData.session.user;
+    }
+  } catch (_) {}
+
+  // If local session didn't return a user, verify with getUser (with 1.5s timeout, 0 retries for speed)
+  if (!user) {
+    const res = await getUserWithRetryAndTimeout(supabase, 1500, 0);
+    user = res.user;
+    isNetworkError = res.isNetworkError;
+  }
+
   // Check if auth session cookies exist on the incoming request
   const hasAuthCookie = request.cookies.getAll().some(
     (c) =>
@@ -147,15 +163,6 @@ export async function middleware(request: NextRequest) {
       c.name.includes("auth-token") ||
       c.name.includes("supabase")
   );
-
-  if (!user && hasAuthCookie) {
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData?.session?.user) {
-        user = sessionData.session.user;
-      }
-    } catch (_) {}
-  }
 
   // Unauthenticated user or invalid session accessing protected route
   if (isProtectedApp && !user) {

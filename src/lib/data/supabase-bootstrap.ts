@@ -152,7 +152,15 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.auth.getUser(),
     ]);
 
-    const authUser = authUserData?.data?.user;
+    let authUser = authUserData?.data?.user;
+    if (!authUser) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          authUser = sessionData.session.user;
+        }
+      } catch (_) {}
+    }
 
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow

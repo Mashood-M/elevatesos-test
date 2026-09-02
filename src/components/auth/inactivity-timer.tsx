@@ -32,11 +32,11 @@ export function InactivityTimer() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Initialize last active timestamp
+    // Reset last active timestamp immediately on mount to prevent false auto-logouts on reload
     const now = Date.now();
     localStorage.setItem(STORAGE_KEY, String(now));
+    lastThrottleRef.current = now;
 
-    // Event listener to record user activity with throttling (max 1 update per 2 seconds)
     function handleUserActivity() {
       const currentMs = Date.now();
       if (currentMs - lastThrottleRef.current > 2000) {
@@ -52,22 +52,30 @@ export function InactivityTimer() {
       "touchstart",
       "scroll",
       "click",
+      "focus",
     ];
 
     activityEvents.forEach((evt) => {
       window.addEventListener(evt, handleUserActivity, { passive: true });
     });
 
-    // Interval to check for inactivity every 5 seconds
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleUserActivity();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Interval to check for inactivity every 10 seconds (30 minutes timeout)
     const checkInterval = setInterval(async () => {
       const stored = localStorage.getItem(STORAGE_KEY);
       const lastActive = stored ? parseInt(stored, 10) : Date.now();
       const elapsed = Date.now() - lastActive;
 
-      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+      // 30 minutes threshold (1,800,000 ms)
+      if (elapsed >= 30 * 60 * 1000) {
         clearInterval(checkInterval);
 
-        // Perform sign out
         try {
           const supabase = createClient();
           await supabase.auth.signOut();
@@ -75,14 +83,14 @@ export function InactivityTimer() {
           console.error("Inactivity sign out error:", err);
         }
 
-        // Reset storage timestamp and open modal
         localStorage.removeItem(STORAGE_KEY);
         setShowModal(true);
       }
-    }, 5000);
+    }, 10000);
 
     return () => {
       clearInterval(checkInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       activityEvents.forEach((evt) => {
         window.removeEventListener(evt, handleUserActivity);
       });

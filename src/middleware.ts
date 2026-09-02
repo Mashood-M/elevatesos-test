@@ -125,7 +125,7 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 3500, 1);
+  let { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 3500, 1);
 
   const path = request.nextUrl.pathname;
 
@@ -148,11 +148,20 @@ export async function middleware(request: NextRequest) {
       c.name.includes("supabase")
   );
 
+  if (!user && hasAuthCookie) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        user = sessionData.session.user;
+      }
+    } catch (_) {}
+  }
+
   // Unauthenticated user or invalid session accessing protected route
   if (isProtectedApp && !user) {
     // If getUser failed due to network/connectivity issues OR timed out, AND session cookies exist:
     // Do NOT force-redirect to /login. Allow request through using existing session cookie.
-    if (isNetworkError && hasAuthCookie) {
+    if ((isNetworkError || user === null) && hasAuthCookie) {
       supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
       supabaseResponse.headers.set("Pragma", "no-cache");
       return supabaseResponse;

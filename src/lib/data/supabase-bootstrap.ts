@@ -119,6 +119,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: formRespRows },
       { data: laAppRows },
       sessionRes,
+      userRes,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
       supabase.from("chapters").select("*").order("name"),
@@ -149,18 +150,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("class_cohorts").select("*"),
       supabase.from("form_responses").select("*"),
       supabase.from("leadership_applications").select("*"),
-      supabase.auth.getSession(),
+      supabase.auth.getSession().catch(() => null),
+      Promise.race([
+        supabase.auth.getUser().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+      ]),
     ]);
 
-    let authUser = sessionRes?.data?.session?.user ?? null;
-    if (!authUser) {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user) {
-          authUser = userData.user;
-        }
-      } catch (_) {}
-    }
+    const authUser = sessionRes?.data?.session?.user ?? (userRes as any)?.data?.user ?? null;
 
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow

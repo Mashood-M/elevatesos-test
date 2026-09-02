@@ -137,13 +137,28 @@ export function RoleSwitcher() {
 
   const loggedUserId = session.authUserId || session.userId;
 
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("elevates_locked_chapter_id");
+    }
+    return null;
+  });
+
+  // Sync state if session.chapterId changes
+  useEffect(() => {
+    if (session.chapterId) {
+      setSelectedChapterId(session.chapterId);
+    }
+  }, [session.chapterId]);
+
   // Resolve currently selected chapter
   const allChapters = useMemo(() => ensureTestChapter(store.chapters), [store.chapters]);
   const defaultTestCh = allChapters.find(isTestChapter) ?? TEST_CHAPTER_DEFAULT;
 
   const selectedChapter = useMemo<Chapter>(() => {
-    if (session.chapterId) {
-      const match = allChapters.find((c) => c.id === session.chapterId);
+    const targetId = session.chapterId || selectedChapterId;
+    if (targetId) {
+      const match = allChapters.find((c) => c.id === targetId);
       if (match) return match;
     }
     if (typeof window !== "undefined") {
@@ -153,8 +168,10 @@ export function RoleSwitcher() {
         if (savedMatch) return savedMatch;
       }
     }
-    return defaultTestCh;
-  }, [session.chapterId, allChapters, defaultTestCh]);
+    // Prefer first real chapter if available, fallback to test chapter
+    const firstReal = allChapters.find((c) => !isTestChapter(c));
+    return firstReal || defaultTestCh;
+  }, [session.chapterId, selectedChapterId, allChapters, defaultTestCh]);
 
   const { testChapter, otherChapters } = useMemo(() => {
     return filterAndSortChapters(store.chapters, searchQuery);
@@ -171,6 +188,7 @@ export function RoleSwitcher() {
     if (typeof window !== "undefined") {
       localStorage.setItem("elevates_locked_chapter_id", chapter.id);
     }
+    setSelectedChapterId(chapter.id);
     setIsConfirmed(true);
     setIsListOpen(false);
     setSearchQuery("");

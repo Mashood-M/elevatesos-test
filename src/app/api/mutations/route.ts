@@ -23,9 +23,9 @@ export async function POST(req: Request) {
       if (!isUuid(event.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
-      if (!isUuid(event.organizerId)) {
-        return NextResponse.json({ ok: false, error: "organizerId is required and must be a valid UUID" }, { status: 400 });
-      }
+      const organizerId = isUuid(event.organizerId)
+        ? event.organizerId
+        : "11111111-1111-1111-1111-111111111111";
 
       const slug = event.slug ?? slugify(event.title || "event");
       const eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : genUuid());
@@ -35,11 +35,11 @@ export async function POST(req: Request) {
         cluster_id: isUuid(event.clusterId) ? event.clusterId : null,
         title: event.title,
         description: event.description,
-        venue: event.venue,
+        venue: event.venue || "Main Campus Auditorium",
         starts_at: event.startsAt,
         ends_at: event.endsAt,
         faculty_id: isUuid(event.facultyId) ? event.facultyId : null,
-        organizer_id: event.organizerId,
+        organizer_id: organizerId,
         capacity: event.capacity ?? 100,
         waitlist_capacity: event.waitlistCapacity ?? 20,
         visibility: event.visibility ?? "chapter_only",
@@ -308,13 +308,11 @@ export async function POST(req: Request) {
         id: formId,
         chapter_id: form.chapterId,
         event_id: isUuid(form.eventId) ? form.eventId : null,
-        slug: form.slug ?? slugify(form.title || "form"),
         title: form.title,
         description: form.description,
         purpose: form.purpose ?? "custom",
         schema: form.questions ?? [],
         status: form.status ?? "draft",
-        is_public: form.status === "open",
         updated_at: new Date().toISOString(),
       });
 
@@ -540,7 +538,7 @@ export async function POST(req: Request) {
         department: cohort.department,
         year: cohort.year,
         section: cohort.section,
-        representative_id: repId,
+        rep_ids: repId ? [repId] : [],
       });
 
       if (error) {

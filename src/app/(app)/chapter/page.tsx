@@ -80,9 +80,6 @@ export default function ChapterIndexPage() {
             <Button variant="orange" onClick={() => setIsJoinModalOpen(true)}>
               Join Chapter with Code
             </Button>
-            <Link href="/eos">
-              <Button variant="secondary">Playbook</Button>
-            </Link>
             <Link href="/referrals">
               <Button variant="ghost">Invite Friends</Button>
             </Link>
@@ -198,22 +195,6 @@ export default function ChapterIndexPage() {
                   <div>
                     <p className="text-[13px] font-semibold text-text">Invite Friends</p>
                     <p className="text-[11px] text-text-dim">Share 24h invite links</p>
-                  </div>
-                </div>
-                <span className="text-xs text-text-mute">→</span>
-              </Link>
-
-              <Link
-                href="/eos"
-                className="flex items-center justify-between rounded-[12px] border border-border/80 bg-bg p-3.5 hover:border-[var(--accent)] transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-500/10 text-purple-400">
-                    <BookOpen size={18} />
-                  </div>
-                  <div>
-                    <p className="text-[13px] font-semibold text-text">Playbook</p>
-                    <p className="text-[11px] text-text-dim">EOS doctrine & guidelines</p>
                   </div>
                 </div>
                 <span className="text-xs text-text-mute">→</span>

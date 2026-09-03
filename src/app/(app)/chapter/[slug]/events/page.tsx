@@ -15,7 +15,7 @@ import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { fromLocalInput, offsetIso, toLocalInput } from "@/lib/datetime";
 import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import type { EventAttendanceSession, EventItem, EventStatus, Visibility } from "@/types";
 
@@ -405,7 +405,12 @@ export default function ChapterEventsPage({
             />
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {STATUS_CHIPS.map((chip) => (
+            {STATUS_CHIPS.filter(
+              (chip) =>
+                chip.key !== "draft" ||
+                session.roleKey === "campus_lead" ||
+                isHqRole(session.roleKey),
+            ).map((chip) => (
               <button
                 key={chip.key}
                 type="button"

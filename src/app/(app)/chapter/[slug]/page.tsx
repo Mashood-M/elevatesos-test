@@ -136,11 +136,8 @@ export default function ChapterDashboardPage({
               </>
             ) : (
               <>
-                <Link href="/eos">
-                  <Button variant="orange">Playbook</Button>
-                </Link>
                 <Link href={`/chapter/${slug}/events`}>
-                  <Button variant="ghost">Events</Button>
+                  <Button variant="orange">Events</Button>
                 </Link>
               </>
             )}

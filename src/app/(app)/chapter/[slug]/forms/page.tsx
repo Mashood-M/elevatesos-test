@@ -190,21 +190,28 @@ export default function ChapterFormsPage({
                   ["draft", "Draft"],
                   ["closed", "Closed"],
                 ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setStatus(key)}
-                  className={cn(
-                    "rounded-full px-3 py-1.5 text-[12px] font-medium",
-                    status === key
-                      ? "bg-[var(--charcoal-900)] text-white"
-                      : "bg-bg text-text-dim hover:bg-bg-hover",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
+              )
+                .filter(
+                  ([key]) =>
+                    key !== "draft" ||
+                    session.roleKey === "campus_lead" ||
+                    isHqRole(session.roleKey),
+                )
+                .map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStatus(key)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-[12px] font-medium",
+                      status === key
+                        ? "bg-[var(--charcoal-900)] text-white"
+                        : "bg-bg text-text-dim hover:bg-bg-hover",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
             </div>
           </div>
         </div>

@@ -131,7 +131,6 @@ export function navGroupsForRole(
           { href: "/hq/resources", label: "Resources", icon: I.resources },
           { href: "/hq/brand", label: "Brand", icon: I.brand },
           { href: "/hq/guidelines", label: "Guidelines", icon: I.guidelines },
-          { href: "/hq/playbook", label: "Playbook", icon: I.playbook },
         ],
       },
       {

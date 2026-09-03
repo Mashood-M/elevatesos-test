@@ -235,7 +235,6 @@ export function navGroupsForRole(
         { href: `${base}/events`, label: "Events", icon: I.events },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },
-        { href: `${base}/reports`, label: "Reports", icon: I.reports },
         {
           href: `${base}/announcements`,
           label: "Announcements",

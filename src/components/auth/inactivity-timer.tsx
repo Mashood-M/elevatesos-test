@@ -6,7 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentUser } from "@/context/store-context";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, resetClient } from "@/lib/supabase/client";
 import { Clock, LogOut } from "lucide-react";
 
 // 10 minutes in milliseconds
@@ -78,12 +78,33 @@ export function InactivityTimer() {
 
         try {
           const supabase = createClient();
-          await supabase.auth.signOut();
+          if (supabase) {
+            await Promise.race([
+              supabase.auth.signOut(),
+              new Promise((resolve) => setTimeout(resolve, 1000)),
+            ]);
+          }
         } catch (err) {
           console.error("Inactivity sign out error:", err);
         }
 
+        resetClient();
         localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem("elevates_active_role_key");
+        localStorage.removeItem("elevates_active_chapter_id");
+        localStorage.removeItem("elevates_locked_chapter_id");
+        localStorage.removeItem("elevates_demo_store");
+
+        // Clear auth cookies
+        if (typeof document !== "undefined") {
+          document.cookie.split(";").forEach((cookie) => {
+            const name = cookie.split("=")[0].trim();
+            if (name.startsWith("sb-") || name.includes("auth") || name.includes("supabase")) {
+              document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+            }
+          });
+        }
+
         setShowModal(true);
       }
     }, 10000);

@@ -186,17 +186,6 @@ export async function middleware(request: NextRequest) {
     return redirectResponse;
   }
 
-  // Already-authenticated user visiting /login → redirect to /chapter index
-  if (path === "/login" && user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/chapter";
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    supabaseResponse.cookies.getAll().forEach((c) => {
-      redirectResponse.cookies.set(c.name, c.value);
-    });
-    return redirectResponse;
-  }
-
   // Prevent back-button caching of protected app pages after sign out
   if (isProtectedApp) {
     supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
@@ -219,6 +208,5 @@ export const config = {
     "/profile/:path*",
     "/eos",
     "/eos/:path*",
-    "/login",
   ],
 };

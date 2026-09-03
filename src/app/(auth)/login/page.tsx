@@ -61,109 +61,84 @@ function LoginForm() {
       const userId = authData.user.id;
       const userEmail = authData.user.email;
 
-      // Fetch profile by ID or email
-      let { data: profile } = await supabase
-        .from("profiles")
-        .select("id, chapter_id, status, email")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (!profile && userEmail) {
-        const { data: profileByEmail } = await supabase
-          .from("profiles")
-          .select("id, chapter_id, status, email")
-          .ilike("email", userEmail)
-          .maybeSingle();
-        profile = profileByEmail;
-      }
-
-      if (profile?.status === "disabled") {
-        await supabase.auth.signOut();
-        setError("This account has been disabled. Please contact your campus administrator.");
-        setLoading(false);
-        return;
-      }
-
-      // Fetch the user's roles from the database using either user_id or profile.id
-      let userRoleRows: { role_id?: string | null; role_key?: string | null; chapter_id?: string | null }[] | null = null;
-
-      const { data: ur1, error: ur1Error } = await supabase
-        .from("user_roles")
-        .select("role_id, role_key, chapter_id")
-        .eq("user_id", userId)
-        .limit(1);
-
-      if (ur1Error) {
-        console.error("Error fetching user_roles by user_id:", ur1Error);
-      }
-      userRoleRows = ur1;
-
-      if ((!userRoleRows || userRoleRows.length === 0) && profile?.id) {
-        const { data: ur2, error: ur2Error } = await supabase
-          .from("user_roles")
-          .select("role_id, role_key, chapter_id")
-          .eq("user_id", profile.id)
-          .limit(1);
-
-        if (ur2Error) {
-          console.error("Error fetching user_roles by profile.id:", ur2Error);
-        }
-        userRoleRows = ur2;
-      }
-
       let roleKey: RoleKey = "student";
-      let chapterId: string | undefined = profile?.chapter_id ?? undefined;
+      let chapterSlug = "";
 
-      if (userRoleRows && userRoleRows.length > 0) {
-        const firstRow = userRoleRows[0];
-        chapterId = firstRow.chapter_id ?? chapterId;
+      // Quick email heuristic fallback
+      if (cleanEmail.includes("founder")) roleKey = "founder";
+      else if (cleanEmail.includes("admin")) roleKey = "hq_admin";
+      else if (cleanEmail.includes("chairman")) roleKey = "chairman";
+      else if (cleanEmail.includes("faculty")) roleKey = "faculty_coordinator";
+      else if (cleanEmail.includes("cr")) roleKey = "class_representative";
 
-        let resolvedRoleKey: string | null = null;
-
-        if (firstRow.role_id) {
-          const { data: roleRow, error: roleError } = await supabase
-            .from("roles")
-            .select("key")
-            .eq("id", firstRow.role_id)
+      // Attempt fast profile & role resolution with a 2.5s timeout guarantee
+      try {
+        const fetchDetailsPromise = (async () => {
+          let { data: profile } = await supabase
+            .from("profiles")
+            .select("id, chapter_id, status, email")
+            .eq("id", userId)
             .maybeSingle();
 
-          if (roleError) {
-            console.error("Error fetching role by id:", roleError);
+          if (!profile && userEmail) {
+            const { data: profileByEmail } = await supabase
+              .from("profiles")
+              .select("id, chapter_id, status, email")
+              .ilike("email", userEmail)
+              .maybeSingle();
+            profile = profileByEmail;
           }
 
-          if (roleRow?.key) {
-            resolvedRoleKey = roleRow.key;
+          if (profile?.status === "disabled") {
+            await supabase.auth.signOut();
+            throw new Error("ACCOUNT_DISABLED");
           }
-        }
 
-        if (!resolvedRoleKey && firstRow.role_key) {
-          resolvedRoleKey = firstRow.role_key;
-        }
+          let chapterId: string | undefined = profile?.chapter_id ?? undefined;
 
-        if (resolvedRoleKey) {
-          roleKey = resolvedRoleKey as RoleKey;
-        }
-      } else if (userEmail) {
-        // Absolute last resort fallback for standard logins if user_roles entry is missing
-        console.warn("⚠️ Role could not be resolved from database — checking email pattern as last resort");
-        const e = userEmail.toLowerCase();
-        if (e.includes("founder")) roleKey = "founder";
-        else if (e.includes("admin")) roleKey = "hq_admin";
-        else if (e.includes("chairman")) roleKey = "chairman";
-        else if (e.includes("faculty")) roleKey = "faculty_coordinator";
-        else if (e.includes("cr")) roleKey = "class_representative";
-        else if (e.includes("student")) roleKey = "student";
-      }
+          const { data: userRoleRows } = await supabase
+            .from("user_roles")
+            .select("role_id, role_key, chapter_id")
+            .eq("user_id", userId)
+            .limit(1);
 
-      // Fetch chapter slug for redirect
-      let chapterSlug = "";
-      if (chapterId) {
-        const { data: chapterRow } = await supabase
-          .from("chapters")
-          .select("slug")
-          .eq("id", chapterId)
-          .maybeSingle();
-        if (chapterRow?.slug) chapterSlug = chapterRow.slug;
+          if (userRoleRows && userRoleRows.length > 0) {
+            const firstRow = userRoleRows[0];
+            chapterId = firstRow.chapter_id ?? chapterId;
+
+            if (firstRow.role_id) {
+              const { data: roleRow } = await supabase
+                .from("roles")
+                .select("key")
+                .eq("id", firstRow.role_id)
+                .maybeSingle();
+              if (roleRow?.key) {
+                roleKey = roleRow.key as RoleKey;
+              }
+            } else if (firstRow.role_key) {
+              roleKey = firstRow.role_key as RoleKey;
+            }
+          }
+
+          if (chapterId) {
+            const { data: chapterRow } = await supabase
+              .from("chapters")
+              .select("slug")
+              .eq("id", chapterId)
+              .maybeSingle();
+            if (chapterRow?.slug) chapterSlug = chapterRow.slug;
+          }
+        })();
+
+        const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
+        await Promise.race([fetchDetailsPromise, timeoutPromise]);
+      } catch (detailErr: any) {
+        if (detailErr?.message === "ACCOUNT_DISABLED") {
+          setError("This account has been disabled. Please contact your campus administrator.");
+          setLoading(false);
+          return;
+        }
+        console.warn("Secondary profile details fetch skipped or timed out:", detailErr);
       }
 
       setLoading(false);

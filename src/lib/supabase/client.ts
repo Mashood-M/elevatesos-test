@@ -28,3 +28,8 @@ export function createClient() {
   }
   return client;
 }
+
+/** Call after signOut() to ensure the next login gets a fresh client instance. */
+export function resetClient() {
+  client = null;
+}

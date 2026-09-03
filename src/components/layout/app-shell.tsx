@@ -7,7 +7,7 @@ import { Bell, LogOut, Menu, Search, X, MapPin } from "lucide-react";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
 import { useSupabaseAuth } from "@/lib/mode";
-import { createClient } from "@/lib/supabase/client";
+import { createClient, resetClient } from "@/lib/supabase/client";
 import { navGroupsForRole } from "@/lib/nav";
 import { isHqRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
@@ -113,16 +113,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("elevates_active_chapter_id");
       localStorage.removeItem("elevates_locked_chapter_id");
       localStorage.removeItem("elevates_demo_store");
+      localStorage.removeItem("elevates_last_active_timestamp");
+
+      // Clean all localStorage keys starting with sb-
+      Object.keys(localStorage).forEach((k) => {
+        if (k.startsWith("sb-")) {
+          localStorage.removeItem(k);
+        }
+      });
+
+      // Clear any auth cookies
+      document.cookie.split(";").forEach((cookie) => {
+        const name = cookie.split("=")[0].trim();
+        if (name.startsWith("sb-") || name.includes("auth") || name.includes("supabase")) {
+          document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+        }
+      });
     }
+
     try {
       const supabase = createClient();
       if (supabase) {
-        await supabase.auth.signOut();
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((resolve) => setTimeout(resolve, 1000)),
+        ]);
       }
     } catch (err: unknown) {
       console.error("Logout error:", err);
     }
-    setSession("", "guest", undefined);
+
+    resetClient();
     window.location.replace("/login");
   }
 

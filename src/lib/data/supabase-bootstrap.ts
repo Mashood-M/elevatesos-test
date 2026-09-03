@@ -585,7 +585,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         let activeChapterId = userRoleEntries[0]?.chapterId ?? userRoleEntries[0]?.chapter_id ?? matchedProfile.chapterId;
 
         if (typeof window !== "undefined") {
-          const savedRoleKey = localStorage.getItem("elevates_active_role_key") as RoleKey | null;
+          const rawSavedRole = localStorage.getItem("elevates_active_role_key");
+          // "guest" is a logout placeholder — never apply it as an active role
+          if (rawSavedRole === "guest") {
+            localStorage.removeItem("elevates_active_role_key");
+          }
+          const savedRoleKey = rawSavedRole !== "guest" ? rawSavedRole as RoleKey | null : null;
           const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
           const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
           

@@ -169,7 +169,6 @@ export function navGroupsForRole(
         items: [
           { href: "/notifications", label: "Notifications", icon: I.alerts },
           { href: "/referrals", label: "Referrals", icon: I.referrals },
-          { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },
     ];
@@ -221,7 +220,6 @@ export function navGroupsForRole(
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Notifications", icon: I.alerts },
           { href: "/referrals", label: "Referrals", icon: I.referrals },
-          { href: "/eos", label: "Playbook", icon: I.playbook },
         ],
       },
     ];
@@ -251,7 +249,6 @@ export function navGroupsForRole(
       items: [
         { href: "/my-qr", label: "My QR Code", icon: I.myQr },
         { href: "/referrals", label: "Referrals", icon: I.referrals },
-        { href: "/eos", label: "Playbook", icon: I.playbook },
       ],
     },
   ];

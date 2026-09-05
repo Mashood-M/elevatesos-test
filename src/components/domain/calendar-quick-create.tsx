@@ -167,15 +167,15 @@ export function CalendarQuickCreate({
       onClose={onClose}
       title="Schedule event"
       description={formatDateKey(dateKey)}
-      className="max-w-lg"
+      className="max-w-2xl"
     >
       <p className="mb-4 text-[13px] text-text-dim">
         Create a draft event for this date. A founder or campus lead must
         publish it before registration opens.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-2">
         {allowChapterPick ? (
-          <div className="sm:col-span-2">
+          <div className="md:col-span-2">
             <FieldLabel>Chapter</FieldLabel>
             <Select
               value={chapterId}
@@ -192,7 +192,7 @@ export function CalendarQuickCreate({
         ) : null}
 
         {/* Event Title */}
-        <div className="sm:col-span-2">
+        <div className="md:col-span-2">
           <FieldLabel>Event Title</FieldLabel>
           <Input
             value={title}
@@ -206,7 +206,7 @@ export function CalendarQuickCreate({
         </div>
 
         {/* Venue */}
-        <div className="sm:col-span-2">
+        <div className="md:col-span-2">
           <FieldLabel>Venue / Location</FieldLabel>
           <Input
             value={venue}
@@ -321,7 +321,7 @@ export function CalendarQuickCreate({
         </div>
 
         {/* Description */}
-        <div className="sm:col-span-2">
+        <div className="md:col-span-2">
           <FieldLabel>Description / Agenda (optional)</FieldLabel>
           <TextArea
             rows={2}

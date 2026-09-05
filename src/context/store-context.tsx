@@ -25,6 +25,7 @@ import {
 import { isUuid, genUuid } from "@/lib/uuid";
 import {
   persistOrganization,
+  persistOrgSettingsPatch,
   persistChapter,
   deleteChapterRemote,
   persistEvent,
@@ -1506,10 +1507,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!normalized) return false;
         const existing = store.eventCategories ?? [];
         if (existing.includes(normalized)) return false;
+        const updated = [...existing, normalized];
         setStore((s) => ({
           ...s,
-          eventCategories: [...(s.eventCategories ?? []), normalized],
+          eventCategories: updated,
         }));
+        // Persist to Supabase org settings so it's shared across all chapters
+        void persistOrgSettingsPatch({ event_categories: updated });
         return true;
       },
       registerForEvent: (registration) => {

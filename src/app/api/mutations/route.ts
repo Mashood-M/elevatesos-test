@@ -153,7 +153,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // 3.5. ORGANIZATION MUTATIONS
     if (type === "organization") {
       const org = data;
       const orgId = isUuid(org.id) ? org.id : DEFAULT_ORG_ID;
@@ -163,7 +162,24 @@ export async function POST(req: Request) {
         slug: org.slug ?? "elevates",
         tagline: org.tagline,
         brand_kit: org.brandKit,
+        // Persist org-level settings (e.g. event categories)
+        ...(org.settings !== undefined ? { settings: org.settings } : {}),
       });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Dedicated mutation: patch org-level settings (e.g. add an event category)
+    if (type === "org_settings_patch") {
+      const patch = data as Record<string, unknown>; // e.g. { event_categories: [...] }
+      const orgId = DEFAULT_ORG_ID;
+      // Fetch current settings first, then merge
+      const { data: orgRow } = await admin.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+      const currentSettings: Record<string, unknown> = (orgRow?.settings as Record<string, unknown>) ?? {};
+      const mergedSettings = { ...currentSettings, ...patch };
+      const { error } = await admin.from("organizations").update({ settings: mergedSettings }).eq("id", orgId);
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }

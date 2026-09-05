@@ -58,6 +58,9 @@ export async function sendMutation<T = any>(type: string, data: any): Promise<Mu
 export async function persistOrganization(org: any): Promise<MutationResult> {
   return sendMutation("organization", org);
 }
+export async function persistOrgSettingsPatch(patch: Record<string, unknown>): Promise<MutationResult> {
+  return sendMutation("org_settings_patch", patch);
+}
 
 // 1. Chapter
 export async function persistChapter(chapter: Chapter): Promise<MutationResult> {

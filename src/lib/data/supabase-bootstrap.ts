@@ -172,6 +172,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const authUser = sessionRes?.data?.session?.user ?? (userRes as any)?.data?.user ?? null;
 
     const orgRow = orgs?.[0];
+    const DEFAULT_CATEGORIES = ["WORKSHOP", "HACKATHON", "MEETUP", "LECTURE", "LAB", "SHOWCASE", "CHALLENGE"];
     const organization: Organization = orgRow
       ? {
           id: orgRow.id,
@@ -181,6 +182,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           brandKit: orgRow.brand_kit ?? defaultBrandKit,
         }
       : emptyStore().organization;
+
+    // Load org-level event categories from settings JSONB column
+    const eventCategories: string[] =
+      Array.isArray(orgRow?.settings?.event_categories) && orgRow.settings.event_categories.length > 0
+        ? (orgRow.settings.event_categories as string[])
+        : DEFAULT_CATEGORIES;
 
     const chapters: Chapter[] = ensureTestChapter(
       (chapterRows ?? []).map((c: Record<string, any>) => ({
@@ -648,6 +655,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       store: {
         ...emptyStore(),
         organization,
+        eventCategories,
         chapters,
         departments,
         classCohorts,

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 
 CREATE TABLE IF NOT EXISTS public.chapters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    elevates_id TEXT UNIQUE,
     organization_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
@@ -46,14 +47,55 @@ CREATE TABLE IF NOT EXISTS public.chapters (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- Helper function: generate unique 6-char alphanumeric chapter token (letters & numbers)
+CREATE OR REPLACE FUNCTION public.generate_chapter_elevates_id()
+RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+  chars  TEXT    := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- no 0/O/1/I confusion
+  result TEXT    := '';
+  i      INT;
+  attempts INT   := 0;
+BEGIN
+  LOOP
+    result := '';
+    FOR i IN 1..6 LOOP
+      result := result || substr(chars, floor(random() * length(chars) + 1)::INT, 1);
+    END LOOP;
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.chapters WHERE elevates_id = 'CHP-' || result);
+    attempts := attempts + 1;
+    IF attempts > 100 THEN
+      RAISE EXCEPTION 'generate_chapter_elevates_id: too many collisions';
+    END IF;
+  END LOOP;
+  RETURN 'CHP-' || result;
+END;
+$$;
+
+-- Trigger: auto-assign elevates_id on INSERT if not supplied
+CREATE OR REPLACE FUNCTION public.assign_chapter_elevates_id()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.elevates_id IS NULL OR NEW.elevates_id = '' THEN
+    NEW.elevates_id := public.generate_chapter_elevates_id();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS before_chapter_insert_assign_elevates_id ON public.chapters;
+CREATE TRIGGER before_chapter_insert_assign_elevates_id
+  BEFORE INSERT ON public.chapters
+  FOR EACH ROW EXECUTE FUNCTION public.assign_chapter_elevates_id();
+
 INSERT INTO public.organizations (id, name, slug, tagline)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Elevates', 'elevates', 'Campus Operating System')
 ON CONFLICT (slug) DO NOTHING;
 
 INSERT INTO public.chapters (
-  id, organization_id, name, slug, college, city, status, published, health_score, member_count, event_count, project_count, founded_at, notes
+  id, elevates_id, organization_id, name, slug, college, city, status, published, health_score, member_count, event_count, project_count, founded_at, notes
 ) VALUES (
-  '00000000-0000-0000-0000-000000000099',
+  'e1e7a050-7e57-4c8a-9b12-a1b2c3d4e5f6',
+  'CHP-TEST01',
   '00000000-0000-0000-0000-000000000001',
   'Elevates Test Chapter',
   'test-chapter',
@@ -64,7 +106,7 @@ INSERT INTO public.chapters (
   98, 32, 8, 6,
   '2026-01-01T00:00:00.000Z',
   'Pinned test sandbox chapter for testing all chapter-wise features, roles, attendance, and forms in isolation.'
-) ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (slug) DO NOTHING;
 
 -- ============================================================================
 -- 2. PROFILES & USER ROLES

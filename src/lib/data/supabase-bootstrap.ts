@@ -246,6 +246,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const chapters: Chapter[] = ensureTestChapter(
       (chapterRows ?? []).map((c: Record<string, any>) => ({
         id: c.id,
+        elevatesId: c.elevates_id ?? undefined,
         organizationId: c.organization_id,
         name: c.name,
         slug: c.slug,

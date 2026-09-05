@@ -169,6 +169,8 @@ export interface Organization {
 
 export interface Chapter {
   id: string;
+  /** Human-readable unique identifier (Format: CHP-XXXXXX) with letters and numbers */
+  elevatesId?: string;
   organizationId: string;
   name: string;
   slug: string;

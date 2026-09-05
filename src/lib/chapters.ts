@@ -1,10 +1,11 @@
 import type { Chapter } from "@/types";
 
-export const TEST_CHAPTER_ID = "00000000-0000-0000-0000-000000000099";
+export const TEST_CHAPTER_ID = "e1e7a050-7e57-4c8a-9b12-a1b2c3d4e5f6";
 export const TEST_CHAPTER_SLUG = "test-chapter";
 
 export const TEST_CHAPTER_DEFAULT: Chapter = {
   id: TEST_CHAPTER_ID,
+  elevatesId: "CHP-TEST01",
   organizationId: "00000000-0000-0000-0000-000000000001",
   name: "Elevates Test Chapter",
   slug: TEST_CHAPTER_SLUG,

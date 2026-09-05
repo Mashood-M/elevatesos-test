@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { useStore } from "@/context/store-context";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -31,15 +32,6 @@ type ApiTokenItem = {
   createdAt: string;
   status: "active" | "revoked";
 };
-
-const AVAILABLE_SCOPES = [
-  { id: "events:read", label: "Read Events & Checkpoints" },
-  { id: "events:write", label: "Create / RSVP Events" },
-  { id: "chapters:read", label: "Read Chapters & Leadership" },
-  { id: "leads:write", label: "Submit Inquiries & Forms" },
-  { id: "webhooks:revalidate", label: "Trigger ISR Cache Purge" },
-  { id: "admin:full", label: "Full Administrative Access" },
-];
 
 const API_ENDPOINTS: ApiEndpoint[] = [
   {
@@ -322,6 +314,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
 ];
 
 export default function DeveloperPortalPage() {
+  const { store } = useStore();
+  const availableScopes = store.developerScopes ?? [];
   const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint>(API_ENDPOINTS[0]);
   const [language, setLanguage] = useState<"curl" | "typescript" | "python">("curl");
   const [dynamicOrigin, setDynamicOrigin] = useState<string>("");
@@ -777,7 +771,7 @@ print(response.json())`;
               API Scopes & Permissions (Select all that apply)
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-bg p-3 rounded-[var(--radius-sm)] border border-border">
-              {AVAILABLE_SCOPES.map((sc) => {
+              {availableScopes.map((sc) => {
                 const checked = selectedScopes.includes(sc.id);
                 return (
                   <button

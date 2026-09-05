@@ -14,9 +14,6 @@ import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import type { ClassCohort, Department } from "@/types";
 
-const YEAR_SUGGESTIONS = ["1st", "2nd", "3rd", "4th"];
-const DIVISION_SUGGESTIONS = ["T1", "T2", "T3", "A", "B", "C", "D"];
-
 type Draft = {
   department: string;
   year: string;
@@ -59,6 +56,9 @@ export default function ChapterClassesPage({
   const canManage =
     isHqRole(session.roleKey) ||
     hasPermission(store, session.roleKey, "class.manage");
+
+  const yearSuggestions = store.academicYears ?? [];
+  const divisionSuggestions = store.academicDivisions ?? [];
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -405,7 +405,7 @@ export default function ChapterClassesPage({
                     }
                   />
                   <datalist id="year-suggestions">
-                    {YEAR_SUGGESTIONS.map((y) => (
+                    {yearSuggestions.map((y) => (
                       <option key={y} value={y} />
                     ))}
                   </datalist>
@@ -421,7 +421,7 @@ export default function ChapterClassesPage({
                     }
                   />
                   <datalist id="division-suggestions">
-                    {DIVISION_SUGGESTIONS.map((s) => (
+                    {divisionSuggestions.map((s) => (
                       <option key={s} value={s} />
                     ))}
                   </datalist>

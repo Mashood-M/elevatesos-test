@@ -20,19 +20,7 @@ import { useStore } from "@/context/store-context";
 
 export default function WebsiteCmsHubPage() {
   const { store } = useStore();
-  const [foundersCount, setFoundersCount] = useState(18);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("elevates_cms_founders");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setFoundersCount(parsed.length);
-        }
-      }
-    } catch {}
-  }, []);
+  const foundersCount = store.founders?.length ?? 0;
 
   const totalEvents = store.events.length;
   const totalChapters = store.chapters.length;

@@ -22,8 +22,6 @@ import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | "open" | "draft" | "closed";
 
-const STRIP_TEMPLATES = FORM_TEMPLATES.filter((t) => t.id !== "blank");
-
 export default function ChapterFormsPage({
   params,
 }: {
@@ -72,7 +70,9 @@ export default function ChapterFormsPage({
       );
   }, [chapterForms, search, status]);
 
-  const template = FORM_TEMPLATES.find((t) => t.id === selectedTemplate);
+  const formTemplates = store.formTemplates ?? [];
+  const stripTemplates = formTemplates.filter((t) => t.id !== "blank");
+  const template = formTemplates.find((t) => t.id === selectedTemplate);
 
   if (!chapter) {
     return <p className="text-orange">Chapter not found</p>;
@@ -88,6 +88,7 @@ export default function ChapterFormsPage({
   function createAndOpen(templateId: FormTemplateId, title?: string) {
     const draft = createFormFromTemplate(templateId, chapter!.id, {
       title: title || undefined,
+      templates: formTemplates,
     });
     const created = createForm(draft);
     router.push(`/chapter/${slug}/forms/${created.id}`);
@@ -97,6 +98,7 @@ export default function ChapterFormsPage({
     const draft = createFormFromTemplate(selectedTemplate, chapter!.id, {
       eventId: attachEventId || undefined,
       title: customTitle || undefined,
+      templates: formTemplates,
     });
     const created = createForm(draft);
     setPickerOpen(false);
@@ -142,7 +144,7 @@ export default function ChapterFormsPage({
                 <p className="truncate text-[13px] font-semibold">Blank form</p>
               </div>
             </button>
-            {STRIP_TEMPLATES.map((t) => (
+            {stripTemplates.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -410,7 +412,7 @@ export default function ChapterFormsPage({
         className="max-w-2xl"
       >
         <div className="grid max-h-[min(50vh,420px)] gap-2 overflow-y-auto sm:grid-cols-2">
-          {FORM_TEMPLATES.map((t) => {
+          {formTemplates.map((t) => {
             const active = selectedTemplate === t.id;
             return (
               <button

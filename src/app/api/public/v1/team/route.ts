@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
 import { resolveMediaUrl } from "@/lib/data/media";
-import { INITIAL_FOUNDERS, INITIAL_ADVISORS, FOUNDING_TEAM_IMAGE } from "@/lib/data/founders-team";
+import { FOUNDING_TEAM_IMAGE } from "@/lib/data/founders-team";
 
 export function OPTIONS() {
   return corsOptions();
@@ -14,29 +14,41 @@ export async function GET() {
       return jsonError("Database connection unavailable", 503);
     }
 
-    const { data, error } = await admin
-      .from("profiles")
-      .select(
-        "id, full_name, avatar_url, bio, department, year, github_url, linkedin_url, portfolio_url, chapter_id",
-      )
-      .order("full_name");
+    const [profilesRes, orgRes] = await Promise.all([
+      admin
+        .from("profiles")
+        .select(
+          "id, full_name, avatar_url, bio, department, year, github_url, linkedin_url, portfolio_url, chapter_id",
+        )
+        .order("full_name"),
+      admin
+        .from("organizations")
+        .select("settings")
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-    if (error) {
-      console.error("Team API database query error:", error);
+    if (profilesRes.error) {
+      console.error("Team API database query error:", profilesRes.error);
       return jsonError("Database error while fetching team profiles", 500);
     }
 
+    const orgSettings = (orgRes?.data?.settings as Record<string, any>) ?? {};
+    const foundersList: any[] = Array.isArray(orgSettings.founders) ? orgSettings.founders : [];
+    const advisorsList: any[] = Array.isArray(orgSettings.advisors) ? orgSettings.advisors : [];
+    const teamImage = orgSettings.founding_team_image || FOUNDING_TEAM_IMAGE;
+
     return jsonOk({
-      foundingTeamImage: resolveMediaUrl(FOUNDING_TEAM_IMAGE),
-      founders: INITIAL_FOUNDERS.map((f) => ({
+      foundingTeamImage: resolveMediaUrl(teamImage),
+      founders: foundersList.map((f) => ({
         ...f,
         image: resolveMediaUrl(f.image),
       })),
-      advisors: INITIAL_ADVISORS.map((a) => ({
+      advisors: advisorsList.map((a) => ({
         ...a,
         image: a.image ? resolveMediaUrl(a.image) : undefined,
       })),
-      team: (data ?? []).map((p) => ({
+      team: (profilesRes.data ?? []).map((p) => ({
         id: p.id,
         fullName: p.full_name,
         avatarUrl: resolveMediaUrl(p.avatar_url),

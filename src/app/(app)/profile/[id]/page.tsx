@@ -20,10 +20,6 @@ import {
   listStudentRepresentatives,
   studentHasClassSet,
 } from "@/lib/forms/helpers";
-import {
-  EOS_COMMUNITY_TIERS,
-  EOS_JOURNEY_STAGES,
-} from "@/lib/eos/doctrine";
 import { withDerivedProgression } from "@/lib/eos/progression";
 import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
@@ -41,6 +37,9 @@ export default function ProfilePage({
   const profile = store.profiles.find(
     (p) => p.id === id || (p.email && p.email.toLowerCase() === id.toLowerCase())
   );
+
+  const communityTiers = store.doctrine?.communityTiers ?? [];
+  const journeyStages = store.doctrine?.journeyStages ?? [];
 
 
   const [cohortId, setCohortId] = useState("");
@@ -240,13 +239,13 @@ export default function ProfilePage({
               {/* Badges */}
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge tone="cyan">
-                  {EOS_COMMUNITY_TIERS.find(
-                    (t) => t.key === derived.engagementTier,
+                  {communityTiers.find(
+                    (t: any) => t.key === derived.engagementTier || t.tier === derived.engagementTier,
                   )?.label ?? "Everyone"}
                 </Badge>
                 <Badge tone="orange">
-                  {EOS_JOURNEY_STAGES.find(
-                    (s) => s.key === derived.journeyStage,
+                  {journeyStages.find(
+                    (s: any) => s.key === derived.journeyStage || s.stage === derived.journeyStage,
                   )?.label ?? "Awareness"}
                 </Badge>
                 {roles.map((r) => (
@@ -438,11 +437,11 @@ export default function ProfilePage({
           </p>
           <div className="flex flex-wrap gap-2">
             <Badge tone="cyan">
-              {EOS_COMMUNITY_TIERS.find((t) => t.key === derived.engagementTier)
+              {communityTiers.find((t: any) => t.key === derived.engagementTier || t.tier === derived.engagementTier)
                 ?.label ?? "Everyone"}
             </Badge>
             <Badge tone="orange">
-              {EOS_JOURNEY_STAGES.find((s) => s.key === derived.journeyStage)
+              {journeyStages.find((s: any) => s.key === derived.journeyStage || s.stage === derived.journeyStage)
                 ?.label ?? "Awareness"}
             </Badge>
           </div>

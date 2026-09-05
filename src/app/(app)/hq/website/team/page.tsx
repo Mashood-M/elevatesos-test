@@ -10,10 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveMediaUrl } from "@/lib/data/media";
-import { INITIAL_FOUNDERS, INITIAL_ADVISORS, FOUNDING_TEAM_IMAGE, Founder, Advisor } from "@/lib/data/founders-team";
-
-const DEFAULT_FOUNDERS: Founder[] = INITIAL_FOUNDERS;
-const DEFAULT_ADVISORS: Advisor[] = INITIAL_ADVISORS;
+import { FOUNDING_TEAM_IMAGE, Founder, Advisor } from "@/lib/data/founders-team";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -142,32 +139,19 @@ function AdvisorEditor({ advisor, onSave, onClose }: { advisor: Advisor; onSave:
 type SectionTab = "founders" | "advisors";
 
 export default function TeamCMSPage() {
-  const { store } = useStore();
+  const { store, updateOrgSettings } = useStore();
   const [tab, setTab] = useState<SectionTab>("founders");
   const [search, setSearch] = useState("");
 
-  const [founders, setFounders] = useState<Founder[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("elevates_cms_founders");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-      } catch {}
-    }
-    return DEFAULT_FOUNDERS;
-  });
-
-  const [advisors, setAdvisors] = useState<Advisor[]>(DEFAULT_ADVISORS);
+  const founders = store.founders ?? [];
+  const advisors = store.advisors ?? [];
 
   const saveFounders = (updated: Founder[]) => {
-    setFounders(updated);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("elevates_cms_founders", JSON.stringify(updated));
-      } catch {}
-    }
+    void updateOrgSettings({ founders: updated });
+  };
+
+  const saveAdvisors = (updated: Advisor[]) => {
+    void updateOrgSettings({ advisors: updated });
   };
 
   const [editingFounder, setEditingFounder] = useState<Founder | null>(null);
@@ -220,11 +204,11 @@ export default function TeamCMSPage() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
-          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">18</p>
+          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">{founders.length}</p>
           <p className="text-xs text-text-dim font-medium mt-1">Founding Members</p>
         </div>
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
-          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">18</p>
+          <p className="text-3xl font-[family-name:var(--font-display)] font-extrabold text-text">{founders.filter(f => f.linkedin).length}</p>
           <p className="text-xs text-text-dim font-medium mt-1">With LinkedIn</p>
         </div>
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-5 shadow-sm">
@@ -236,8 +220,8 @@ export default function TeamCMSPage() {
       {/* Tabs */}
       <div className="flex gap-2 border-b border-border">
         {([
-          { key: "founders", label: "18 Founding Members", icon: Users },
-          { key: "advisors", label: "Faculty Advisors", icon: GraduationCap },
+          { key: "founders", label: `${founders.length} Founding Members`, icon: Users },
+          { key: "advisors", label: `${advisors.length} Faculty Advisors`, icon: GraduationCap },
         ] as { key: SectionTab; label: string; icon: typeof Users }[]).map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -379,7 +363,7 @@ export default function TeamCMSPage() {
               </div>
               <div className="flex gap-2 shrink-0">
                 <Button variant="secondary" size="sm" onClick={() => { setEditingAdvisor(a); setIsNewAdvisor(false); }}><Edit size={13} /></Button>
-                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => setAdvisors((prev) => prev.filter((x) => x.id !== a.id))}><Trash2 size={13} /></Button>
+                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => saveAdvisors(advisors.filter((x) => x.id !== a.id))}><Trash2 size={13} /></Button>
               </div>
             </div>
           ))}
@@ -404,8 +388,8 @@ export default function TeamCMSPage() {
           advisor={editingAdvisor}
           onClose={() => { setEditingAdvisor(null); setIsNewAdvisor(false); }}
           onSave={(saved) => {
-            if (isNewAdvisor) setAdvisors((prev) => [...prev, saved]);
-            else setAdvisors((prev) => prev.map((a) => (a.id === saved.id ? saved : a)));
+            if (isNewAdvisor) saveAdvisors([...advisors, saved]);
+            else saveAdvisors(advisors.map((a) => (a.id === saved.id ? saved : a)));
           }}
         />
       )}

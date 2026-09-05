@@ -15,15 +15,6 @@ import { hasPermission } from "@/lib/permissions";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { Guideline, GuidelineStatus } from "@/types";
 
-const CATEGORIES = [
-  "Operations",
-  "Events",
-  "Members",
-  "Governance",
-  "Brand",
-  "Reporting",
-] as const;
-
 const STATUSES: GuidelineStatus[] = ["draft", "published", "archived"];
 
 type Draft = {
@@ -86,12 +77,12 @@ export default function HqGuidelinesPage() {
   const [flash, setFlash] = useState("");
 
   const categories = useMemo(() => {
-    const set = new Set<string>(CATEGORIES);
+    const set = new Set<string>(store.guidelineCategories ?? []);
     for (const g of guidelines) {
       if (g.category.trim()) set.add(g.category.trim());
     }
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [guidelines]);
+  }, [guidelines, store.guidelineCategories]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();

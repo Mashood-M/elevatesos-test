@@ -11,6 +11,13 @@ import type {
   Profile,
   Project,
   RoleKey,
+  ResourceCategory,
+  ExecutiveSubTeam,
+  Founder,
+  Advisor,
+  FormTemplate,
+  EosDoctrine,
+  DeveloperScope,
 } from "@/types";
 
 const defaultBrandKit: BrandKit = {
@@ -44,15 +51,17 @@ function emptyStore(): ElevatesStore {
     leadershipTerms: [],
     leadershipAssignments: [],
     events: [],
-    eventCategories: [
-      "WORKSHOP",
-      "HACKATHON",
-      "MEETUP",
-      "LECTURE",
-      "LAB",
-      "SHOWCASE",
-      "CHALLENGE",
-    ],
+    eventCategories: [],
+    standardDepartments: [],
+    guidelineCategories: [],
+    academicYears: [],
+    academicDivisions: [],
+    executiveSubTeams: [],
+    founders: [],
+    advisors: [],
+    formTemplates: [],
+    doctrine: {},
+    developerScopes: [],
     eventForms: [],
     forms: [],
     formResponses: [],
@@ -172,7 +181,6 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const authUser = sessionRes?.data?.session?.user ?? (userRes as any)?.data?.user ?? null;
 
     const orgRow = orgs?.[0];
-    const DEFAULT_CATEGORIES = ["WORKSHOP", "HACKATHON", "MEETUP", "LECTURE", "LAB", "SHOWCASE", "CHALLENGE"];
     const organization: Organization = orgRow
       ? {
           id: orgRow.id,
@@ -183,11 +191,57 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         }
       : emptyStore().organization;
 
-    // Load org-level event categories from settings JSONB column
-    const eventCategories: string[] =
-      Array.isArray(orgRow?.settings?.event_categories) && orgRow.settings.event_categories.length > 0
-        ? (orgRow.settings.event_categories as string[])
-        : DEFAULT_CATEGORIES;
+    // Load org-level presets and system data from Supabase settings JSONB column
+    const orgSettings = (orgRow?.settings as Record<string, any>) ?? {};
+
+    const eventCategories: string[] = Array.isArray(orgSettings.event_categories)
+      ? (orgSettings.event_categories as string[])
+      : [];
+
+    const standardDepartments: string[] = Array.isArray(orgSettings.standard_departments)
+      ? (orgSettings.standard_departments as string[])
+      : [];
+
+    const resourceCategories: ResourceCategory[] = Array.isArray(orgSettings.resource_categories)
+      ? (orgSettings.resource_categories as ResourceCategory[])
+      : [];
+
+    const guidelineCategories: string[] = Array.isArray(orgSettings.guideline_categories)
+      ? (orgSettings.guideline_categories as string[])
+      : [];
+
+    const academicYears: string[] = Array.isArray(orgSettings.academic_years)
+      ? (orgSettings.academic_years as string[])
+      : [];
+
+    const academicDivisions: string[] = Array.isArray(orgSettings.academic_divisions)
+      ? (orgSettings.academic_divisions as string[])
+      : [];
+
+    const executiveSubTeams: ExecutiveSubTeam[] = Array.isArray(orgSettings.executive_sub_teams)
+      ? (orgSettings.executive_sub_teams as ExecutiveSubTeam[])
+      : [];
+
+    const founders: Founder[] = Array.isArray(orgSettings.founders)
+      ? (orgSettings.founders as Founder[])
+      : [];
+
+    const advisors: Advisor[] = Array.isArray(orgSettings.advisors)
+      ? (orgSettings.advisors as Advisor[])
+      : [];
+
+    const formTemplates: FormTemplate[] = Array.isArray(orgSettings.form_templates)
+      ? (orgSettings.form_templates as FormTemplate[])
+      : [];
+
+    const doctrine: EosDoctrine =
+      orgSettings.doctrine && typeof orgSettings.doctrine === "object"
+        ? (orgSettings.doctrine as EosDoctrine)
+        : {};
+
+    const developerScopes: DeveloperScope[] = Array.isArray(orgSettings.developer_scopes)
+      ? (orgSettings.developer_scopes as DeveloperScope[])
+      : [];
 
     const chapters: Chapter[] = ensureTestChapter(
       (chapterRows ?? []).map((c: Record<string, any>) => ({
@@ -656,6 +710,17 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         ...emptyStore(),
         organization,
         eventCategories,
+        standardDepartments,
+        resourceCategories,
+        guidelineCategories,
+        academicYears,
+        academicDivisions,
+        executiveSubTeams,
+        founders,
+        advisors,
+        formTemplates,
+        doctrine,
+        developerScopes,
         chapters,
         departments,
         classCohorts,

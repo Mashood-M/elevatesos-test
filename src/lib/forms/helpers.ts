@@ -22,7 +22,6 @@ function mergeResourceCategoriesLocal(
   resourceKeys: string[],
 ): ResourceCategory[] {
   const map = new Map<string, ResourceCategory>();
-  for (const c of DEFAULT_RESOURCE_CATEGORIES) map.set(c.key, c);
   for (const c of stored ?? []) {
     if (c?.key) {
       map.set(c.key, {

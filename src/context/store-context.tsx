@@ -182,6 +182,8 @@ type StoreContextValue = {
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
   /** Add a new global event category. Category is uppercased and de-duplicated. Returns true if added, false if duplicate. */
   addEventCategory: (category: string) => boolean;
+  /** Update and persist organization settings (presets, categories, standard depts, etc.) to Supabase */
+  updateOrgSettings: (patch: Record<string, any>) => Promise<boolean>;
   registerForEvent: (
     registration: EventRegistration,
   ) => { ok: true } | { ok: false; message: string };
@@ -912,15 +914,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       leadershipTerms: [],
       leadershipAssignments: [],
       events: [],
-      eventCategories: [
-        "WORKSHOP",
-        "HACKATHON",
-        "MEETUP",
-        "LECTURE",
-        "LAB",
-        "SHOWCASE",
-        "CHALLENGE",
-      ],
+      eventCategories: [],
+      standardDepartments: [],
+      guidelineCategories: [],
+      academicYears: [],
+      academicDivisions: [],
+      executiveSubTeams: [],
+      founders: [],
+      advisors: [],
+      formTemplates: [],
+      doctrine: {},
+      developerScopes: [],
       eventForms: [],
       forms: [],
       formResponses: [],
@@ -1515,6 +1519,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Persist to Supabase org settings so it's shared across all chapters
         void persistOrgSettingsPatch({ event_categories: updated });
         return true;
+      },
+      updateOrgSettings: async (patch: Record<string, any>) => {
+        setStore((s) => {
+          const nextSettings = { ...s };
+          if (patch.standard_departments) nextSettings.standardDepartments = patch.standard_departments;
+          if (patch.event_categories) nextSettings.eventCategories = patch.event_categories;
+          if (patch.resource_categories) nextSettings.resourceCategories = patch.resource_categories;
+          if (patch.guideline_categories) nextSettings.guidelineCategories = patch.guideline_categories;
+          if (patch.academic_years) nextSettings.academicYears = patch.academic_years;
+          if (patch.academic_divisions) nextSettings.academicDivisions = patch.academic_divisions;
+          if (patch.executive_sub_teams) nextSettings.executiveSubTeams = patch.executive_sub_teams;
+          if (patch.founders) nextSettings.founders = patch.founders;
+          if (patch.advisors) nextSettings.advisors = patch.advisors;
+          if (patch.form_templates) nextSettings.formTemplates = patch.form_templates;
+          if (patch.doctrine) nextSettings.doctrine = { ...s.doctrine, ...patch.doctrine };
+          if (patch.developer_scopes) nextSettings.developerScopes = patch.developer_scopes;
+          return nextSettings;
+        });
+        const res = await persistOrgSettingsPatch(patch);
+        return res.ok;
       },
       registerForEvent: (registration) => {
         let result: { ok: true } | { ok: false; message: string } = {

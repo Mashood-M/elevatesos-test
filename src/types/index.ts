@@ -413,7 +413,7 @@ export interface EventForm {
   fields: FormField[];
 }
 
-export type FormPurpose = "registration" | "feedback" | "custom" | "survey";
+export type FormPurpose = "registration" | "feedback" | "custom" | "survey" | "volunteer";
 
 export type FormQuestionType =
   | "short_text"
@@ -837,7 +837,80 @@ export interface ElevatesStore {
   inviteTokens: InviteToken[];
   chapterInviteCodes?: ChapterInviteCode[];
   peerLabs?: Record<string, any>[];
+  // ── SUPABASE-STORED PRESETS & SYSTEM DATA ──────────────────────────────────
+  standardDepartments: string[];
+  guidelineCategories: string[];
+  academicYears: string[];
+  academicDivisions: string[];
+  executiveSubTeams: ExecutiveSubTeam[];
+  founders: Founder[];
+  advisors: Advisor[];
+  formTemplates: FormTemplate[];
+  doctrine: EosDoctrine;
+  developerScopes: DeveloperScope[];
   session: DemoUserSession;
+}
+
+export interface ExecutiveSubTeam {
+  id: string;
+  label: string;
+  emoji: string;
+  tone: "cyan" | "orange" | "green" | "magenta" | "amber" | "mute";
+  roles: string[];
+  note: string;
+}
+
+export interface Founder {
+  id: string;
+  num?: string;
+  name: string;
+  tag: string;
+  role: string;
+  proof: string;
+  linkedin?: string;
+  cohort: string;
+  image: string;
+}
+
+export interface Advisor {
+  id: string;
+  name: string;
+  role: string;
+  institution: string;
+  linkedin?: string;
+  image?: string;
+}
+
+export interface FormTemplate {
+  id: string;
+  name: string;
+  description: string;
+  purpose: FormPurpose;
+  suggestEvent: boolean;
+  previewQuestions: string[];
+  questions: FormQuestion[];
+}
+
+export interface DeveloperScope {
+  id: string;
+  label: string;
+}
+
+export interface EosDoctrine {
+  vision?: string;
+  mission?: string[];
+  philosophy?: string[];
+  principles?: string[];
+  pillars?: { id: string; title: string; body: string }[];
+  coreRules?: string[];
+  communityTiers?: { tier: string; label: string; access: string }[];
+  journeyStages?: { stage: string; label: string; detail: string }[];
+  eventProgression?: { stage: string; title: string; format: string }[];
+  activities?: { title: string; frequency: string; desc: string }[];
+  chapterStandards?: string[];
+  clusterResponsibilities?: string[];
+  successMetrics?: string[];
+  playbookSections?: { id: string; title: string }[];
 }
 
 export interface ChapterInviteCode {

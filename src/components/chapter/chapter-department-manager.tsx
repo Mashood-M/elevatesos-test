@@ -10,21 +10,13 @@ interface Props {
   chapterId: string;
 }
 
-const DEFAULT_ENGINEERING_DEPTS = [
-  "Computer Science & Engineering (CSE)",
-  "Artificial Intelligence & Data Science (AI & DS)",
-  "Information Technology (IT)",
-  "Electronics & Communication Engineering (ECE)",
-  "Electrical & Electronics Engineering (EEE)",
-  "Mechanical Engineering (ME)",
-  "Civil Engineering (CE)",
-];
-
 export function ChapterDepartmentManager({ chapterId }: Props) {
   const { store, createDepartment, deleteDepartment } = useStore();
   const [newDeptName, setNewDeptName] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  const standardDepts = store.standardDepartments ?? [];
 
   const chapterDepts = (store.departments ?? []).filter(
     (d) => d.chapterId === chapterId
@@ -57,7 +49,7 @@ export function ChapterDepartmentManager({ chapterId }: Props) {
     setSuccessMsg("");
     let addedCount = 0;
 
-    DEFAULT_ENGINEERING_DEPTS.forEach((dept) => {
+    standardDepts.forEach((dept) => {
       const created = createDepartment({ chapterId, name: dept });
       if (created) addedCount++;
     });
@@ -66,7 +58,7 @@ export function ChapterDepartmentManager({ chapterId }: Props) {
       setSuccessMsg(`Added ${addedCount} standard departments.`);
       setTimeout(() => setSuccessMsg(""), 2500);
     } else {
-      setErrorMsg("All default departments are already present.");
+      setErrorMsg("All standard departments are already present.");
     }
   };
 
@@ -99,7 +91,7 @@ export function ChapterDepartmentManager({ chapterId }: Props) {
           </div>
         </div>
 
-        {chapterDepts.length === 0 && (
+        {chapterDepts.length === 0 && standardDepts.length > 0 && (
           <Button
             type="button"
             variant="ghost"
@@ -107,7 +99,7 @@ export function ChapterDepartmentManager({ chapterId }: Props) {
             onClick={handleAddDefaults}
           >
             <Sparkles size={14} />
-            <span>⚡ Load Default Engineering Depts</span>
+            <span>⚡ Load {standardDepts.length} Standard Depts</span>
           </Button>
         )}
       </div>

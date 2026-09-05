@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS public.organizations (
     name TEXT NOT NULL,
     slug TEXT UNIQUE NOT NULL,
     tagline TEXT,
+    settings JSONB DEFAULT '{}'::jsonb,
     brand_kit JSONB DEFAULT '{
       "logoUrl": "/logo.svg",
       "colors": {
@@ -48,6 +49,22 @@ CREATE TABLE IF NOT EXISTS public.chapters (
 INSERT INTO public.organizations (id, name, slug, tagline)
 VALUES ('00000000-0000-0000-0000-000000000001', 'Elevates', 'elevates', 'Campus Operating System')
 ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO public.chapters (
+  id, organization_id, name, slug, college, city, status, published, health_score, member_count, event_count, project_count, founded_at, notes
+) VALUES (
+  '00000000-0000-0000-0000-000000000099',
+  '00000000-0000-0000-0000-000000000001',
+  'Elevates Test Chapter',
+  'test-chapter',
+  'Elevates Sandbox Institute of Technology',
+  'HQ Sandbox Campus',
+  'active',
+  true,
+  98, 32, 8, 6,
+  '2026-01-01T00:00:00.000Z',
+  'Pinned test sandbox chapter for testing all chapter-wise features, roles, attendance, and forms in isolation.'
+) ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
 -- 2. PROFILES & USER ROLES

@@ -5,6 +5,7 @@ const tones = {
   magenta: "bg-[var(--secondary-soft)] text-[var(--secondary)]",
   green: "bg-[var(--success-soft)] text-[var(--success)]",
   orange: "bg-[var(--accent-soft)] text-[var(--accent-hover)]",
+  amber: "bg-amber-500/10 text-amber-500",
   mute: "bg-bg text-text-mute",
 };
 

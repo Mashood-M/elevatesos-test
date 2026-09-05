@@ -25,50 +25,6 @@ import type {
   RoleKey,
 } from "@/types";
 
-// Executive sub-team groupings for the role inspector
-const EXEC_SUB_TEAMS = [
-  {
-    id: "officers",
-    label: "Core Officers",
-    emoji: "👑",
-    tone: "cyan" as const,
-    roles: ["chairman", "vice_chairman", "secretary", "joint_secretary"],
-    note: "Chairman (1) · Vice Chairmen (2+) · Secretary (1) · Joint Secretary",
-  },
-  {
-    id: "media",
-    label: "Media Team",
-    emoji: "📸",
-    tone: "orange" as const,
-    roles: ["media_lead", "media_team"],
-    note: "2 Heads + 8 Members — Design, Photography, Social, Coverage",
-  },
-  {
-    id: "technical",
-    label: "Technical Team",
-    emoji: "💻",
-    tone: "green" as const,
-    roles: ["technical_lead", "technical_team"],
-    note: "2 Heads + Members — Platform, Dev, Infra, Workshops",
-  },
-  {
-    id: "innovation",
-    label: "Innovation Team",
-    emoji: "🚀",
-    tone: "cyan" as const,
-    roles: ["innovation_lead", "innovation_team"],
-    note: "2 Heads + Members — AI Labs, Hackathons, Idea Sprints",
-  },
-  {
-    id: "community",
-    label: "Community & Coordinators",
-    emoji: "🌐",
-    tone: "magenta" as const,
-    roles: ["elevates_coordinator", "class_representative", "faculty_coordinator"],
-    note: "Coordinators & Class Representatives",
-  },
-];
-
 type TermDraft = {
   academicYear: string;
   title: string;
@@ -871,7 +827,7 @@ export default function ChapterLeadershipPage({
             The <strong className="text-[var(--accent)]">Chairman</strong> directly assigns members to each sub-role. No hiring pipeline — just pick a member, pick their role, done.
           </p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {EXEC_SUB_TEAMS.map((team) => {
+            {(store.executiveSubTeams ?? []).map((team) => {
               const activeTermId = terms.find((t) => t.status === "active")?.id;
               const teamAssignments = activeTermId
                 ? store.leadershipAssignments.filter(

@@ -62,9 +62,7 @@ export default function HqResourcesPage() {
   const canManage = hasPermission(store, session.roleKey, "resource.upload");
 
   const categories = useMemo(() => {
-    return store.resourceCategories && store.resourceCategories.length > 0
-      ? store.resourceCategories
-      : DEFAULT_RESOURCE_CATEGORIES;
+    return store.resourceCategories ?? [];
   }, [store.resourceCategories]);
 
   const labelOf = (key: string) =>

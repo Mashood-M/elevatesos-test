@@ -22,8 +22,22 @@ export function ChapterInviteCodeManager({
 
   const inviteCodes = useMemo(() => {
     const all = store.chapterInviteCodes ?? [];
-    return all.filter((c) => c.chapterId === chapterId);
-  }, [store.chapterInviteCodes, chapterId]);
+    return all
+      .filter((c) => c.chapterId === chapterId)
+      .map((c) => {
+        const tokenUpper = c.code.toUpperCase();
+        const logCount = (store.activityLogs ?? []).filter(
+          (al) =>
+            al.action === "chapter_invite_used" &&
+            (al.entityId?.toUpperCase() === tokenUpper ||
+              (typeof al.meta === "string" && al.meta.toUpperCase().includes(tokenUpper)))
+        ).length;
+        return {
+          ...c,
+          usesCount: Math.max(c.usesCount ?? 0, logCount),
+        };
+      });
+  }, [store.chapterInviteCodes, store.activityLogs, chapterId]);
 
   function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +100,7 @@ export function ChapterInviteCodeManager({
               </h2>
             </div>
             <p className="mt-1 text-xs text-text-mute max-w-xl">
-              Generate unique invite codes for students to join your college chapter directly. 
+              Generate unique invite codes for students to join your college chapter directly.
               Each generated code is <strong className="text-white">strictly valid for 3 days</strong> from creation. You can revoke active codes at any time.
             </p>
           </div>
@@ -113,11 +127,10 @@ export function ChapterInviteCodeManager({
         </form>
 
         {msg && (
-          <div className={`mt-4 rounded-md border p-3 text-xs font-semibold ${
-            msg.type === "success" 
+          <div className={`mt-4 rounded-md border p-3 text-xs font-semibold ${msg.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
               : "border-red-500/30 bg-red-500/10 text-red-300"
-          }`}>
+            }`}>
             {msg.text}
           </div>
         )}

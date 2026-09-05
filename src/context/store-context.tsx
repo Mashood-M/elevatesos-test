@@ -658,13 +658,13 @@ function applyReportReview(
     reports: s.reports.map((r) =>
       r.id === reportId
         ? {
-            ...r,
-            status,
-            hqComment,
-            ...(decision === "approve"
-              ? { approvedBy: actorId }
-              : { approvedBy: undefined }),
-          }
+          ...r,
+          status,
+          hqComment,
+          ...(decision === "approve"
+            ? { approvedBy: actorId }
+            : { approvedBy: undefined }),
+        }
         : r,
     ),
     activityLogs: [
@@ -1090,8 +1090,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 nextStatus === "approved"
                   ? r.qrCode || mintQrCode(r.eventId, r.userId)
                   : nextStatus === "pending" ||
-                      nextStatus === "rejected" ||
-                      nextStatus === "waitlisted"
+                    nextStatus === "rejected" ||
+                    nextStatus === "waitlisted"
                     ? ""
                     : r.qrCode;
               return {
@@ -1100,8 +1100,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 qrCode,
                 reviewedBy:
                   nextStatus === "reviewed" ||
-                  nextStatus === "approved" ||
-                  nextStatus === "waitlisted"
+                    nextStatus === "approved" ||
+                    nextStatus === "waitlisted"
                     ? actorId
                     : r.reviewedBy,
                 approvedBy:
@@ -1111,43 +1111,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             notifications: [
               ...(nextStatus === "approved" || nextStatus === "waitlisted"
                 ? (() => {
-                    const event = s.events.find((e) => e.id === reg.eventId);
-                    const chapter = event
-                      ? s.chapters.find((c) => c.id === event.chapterId)
-                      : undefined;
-                    const profile = s.profiles.find((p) => p.id === reg.userId);
-                    const { title, body } = buildOutboundBody(
-                      nextStatus === "approved"
-                        ? "registration_approved"
-                        : "registration_waitlisted",
-                      {
-                        name: profile?.fullName,
-                        eventTitle: event?.title,
-                      },
-                    );
-                    return notifyUsers([reg.userId], {
-                      title,
-                      body,
-                      href: chapter
-                        ? `/chapter/${chapter.slug}/events/${reg.eventId}`
-                        : undefined,
-                    });
-                  })()
+                  const event = s.events.find((e) => e.id === reg.eventId);
+                  const chapter = event
+                    ? s.chapters.find((c) => c.id === event.chapterId)
+                    : undefined;
+                  const profile = s.profiles.find((p) => p.id === reg.userId);
+                  const { title, body } = buildOutboundBody(
+                    nextStatus === "approved"
+                      ? "registration_approved"
+                      : "registration_waitlisted",
+                    {
+                      name: profile?.fullName,
+                      eventTitle: event?.title,
+                    },
+                  );
+                  return notifyUsers([reg.userId], {
+                    title,
+                    body,
+                    href: chapter
+                      ? `/chapter/${chapter.slug}/events/${reg.eventId}`
+                      : undefined,
+                  });
+                })()
                 : []),
               ...s.notifications,
             ],
             outboundMessages: [
               ...(nextStatus === "approved" || nextStatus === "waitlisted"
                 ? outboundForRegistration(
-                    s,
-                    {
-                      id: reg.id,
-                      userId: reg.userId,
-                      eventId: reg.eventId,
-                      ticketNo: undefined,
-                    },
-                    nextStatus,
-                  )
+                  s,
+                  {
+                    id: reg.id,
+                    userId: reg.userId,
+                    eventId: reg.eventId,
+                    ticketNo: undefined,
+                  },
+                  nextStatus,
+                )
                 : []),
               ...(s.outboundMessages ?? []),
             ],
@@ -1232,8 +1232,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
           const attendance = existing
             ? s.attendance.map((a) =>
-                a.id === existing.id ? record : a,
-              )
+              a.id === existing.id ? record : a,
+            )
             : [record, ...s.attendance];
           const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
           void runPersist(persistAttendance(record), {
@@ -1412,8 +1412,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const activeUserId = isUuid(store.session.userId)
           ? store.session.userId
           : isUuid(store.session.authUserId)
-          ? store.session.authUserId
-          : undefined;
+            ? store.session.authUserId
+            : undefined;
         const organizerId = isUuid(event.organizerId) ? event.organizerId : activeUserId;
         const chapterId = isUuid(event.chapterId)
           ? event.chapterId
@@ -1651,8 +1651,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             forms,
             eventForms: exists
               ? s.eventForms.map((f) =>
-                  f.eventId === eventId ? { eventId, fields } : f,
-                )
+                f.eventId === eventId ? { eventId, fields } : f,
+              )
               : [{ eventId, fields }, ...s.eventForms],
           };
         });
@@ -1698,8 +1698,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const exists = eventForms.some((f) => f.eventId === eventId);
             eventForms = exists
               ? eventForms.map((f) =>
-                  f.eventId === eventId ? { eventId, fields } : f,
-                )
+                f.eventId === eventId ? { eventId, fields } : f,
+              )
               : [{ eventId, fields }, ...eventForms];
           }
           return { ...s, forms, eventForms };
@@ -1750,10 +1750,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
             eventForms = exists
               ? eventForms.map((ef) =>
-                  ef.eventId === updatedForm.eventId
-                    ? { eventId: updatedForm.eventId!, fields }
-                    : ef,
-                )
+                ef.eventId === updatedForm.eventId
+                  ? { eventId: updatedForm.eventId!, fields }
+                  : ef,
+              )
               : [{ eventId: updatedForm.eventId, fields }, ...eventForms];
           }
           return { ...s, forms, eventForms };
@@ -1841,10 +1841,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const exists = eventForms.some((ef) => ef.eventId === updatedForm.eventId);
             eventForms = exists
               ? eventForms.map((ef) =>
-                  ef.eventId === updatedForm.eventId
-                    ? { eventId: updatedForm.eventId!, fields }
-                    : ef,
-                )
+                ef.eventId === updatedForm.eventId
+                  ? { eventId: updatedForm.eventId!, fields }
+                  : ef,
+              )
               : [{ eventId: updatedForm.eventId, fields }, ...eventForms];
           }
           return { ...s, forms, eventForms };
@@ -2157,15 +2157,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const profiles = s.profiles.map((p) =>
               p.id === existing.id
                 ? {
-                    ...p,
-                    chapterId: input.chapterId,
-                    department: input.department ?? p.department,
-                    year: input.year ?? p.year,
-                    engagementTier: (p.engagementTier ??
-                      "everyone") as EngagementTier,
-                    journeyStage: (p.journeyStage ??
-                      "awareness") as JourneyStage,
-                  }
+                  ...p,
+                  chapterId: input.chapterId,
+                  department: input.department ?? p.department,
+                  year: input.year ?? p.year,
+                  engagementTier: (p.engagementTier ??
+                    "everyone") as EngagementTier,
+                  journeyStage: (p.journeyStage ??
+                    "awareness") as JourneyStage,
+                }
                 : p,
             );
             const countFor = (chapterId: string) =>
@@ -2265,7 +2265,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const now = new Date();
         const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Strictly 3 days validity
         const chap = store.chapters.find((c) => c.id === chapterId);
-        
+
         // Derive college short code prefix
         let prefix = "ELEV";
         if (chap) {
@@ -2426,19 +2426,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const updatedProfiles = s.profiles.map((p) =>
             p.id === targetUserId || (s.session.authUserId && p.id === s.session.authUserId)
               ? {
-                  ...p,
-                  chapterId: targetChapter.id,
-                  department: department?.trim() || p.department,
-                  status: "active" as const,
-                }
+                ...p,
+                chapterId: targetChapter.id,
+                department: department?.trim() || p.department,
+                status: "active" as const,
+              }
               : p
           );
 
           const updatedSession = { ...s.session, chapterId: targetChapter.id };
 
-          const updatedCodes = (s.chapterInviteCodes ?? []).map((c) =>
-            matchingCode && c.id === matchingCode.id ? { ...c, usesCount: c.usesCount + 1 } : c
-          );
+          const updatedCodes = (s.chapterInviteCodes ?? []).map((c) => {
+            const isMatch =
+              c.code.toUpperCase() === cleanCode ||
+              (matchingCode && c.id === matchingCode.id);
+            return isMatch ? { ...c, usesCount: (c.usesCount || 0) + 1 } : c;
+          });
+
+          const joinLog: import("@/types").ActivityLog = {
+            id: `al-inv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            actorId: targetUserId,
+            action: "chapter_invite_used",
+            entity: "chapter_invite_code",
+            entityId: cleanCode,
+            meta: JSON.stringify({
+              code: cleanCode,
+              chapterId: targetChapter.id,
+              userId: targetUserId,
+              department: department?.trim(),
+              joinedAt: new Date().toISOString(),
+            }),
+            createdAt: new Date().toISOString(),
+          };
 
           const hasRole = s.userRoles.some((ur) => ur.userId === targetUserId && ur.chapterId === targetChapter.id);
           let updatedUserRoles = s.userRoles;
@@ -2459,10 +2478,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             session: updatedSession,
             chapterInviteCodes: updatedCodes,
             userRoles: updatedUserRoles,
+            activityLogs: [joinLog, ...(s.activityLogs ?? [])],
           };
         });
 
-        // Supabase DB Persistence
+        // Supabase DB Persistence & Server Mutation (bypasses RLS)
+        fetch("/api/mutations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "chapter_invite_join",
+            data: {
+              code: cleanCode,
+              codeId: matchingCode?.id,
+              userId: targetUserId,
+              chapterId: targetChapter.id,
+              department: department?.trim(),
+            },
+          }),
+        }).catch((err) => {
+          console.warn("Could not post chapter_invite_join mutation:", err);
+        });
+
         const supabase = createClient();
         if (supabase && targetUserId) {
           supabase
@@ -2585,10 +2622,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             profiles = s.profiles.map((p) =>
               p.id === invite.userId
                 ? {
-                    ...p,
-                    engagementTier: "cluster" as EngagementTier,
-                    journeyStage: "cluster" as JourneyStage,
-                  }
+                  ...p,
+                  engagementTier: "cluster" as EngagementTier,
+                  journeyStage: "cluster" as JourneyStage,
+                }
                 : p,
             );
           }
@@ -2946,16 +2983,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const next =
             idx >= 0
               ? s.rolePermissions.map((rp, i) =>
-                  i === idx ? { ...rp, allowed } : rp,
-                )
+                i === idx ? { ...rp, allowed } : rp,
+              )
               : [
-                  ...s.rolePermissions,
-                  {
-                    roleId: role.id,
-                    permissionId: permission.id,
-                    allowed,
-                  },
-                ];
+                ...s.rolePermissions,
+                {
+                  roleId: role.id,
+                  permissionId: permission.id,
+                  allowed,
+                },
+              ];
           return {
             ...s,
             rolePermissions: next,
@@ -3031,13 +3068,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
           classCohorts: (s.classCohorts ?? []).map((c) =>
             c.chapterId === existing.chapterId &&
-            c.department.trim().toUpperCase() === oldName.trim().toUpperCase()
+              c.department.trim().toUpperCase() === oldName.trim().toUpperCase()
               ? { ...c, department: name }
               : c,
           ),
           profiles: s.profiles.map((p) =>
             p.chapterId === existing.chapterId &&
-            (p.department ?? "").trim().toUpperCase() ===
+              (p.department ?? "").trim().toUpperCase() ===
               oldName.trim().toUpperCase()
               ? { ...p, department: name }
               : p,
@@ -3067,7 +3104,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           (c) =>
             c.chapterId === existing.chapterId &&
             c.department.trim().toUpperCase() ===
-              existing.name.trim().toUpperCase(),
+            existing.name.trim().toUpperCase(),
         );
         if (inUse) return false;
 
@@ -4395,10 +4432,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             : {}),
           ...(patch.sections !== undefined
             ? {
-                sections: patch.sections
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-              }
+              sections: patch.sections
+                .map((x) => x.trim())
+                .filter(Boolean),
+            }
             : {}),
           ...(patch.body !== undefined
             ? { body: patch.body.trim() || existing.body }
@@ -4406,8 +4443,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...(patch.status !== undefined ? { status: patch.status } : {}),
           ...(patch.relatedHref !== undefined
             ? {
-                relatedHref: patch.relatedHref.trim() || undefined,
-              }
+              relatedHref: patch.relatedHref.trim() || undefined,
+            }
             : {}),
           updatedBy: store.session.userId,
           updatedAt: new Date().toISOString(),
@@ -4543,8 +4580,8 @@ export function useCurrentUser() {
   const userId = store.session.userId;
   let profile = userId
     ? store.profiles.find(
-        (p) => p.id === userId || (p.email && p.email.toLowerCase() === userId.toLowerCase())
-      )
+      (p) => p.id === userId || (p.email && p.email.toLowerCase() === userId.toLowerCase())
+    )
     : undefined;
 
   if (!profile && userId) {

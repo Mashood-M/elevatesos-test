@@ -183,12 +183,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow
       ? {
-          id: orgRow.id,
-          name: orgRow.name,
-          slug: orgRow.slug,
-          tagline: orgRow.tagline ?? "Campus Operating System",
-          brandKit: orgRow.brand_kit ?? defaultBrandKit,
-        }
+        id: orgRow.id,
+        name: orgRow.name,
+        slug: orgRow.slug,
+        tagline: orgRow.tagline ?? "Campus Operating System",
+        brandKit: orgRow.brand_kit ?? defaultBrandKit,
+      }
       : emptyStore().organization;
 
     // Load org-level presets and system data from Supabase settings JSONB column
@@ -618,7 +618,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         const userRoleEntries = userRoles.filter(
           (ur: Record<string, any>) => ur.userId === matchedProfile.id || ur.userId === authUser.id
         );
-        
+
         const ROLE_PRIORITY: RoleKey[] = [
           "student",
           "faculty_coordinator",
@@ -667,7 +667,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           const savedRoleKey = rawSavedRole !== "guest" ? rawSavedRole as RoleKey | null : null;
           const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
           const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
-          
+
           if (savedRoleKey && (isHqUser || assignedKeys.includes(savedRoleKey))) {
             activeRoleKey = savedRoleKey;
           }
@@ -760,16 +760,25 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           expiresAt: t.expires_at ?? undefined,
           isActive: t.is_active ?? true,
         })),
-        chapterInviteCodes: (inviteRows ?? []).map((t: Record<string, any>) => ({
-          id: t.id,
-          chapterId: t.chapter_id ?? "",
-          code: t.token ?? "",
-          createdBy: t.created_by ?? "",
-          createdAt: t.created_at ?? new Date().toISOString(),
-          expiresAt: t.expires_at ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-          isRevoked: !(t.is_active ?? true),
-          usesCount: t.used_by ? 1 : 0,
-        })),
+        chapterInviteCodes: (inviteRows ?? []).map((t: Record<string, any>) => {
+          const tokenStr = (t.token ?? "").toUpperCase();
+          const logCount = (activityRows ?? []).filter(
+            (al: any) =>
+              al.action === "chapter_invite_used" &&
+              (al.entity_id?.toUpperCase() === tokenStr ||
+                (typeof al.meta === "string" && al.meta.toUpperCase().includes(tokenStr)))
+          ).length;
+          return {
+            id: t.id,
+            chapterId: t.chapter_id ?? "",
+            code: t.token ?? "",
+            createdBy: t.created_by ?? "",
+            createdAt: t.created_at ?? new Date().toISOString(),
+            expiresAt: t.expires_at ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            isRevoked: !(t.is_active ?? true),
+            usesCount: Math.max(logCount, t.used_by ? 1 : 0),
+          };
+        }),
         session,
       },
       _dataSource: "database" as StoreDataSource,

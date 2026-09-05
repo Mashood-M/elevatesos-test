@@ -858,6 +858,149 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    // 22. CHAPTER INVITE CODE MUTATIONS
+    if (type === "chapter_invite_join") {
+      const { code, codeId, userId, chapterId, department } = data;
+      const cleanCode = (code || "").trim().toUpperCase();
+
+      // 1. Locate invite token by id or token string
+      let tokenRow: any = null;
+      if (isUuid(codeId)) {
+        const { data: foundById } = await admin
+          .from("invite_tokens")
+          .select("*")
+          .eq("id", codeId)
+          .maybeSingle();
+        tokenRow = foundById;
+      }
+      if (!tokenRow && cleanCode) {
+        const { data: foundByToken } = await admin
+          .from("invite_tokens")
+          .select("*")
+          .ilike("token", cleanCode)
+          .maybeSingle();
+        tokenRow = foundByToken;
+      }
+
+      // 2. Synchronize user profile if valid user UUID
+      if (isUuid(userId)) {
+        const profileUpdates: Record<string, any> = {
+          status: "active",
+        };
+        if (isUuid(chapterId)) {
+          profileUpdates.chapter_id = chapterId;
+        }
+        if (department && typeof department === "string") {
+          profileUpdates.department = department.trim();
+        }
+
+        await admin.from("profiles").update(profileUpdates).eq("id", userId);
+
+        // Ensure user has the student role for this chapter
+        if (isUuid(chapterId)) {
+          const { data: existingRole } = await admin
+            .from("user_roles")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("chapter_id", chapterId)
+            .maybeSingle();
+
+          if (!existingRole) {
+            const { data: studentRole } = await admin
+              .from("roles")
+              .select("id")
+              .eq("key", "student")
+              .maybeSingle();
+
+            await admin.from("user_roles").insert({
+              user_id: userId,
+              role_key: "student",
+              role_id: studentRole?.id || null,
+              chapter_id: chapterId,
+              organization_id: DEFAULT_ORG_ID,
+              is_permanent: true,
+            });
+          }
+        }
+      }
+
+      // 3. Mark invite token with latest user and timestamp
+      const effectiveTokenId = tokenRow?.id || (isUuid(codeId) ? codeId : null);
+      if (effectiveTokenId) {
+        await admin
+          .from("invite_tokens")
+          .update({
+            used_by: isUuid(userId) ? userId : null,
+            used_at: new Date().toISOString(),
+          })
+          .eq("id", effectiveTokenId);
+      } else if (cleanCode) {
+        await admin
+          .from("invite_tokens")
+          .update({
+            used_by: isUuid(userId) ? userId : null,
+            used_at: new Date().toISOString(),
+          })
+          .ilike("token", cleanCode);
+      }
+
+      // 4. Record usage in activity_logs for permanent, multi-user join count tracking
+      await admin.from("activity_logs").insert({
+        actor_id: isUuid(userId) ? userId : null,
+        action: "chapter_invite_used",
+        entity: "chapter_invite_code",
+        entity_id: cleanCode || tokenRow?.token || effectiveTokenId || "UNKNOWN",
+        meta: JSON.stringify({
+          chapterId,
+          code: cleanCode || tokenRow?.token,
+          userId,
+          department,
+          joinedAt: new Date().toISOString(),
+        }),
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "chapter_invite_code") {
+      const { id, chapterId, code, createdBy, expiresAt } = data;
+      const cleanCode = (code || "").trim().toUpperCase();
+      const creatorId = isUuid(createdBy) ? createdBy : "11111111-1111-1111-1111-111111111111";
+
+      const insertPayload: Record<string, any> = {
+        token: cleanCode,
+        created_by: creatorId,
+        chapter_id: isUuid(chapterId) ? chapterId : null,
+        expires_at: expiresAt || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        is_active: true,
+      };
+      if (isUuid(id)) {
+        insertPayload.id = id;
+      }
+
+      const { data: insRow, error: insErr } = await admin
+        .from("invite_tokens")
+        .insert(insertPayload)
+        .select("id")
+        .single();
+
+      if (insErr) {
+        console.error("Error inserting invite token in Supabase:", insErr);
+        return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ ok: true, id: insRow?.id || id });
+    }
+
+    if (type === "revoke_chapter_invite_code") {
+      const { id } = data;
+      if (id) {
+        const query = isUuid(id) ? { id } : { token: id.trim().toUpperCase() };
+        await admin.from("invite_tokens").update({ is_active: false }).match(query);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     return NextResponse.json({ ok: false, error: `Unknown mutation type: ${type}` }, { status: 400 });
   } catch (err: any) {
     console.error("Mutation handler exception:", err);

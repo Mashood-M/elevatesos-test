@@ -218,3 +218,28 @@ export async function persistProfile(profile: Profile | Partial<Profile>): Promi
 export async function persistUserRoles(userId: string, assignments: any[], organizationId?: string): Promise<MutationResult> {
   return sendMutation("user_roles", { userId, assignments, organizationId });
 }
+
+// 15. Chapter Invite Codes
+export async function recordChapterInviteJoin(payload: {
+  code: string;
+  codeId?: string;
+  userId: string;
+  chapterId: string;
+  department?: string;
+}): Promise<MutationResult> {
+  return sendMutation("chapter_invite_join", payload);
+}
+
+export async function persistChapterInviteCode(payload: {
+  id?: string;
+  chapterId: string;
+  code: string;
+  createdBy?: string;
+  expiresAt: string;
+}): Promise<MutationResult<{ id: string }>> {
+  return sendMutation("chapter_invite_code", payload);
+}
+
+export async function revokeChapterInviteCodeRemote(id: string): Promise<MutationResult> {
+  return sendMutation("revoke_chapter_invite_code", { id });
+}

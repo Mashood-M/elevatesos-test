@@ -27,6 +27,7 @@ import { Stat } from "@/components/ui/stat";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
+import { isSuperAdmin } from "@/lib/permissions";
 import { initials } from "@/lib/utils";
 
 interface PreCollectedStudent {
@@ -54,6 +55,9 @@ export default function ChapterStudentsPage({
   const { store, createUser } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
+
+  const isCampusLead = session.roleKey === "campus_lead";
+  const canDelete = !isCampusLead && isSuperAdmin(session.roleKey);
 
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const { approveJoinRequests, rejectJoinRequests } = useStore();
@@ -235,6 +239,7 @@ export default function ChapterStudentsPage({
   };
 
   const handleDelete = (id: string) => {
+    if (!canDelete) return;
     if (confirm("Remove student from database?")) {
       setStudentList((prev) => prev.filter((s) => s.id !== id));
     }
@@ -474,14 +479,16 @@ export default function ChapterStudentsPage({
                           <Sparkles size={12} className="mr-1" /> Sync to Account
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(stu.id)}
-                        className="h-7 px-2 text-red-500 hover:bg-red-50"
-                      >
-                        <Trash2 size={13} />
-                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(stu.id)}
+                          className="h-7 px-2 text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 size={13} />
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

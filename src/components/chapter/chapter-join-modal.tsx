@@ -75,6 +75,38 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     }
   };
 
+  const currentChapterId =
+    session.chapterId ||
+    store.profiles.find((p) => p.id === session.userId)?.chapterId;
+  const currentChapter = currentChapterId
+    ? store.chapters.find((c) => c.id === currentChapterId)
+    : null;
+
+  if (currentChapter) {
+    return (
+      <Dialog open={isOpen} onClose={handleReset} title="Join Chapter">
+        <div className="p-6 max-w-sm w-full bg-bg-panel rounded-[18px] border border-border shadow-2xl text-center space-y-4">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+            <CheckCircle2 size={26} />
+          </div>
+          <div>
+            <h3 className="font-bold text-base text-text">Already in Chapter</h3>
+            <p className="mt-1.5 text-xs text-text-dim">
+              You are already in the chapter{currentChapter.name ? ` (${currentChapter.name})` : ""}.
+            </p>
+          </div>
+          <Button
+            variant="orange"
+            onClick={handleReset}
+            className="w-full py-2.5 text-xs font-bold"
+          >
+            OK
+          </Button>
+        </div>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onClose={handleReset} title="Join Chapter">
       <div className="p-6 max-w-lg w-full bg-bg-panel rounded-[18px] border border-[var(--accent)] shadow-2xl space-y-5">

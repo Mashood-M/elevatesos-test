@@ -89,7 +89,6 @@ export function navGroupsForRole(
 ): NavGroup[] {
   const slug = chapterSlug || "";
   const base = slug ? `/chapter/${slug}` : "/chapter";
-  const isCampusLeadRole = roleKey === "campus_lead";
 
   if (isHqRole(roleKey)) {
     const network: NavItem[] = [
@@ -98,7 +97,7 @@ export function navGroupsForRole(
         ? [{ href: "/hq/users", label: "Users", icon: I.usersAdmin }]
         : []),
       { href: "/hq/leadership", label: "Leadership", icon: I.leadership },
-      { href: "/hq/permissions", label: "Roles", icon: I.roles },
+      // { href: "/hq/permissions", label: "Roles", icon: I.roles }, // hidden — role matrix not exposed in nav
       { href: "/hq/reports", label: "Reports", icon: I.reports },
       { href: "/hq/certificates", label: "Certificates", icon: I.certificates },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
@@ -200,9 +199,6 @@ export function navGroupsForRole(
           { href: `${base}/students`, label: "Student Roster", icon: I.students },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
-          ...(isCampusLeadRole
-            ? [{ href: "/hq/users", label: "Manage Roles", icon: I.usersAdmin }]
-            : []),
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
             href: `${base}/announcements`,

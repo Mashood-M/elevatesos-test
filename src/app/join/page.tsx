@@ -60,6 +60,40 @@ function JoinChapterContent() {
     }
   }
 
+  const existingChapterId =
+    session.chapterId ||
+    store.profiles.find((p) => p.id === session.userId)?.chapterId;
+  const existingChapter = existingChapterId
+    ? store.chapters.find((c) => c.id === existingChapterId)
+    : null;
+
+  if (existingChapter) {
+    return (
+      <div className="min-h-dvh bg-[var(--charcoal-900)] px-6 py-14 text-white flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[18px] bg-bg-panel p-6 shadow-2xl border border-border text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+              <CheckCircle2 size={26} />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg text-text">Already in Chapter</h3>
+              <p className="mt-1.5 text-xs text-text-dim leading-relaxed">
+                You are already in the chapter{existingChapter.name ? ` (${existingChapter.name})` : ""}.
+              </p>
+            </div>
+            <Button
+              variant="orange"
+              onClick={() => router.push(`/chapter/${existingChapter.slug}`)}
+              className="w-full py-2.5 text-xs font-bold"
+            >
+              OK
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh bg-[var(--charcoal-900)] px-6 py-14 text-white flex items-center justify-center">
       <div className="mx-auto max-w-md w-full">

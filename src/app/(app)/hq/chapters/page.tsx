@@ -124,9 +124,6 @@ export default function HqChaptersPage() {
             <Button variant="orange" onClick={openCreate}>
               New chapter
             </Button>
-            <Link href="/hq">
-              <Button variant="ghost">Back to HQ</Button>
-            </Link>
           </div>
         }
       />
@@ -289,8 +286,15 @@ export default function HqChaptersPage() {
             <Input
               value={draft.slug}
               onChange={(e) => {
-                setSlugTouched(true);
-                setDraft((d) => ({ ...d, slug: e.target.value }));
+                const raw = e.target.value;
+                // Sanitize: replace spaces with dashes, strip non-URL chars in real-time
+                const sanitized = raw
+                  .toLowerCase()
+                  .replace(/ /g, "-")
+                  .replace(/[^a-z0-9-]/g, "");
+                // Only lock auto-generation if user has actually typed something
+                setSlugTouched(sanitized.length > 0);
+                setDraft((d) => ({ ...d, slug: sanitized }));
               }}
               placeholder="nit-calicut"
             />

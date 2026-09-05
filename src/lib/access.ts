@@ -119,9 +119,9 @@ export function canAccessPath(
     pathname === "/design-system" ||
     pathname.startsWith("/hq")
   ) {
-    // Campus lead can access the Users page to assign class_rep/student in their chapter
+    // Only super admins (founder, hq_admin) can access the Users page
     if (pathname === "/hq/users") {
-      return isHqRole(roleKey) || roleKey === "campus_lead";
+      return isSuperAdmin(roleKey);
     }
     return isHqRole(roleKey);
   }

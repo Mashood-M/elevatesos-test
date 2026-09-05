@@ -39,7 +39,7 @@ const SIX_ROLES: {
     key: "campus_lead",
     label: "Campus Lead",
     scope: "chapter",
-    powers: "Appointed by HQ or HQ Admin · Full chapter dashboard · Can assign Class Rep & Student within own chapter only",
+    powers: "Appointed by HQ or HQ Admin · Full chapter dashboard · No role-assign power",
   },
   {
     key: "class_representative",
@@ -71,11 +71,7 @@ function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
   if (currentRoleKey === "hq_admin") {
     return ["campus_lead", "faculty_coordinator"];
   }
-  // Campus Lead — can give Class Rep and Student (within own chapter only)
-  if (currentRoleKey === "campus_lead") {
-    return ["class_representative", "student"];
-  }
-  // Everyone else — no assignment power
+  // Everyone else (including Campus Lead) — no assignment power
   return [];
 }
 
@@ -112,9 +108,8 @@ function looksLikeEmail(value: string) {
 export default function HqUsersPage() {
   const { store, createUser, updateUser, setUserRoles, deleteUser } = useStore();
   const { session } = useCurrentUser();
-  // founder, hq_admin, AND campus_lead can access this page
-  const canManage =
-    isSuperAdmin(session.roleKey) || session.roleKey === "campus_lead";
+  // Only founder and hq_admin can access and manage roles on this page
+  const canManage = isSuperAdmin(session.roleKey);
 
   // Campus lead is locked to assigning within their own chapter only
   const isCampusLead = session.roleKey === "campus_lead";
@@ -142,8 +137,9 @@ export default function HqUsersPage() {
   // per-role chapter id map: { [roleKey]: chapterId }
   const [roleModalChapters, setRoleModalChapters] = useState<Record<string, string>>({});
 
-  const hqRoles = store.roles.filter((r) => r.scope === "hq");
-  const chapterRoles = store.roles.filter((r) => r.scope === "chapter");
+  const allowedRoleKeys: RoleKey[] = ["founder", "hq_admin", "campus_lead", "faculty_coordinator", "class_representative", "student", "alumni"];
+  const hqRoles = store.roles.filter((r) => r.scope === "hq" && allowedRoleKeys.includes(r.key as RoleKey));
+  const chapterRoles = store.roles.filter((r) => r.scope === "chapter" && allowedRoleKeys.includes(r.key as RoleKey));
   const filtersActive = Boolean(
     q.trim() || filterChapter || filterRole || filterStatus !== "all",
   );
@@ -403,7 +399,7 @@ export default function HqUsersPage() {
         />
         <TerminalPanel title="access.denied">
           <p className="text-sm text-text-dim">
-            User management is limited to HQ (Founder), HQ Admin, and Campus Leads.
+            User and role management is limited to HQ (Founder) and HQ Admin.
           </p>
           <Link href="/hq" className="mt-3 inline-block text-[var(--accent)]">
             Back to HQ
@@ -531,7 +527,7 @@ export default function HqUsersPage() {
               onChange={(e) => setFilterRole(e.target.value)}
             >
               <option value="">All</option>
-              {store.roles.map((r) => (
+              {store.roles.filter((r) => allowedRoleKeys.includes(r.key as RoleKey)).map((r) => (
                 <option key={r.id} value={r.key}>
                   {r.name}
                 </option>

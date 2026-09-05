@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
-import { Bell, LogOut, Menu, Search, X, MapPin } from "lucide-react";
+import { Bell, CheckCircle2, LogOut, Menu, Search, X, MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
 import { useSupabaseAuth } from "@/lib/mode";
@@ -40,6 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const [alreadyInChapterOpen, setAlreadyInChapterOpen] = useState(false);
 
   const chapter = session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : undefined;
   const chapterSlug = session.chapterId
@@ -204,7 +206,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       key={`${group.label}-${item.href}-${item.label}`}
                       href={item.href}
                       title={item.label}
-                      onClick={() => setOpen(false)}
+                      onClick={(e) => {
+                        if (item.href === "/join" && (session.chapterId || profile?.chapterId)) {
+                          e.preventDefault();
+                          setAlreadyInChapterOpen(true);
+                          setOpen(false);
+                          return;
+                        }
+                        setOpen(false);
+                      }}
                       className={cn(
                         "flex items-center gap-3 rounded-[12px] px-2.5 py-2 text-[13px] font-medium",
                         active
@@ -386,6 +396,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onClose={() => setChapterModalOpen(false)}
         targetRoleKey={session.roleKey}
       />
+      {alreadyInChapterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[18px] bg-bg-panel p-6 shadow-2xl border border-border text-center space-y-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+              <CheckCircle2 size={26} />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-text">Already in Chapter</h3>
+              <p className="mt-1.5 text-xs text-text-dim">
+                You are already in the chapter{chapter?.name ? ` (${chapter.name})` : ""}.
+              </p>
+            </div>
+            <Button
+              variant="orange"
+              onClick={() => setAlreadyInChapterOpen(false)}
+              className="w-full py-2.5 text-xs font-bold"
+            >
+              OK
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

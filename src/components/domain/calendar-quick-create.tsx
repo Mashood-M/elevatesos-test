@@ -168,6 +168,22 @@ export function CalendarQuickCreate({
       title="Schedule event"
       description={`Draft event for ${formatDateKey(dateKey)} · publish to open registration.`}
       className="max-w-2xl"
+      footer={
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <p className="text-[12px] text-text-dim flex items-center gap-1.5">
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            <span className="font-semibold text-text">Draft Mode</span> — registration activates once published
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="button" variant="orange" onClick={handleCreate}>
+              Create Draft Event
+            </Button>
+          </div>
+        </div>
+      }
     >
       <div className="grid gap-3 md:grid-cols-2">
         {allowChapterPick ? (
@@ -341,15 +357,6 @@ export function CalendarQuickCreate({
       {error ? (
         <p className="mt-3 text-[13px] text-[var(--accent)]">{error}</p>
       ) : null}
-
-      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-border pt-3">
-        <Button type="button" variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="button" variant="orange" onClick={handleCreate}>
-          Create Draft Event
-        </Button>
-      </div>
     </Dialog>
   );
 }

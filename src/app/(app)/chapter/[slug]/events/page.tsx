@@ -592,6 +592,22 @@ export default function ChapterEventsPage({
         title="Create event"
         description="Unified event creation across all chapters. Starts as a draft — publish to open registration."
         className="max-w-2xl"
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <p className="text-[12px] text-text-dim flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              <span className="font-semibold text-text">Draft Mode</span> — registration activates once published
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="ghost" onClick={closeCreate}>
+                Cancel
+              </Button>
+              <Button type="button" variant="orange" onClick={handleCreate}>
+                Create Draft Event
+              </Button>
+            </div>
+          </div>
+        }
       >
         <div className="space-y-4">
           {/* Event Scope: Main Flagship vs Sub-Event vs Standalone */}
@@ -1087,14 +1103,6 @@ export default function ChapterEventsPage({
         {createFlash ? (
           <p className="mt-3 text-[13px] text-[var(--accent)]">{createFlash}</p>
         ) : null}
-        <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="ghost" onClick={closeCreate}>
-            Cancel
-          </Button>
-          <Button type="button" variant="orange" onClick={handleCreate}>
-            Create Draft Event
-          </Button>
-        </div>
       </Dialog>
     </div>
   );

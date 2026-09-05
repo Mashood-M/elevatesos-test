@@ -11,6 +11,7 @@ type DialogProps = {
   description?: string;
   children: ReactNode;
   className?: string;
+  footer?: ReactNode;
 };
 
 export function Dialog({
@@ -20,6 +21,7 @@ export function Dialog({
   description,
   children,
   className,
+  footer,
 }: DialogProps) {
   const titleId = useId();
   const descId = useId();
@@ -65,40 +67,65 @@ export function Dialog({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby={title ? titleId : undefined}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          "relative z-10 w-full overflow-y-auto rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] outline-none md:p-6 scrollbar-thin",
-          !hasCustomMaxH && "max-h-[min(94dvh,880px)]",
+          "relative z-10 flex flex-col w-full rounded-[var(--radius)] border border-border bg-bg-panel shadow-[var(--shadow)] outline-none overflow-hidden",
+          !hasCustomMaxH && "max-h-[min(90dvh,820px)]",
           !hasCustomMaxW && "max-w-lg",
           className,
         )}
       >
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2
-              id={titleId}
-              className="font-[family-name:var(--font-display)] text-[1.25rem] font-bold tracking-[-0.03em] text-text"
+        {/* Pinned Header */}
+        {title || description ? (
+          <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-4 shrink-0 sm:px-6">
+            <div className="min-w-0 flex-1">
+              {title ? (
+                <h2
+                  id={titleId}
+                  className="font-[family-name:var(--font-display)] text-[1.2rem] font-bold tracking-[-0.03em] text-text"
+                >
+                  {title}
+                </h2>
+              ) : null}
+              {description ? (
+                <p id={descId} className="mt-0.5 text-[12px] text-text-mute">
+                  {description}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-full p-1.5 text-text-mute hover:bg-bg-hover hover:text-text transition shrink-0"
             >
-              {title}
-            </h2>
-            {description ? (
-              <p id={descId} className="mt-1 text-[13px] text-text-mute">
-                {description}
-              </p>
-            ) : null}
+              <X size={18} />
+            </button>
           </div>
+        ) : (
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="rounded-full p-2 text-text-mute hover:bg-bg-hover hover:text-text"
+            className="absolute right-4 top-4 z-20 rounded-full p-1.5 text-text-mute hover:bg-bg-hover hover:text-text transition"
           >
             <X size={18} />
           </button>
+        )}
+
+        {/* Scrollable Body */}
+        <div className="scrollbar-thin flex-1 overflow-y-auto p-5 sm:p-6">
+          {children}
         </div>
-        {children}
+
+        {/* Optional Pinned Footer */}
+        {footer ? (
+          <div className="border-t border-border/70 bg-bg-panel px-5 py-3.5 shrink-0 sm:px-6">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>
   );

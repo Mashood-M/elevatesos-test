@@ -198,14 +198,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, id: chapterId });
     }
 
+    if (type === "delete_chapter") {
+      const { id, slug } = data;
+      const { error } = await admin.from("chapters").delete().match(isUuid(id) ? { id } : { slug: slug || id });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["chapters", `chapter:${slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
     // 5. REGISTRATION MUTATIONS
     if (type === "registration") {
       const reg = data;
       const regId = isUuid(reg.id) ? reg.id : genUuid();
+      let validUserId = null;
+      if (isUuid(reg.userId)) {
+        const { data: prof } = await admin.from("profiles").select("id").eq("id", reg.userId).maybeSingle();
+        if (prof) validUserId = prof.id;
+      }
       const { error } = await admin.from("event_registrations").upsert({
         id: regId,
         event_id: isUuid(reg.eventId) ? reg.eventId : null,
-        user_id: isUuid(reg.userId) ? reg.userId : null,
+        user_id: validUserId,
         guest_email: reg.guestEmail || null,
         guest_name: reg.guestName || null,
         status: reg.status ?? "pending",
@@ -235,11 +250,16 @@ export async function POST(req: Request) {
     if (type === "attendance") {
       const att = data;
       const attId = isUuid(att.id) ? att.id : genUuid();
+      let validUserId = null;
+      if (isUuid(att.userId)) {
+        const { data: prof } = await admin.from("profiles").select("id").eq("id", att.userId).maybeSingle();
+        if (prof) validUserId = prof.id;
+      }
       const rec = {
         id: attId,
         event_id: isUuid(att.eventId) ? att.eventId : null,
         registration_id: isUuid(att.registrationId) ? att.registrationId : null,
-        user_id: isUuid(att.userId) ? att.userId : null,
+        user_id: validUserId,
         status: att.status ?? "present",
         method: att.method ?? "qr",
         checked_in_at: att.checkedInAt ?? new Date().toISOString(),
@@ -261,15 +281,22 @@ export async function POST(req: Request) {
     if (type === "bulk_attendance") {
       const { records } = data;
       if (Array.isArray(records) && records.length > 0) {
-        const rows = records.map((att: any) => ({
-          id: isUuid(att.id) ? att.id : genUuid(),
-          event_id: isUuid(att.eventId) ? att.eventId : null,
-          registration_id: isUuid(att.registrationId) ? att.registrationId : null,
-          user_id: isUuid(att.userId) ? att.userId : null,
-          status: att.status ?? "present",
-          method: att.method ?? "bulk",
-          checked_in_at: att.checkedInAt ?? new Date().toISOString(),
-          checked_in_by: isUuid(att.checkedInBy) ? att.checkedInBy : null,
+        const rows = await Promise.all(records.map(async (att: any) => {
+          let validUserId = null;
+          if (isUuid(att.userId)) {
+            const { data: prof } = await admin.from("profiles").select("id").eq("id", att.userId).maybeSingle();
+            if (prof) validUserId = prof.id;
+          }
+          return {
+            id: isUuid(att.id) ? att.id : genUuid(),
+            event_id: isUuid(att.eventId) ? att.eventId : null,
+            registration_id: isUuid(att.registrationId) ? att.registrationId : null,
+            user_id: validUserId,
+            status: att.status ?? "present",
+            method: att.method ?? "bulk",
+            checked_in_at: att.checkedInAt ?? new Date().toISOString(),
+            checked_in_by: isUuid(att.checkedInBy) ? att.checkedInBy : null,
+          };
         }));
         await admin.from("attendance").upsert(rows);
       }
@@ -280,11 +307,22 @@ export async function POST(req: Request) {
     if (type === "certificate") {
       const cert = data;
       const certId = isUuid(cert.id) ? cert.id : genUuid();
+      let validUserId = null;
+      if (isUuid(cert.userId)) {
+        const { data: prof } = await admin.from("profiles").select("id").eq("id", cert.userId).maybeSingle();
+        if (prof) validUserId = prof.id;
+      }
+      if (!validUserId) {
+        // Certificates table requires non-null user_id referencing profiles(id)
+        console.warn("Certificate user_id does not reference an existing profile, skipping DB sync:", cert.userId);
+        return NextResponse.json({ ok: true, id: certId, skipped: true });
+      }
+
       const { error } = await admin.from("certificates").upsert({
         id: certId,
         certificate_id: cert.certificateId,
         event_id: isUuid(cert.eventId) ? cert.eventId : null,
-        user_id: isUuid(cert.userId) ? cert.userId : null,
+        user_id: validUserId,
         issued_at: cert.issuedAt ?? new Date().toISOString(),
         verification_qr: cert.verificationQr ?? "",
         digital_signature: cert.digitalSignature ?? "",
@@ -335,10 +373,15 @@ export async function POST(req: Request) {
     if (type === "form_response") {
       const resp = data;
       const respId = isUuid(resp.id) ? resp.id : genUuid();
+      let validUserId = null;
+      if (isUuid(resp.userId)) {
+        const { data: prof } = await admin.from("profiles").select("id").eq("id", resp.userId).maybeSingle();
+        if (prof) validUserId = prof.id;
+      }
       const { error } = await admin.from("form_responses").upsert({
         id: respId,
         form_id: isUuid(resp.formId) ? resp.formId : null,
-        user_id: isUuid(resp.userId) ? resp.userId : null,
+        user_id: validUserId,
         event_id: isUuid(resp.eventId) ? resp.eventId : null,
         answers: resp.answers ?? {},
         submitted_at: resp.submittedAt ?? new Date().toISOString(),

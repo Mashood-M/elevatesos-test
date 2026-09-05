@@ -108,6 +108,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [session, store.userRoles, store.roles]);
 
   async function handleLogout() {
+    try {
+      const supabase = createClient();
+      if (supabase) {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((resolve) => setTimeout(resolve, 1500)),
+        ]);
+      }
+    } catch (err: unknown) {
+      console.error("Logout error:", err);
+    }
+
     if (typeof window !== "undefined") {
       localStorage.removeItem("elevates_active_role_key");
       localStorage.removeItem("elevates_active_chapter_id");
@@ -129,18 +141,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         }
       });
-    }
-
-    try {
-      const supabase = createClient();
-      if (supabase) {
-        await Promise.race([
-          supabase.auth.signOut(),
-          new Promise((resolve) => setTimeout(resolve, 1000)),
-        ]);
-      }
-    } catch (err: unknown) {
-      console.error("Logout error:", err);
     }
 
     resetClient();

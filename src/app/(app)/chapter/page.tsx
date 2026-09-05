@@ -36,7 +36,7 @@ export default function ChapterIndexPage() {
 
     // If student has an assigned chapter, redirect to their specific chapter dashboard
     if (session.chapterId) {
-      const assignedChapter = store.chapters.find((c) => c.id === session.chapterId);
+      const assignedChapter = store.chapters.find((c) => c.id === session.chapterId || c.slug === session.chapterId);
       if (assignedChapter?.slug) {
         router.replace(`/chapter/${assignedChapter.slug}`);
       }
@@ -53,8 +53,12 @@ export default function ChapterIndexPage() {
     );
   }
 
-  // If user has a chapter assigned, show loading indicator while redirecting
-  if (session.chapterId) {
+  // If user has a valid assigned chapter, show loading indicator while redirecting
+  const assignedChapter = session.chapterId
+    ? store.chapters.find((c) => c.id === session.chapterId || c.slug === session.chapterId)
+    : null;
+
+  if (session.chapterId && assignedChapter?.slug) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="text-center font-mono text-xs text-text-dim">

@@ -61,7 +61,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!canAccessPath(pathname, roleKey, chapterSlug)) {
+  if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-[13px] text-text-mute">
         Redirecting to your workspace…

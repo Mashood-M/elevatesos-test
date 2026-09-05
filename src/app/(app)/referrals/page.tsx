@@ -68,6 +68,7 @@ export default function UnifiedReferralsPage() {
   const [error, setError] = useState("");
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set());
+  const [localTokens, setLocalTokens] = useState<import("@/types").InviteToken[]>([]);
 
   // Search & Filters for HQ/Network tab
   const [q, setQ] = useState("");
@@ -77,20 +78,30 @@ export default function UnifiedReferralsPage() {
   const chapterId = profile?.chapterId;
 
   // All tokens
-  const allTokens = store.inviteTokens ?? [];
+  const allTokens = useMemo(() => {
+    const existing = store.inviteTokens ?? [];
+    const merged = existing.map((t) => (revokedIds.has(t.id) ? { ...t, isActive: false } : t));
+    const newLocals = localTokens
+      .filter((lt) => !existing.some((e) => e.id === lt.id))
+      .map((t) => (revokedIds.has(t.id) ? { ...t, isActive: false } : t));
+    return [...newLocals, ...merged];
+  }, [store.inviteTokens, localTokens, revokedIds]);
+
   const profiles = store.profiles;
   const [revokeTokenTarget, setRevokeTokenTarget] = useState<string | null>(null);
 
-  // Tokens created by current user
-  const myTokens = useMemo(
-    () => allTokens.filter((t) => t.createdBy === userId),
-    [allTokens, userId],
+  // User's own tokens
+  const myTokens = allTokens.filter(
+    (t) => t.createdBy === userId || (session.authUserId && t.createdBy === session.authUserId),
   );
-
-  const myUsedTokens = myTokens.filter((t) => t.usedBy);
   const myActiveTokens = myTokens.filter(
-    (t) => !t.usedBy && t.isActive && msUntil(t.expiresAt) > 0,
+    (t) =>
+      !t.usedBy &&
+      t.isActive &&
+      !revokedIds.has(t.id) &&
+      msUntil(t.expiresAt) > 0,
   );
+  const myUsedTokens = myTokens.filter((t) => !!t.usedBy);
   const myExpiredTokens = myTokens.filter(
     (t) => !t.usedBy && (msUntil(t.expiresAt) <= 0 || !t.isActive),
   );
@@ -103,13 +114,24 @@ export default function UnifiedReferralsPage() {
   async function handleGenerateLink() {
     setError("");
     setGeneratingToken(true);
-    const token = await createInviteToken(userId);
-    if (!token) {
+    const created = await createInviteToken(userId);
+    if (!created) {
       setError("Could not generate invite link. Please check your connection.");
       setGeneratingToken(false);
       return;
     }
-    setNewToken(token);
+    setNewToken(created.token);
+    setLocalTokens((prev) => [
+      {
+        id: created.id,
+        token: created.token,
+        createdBy: userId,
+        createdAt: created.createdAt,
+        expiresAt: created.expiresAt,
+        isActive: true,
+      },
+      ...prev,
+    ]);
     setGeneratingToken(false);
   }
 
@@ -131,6 +153,9 @@ export default function UnifiedReferralsPage() {
     const ok = await revokeInviteToken(tokenId);
     if (ok) {
       setRevokedIds((prev) => new Set([...prev, tokenId]));
+      setLocalTokens((prev) =>
+        prev.map((t) => (t.id === tokenId ? { ...t, isActive: false } : t))
+      );
     }
     setRevokingId(null);
   }

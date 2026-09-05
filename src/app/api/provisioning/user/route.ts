@@ -107,7 +107,35 @@ export async function POST(req: Request) {
       .eq("email", targetUser.email.trim().toLowerCase())
       .maybeSingle();
 
-    const userId = existingProfile?.id || targetUser.id || genRandomUuid();
+    let userId = existingProfile?.id;
+    if (!userId) {
+      const authUserPayload: any = {
+        email: targetUser.email.trim().toLowerCase(),
+        email_confirm: true,
+        user_metadata: {
+          full_name: targetUser.fullName || targetUser.name || "Student User",
+        },
+      };
+      if (targetUser.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUser.id)) {
+        authUserPayload.id = targetUser.id;
+      }
+      const { data: authCreated, error: authErr } = await admin.auth.admin.createUser(authUserPayload);
+      if (authCreated?.user) {
+        userId = authCreated.user.id;
+      } else if (authErr) {
+        // If auth user already exists, retrieve id
+        const { data: listData } = await admin.auth.admin.listUsers();
+        const found = listData?.users?.find(
+          (u) => u.email?.toLowerCase() === targetUser.email.trim().toLowerCase(),
+        );
+        if (found) {
+          userId = found.id;
+        } else {
+          console.error("Auth createUser error in provisioning:", authErr.message);
+          return NextResponse.json({ ok: false, error: authErr.message }, { status: 400 });
+        }
+      }
+    }
 
     const { error: profileError } = await admin.from("profiles").upsert({
       id: userId,

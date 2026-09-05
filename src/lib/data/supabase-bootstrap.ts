@@ -150,10 +150,13 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("class_cohorts").select("*"),
       supabase.from("form_responses").select("*"),
       supabase.from("leadership_applications").select("*"),
-      supabase.auth.getSession().catch(() => null),
+      Promise.race([
+        supabase.auth.getSession().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]),
       Promise.race([
         supabase.auth.getUser().catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]),
     ]);
 
@@ -753,7 +756,12 @@ export async function publishChapterRemote(chapterId: string) {
 }
 
 /** Create a new unique invite token for student referrals (independent student signup). Expires in 24 hours. */
-export async function createInviteToken(createdById: string): Promise<string | null> {
+export async function createInviteToken(createdById: string): Promise<{
+  id: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+} | null> {
   const supabase = createClient();
   if (!supabase) return null;
   const expiresAt = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString(); // 24 hours
@@ -769,14 +777,20 @@ export async function createInviteToken(createdById: string): Promise<string | n
       chapter_id: null,
       token: randomToken,
       expires_at: expiresAt,
+      is_active: true,
     })
-    .select("token")
+    .select("id, token, expires_at, created_at")
     .single();
-  if (error) {
+  if (error || !data) {
     console.error("createInviteToken error:", error);
     return null;
   }
-  return data?.token ?? null;
+  return {
+    id: data.id,
+    token: data.token,
+    expiresAt: data.expires_at,
+    createdAt: data.created_at ?? new Date().toISOString(),
+  };
 }
 
 /** Validate invite token — returns token row or null if invalid/expired/used. */

@@ -25,9 +25,18 @@ function LoginForm() {
     setError("");
     setLoading(true);
 
-    const cleanEmail = email.trim().toLowerCase();
+    const form = e.currentTarget as HTMLFormElement;
+    const effectiveEmail = email.trim() || (form?.querySelector('input[type="email"]') as HTMLInputElement)?.value?.trim() || "";
+    const effectivePassword = password || (form?.querySelector('input[type="password"]') as HTMLInputElement)?.value || "";
+    const cleanEmail = effectiveEmail.toLowerCase();
 
-    if (!password || !password.trim()) {
+    if (!cleanEmail) {
+      setError("Email address is required.");
+      setLoading(false);
+      return;
+    }
+
+    if (!effectivePassword || !effectivePassword.trim()) {
       setError("Password is required.");
       setLoading(false);
       return;
@@ -43,7 +52,7 @@ function LoginForm() {
     try {
       const { data: authData, error: signError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
-        password,
+        password: effectivePassword,
       });
 
       if (signError) {
@@ -63,6 +72,7 @@ function LoginForm() {
 
       let roleKey: RoleKey = "student";
       let chapterSlug = "";
+      let chapterId: string | undefined = undefined;
 
       // Quick email heuristic fallback
       if (cleanEmail.includes("founder")) roleKey = "founder";
@@ -94,7 +104,9 @@ function LoginForm() {
             throw new Error("ACCOUNT_DISABLED");
           }
 
-          let chapterId: string | undefined = profile?.chapter_id ?? undefined;
+          if (profile?.chapter_id) {
+            chapterId = profile.chapter_id;
+          }
 
           const { data: userRoleRows } = await supabase
             .from("user_roles")
@@ -153,6 +165,11 @@ function LoginForm() {
         } else {
           destination = "/chapter";
         }
+      }
+
+      if (typeof window !== "undefined") {
+        if (roleKey) localStorage.setItem("elevates_active_role_key", roleKey);
+        if (chapterId) localStorage.setItem("elevates_active_chapter_id", chapterId);
       }
 
       window.location.href = destination;

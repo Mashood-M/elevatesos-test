@@ -1830,50 +1830,57 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
       submitFormResponse: (input) => {
-        let created: FormResponse | null = null;
-        const responseId = genUuid();
-        setStore((s) => {
-          const form = (s.forms ?? []).find((f) => f.id === input.formId);
-          if (!form || form.status !== "open") return s;
-          const already = (s.formResponses ?? []).some(
-            (r) =>
-              r.formId === input.formId &&
-              r.userId === input.userId &&
-              (input.eventId ? r.eventId === input.eventId : true),
-          );
-          if (already) return s;
-          for (const q of answerableQuestions(form)) {
-            if (!q.required) continue;
-            const v = input.answers[q.id];
-            if (
-              v === undefined ||
-              v === "" ||
-              (Array.isArray(v) && !v.length)
-            ) {
-              return s;
-            }
-          }
-          created = {
-            ...input,
-            id: responseId,
-            submittedAt: new Date().toISOString(),
-          };
-          return {
-            ...s,
-            formResponses: [created, ...(s.formResponses ?? [])],
-          };
-        });
-        if (created) {
-          void runPersist(persistFormResponse(created), {
-            errorMessage: "Failed to submit form response",
-            rollback: () => {
-              setStore((s) => ({
-                ...s,
-                formResponses: (s.formResponses ?? []).filter((r) => r.id !== responseId),
-              }));
-            },
-          });
+        const form = (store.forms ?? []).find((f) => f.id === input.formId);
+        if (!form || form.status !== "open") {
+          console.warn("submitFormResponse rejected: form not found or not open", { form, inputFormId: input.formId });
+          return null;
         }
+        const already = (store.formResponses ?? []).some(
+          (r) =>
+            r.formId === input.formId &&
+            r.userId === input.userId &&
+            (input.eventId ? r.eventId === input.eventId : true),
+        );
+        if (already) {
+          console.warn("submitFormResponse rejected: already submitted for user", input.userId);
+          return null;
+        }
+        for (const q of answerableQuestions(form)) {
+          if (!q.required) continue;
+          if (q.type === "representative") continue;
+          const v = input.answers[q.id];
+          if (
+            v === undefined ||
+            v === "" ||
+            (Array.isArray(v) && !v.length)
+          ) {
+            console.warn("submitFormResponse rejected: missing required question", { questionId: q.id, title: q.title, value: v, allAnswers: input.answers });
+            return null;
+          }
+        }
+
+        const responseId = genUuid();
+        const created: FormResponse = {
+          ...input,
+          id: responseId,
+          submittedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          formResponses: [created, ...(s.formResponses ?? [])],
+        }));
+
+        void runPersist(persistFormResponse(created), {
+          errorMessage: "Failed to submit form response",
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              formResponses: (s.formResponses ?? []).filter((r) => r.id !== responseId),
+            }));
+          },
+        });
+
         return created;
       },
       deleteFormResponse: (id) => {
@@ -2656,7 +2663,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (input.chapterId && !store.chapters.some((c) => c.id === input.chapterId)) {
           return null;
         }
-        const id = `u-${Date.now()}`;
+        const id = genUuid();
         const profile: Profile = {
           id,
           elevatesId: generateElevatesId(id),
@@ -2671,7 +2678,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         };
         const orgId = input.organizationId ?? store.organization.id;
         const userRole: UserRole = {
-          id: `ur-${Date.now()}`,
+          id: genUuid(),
           userId: id,
           roleId: role.id,
           chapterId: isHq ? undefined : input.chapterId,

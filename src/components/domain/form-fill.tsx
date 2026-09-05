@@ -176,7 +176,7 @@ export function FormFill({
   }
 
   function resolveSubmitUserId(): string | null {
-    if (!publicMode || (profile && session.userId)) {
+    if (!publicMode) {
       return session.userId;
     }
     const fullName =

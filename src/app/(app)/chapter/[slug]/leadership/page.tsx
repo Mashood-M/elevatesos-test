@@ -96,7 +96,7 @@ const emptyTermDraft = (): TermDraft => ({
 const emptyAssignDraft = (): AssignDraft => ({
   userId: "",
   roleKey: "elevates_coordinator",
-  title: "",
+  title: roleKeyLabel("elevates_coordinator"),
 });
 
 export default function ChapterLeadershipPage({

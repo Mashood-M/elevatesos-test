@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  webpack: (config) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: /[\\/]\.playwright-mcp[\\/]/,
+    };
+    return config;
+  },
   async headers() {
     return [
       {

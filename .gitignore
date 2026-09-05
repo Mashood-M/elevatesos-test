@@ -36,3 +36,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# test artifacts
+full_test_report.json
+run_comprehensive_tests.js
+screenshot-HQ-Founder.png
+test-founder-dashboard.png
+test_roles.js
+test_single_role.js

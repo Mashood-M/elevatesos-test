@@ -27,11 +27,13 @@ export function TextArea({
   className,
   ...props
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const hasCustomMinH = className && /\bmin-h-/.test(className);
   return (
     <textarea
       className={cn(
         field,
-        "h-auto min-h-[104px] rounded-[var(--radius-sm)] py-3",
+        "h-auto rounded-[var(--radius-sm)] py-3",
+        !hasCustomMinH && "min-h-[104px]",
         className,
       )}
       {...props}
@@ -45,7 +47,7 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cn(field, "pr-8", className)} {...props}>
+    <select className={cn(field, "pr-8 cursor-pointer truncate", className)} {...props}>
       {children}
     </select>
   );

@@ -25,6 +25,9 @@ export function Dialog({
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const hasCustomMaxW = className && /\bmax-w-/.test(className);
+  const hasCustomMaxH = className && /\bmax-h-/.test(className);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -66,7 +69,9 @@ export function Dialog({
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          "relative z-10 max-h-[min(90dvh,720px)] w-full max-w-lg overflow-y-auto rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] outline-none md:p-6",
+          "relative z-10 w-full overflow-y-auto rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] outline-none md:p-6 scrollbar-thin",
+          !hasCustomMaxH && "max-h-[min(94dvh,880px)]",
+          !hasCustomMaxW && "max-w-lg",
           className,
         )}
       >

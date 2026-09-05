@@ -166,13 +166,9 @@ export function CalendarQuickCreate({
       open={open}
       onClose={onClose}
       title="Schedule event"
-      description={formatDateKey(dateKey)}
+      description={`Draft event for ${formatDateKey(dateKey)} · publish to open registration.`}
       className="max-w-2xl"
     >
-      <p className="mb-4 text-[13px] text-text-dim">
-        Create a draft event for this date. A founder or campus lead must
-        publish it before registration opens.
-      </p>
       <div className="grid gap-3 md:grid-cols-2">
         {allowChapterPick ? (
           <div className="md:col-span-2">
@@ -203,16 +199,6 @@ export function CalendarQuickCreate({
           {titleError ? (
             <p className="mt-1 text-[11px] text-red-400">{titleError}</p>
           ) : null}
-        </div>
-
-        {/* Venue */}
-        <div className="md:col-span-2">
-          <FieldLabel>Venue / Location</FieldLabel>
-          <Input
-            value={venue}
-            onChange={(e) => setVenue(e.target.value)}
-            placeholder="Main Seminar Hall, Lab 3, Online…"
-          />
         </div>
 
         {/* Category */}
@@ -285,21 +271,14 @@ export function CalendarQuickCreate({
           )}
         </div>
 
-        {/* Event Access & Privacy */}
+        {/* Venue */}
         <div>
-          <FieldLabel>Event Access & Privacy</FieldLabel>
-          <Select
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value as Visibility)}
-          >
-            <option value="chapter_only">🔒 Chapter Members Only</option>
-            <option value="open_to_all">🌍 Open to All Platform Users</option>
-          </Select>
-          <p className="mt-1 text-[11px] text-text-dim">
-            {visibility === "chapter_only"
-              ? "Only members of this chapter with platform accounts can register."
-              : "Any student with a platform account can register, across all chapters."}
-          </p>
+          <FieldLabel>Venue / Location</FieldLabel>
+          <Input
+            value={venue}
+            onChange={(e) => setVenue(e.target.value)}
+            placeholder="Main Seminar Hall, Lab 3, Online…"
+          />
         </div>
 
         {/* Date/Time */}
@@ -320,6 +299,23 @@ export function CalendarQuickCreate({
           />
         </div>
 
+        {/* Event Access & Privacy */}
+        <div className="md:col-span-2">
+          <FieldLabel>Event Access & Privacy</FieldLabel>
+          <Select
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as Visibility)}
+          >
+            <option value="chapter_only">🔒 Chapter Members Only — this chapter's members with platform accounts</option>
+            <option value="open_to_all">🌍 Open to All Platform Users — any student with a platform account</option>
+          </Select>
+          <p className="mt-1 text-[11px] text-text-dim">
+            {visibility === "chapter_only"
+              ? "Only members of this chapter who have a platform account can register."
+              : "Any student with a platform account (across all chapters) can register. Non-platform users cannot join."}
+          </p>
+        </div>
+
         {/* Description */}
         <div className="md:col-span-2">
           <FieldLabel>Description / Agenda (optional)</FieldLabel>
@@ -328,6 +324,7 @@ export function CalendarQuickCreate({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Brief summary of event rules, schedule, prerequisites…"
+            className="min-h-[72px]"
           />
         </div>
       </div>
@@ -345,7 +342,7 @@ export function CalendarQuickCreate({
         <p className="mt-3 text-[13px] text-[var(--accent)]">{error}</p>
       ) : null}
 
-      <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+      <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-border pt-3">
         <Button type="button" variant="ghost" onClick={onClose}>
           Cancel
         </Button>

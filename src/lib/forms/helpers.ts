@@ -537,6 +537,10 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     chapterStandardChecks: store.chapterStandardChecks ?? [],
     resourceCategories,
     resources,
+    // Ensure eventCategories always has the default set for old stored data
+    eventCategories: store.eventCategories?.length
+      ? store.eventCategories
+      : ["WORKSHOP", "HACKATHON", "MEETUP", "LECTURE", "LAB", "SHOWCASE", "CHALLENGE"],
     // Old localStorage saves may omit guidelines.
     guidelines: Array.isArray(store.guidelines) ? store.guidelines : [],
     forms,

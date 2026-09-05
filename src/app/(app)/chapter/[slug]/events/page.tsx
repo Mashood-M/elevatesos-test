@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
@@ -37,11 +37,14 @@ function defaultCreateSchedule() {
   };
 }
 
+// Letters, spaces, hyphens, apostrophes, and basic punctuation only
+const NAME_PATTERN = /^[A-Za-z\s'\-.,&()!?]+$/;
+
 function emptyCreateForm() {
   return {
     title: "",
     venue: "Main Seminar Hall",
-    category: "Workshop",
+    category: "WORKSHOP",
     capacity: "60",
     visibility: "open_to_all" as Visibility,
     mode: "in_person" as "in_person" | "online" | "hybrid",
@@ -80,7 +83,7 @@ export default function ChapterEventsPage({
   const { slug } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { store, createEvent, updateEvent, createForm, setFormStatus, updateRegistrationStatus, batchUpdateRegistrationStatus } = useStore();
+  const { store, createEvent, updateEvent, createForm, setFormStatus, updateRegistrationStatus, batchUpdateRegistrationStatus, addEventCategory } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
@@ -96,12 +99,20 @@ export default function ChapterEventsPage({
   const [search, setSearch] = useState("");
   const [createFlash, setCreateFlash] = useState("");
   const [form, setForm] = useState(emptyCreateForm);
+  const [titleError, setTitleError] = useState("");
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState("");
+  const [newCategoryError, setNewCategoryError] = useState("");
+  const newCatInputRef = useRef<HTMLInputElement>(null);
 
   const canCreate = hasPermission(store, session.roleKey, "event.create");
   const canApprove = hasPermission(store, session.roleKey, "registration.approve");
   const canReview = hasPermission(store, session.roleKey, "registration.review");
   const canManage =
     canCreate || hasPermission(store, session.roleKey, "event.manage");
+  // Only HQ Founder and Campus Lead can publish events (move draft → registration_open)
+  const canPublish =
+    session.roleKey === "founder" || session.roleKey === "campus_lead";
 
   useEffect(() => {
     if (searchParams.get("create") === "1" && canCreate) {
@@ -156,14 +167,46 @@ export default function ChapterEventsPage({
     );
   });
 
+  const categories = store.eventCategories ?? ["WORKSHOP", "HACKATHON", "MEETUP", "LECTURE", "LAB", "SHOWCASE", "CHALLENGE"];
+
   function closeCreate() {
     setShowForm(false);
     setCreateFlash("");
+    setTitleError("");
+    setShowAddCategory(false);
+    setNewCategory("");
+    setNewCategoryError("");
   }
+
+  function handleAddCategory() {
+    const normalized = newCategory.trim().toUpperCase();
+    if (!normalized) {
+      setNewCategoryError("Please enter a category name.");
+      return;
+    }
+    if (categories.includes(normalized)) {
+      setNewCategoryError(`"${normalized}" already exists.`);
+      return;
+    }
+    const added = addEventCategory(normalized);
+    if (added) {
+      setForm((f) => ({ ...f, category: normalized }));
+      setShowAddCategory(false);
+      setNewCategory("");
+      setNewCategoryError("");
+    } else {
+      setNewCategoryError(`"${normalized}" already exists.`);
+    }
+  }
+
 
   function handleCreate() {
     if (!chapter || !form.title.trim() || !form.venue.trim()) {
       setCreateFlash("Title and venue are required.");
+      return;
+    }
+    if (titleError) {
+      setCreateFlash("Please fix the title field before continuing.");
       return;
     }
     setCreateFlash("");
@@ -497,13 +540,21 @@ export default function ChapterEventsPage({
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
                     <>
-                      {ev.status === "draft" && canManage ? (
+                      {ev.status === "draft" && canPublish ? (
                         <Button
                           variant="orange"
                           className="h-9 px-4"
                           onClick={() => publishEventFromList(ev)}
                         >
-                          Publish event
+                          Publish → Open Registration
+                        </Button>
+                      ) : ev.status === "draft" && canManage ? (
+                        <Button
+                          variant="ghost"
+                          className="h-9 px-4 text-text-dim cursor-default"
+                          disabled
+                        >
+                          Draft (pending publish)
                         </Button>
                       ) : eligibility.ok ? (
                         <Link href={`/f/${eligibility.formId}`}>
@@ -615,23 +666,73 @@ export default function ChapterEventsPage({
                     : "e.g. LET'S DECODE LINKEDIN"
                 }
                 value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setForm((f) => ({ ...f, title: val }));
+                  if (val && !NAME_PATTERN.test(val)) {
+                    setTitleError("Title should contain only letters and basic punctuation (no leading digits).");
+                  } else {
+                    setTitleError("");
+                  }
+                }}
               />
+              {titleError ? (
+                <p className="mt-1 text-[11px] text-red-400">{titleError}</p>
+              ) : null}
             </div>
             <div>
               <FieldLabel>Category</FieldLabel>
-              <Select
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-              >
-                <option value="Workshop">Workshop</option>
-                <option value="Hackathon">Hackathon</option>
-                <option value="Meetup">Meetup</option>
-                <option value="Challenge">Challenge / Hunt</option>
-                <option value="Showcase">Showcase</option>
-                <option value="Lecture">Lecture</option>
-                <option value="Lab">Lab</option>
-              </Select>
+              {!showAddCategory ? (
+                <Select
+                  value={form.category}
+                  onChange={(e) => {
+                    if (e.target.value === "__add__") {
+                      setShowAddCategory(true);
+                      setTimeout(() => newCatInputRef.current?.focus(), 50);
+                    } else {
+                      setForm((f) => ({ ...f, category: e.target.value }));
+                    }
+                  }}
+                >
+                  {categories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                  <option value="__add__">+ Add new category…</option>
+                </Select>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1.5">
+                    <Input
+                      ref={newCatInputRef}
+                      value={newCategory}
+                      onChange={(e) => {
+                        setNewCategory(e.target.value.toUpperCase());
+                        setNewCategoryError("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); handleAddCategory(); }
+                        if (e.key === "Escape") { setShowAddCategory(false); setNewCategory(""); }
+                      }}
+                      placeholder="E.g. SYMPOSIUM"
+                      className="flex-1 uppercase"
+                      maxLength={40}
+                    />
+                    <Button type="button" variant="orange" className="h-9 px-3 text-[12px]" onClick={handleAddCategory}>
+                      Add
+                    </Button>
+                    <Button type="button" variant="ghost" className="h-9 px-2 text-[12px]" onClick={() => { setShowAddCategory(false); setNewCategory(""); setNewCategoryError(""); }}>
+                      ✕
+                    </Button>
+                  </div>
+                  {newCategoryError ? (
+                    <p className="text-[11px] text-red-400">{newCategoryError}</p>
+                  ) : (
+                    <p className="text-[11px] text-text-dim">
+                      Saved in UPPERCASE, shared across all chapters globally.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <FieldLabel>Event Mode</FieldLabel>
@@ -681,10 +782,17 @@ export default function ChapterEventsPage({
                   }))
                 }
               >
-                <option value="open_to_all">🌍 Open to All (Anyone inside & outside college/chapter)</option>
-                <option value="chapter_only">🔒 Open for this Chapter (Members of this chapter only)</option>
+                <option value="chapter_only">🔒 Chapter Members Only — this chapter's members with platform accounts</option>
+                <option value="open_to_all">🌍 Open to All Platform Users — any student with a platform account</option>
                 <option value="closed">⛔ Closed (Invite-only / Registration closed)</option>
               </Select>
+              <p className="mt-1 text-[11px] text-text-dim">
+                {form.visibility === "chapter_only"
+                  ? "Only members of this chapter who have a platform account can register."
+                  : form.visibility === "open_to_all"
+                  ? "Any student with a platform account (any chapter) can register. Non-platform users cannot join."
+                  : "Registration is disabled — no one can register."}
+              </p>
             </div>
             <div>
               <FieldLabel>Starts At</FieldLabel>
@@ -968,6 +1076,14 @@ export default function ChapterEventsPage({
           </div>
         </div>
 
+        {/* Draft-first notice */}
+        <div className="mt-4 rounded-[10px] border border-border/60 bg-bg-panel px-3 py-2">
+          <p className="text-[12px] text-text-dim">
+            <span className="font-semibold text-text">📝 Starts as Draft</span> — After creation, only the{" "}
+            <strong>HQ Founder</strong> or <strong>Campus Lead</strong> can publish the event to activate registration.
+          </p>
+        </div>
+
         {createFlash ? (
           <p className="mt-3 text-[13px] text-[var(--accent)]">{createFlash}</p>
         ) : null}
@@ -976,7 +1092,7 @@ export default function ChapterEventsPage({
             Cancel
           </Button>
           <Button type="button" variant="orange" onClick={handleCreate}>
-            Create → Open event
+            Create Draft Event
           </Button>
         </div>
       </Dialog>

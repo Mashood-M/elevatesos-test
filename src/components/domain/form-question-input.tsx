@@ -318,11 +318,50 @@ export function FormQuestionInput({
     qId.includes("num");
 
   const inputType = isEmail ? "email" : isPhone ? "tel" : isNumber ? "number" : "text";
-  const inputMode = isEmail ? "email" : isPhone ? "tel" : isNumber ? "numeric" : undefined;
+  const inputMode = isEmail ? "email" : isPhone ? "numeric" : isNumber ? "numeric" : undefined;
+
+  // Phone-specific: strip non-digits, show 10-digit error
+  const phoneVal = typeof value === "string" ? value : "";
+  const phoneDigits = phoneVal.replace(/\D/g, "");
+  const phoneError =
+    isPhone && phoneVal.length > 0 && phoneDigits.length !== 10
+      ? `Enter exactly 10 digits (${phoneDigits.length}/10)`
+      : "";
+
+  if (isPhone) {
+    return (
+      <div>
+        {label}
+        {question.description ? (
+          <p className="mb-1 text-[11px] text-text-dim">{question.description}</p>
+        ) : null}
+        <Input
+          type="tel"
+          inputMode="numeric"
+          pattern="[0-9]{10}"
+          maxLength={10}
+          placeholder="10-digit number e.g. 9876543210"
+          disabled={disabled}
+          value={phoneDigits}
+          onChange={(e) => {
+            // Only allow digits, max 10
+            const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+            onChange(digits);
+          }}
+        />
+        {phoneError ? (
+          <p className="mt-1 text-[11px] text-red-400">{phoneError}</p>
+        ) : phoneDigits.length === 10 ? (
+          <p className="mt-1 text-[11px] text-green-500">✓ Valid 10-digit number</p>
+        ) : (
+          <p className="mt-1 text-[11px] text-text-dim">Enter 10 digits only — no spaces, dashes, or country code.</p>
+        )}
+      </div>
+    );
+  }
+
   const placeholder = isEmail
     ? "e.g. alex@college.edu.in"
-    : isPhone
-    ? "e.g. +91 98765 43210"
     : isNumber
     ? "e.g. 100"
     : undefined;

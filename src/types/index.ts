@@ -809,6 +809,8 @@ export interface ElevatesStore {
   leadershipTerms: LeadershipTerm[];
   leadershipAssignments: LeadershipAssignment[];
   events: EventItem[];
+  /** Global org-wide event categories (always uppercase, de-duplicated). Managed by HQ/Campus Leads. */
+  eventCategories: string[];
   /** @deprecated prefer `forms` with purpose registration — kept in sync for demos */
   eventForms: EventForm[];
   forms: FormDefinition[];

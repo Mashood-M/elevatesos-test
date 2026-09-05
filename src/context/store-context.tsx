@@ -179,6 +179,8 @@ type StoreContextValue = {
   ) => boolean;
   createEvent: (event: EventItem) => void;
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
+  /** Add a new global event category. Category is uppercased and de-duplicated. Returns true if added, false if duplicate. */
+  addEventCategory: (category: string) => boolean;
   registerForEvent: (
     registration: EventRegistration,
   ) => { ok: true } | { ok: false; message: string };
@@ -909,6 +911,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       leadershipTerms: [],
       leadershipAssignments: [],
       events: [],
+      eventCategories: [
+        "WORKSHOP",
+        "HACKATHON",
+        "MEETUP",
+        "LECTURE",
+        "LAB",
+        "SHOWCASE",
+        "CHALLENGE",
+      ],
       eventForms: [],
       forms: [],
       formResponses: [],
@@ -1489,6 +1500,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }));
           },
         });
+      },
+      addEventCategory: (category) => {
+        const normalized = category.trim().toUpperCase();
+        if (!normalized) return false;
+        const existing = store.eventCategories ?? [];
+        if (existing.includes(normalized)) return false;
+        setStore((s) => ({
+          ...s,
+          eventCategories: [...(s.eventCategories ?? []), normalized],
+        }));
+        return true;
       },
       registerForEvent: (registration) => {
         let result: { ok: true } | { ok: false; message: string } = {

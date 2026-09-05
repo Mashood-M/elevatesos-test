@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { forwardRef } from "react";
 import type {
   InputHTMLAttributes,
   SelectHTMLAttributes,
@@ -16,12 +17,11 @@ export function FieldLabel({ children, className }: { children: React.ReactNode;
 const field =
   "w-full h-11 rounded-full border-0 bg-bg px-4 text-[13px] text-text outline-none shadow-[var(--shadow-sm)] placeholder:text-text-mute focus:ring-2 focus:ring-[var(--accent-soft)]";
 
-export function Input({
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(field, className)} {...props} />;
-}
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input({ className, ...props }, ref) {
+    return <input ref={ref} className={cn(field, className)} {...props} />;
+  }
+);
 
 export function TextArea({
   className,

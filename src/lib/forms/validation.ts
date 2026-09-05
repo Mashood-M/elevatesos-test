@@ -46,8 +46,8 @@ export function validateRule(
   }
   if (rule.kind === "phone") {
     const digits = raw.replace(/\D/g, "");
-    const ok = digits.length >= 10 && digits.length <= 15;
-    return ok ? null : rule.message || "Enter a valid phone number.";
+    const ok = digits.length === 10;
+    return ok ? null : rule.message || "Enter a valid 10-digit phone number.";
   }
   if (rule.kind === "min_length") {
     const n = Number(rule.value) || 0;

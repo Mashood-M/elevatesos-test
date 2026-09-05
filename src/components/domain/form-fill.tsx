@@ -257,6 +257,29 @@ export function FormFill({
       return;
     }
 
+    // Phone 10-digit enforcement
+    for (const q of allQs) {
+      if (hiddenIds.has(q.id)) continue;
+      const qTitle = q.title.toLowerCase();
+      const qId = q.id.toLowerCase();
+      const isPhone =
+        qTitle.includes("phone") ||
+        qTitle.includes("mobile") ||
+        qTitle.includes("contact") ||
+        qTitle.includes("whatsapp") ||
+        qTitle.includes("tel") ||
+        qId.includes("phone") ||
+        qId.includes("tel");
+      if (!isPhone) continue;
+      const val = typeof answers[q.id] === "string" ? String(answers[q.id]) : "";
+      if (!val) continue; // required check already handled above
+      const digits = val.replace(/\D/g, "");
+      if (digits.length !== 10) {
+        setError(`${q.title}: Please enter exactly 10 digits (no spaces, dashes, or country code).`);
+        return;
+      }
+    }
+
     const repQuestion = resolvedForm.questions.find(
       (q) => q.type === "representative",
     );

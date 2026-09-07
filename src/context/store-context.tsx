@@ -2414,11 +2414,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           } while (existingCodes.has(codeString));
         }
 
-        const uuidId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined;
+        const chapObj = store.chapters.find((c) => c.id === chapterId || c.slug === chapterId);
+        const resolvedChapterId = chapObj?.id || chapterId;
+        const uuidId = genUuid();
 
         const newCode: import("@/types").ChapterInviteCode = {
-          id: uuidId ?? `cic-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          chapterId,
+          id: uuidId,
+          chapterId: resolvedChapterId,
           code: codeString,
           createdBy: store.session.userId,
           createdAt: now.toISOString(),
@@ -2430,13 +2432,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const supabase = createClient();
         if (supabase) {
           const payload: Record<string, any> = {
+            id: uuidId,
             token: newCode.code,
-            chapter_id: newCode.chapterId,
+            chapter_id: resolvedChapterId,
             expires_at: newCode.expiresAt,
             is_active: true,
             uses_count: 0,
           };
-          if (uuidId) payload.id = uuidId;
           if (newCode.createdBy && newCode.createdBy.includes("-")) {
             payload.created_by = newCode.createdBy;
           }
@@ -2451,8 +2453,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 if (res.error.message?.includes("uses_count")) {
                   delete payload.uses_count;
                   supabase.from("invite_tokens").insert(payload);
-                } else {
-                  console.error("Error saving invite token to Supabase:", res.error.message);
                 }
               } else if (res?.data?.id && res.data.id !== newCode.id) {
                 const serverId = res.data.id;
@@ -2466,7 +2466,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
         }
 
-        // Broadcast to /api/mutations to guarantee database sync
+        // Broadcast to /api/mutations (service role) to guarantee database sync bypassing RLS
         fetch("/api/mutations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2474,13 +2474,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             type: "chapter_invite_code",
             data: {
               id: uuidId,
-              chapterId: newCode.chapterId,
+              chapterId: resolvedChapterId,
               code: newCode.code,
               createdBy: newCode.createdBy,
               expiresAt: newCode.expiresAt,
             },
           }),
-        }).catch(() => {});
+        }).then(async (res) => {
+          const json = await res.json().catch(() => null);
+          if (json?.id && json.id !== newCode.id) {
+            setStore((s) => ({
+              ...s,
+              chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
+                c.id === newCode.id ? { ...c, id: json.id } : c
+              ),
+            }));
+          }
+        }).catch((err) => console.warn("Notice: chapter_invite_code server sync:", err));
 
         setStore((s) => ({
           ...s,

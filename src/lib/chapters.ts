@@ -1,6 +1,6 @@
 import type { Chapter } from "@/types";
 
-export const TEST_CHAPTER_ID = "e1e7a050-7e57-4c8a-9b12-a1b2c3d4e5f6";
+export const TEST_CHAPTER_ID = "f59244b8-b5c9-4906-8ae8-9d1ee819ec75";
 export const TEST_CHAPTER_SLUG = "test-chapter";
 
 export const TEST_CHAPTER_DEFAULT: Chapter = {

@@ -1052,9 +1052,35 @@ export async function POST(req: Request) {
         if (anyProf) creatorId = anyProf.id;
       }
 
+      let validChapterId: string | null = null;
+      if (isUuid(chapterId)) {
+        const { data: chapExists } = await admin
+          .from("chapters")
+          .select("id")
+          .eq("id", chapterId)
+          .maybeSingle();
+        if (chapExists) validChapterId = chapExists.id;
+      }
+      if (!validChapterId && chapterId) {
+        const { data: chapBySlug } = await admin
+          .from("chapters")
+          .select("id")
+          .eq("slug", chapterId)
+          .maybeSingle();
+        if (chapBySlug) validChapterId = chapBySlug.id;
+      }
+      if (!validChapterId) {
+        const { data: firstChap } = await admin
+          .from("chapters")
+          .select("id")
+          .limit(1)
+          .maybeSingle();
+        if (firstChap) validChapterId = firstChap.id;
+      }
+
       const insertPayload: Record<string, any> = {
         token: cleanCode,
-        chapter_id: isUuid(chapterId) ? chapterId : null,
+        chapter_id: validChapterId,
         expires_at: expiresAt || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         is_active: true,
         uses_count: 0,

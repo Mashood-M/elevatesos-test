@@ -11,6 +11,7 @@ import type {
   FormDefinition,
   FormResponse,
   Guideline,
+  LeadershipApplication,
   LeadershipAssignment,
   LeadershipTerm,
   NotificationItem,
@@ -112,6 +113,9 @@ export async function persistBulkAttendance(records: (AttendanceRecord | Record<
 export async function persistCertificate(cert: Certificate | Partial<Certificate>): Promise<MutationResult> {
   return sendMutation("certificate", cert);
 }
+export async function revokeCertificateRemote(id: string, isRevoked = true): Promise<MutationResult> {
+  return sendMutation("revoke_certificate", { id, isRevoked });
+}
 
 // 7. Forms & Responses
 export async function persistForm(form: FormDefinition): Promise<MutationResult> {
@@ -179,6 +183,12 @@ export async function persistLeadershipAssignment(la: LeadershipAssignment | Par
 export async function deleteLeadershipAssignmentRemote(id: string): Promise<MutationResult> {
   return sendMutation("delete_leadership_assignment", { id });
 }
+export async function persistLeadershipApplication(app: LeadershipApplication | Partial<LeadershipApplication>): Promise<MutationResult> {
+  return sendMutation("leadership_application", app);
+}
+export async function persistLeadershipApplicationStatus(id: string, status: string, actorId?: string): Promise<MutationResult> {
+  return sendMutation("leadership_application_status", { id, status, actorId });
+}
 
 // 12. Activity Logs
 export async function persistActivityLog(logItem: {
@@ -242,4 +252,43 @@ export async function persistChapterInviteCode(payload: {
 
 export async function revokeChapterInviteCodeRemote(id: string): Promise<MutationResult> {
   return sendMutation("revoke_chapter_invite_code", { id });
+}
+
+// 16. System UI & Button States
+export async function persistSystemUiState(payload: {
+  key: string;
+  section: string;
+  componentId?: string;
+  stateType?: "button" | "toggle" | "banner" | "input" | "badge" | "modal";
+  isEnabled?: boolean;
+  isVisible?: boolean;
+  label?: string;
+  tone?: string;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+  scope?: "global" | "chapter" | "event";
+  scopeId?: string;
+  updatedBy?: string;
+}): Promise<MutationResult> {
+  return sendMutation("system_ui_state", payload);
+}
+
+// 17. Discord Integration
+export async function persistDiscordIntegration(payload: Record<string, any>): Promise<MutationResult> {
+  return sendMutation("discord_integration", payload);
+}
+
+// 18. Website CMS Section
+export async function persistWebsiteSection(payload: Record<string, any>): Promise<MutationResult> {
+  return sendMutation("website_section", payload);
+}
+
+// 19. Chapter Standard Checks
+export async function persistChapterStandardCheck(payload: {
+  chapterId: string;
+  standardId: string;
+  done: boolean;
+  note?: string;
+}): Promise<MutationResult> {
+  return sendMutation("chapter_standard_check", payload);
 }

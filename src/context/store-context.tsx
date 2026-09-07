@@ -66,6 +66,11 @@ import {
   deleteEventPermissionRemote,
   persistProfile,
   persistUserRoles,
+  persistChapterStandardCheck,
+  persistSystemUiState,
+  persistLeadershipApplication,
+  persistLeadershipApplicationStatus,
+  revokeCertificateRemote,
 } from "@/lib/data/mutations";
 import {
   answerableQuestions,
@@ -99,7 +104,7 @@ import type {
   AttendanceSession,
   AttendanceStatus,
   BrandKit,
-
+  Certificate,
   Chapter,
   ClassCohort,
   Cluster,
@@ -126,6 +131,7 @@ import type {
   OutboundMessage,
   PermissionKey,
   Profile,
+  Project,
   RegistrationStatus,
   Report,
   ReportImage,
@@ -135,6 +141,7 @@ import type {
   ReportType,
   Resource,
   RoleKey,
+  Task,
   TaskStatus,
   UserRole,
   UserRoleAssignmentInput,
@@ -169,7 +176,16 @@ type StoreContextValue = {
   ) => CheckInResult;
 
 
+  createTask: (input: {
+    chapterId: string;
+    title: string;
+    category?: string;
+    assigneeId?: string;
+    dueDate?: string;
+    eventId?: string;
+  }) => Task;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
+  deleteTask: (id: string) => boolean;
   approveEvent: (eventId: string) => void;
   approveReport: (reportId: string, comment: string, actorId: string) => void;
   reviewReport: (
@@ -187,7 +203,8 @@ type StoreContextValue = {
   registerForEvent: (
     registration: EventRegistration,
   ) => { ok: true } | { ok: false; message: string };
-  issueCertificate: (eventId: string, userId: string) => CheckInResult;
+  issueCertificate: (eventId: string, userId: string, achievement?: string) => CheckInResult;
+  revokeCertificate: (id: string, isRevoked?: boolean) => boolean;
   saveEventForm: (eventId: string, fields: FormField[]) => void;
   saveForm: (
     eventId: string,
@@ -243,6 +260,7 @@ type StoreContextValue = {
         | "githubUrl"
         | "linkedinUrl"
         | "portfolioUrl"
+        | "resumeUrl"
         | "engagementTier"
         | "journeyStage"
       >
@@ -365,6 +383,11 @@ type StoreContextValue = {
     patch: Partial<Pick<LeadershipAssignment, "userId" | "roleKey" | "title">>,
   ) => boolean;
   removeLeadershipAssignment: (id: string) => boolean;
+  createProject: (
+    input: Partial<Project> & { chapterId: string; title: string },
+  ) => Project;
+  updateProject: (id: string, patch: Partial<Project>) => boolean;
+  deleteProject: (id: string) => boolean;
   createCluster: (
     input: Pick<Cluster, "chapterId" | "name" | "slug" | "description"> & {
       leaderId?: string;
@@ -1355,6 +1378,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return result;
       },
 
+      createTask: (input) => {
+        const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
+        const newTask: Task = {
+          id,
+          chapterId: input.chapterId,
+          eventId: input.eventId,
+          title: input.title,
+          category: (input.category as any) ?? "documentation",
+          assigneeId: input.assigneeId || "",
+          status: "pending",
+          dueDate: input.dueDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          tasks: [newTask, ...s.tasks],
+          activityLogs: [
+            log(s.session.userId, "task_created", "task", id),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(persistTask(newTask), {
+          errorMessage: `Failed to create task "${input.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              tasks: s.tasks.filter((t) => t.id !== id),
+            }));
+          },
+        });
+        return newTask;
+      },
       updateTaskStatus: (id, status) => {
         const prevTask = store.tasks.find((t) => t.id === id);
         if (!prevTask) return;
@@ -1372,6 +1426,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }));
           },
         });
+      },
+      deleteTask: (id) => {
+        const prev = store.tasks.find((t) => t.id === id);
+        if (!prev) return false;
+        setStore((s) => ({
+          ...s,
+          tasks: s.tasks.filter((t) => t.id !== id),
+          activityLogs: [
+            log(s.session.userId, "task_deleted", "task", id),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(deleteTaskRemote(id), {
+          errorMessage: `Failed to delete task "${prev.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              tasks: [...s.tasks, prev],
+            }));
+          },
+        });
+        return true;
       },
       approveEvent: (eventId) => {
         const ev = store.events.find((e) => e.id === eventId);
@@ -1951,13 +2027,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           },
         });
       },
-      issueCertificate: (eventId, userId) => {
+      issueCertificate: (eventId, userId, achievement) => {
         let result: CheckInResult = { ok: true };
         const certId = genUuid();
         setStore((s) => {
           if (
             s.certificates.some(
-              (c) => c.eventId === eventId && c.userId === userId,
+              (c) => c.eventId === eventId && c.userId === userId && !c.isRevoked,
             )
           ) {
             result = { ok: false, message: "Certificate already issued." };
@@ -1981,8 +2057,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             return s;
           }
-          const certificateId = `ELV-MANUAL-${Date.now().toString().slice(-6)}`;
-          const cert = {
+          const ev = s.events.find((e) => e.id === eventId);
+          const ch = s.chapters.find((c) => c.id === ev?.chapterId);
+          const prefix = (ch?.slug?.slice(0, 3) || "ELE").toUpperCase();
+          const certificateId = `CERT-${prefix}-2026-${Date.now().toString().slice(-4)}`;
+          const cert: Certificate = {
             id: certId,
             certificateId,
             eventId,
@@ -1990,6 +2069,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             issuedAt: new Date().toISOString(),
             verificationQr: `VERIFY-${certificateId}`,
             digitalSignature: `sig_${certificateId.toLowerCase()}`,
+            isRevoked: false,
+            achievement: achievement || "Participation",
           };
           void runPersist(persistCertificate(cert), {
             errorMessage: "Failed to issue certificate",
@@ -2006,9 +2087,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               cert,
               ...s.certificates,
             ],
+            activityLogs: [
+              log(s.session.userId, "certificate_issued", "certificate", certificateId),
+              ...s.activityLogs,
+            ],
           };
         });
         return result;
+      },
+      revokeCertificate: (id, isRevoked = true) => {
+        const prev = store.certificates.find((c) => c.id === id || c.certificateId === id);
+        if (!prev) return false;
+        setStore((s) => ({
+          ...s,
+          certificates: s.certificates.map((c) =>
+            c.id === prev.id ? { ...c, isRevoked } : c
+          ),
+          activityLogs: [
+            log(s.session.userId, isRevoked ? "certificate_revoked" : "certificate_restored", "certificate", prev.certificateId),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(revokeCertificateRemote(prev.id, isRevoked), {
+          errorMessage: `Failed to ${isRevoked ? "revoke" : "restore"} certificate`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              certificates: s.certificates.map((c) => (c.id === prev.id ? prev : c)),
+            }));
+          },
+        });
+        return true;
       },
       createChapter: (input) => {
         const trimmed = {
@@ -2610,24 +2719,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       respondClusterInvite: (inviteId, status) => {
         const invite = store.clusterInvites?.find((i) => i.id === inviteId);
         if (!invite || invite.status !== "pending") return false;
+        let updatedCluster: Cluster | undefined;
+        let updatedProfile: Profile | undefined;
         setStore((s) => {
           let clusters = s.clusters;
           let profiles = s.profiles;
           if (status === "accepted") {
-            clusters = s.clusters.map((c) =>
-              c.id === invite.clusterId && !c.memberIds.includes(invite.userId)
-                ? { ...c, memberIds: [...c.memberIds, invite.userId] }
-                : c,
-            );
-            profiles = s.profiles.map((p) =>
-              p.id === invite.userId
-                ? {
+            clusters = s.clusters.map((c) => {
+              if (c.id === invite.clusterId && !c.memberIds.includes(invite.userId)) {
+                updatedCluster = { ...c, memberIds: [...c.memberIds, invite.userId] };
+                return updatedCluster;
+              }
+              return c;
+            });
+            profiles = s.profiles.map((p) => {
+              if (p.id === invite.userId) {
+                updatedProfile = {
                   ...p,
                   engagementTier: "cluster" as EngagementTier,
                   journeyStage: "cluster" as JourneyStage,
-                }
-                : p,
-            );
+                };
+                return updatedProfile;
+              }
+              return p;
+            });
           }
           return {
             ...s,
@@ -2638,6 +2753,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ),
           };
         });
+        if (updatedCluster) {
+          void runPersist(persistCluster(updatedCluster), {
+            errorMessage: "Failed to persist cluster membership",
+          });
+        }
+        if (updatedProfile) {
+          void runPersist(persistProfile(updatedProfile), {
+            errorMessage: "Failed to persist profile update",
+          });
+        }
         return true;
       },
       submitClusterChallenge: (input) => {
@@ -2674,8 +2799,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             !["rejected", "withdrawn"].includes(a.status),
         );
         if (dup) return false;
+        const appId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
         const app: LeadershipApplication = {
-          id: `la-app-${Date.now()}`,
+          id: appId,
           termId: input.termId,
           chapterId: term.chapterId,
           userId,
@@ -2689,7 +2815,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStore((s) => ({
           ...s,
           leadershipApplications: [app, ...(s.leadershipApplications ?? [])],
+          activityLogs: [
+            log(s.session.userId, "leadership_application_submitted", "leadership_application", appId),
+            ...s.activityLogs,
+          ],
         }));
+        void runPersist(persistLeadershipApplication(app), {
+          errorMessage: "Failed to persist leadership application",
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              leadershipApplications: (s.leadershipApplications ?? []).filter((a) => a.id !== appId),
+            }));
+          },
+        });
         return true;
       },
       updateLeadershipApplicationStatus: (id, status) => {
@@ -2702,10 +2841,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ? { ...a, status, updatedAt: new Date().toISOString() }
               : a,
           ),
+          activityLogs: [
+            log(s.session.userId, `leadership_application_${status}`, "leadership_application", id),
+            ...s.activityLogs,
+          ],
         }));
+        void runPersist(persistLeadershipApplicationStatus(id, status, store.session.userId), {
+          errorMessage: "Failed to update leadership application status",
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              leadershipApplications: (s.leadershipApplications ?? []).map((a) =>
+                a.id === id ? app : a,
+              ),
+            }));
+          },
+        });
         return true;
       },
       toggleChapterStandard: (chapterId, standardId, done) => {
+        void runPersist(persistChapterStandardCheck({ chapterId, standardId, done }), {
+          errorMessage: "Failed to persist chapter standard check to database",
+        });
         setStore((s) => {
           const checks = s.chapterStandardChecks ?? [];
           const existing = checks.find(
@@ -3592,6 +3749,89 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             setStore((s) => ({
               ...s,
               leadershipAssignments: [...s.leadershipAssignments, existing],
+            }));
+          },
+        });
+        return true;
+      },
+      createProject: (input) => {
+        const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
+        const project: Project = {
+          id,
+          chapterId: input.chapterId,
+          clusterId: input.clusterId,
+          title: input.title,
+          description: input.description ?? "",
+          stage: input.stage ?? "idea",
+          projectType: input.projectType ?? "internal",
+          teamIds: input.teamIds ?? [],
+          mentorId: input.mentorId,
+          repositoryUrl: input.repositoryUrl,
+          progress: input.progress ?? 0,
+          demoUrl: input.demoUrl,
+          awards: input.awards ?? [],
+          slug: input.slug,
+          isShowcased: input.isShowcased ?? false,
+        };
+        setStore((s) => ({
+          ...s,
+          projects: [project, ...s.projects],
+          activityLogs: [
+            log(s.session.userId, "project_created", "project", project.id),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(persistProject(project), {
+          errorMessage: `Failed to create project "${project.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              projects: s.projects.filter((p) => p.id !== id),
+            }));
+          },
+        });
+        return project;
+      },
+      updateProject: (id, patch) => {
+        const existing = store.projects.find((p) => p.id === id);
+        if (!existing) return false;
+        const updated: Project = { ...existing, ...patch, id: existing.id };
+        setStore((s) => ({
+          ...s,
+          projects: s.projects.map((p) => (p.id === id ? updated : p)),
+          activityLogs: [
+            log(s.session.userId, "project_updated", "project", id),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(persistProject(updated), {
+          errorMessage: `Failed to update project "${existing.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              projects: s.projects.map((p) => (p.id === id ? existing : p)),
+            }));
+          },
+        });
+        return true;
+      },
+      deleteProject: (id) => {
+        const existing = store.projects.find((p) => p.id === id);
+        if (!existing) return false;
+        setStore((s) => ({
+          ...s,
+          projects: s.projects.filter((p) => p.id !== id),
+          activityLogs: [
+            log(s.session.userId, "project_deleted", "project", id),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(deleteProjectRemote(id, existing.slug), {
+          errorMessage: `Failed to delete project "${existing.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              projects: [existing, ...s.projects],
             }));
           },
         });

@@ -97,6 +97,9 @@ export async function POST(req: Request) {
         progress: p.progress ?? 100,
         demo_url: p.demoUrl ?? p.live,
         is_showcased: p.isShowcased ?? true,
+        team_ids: Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [],
+        mentor_id: isUuid(p.mentorId) ? p.mentorId : null,
+        awards: Array.isArray(p.awards) ? p.awards : [],
       });
 
       if (error) {
@@ -342,6 +345,8 @@ export async function POST(req: Request) {
         issued_at: cert.issuedAt ?? new Date().toISOString(),
         verification_qr: cert.verificationQr ?? "",
         digital_signature: cert.digitalSignature ?? "",
+        is_revoked: Boolean(cert.isRevoked),
+        achievement: cert.achievement || "Participation",
       }, { onConflict: "certificate_id" });
 
       if (error) {
@@ -349,6 +354,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
       return NextResponse.json({ ok: true, id: certId });
+    }
+
+    if (type === "revoke_certificate") {
+      const { id, isRevoked } = data;
+      const { error } = await admin
+        .from("certificates")
+        .update({ is_revoked: isRevoked !== undefined ? Boolean(isRevoked) : true })
+        .match(isUuid(id) ? { id } : { certificate_id: id });
+
+      if (error) {
+        console.error("Mutation error (revoke_certificate):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
     }
 
     // 8. FORM MUTATIONS
@@ -778,6 +797,10 @@ export async function POST(req: Request) {
           bio: p.bio,
           skills: p.skills ?? [],
           interests: p.interests ?? [],
+          github_url: p.githubUrl || null,
+          linkedin_url: p.linkedinUrl || null,
+          portfolio_url: p.portfolioUrl || null,
+          resume_url: p.resumeUrl || null,
         });
       }
       return NextResponse.json({ ok: true });
@@ -997,6 +1020,189 @@ export async function POST(req: Request) {
       if (id) {
         const query = isUuid(id) ? { id } : { token: id.trim().toUpperCase() };
         await admin.from("invite_tokens").update({ is_active: false }).match(query);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 23. SYSTEM UI & BUTTON STATE MUTATIONS
+    if (type === "system_ui_state") {
+      const st = data;
+      if (!st.key || !st.section) {
+        return NextResponse.json({ ok: false, error: "key and section are required" }, { status: 400 });
+      }
+      const { error } = await admin.from("system_ui_states").upsert({
+        key: st.key,
+        section: st.section,
+        component_id: st.componentId || null,
+        state_type: st.stateType || "button",
+        is_enabled: st.isEnabled !== undefined ? Boolean(st.isEnabled) : true,
+        is_visible: st.isVisible !== undefined ? Boolean(st.isVisible) : true,
+        label: st.label || null,
+        icon: st.icon || null,
+        tone: st.tone || "default",
+        action_url: st.actionUrl || null,
+        metadata: st.metadata || {},
+        scope: st.scope || "global",
+        scope_id: st.scopeId || null,
+        updated_by: isUuid(st.updatedBy) ? st.updatedBy : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "key" });
+
+      if (error) {
+        console.error("Mutation error (system_ui_state):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 24. DISCORD INTEGRATION MUTATIONS
+    if (type === "discord_integration") {
+      const disc = data;
+      const { error } = await admin.from("discord_integrations").upsert({
+        organization_id: isUuid(disc.organizationId) ? disc.organizationId : DEFAULT_ORG_ID,
+        guild_id: disc.guildId,
+        guild_name: disc.guildName || null,
+        bot_status: disc.botStatus || "online",
+        last_heartbeat: new Date().toISOString(),
+        announcements_channel_id: disc.announcementsChannelId || null,
+        events_channel_id: disc.eventsChannelId || null,
+        audit_logs_channel_id: disc.auditLogsChannelId || null,
+        leads_channel_id: disc.leadsChannelId || null,
+        general_channel_id: disc.generalChannelId || null,
+        webhook_url: disc.webhookUrl || null,
+        audit_webhook_url: disc.auditWebhookUrl || null,
+        sync_events: disc.syncEvents !== undefined ? Boolean(disc.syncEvents) : true,
+        sync_announcements: disc.syncAnnouncements !== undefined ? Boolean(disc.syncAnnouncements) : true,
+        sync_audit_logs: disc.syncAuditLogs !== undefined ? Boolean(disc.syncAuditLogs) : true,
+        sync_registrations: disc.syncRegistrations !== undefined ? Boolean(disc.syncRegistrations) : false,
+        role_mappings: disc.roleMappings || {},
+        button_actions_enabled: disc.buttonActionsEnabled !== undefined ? Boolean(disc.buttonActionsEnabled) : true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "guild_id" });
+
+      if (error) {
+        console.error("Mutation error (discord_integration):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 25. WEBSITE SECTION MUTATIONS
+    if (type === "website_section") {
+      const ws = data;
+      if (!ws.slug || !ws.title) {
+        return NextResponse.json({ ok: false, error: "slug and title are required" }, { status: 400 });
+      }
+      const { error } = await admin.from("website_sections").upsert({
+        slug: ws.slug,
+        title: ws.title,
+        subtitle: ws.subtitle || null,
+        content: ws.content || {},
+        primary_button_label: ws.primaryButtonLabel || null,
+        primary_button_url: ws.primaryButtonUrl || null,
+        primary_button_enabled: ws.primaryButtonEnabled !== undefined ? Boolean(ws.primaryButtonEnabled) : true,
+        secondary_button_label: ws.secondaryButtonLabel || null,
+        secondary_button_url: ws.secondaryButtonUrl || null,
+        secondary_button_enabled: ws.secondaryButtonEnabled !== undefined ? Boolean(ws.secondaryButtonEnabled) : true,
+        is_published: ws.isPublished !== undefined ? Boolean(ws.isPublished) : true,
+        sort_order: ws.sortOrder ?? 0,
+        updated_by: isUuid(ws.updatedBy) ? ws.updatedBy : null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "slug" });
+
+      if (error) {
+        console.error("Mutation error (website_section):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      await revalidateWeb(["home", `section:${ws.slug}`]);
+      return NextResponse.json({ ok: true });
+    }
+
+    // 26. CHAPTER STANDARD CHECK MUTATIONS
+    if (type === "chapter_standard_check") {
+      const { chapterId, standardId, done, note } = data;
+      if (!isUuid(chapterId) || !standardId) {
+        return NextResponse.json({ ok: false, error: "chapterId and standardId are required" }, { status: 400 });
+      }
+
+      // Try upserting with modern columns
+      let { error } = await admin.from("chapter_standard_checks").upsert({
+        chapter_id: chapterId,
+        standard_id: standardId,
+        check_name: standardId,
+        done: Boolean(done),
+        status: done ? "passed" : "pending",
+        note: note || null,
+        notes: note || null,
+        updated_at: new Date().toISOString(),
+      });
+
+      // If 'done' column doesn't exist in remote schema cache yet, fall back to legacy columns
+      if (error && (error.message.includes("'done' column") || error.message.includes("'standard_id' column"))) {
+        const res = await admin.from("chapter_standard_checks").upsert({
+          chapter_id: chapterId,
+          check_name: standardId,
+          category: "compliance",
+          status: done ? "passed" : "pending",
+          notes: note || null,
+          updated_at: new Date().toISOString(),
+        });
+        error = res.error;
+      }
+
+      if (error) {
+        console.error("Mutation error (chapter_standard_check):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 27. LEADERSHIP APPLICATION MUTATIONS
+    if (type === "leadership_application") {
+      const app = data;
+      const appId = isUuid(app.id) ? app.id : genUuid();
+      if (!isUuid(app.termId) || !isUuid(app.chapterId) || !isUuid(app.userId)) {
+        return NextResponse.json({ ok: false, error: "termId, chapterId, and userId must be valid UUIDs" }, { status: 400 });
+      }
+      const { error } = await admin.from("leadership_applications").upsert({
+        id: appId,
+        term_id: app.termId,
+        chapter_id: app.chapterId,
+        user_id: app.userId,
+        role_key: app.roleKey,
+        title: app.title,
+        status: app.status ?? "applied",
+        statement: app.statement || null,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.error("Mutation error (leadership_application):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, id: appId });
+    }
+
+    if (type === "leadership_application_status") {
+      const { id, status, actorId } = data;
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid application id is required" }, { status: 400 });
+      }
+      const { error } = await admin.from("leadership_applications").update({
+        status,
+        updated_at: new Date().toISOString(),
+      }).eq("id", id);
+      if (error) {
+        console.error("Mutation error (leadership_application_status):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      if (actorId) {
+        await admin.from("activity_logs").insert({
+          actor_id: isUuid(actorId) ? actorId : null,
+          action: `leadership_application_${status}`,
+          entity: "leadership_application",
+          entity_id: id,
+          meta: JSON.stringify({ status, reviewedAt: new Date().toISOString() }),
+        });
       }
       return NextResponse.json({ ok: true });
     }

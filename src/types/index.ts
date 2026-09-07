@@ -571,6 +571,9 @@ export interface Certificate {
   issuedAt: string;
   verificationQr: string;
   digitalSignature: string;
+  isRevoked?: boolean;
+  achievement?: string;
+  pdfUrl?: string;
 }
 
 export interface Cluster {

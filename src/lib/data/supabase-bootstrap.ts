@@ -136,6 +136,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: cohortRows },
       { data: formRespRows },
       { data: laAppRows },
+      { data: standardCheckRows },
       sessionRes,
       userRes,
     ] = await Promise.all([
@@ -168,6 +169,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("class_cohorts").select("*"),
       supabase.from("form_responses").select("*"),
       supabase.from("leadership_applications").select("*"),
+      supabase.from("chapter_standard_checks").select("*"),
       Promise.race([
         supabase.auth.getSession().catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
@@ -306,7 +308,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         description: p.description ?? "",
         stage: p.stage,
         projectType: p.project_type ?? undefined,
-        teamIds: [],
+        teamIds: Array.isArray(p.team_ids) ? p.team_ids : [],
         mentorId: p.mentor_id ?? undefined,
         repositoryUrl: p.repository_url ?? undefined,
         progress: p.progress ?? 0,
@@ -383,6 +385,9 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         issuedAt: c.issued_at,
         verificationQr: c.verification_qr,
         digitalSignature: c.digital_signature,
+        isRevoked: Boolean(c.is_revoked),
+        achievement: c.achievement || "Participation",
+        pdfUrl: c.pdf_url || undefined,
       })) ?? [];
 
     const registrations =
@@ -599,10 +604,10 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         userId: la.user_id,
         roleKey: la.role_key,
         title: la.title ?? "",
-        status: la.status ?? "pending",
+        status: la.status ?? "applied",
         statement: la.statement ?? undefined,
-        createdAt: la.submitted_at ?? new Date().toISOString(),
-        updatedAt: la.submitted_at ?? new Date().toISOString(),
+        createdAt: la.created_at ?? la.submitted_at ?? new Date().toISOString(),
+        updatedAt: la.updated_at ?? la.created_at ?? new Date().toISOString(),
       })) ?? [];
 
     let session: DemoUserSession;
@@ -749,6 +754,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         announcements,
         notifications,
         activityLogs,
+        chapterStandardChecks: (standardCheckRows ?? []).map((sc: Record<string, any>) => ({
+          id: sc.id,
+          chapterId: sc.chapter_id,
+          standardId: sc.standard_id,
+          done: Boolean(sc.done),
+          note: sc.note ?? undefined,
+          updatedAt: sc.updated_at ?? new Date().toISOString(),
+        })),
         inviteTokens: (inviteRows ?? []).map((t: Record<string, any>) => ({
           id: t.id,
           token: t.token,

@@ -906,6 +906,7 @@ export async function POST(req: Request) {
       }
 
       // 2. Synchronize user profile if valid user UUID
+      let validProfileId: string | null = null;
       if (isUuid(userId)) {
         const profileUpdates: Record<string, any> = {
           status: "active",
@@ -917,7 +918,26 @@ export async function POST(req: Request) {
           profileUpdates.department = department.trim();
         }
 
-        await admin.from("profiles").update(profileUpdates).eq("id", userId);
+        const { data: updatedProfile } = await admin
+          .from("profiles")
+          .update(profileUpdates)
+          .eq("id", userId)
+          .select("id")
+          .maybeSingle();
+
+        if (updatedProfile?.id) {
+          validProfileId = updatedProfile.id;
+        } else {
+          // Check if profile exists at all
+          const { data: existingProf } = await admin
+            .from("profiles")
+            .select("id")
+            .eq("id", userId)
+            .maybeSingle();
+          if (existingProf?.id) {
+            validProfileId = existingProf.id;
+          }
+        }
 
         // Ensure user has the student role for this chapter
         if (isUuid(chapterId)) {
@@ -947,29 +967,58 @@ export async function POST(req: Request) {
         }
       }
 
-      // 3. Mark invite token with latest user and timestamp
+      // 3. Mark invite token with latest user and increment uses_count
       const effectiveTokenId = tokenRow?.id || (isUuid(codeId) ? codeId : null);
-      if (effectiveTokenId) {
-        await admin
-          .from("invite_tokens")
-          .update({
-            used_by: isUuid(userId) ? userId : null,
-            used_at: new Date().toISOString(),
-          })
-          .eq("id", effectiveTokenId);
-      } else if (cleanCode) {
-        await admin
-          .from("invite_tokens")
-          .update({
-            used_by: isUuid(userId) ? userId : null,
-            used_at: new Date().toISOString(),
-          })
-          .ilike("token", cleanCode);
+      const tokenString = cleanCode || tokenRow?.token || "";
+      const currentUses = Number(tokenRow?.uses_count ?? 0);
+      const nextUses = currentUses + 1;
+
+      // Try atomic RPC function first (if user ran the SQL helper in Supabase)
+      let rpcSucceeded = false;
+      try {
+        const { error: rpcErr } = await admin.rpc("increment_invite_token_usage", {
+          p_token: tokenString,
+          p_user_id: validProfileId,
+        });
+        if (!rpcErr) {
+          rpcSucceeded = true;
+        }
+      } catch {
+        rpcSucceeded = false;
+      }
+
+      // Fallback: direct table update if RPC is not present or failed
+      if (!rpcSucceeded) {
+        const updatePayload: Record<string, any> = {
+          used_at: new Date().toISOString(),
+          uses_count: nextUses,
+        };
+        if (validProfileId) {
+          updatePayload.used_by = validProfileId;
+        }
+
+        let updRes: any = null;
+        if (effectiveTokenId) {
+          updRes = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveTokenId);
+        } else if (cleanCode) {
+          updRes = await admin.from("invite_tokens").update(updatePayload).ilike("token", cleanCode);
+        }
+
+        // If uses_count column does not exist yet in table schema, retry without uses_count
+        if (updRes?.error && updRes.error.message?.includes("uses_count")) {
+          delete updatePayload.uses_count;
+          if (effectiveTokenId) {
+            await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveTokenId);
+          } else if (cleanCode) {
+            await admin.from("invite_tokens").update(updatePayload).ilike("token", cleanCode);
+          }
+        }
       }
 
       // 4. Record usage in activity_logs for permanent, multi-user join count tracking
       await admin.from("activity_logs").insert({
-        actor_id: isUuid(userId) ? userId : null,
+        actor_id: validProfileId,
+        chapter_id: isUuid(chapterId) ? chapterId : null,
         action: "chapter_invite_used",
         entity: "chapter_invite_code",
         entity_id: cleanCode || tokenRow?.token || effectiveTokenId || "UNKNOWN",
@@ -988,24 +1037,51 @@ export async function POST(req: Request) {
     if (type === "chapter_invite_code") {
       const { id, chapterId, code, createdBy, expiresAt } = data;
       const cleanCode = (code || "").trim().toUpperCase();
-      const creatorId = isUuid(createdBy) ? createdBy : "11111111-1111-1111-1111-111111111111";
+
+      let creatorId: string | null = null;
+      if (isUuid(createdBy)) {
+        const { data: userExists } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("id", createdBy)
+          .maybeSingle();
+        if (userExists) creatorId = createdBy;
+      }
+      if (!creatorId) {
+        const { data: anyProf } = await admin.from("profiles").select("id").limit(1).maybeSingle();
+        if (anyProf) creatorId = anyProf.id;
+      }
 
       const insertPayload: Record<string, any> = {
         token: cleanCode,
-        created_by: creatorId,
         chapter_id: isUuid(chapterId) ? chapterId : null,
         expires_at: expiresAt || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         is_active: true,
+        uses_count: 0,
       };
+      if (creatorId) {
+        insertPayload.created_by = creatorId;
+      }
       if (isUuid(id)) {
         insertPayload.id = id;
       }
 
-      const { data: insRow, error: insErr } = await admin
+      let { data: insRow, error: insErr } = await admin
         .from("invite_tokens")
         .insert(insertPayload)
         .select("id")
         .single();
+
+      if (insErr && insErr.message?.includes("uses_count")) {
+        delete insertPayload.uses_count;
+        const retry = await admin
+          .from("invite_tokens")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+        insRow = retry.data;
+        insErr = retry.error;
+      }
 
       if (insErr) {
         console.error("Error inserting invite token in Supabase:", insErr);

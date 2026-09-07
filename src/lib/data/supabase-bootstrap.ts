@@ -781,6 +781,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
               (al.entity_id?.toUpperCase() === tokenStr ||
                 (typeof al.meta === "string" && al.meta.toUpperCase().includes(tokenStr)))
           ).length;
+          const dbUses = Number(t.uses_count ?? 0);
           return {
             id: t.id,
             chapterId: t.chapter_id ?? "",
@@ -789,7 +790,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             createdAt: t.created_at ?? new Date().toISOString(),
             expiresAt: t.expires_at ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
             isRevoked: !(t.is_active ?? true),
-            usesCount: Math.max(logCount, t.used_by ? 1 : 0),
+            usesCount: Math.max(dbUses, logCount, t.used_by ? 1 : 0),
           };
         }),
         session,

@@ -27,9 +27,12 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
 
   // Dynamically resolve target chapter from typed code to fetch Campus Lead configured departments
   const cleanCode = inviteCode.trim().toUpperCase();
-  const matchingCode = (store.chapterInviteCodes ?? []).find((c) => c.code === cleanCode);
-  const targetChapter = matchingCode
-    ? store.chapters.find((c) => c.id === matchingCode.chapterId)
+  const matchingCode =
+    (store.chapterInviteCodes ?? []).find((c) => c.code.toUpperCase() === cleanCode) ||
+    (store.inviteTokens ?? []).find((t) => t.token?.toUpperCase() === cleanCode);
+  const targetChapterId = matchingCode?.chapterId || "";
+  const targetChapter = targetChapterId
+    ? store.chapters.find((c) => c.id === targetChapterId)
     : store.chapters.find((c) => c.slug.toUpperCase() === cleanCode);
 
   // Departments added by Campus Lead from Supabase / store

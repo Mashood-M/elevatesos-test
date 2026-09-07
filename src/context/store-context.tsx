@@ -2431,12 +2431,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (supabase) {
           const payload: Record<string, any> = {
             token: newCode.code,
-            created_by: newCode.createdBy || null,
             chapter_id: newCode.chapterId,
             expires_at: newCode.expiresAt,
             is_active: true,
+            uses_count: 0,
           };
           if (uuidId) payload.id = uuidId;
+          if (newCode.createdBy && newCode.createdBy.includes("-")) {
+            payload.created_by = newCode.createdBy;
+          }
 
           supabase
             .from("invite_tokens")
@@ -2445,7 +2448,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .single()
             .then((res: any) => {
               if (res?.error) {
-                console.error("Error saving invite token to Supabase:", res.error.message);
+                if (res.error.message?.includes("uses_count")) {
+                  delete payload.uses_count;
+                  supabase.from("invite_tokens").insert(payload);
+                } else {
+                  console.error("Error saving invite token to Supabase:", res.error.message);
+                }
               } else if (res?.data?.id && res.data.id !== newCode.id) {
                 const serverId = res.data.id;
                 setStore((s) => ({
@@ -2457,6 +2465,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               }
             });
         }
+
+        // Broadcast to /api/mutations to guarantee database sync
+        fetch("/api/mutations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "chapter_invite_code",
+            data: {
+              id: uuidId,
+              chapterId: newCode.chapterId,
+              code: newCode.code,
+              createdBy: newCode.createdBy,
+              expiresAt: newCode.expiresAt,
+            },
+          }),
+        }).catch(() => {});
 
         setStore((s) => ({
           ...s,
@@ -2477,6 +2501,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
         }
 
+        fetch("/api/mutations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "revoke_chapter_invite_code",
+            data: { id: codeId },
+          }),
+        }).catch(() => {});
+
         setStore((s) => ({
           ...s,
           chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
@@ -2492,7 +2525,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
 
         const codes = store.chapterInviteCodes ?? [];
-        let matchingCode = codes.find((c) => c.code === cleanCode);
+        let matchingCode = codes.find((c) => c.code.toUpperCase() === cleanCode);
+
+        // Fallback: match against inviteTokens if chapterInviteCodes didn't have it
+        if (!matchingCode) {
+          const matchingToken = (store.inviteTokens ?? []).find(
+            (t) => t.token?.toUpperCase() === cleanCode
+          );
+          if (matchingToken) {
+            matchingCode = {
+              id: matchingToken.id,
+              chapterId: matchingToken.chapterId || "",
+              code: matchingToken.token,
+              createdBy: matchingToken.createdBy,
+              createdAt: matchingToken.createdAt,
+              expiresAt: matchingToken.expiresAt || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+              isRevoked: !(matchingToken.isActive ?? true),
+              usesCount: 0,
+            };
+          }
+        }
 
         // Match by chapter slug if no specific code object exists
         let targetChapter = matchingCode
@@ -2552,6 +2604,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return isMatch ? { ...c, usesCount: (c.usesCount || 0) + 1 } : c;
           });
 
+          const codeAlreadyPresent = (s.chapterInviteCodes ?? []).some(
+            (c) => c.code.toUpperCase() === cleanCode || (matchingCode && c.id === matchingCode.id)
+          );
+          const finalCodes = codeAlreadyPresent
+            ? updatedCodes
+            : matchingCode
+            ? [{ ...matchingCode, usesCount: 1 }, ...updatedCodes]
+            : updatedCodes;
+
           const joinLog: import("@/types").ActivityLog = {
             id: `al-inv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             actorId: targetUserId,
@@ -2585,7 +2646,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s,
             profiles: updatedProfiles,
             session: updatedSession,
-            chapterInviteCodes: updatedCodes,
+            chapterInviteCodes: finalCodes,
             userRoles: updatedUserRoles,
             activityLogs: [joinLog, ...(s.activityLogs ?? [])],
           };
@@ -2637,13 +2698,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
 
           if (matchingCode) {
-            supabase
-              .from("invite_tokens")
-              .update({ used_by: targetUserId, used_at: new Date().toISOString() })
-              .eq("id", matchingCode.id)
-              .then((res: any) => {
-                if (res?.error) console.error("Error marking invite code used in Supabase:", res.error?.message);
-              });
+            // First try calling stored function increment_invite_token_usage
+            supabase.rpc("increment_invite_token_usage", {
+              p_token: cleanCode,
+              p_user_id: targetUserId && targetUserId.includes("-") ? targetUserId : null,
+            }).then((res: any) => {
+              if (res?.error) {
+                // Fallback to direct update
+                supabase
+                  .from("invite_tokens")
+                  .update({
+                    used_by: targetUserId && targetUserId.includes("-") ? targetUserId : null,
+                    used_at: new Date().toISOString(),
+                    uses_count: (matchingCode?.usesCount ?? 0) + 1,
+                  })
+                  .eq("id", matchingCode.id)
+                  .then((fallbackRes: any) => {
+                    if (fallbackRes?.error) {
+                      supabase
+                        .from("invite_tokens")
+                        .update({
+                          used_by: targetUserId && targetUserId.includes("-") ? targetUserId : null,
+                          used_at: new Date().toISOString(),
+                        })
+                        .eq("id", matchingCode.id);
+                    }
+                  });
+              }
+            });
           }
         }
 

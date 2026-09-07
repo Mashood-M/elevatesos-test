@@ -160,6 +160,7 @@ export function canAccessPath(
       "resources",
       "calendar",
       "forms",
+      "certificates",
     ];
     if (firstSeg && opsRoots.includes(firstSeg)) {
       return isExecutiveRole(roleKey) || isFacultyRole(roleKey);

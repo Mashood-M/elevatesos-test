@@ -99,7 +99,6 @@ export function navGroupsForRole(
       { href: "/hq/leadership", label: "Leadership", icon: I.leadership },
       // { href: "/hq/permissions", label: "Roles", icon: I.roles }, // hidden — role matrix not exposed in nav
       { href: "/hq/reports", label: "Reports", icon: I.reports },
-      { href: "/hq/certificates", label: "Certificates", icon: I.certificates },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
       { href: "/referrals", label: "Referrals", icon: I.referrals },
     ];
@@ -191,6 +190,7 @@ export function navGroupsForRole(
           { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
           { href: `${base}/projects`, label: "Projects", icon: I.projects },
           { href: `${base}/classes`, label: "Classes", icon: I.classes },
+          { href: `${base}/certificates`, label: "Certificates", icon: I.certificates },
         ],
       },
       {

@@ -6,7 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, CheckCircle2, ArrowRight, X, Clock, ShieldAlert, Building2 } from "lucide-react";
+import { KeyRound, CheckCircle2, ArrowRight, X, Clock, ShieldAlert, Building2, GraduationCap } from "lucide-react";
 
 interface Props {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
 
   const [inviteCode, setInviteCode] = useState(initialCode);
   const [department, setDepartment] = useState("");
-  const [customDept, setCustomDept] = useState("");
+  const [year, setYear] = useState("1st Year");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
 
@@ -52,7 +52,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   const handleReset = () => {
     setInviteCode("");
     setDepartment("");
-    setCustomDept("");
+    setYear("1st Year");
     setErrorMsg("");
     setSuccessChapter(null);
     setForceShowForm(false);
@@ -63,9 +63,25 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     e.preventDefault();
     setErrorMsg("");
 
-    const finalDept = department === "Other" ? customDept.trim() : department.trim();
-    if (!finalDept) {
-      setErrorMsg("Please select or enter your academic department.");
+    const codeToUse = inviteCode.trim().toUpperCase();
+    if (!codeToUse) {
+      setErrorMsg("Please enter an invite code.");
+      return;
+    }
+
+    if (!targetChapter) {
+      setErrorMsg("Invalid invite code or chapter not found.");
+      return;
+    }
+
+    const finalDept = configuredDepts.length > 0 ? department.trim() : (department.trim() || "General");
+    if (configuredDepts.length > 0 && !finalDept) {
+      setErrorMsg("Please select your academic department from the list.");
+      return;
+    }
+
+    if (!year.trim()) {
+      setErrorMsg("Please select your academic year.");
       return;
     }
 
@@ -74,7 +90,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
       return;
     }
 
-    const result = joinChapterWithCode(inviteCode, session.userId, finalDept);
+    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim());
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -188,8 +204,11 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
                       {d.name}
                     </option>
                   ))}
-                  <option value="Other">Other</option>
                 </Select>
+              </div>
+            ) : targetChapter ? (
+              <div className="rounded-[10px] bg-amber-500/10 border border-amber-500/30 p-2.5 text-[11px] text-amber-400">
+                Notice: The Campus Lead has not configured departments for this chapter yet. You will be joined as General/Unassigned.
               </div>
             ) : (
               <div>
@@ -206,17 +225,22 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
               </div>
             )}
 
-            {department === "Other" && configuredDepts.length > 0 && (
-              <div>
-                <FieldLabel>Specify Department Name</FieldLabel>
-                <Input
-                  value={customDept}
-                  onChange={(e) => setCustomDept(e.target.value)}
-                  placeholder="e.g. Biotechnology Engineering"
-                  className="text-xs"
-                />
-              </div>
-            )}
+            <div>
+              <FieldLabel className="flex items-center gap-1.5">
+                <GraduationCap size={13} />
+                <span>3. Academic Year</span>
+              </FieldLabel>
+              <Select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="text-xs"
+              >
+                <option value="1st Year">1st Year</option>
+                <option value="2nd Year">2nd Year</option>
+                <option value="3rd Year">3rd Year</option>
+                <option value="4th Year">4th Year</option>
+              </Select>
+            </div>
 
             <Button
               type="submit"
@@ -231,7 +255,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
             <CheckCircle2 size={52} className="mx-auto text-emerald-400" />
             <h4 className="font-bold text-xl text-text">🎉 Welcome to {successChapter.name}!</h4>
             <p className="text-xs text-text-mute leading-relaxed max-w-xs mx-auto">
-              Your account has been assigned to <strong>{successChapter.college || successChapter.name}</strong> under the <strong>{department === "Other" ? customDept : department}</strong> department.
+              Your account has been assigned to <strong>{successChapter.college || successChapter.name}</strong> under the <strong>{department || "General"}</strong> department ({year}).
             </p>
             <Button variant="orange" onClick={handleGoToChapter} className="w-full py-2.5 font-bold">
               Go to Chapter Dashboard →

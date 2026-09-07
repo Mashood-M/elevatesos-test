@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2 } from "lucide-react";
+import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2, GraduationCap } from "lucide-react";
 
 function JoinChapterContent() {
   const { joinChapterWithCode, store } = useStore();
@@ -17,7 +17,7 @@ function JoinChapterContent() {
 
   const [inputCode, setInputCode] = useState(urlCode);
   const [department, setDepartment] = useState("");
-  const [customDept, setCustomDept] = useState("");
+  const [year, setYear] = useState("1st Year");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
 
@@ -49,9 +49,25 @@ function JoinChapterContent() {
     e.preventDefault();
     setErrorMsg("");
 
-    const finalDept = department === "Other" ? customDept.trim() : department.trim();
-    if (!finalDept) {
-      setErrorMsg("Please select or enter your academic department.");
+    const codeToUse = inputCode.trim().toUpperCase();
+    if (!codeToUse) {
+      setErrorMsg("Please enter an invite code.");
+      return;
+    }
+
+    if (!targetChapter) {
+      setErrorMsg("Invalid invite code or chapter not found.");
+      return;
+    }
+
+    const finalDept = configuredDepts.length > 0 ? department.trim() : (department.trim() || "General");
+    if (configuredDepts.length > 0 && !finalDept) {
+      setErrorMsg("Please select your academic department from the list.");
+      return;
+    }
+
+    if (!year.trim()) {
+      setErrorMsg("Please select your academic year.");
       return;
     }
 
@@ -60,7 +76,7 @@ function JoinChapterContent() {
       return;
     }
 
-    const result = joinChapterWithCode(inputCode, session.userId, finalDept);
+    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim());
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -174,10 +190,11 @@ function JoinChapterContent() {
                         {d.name}
                       </option>
                     ))}
-                    <option value="Other" className="bg-[var(--charcoal-900)] text-white">
-                      Other
-                    </option>
                   </Select>
+                </div>
+              ) : targetChapter ? (
+                <div className="rounded-[10px] bg-amber-500/10 border border-amber-500/30 p-2.5 text-[11px] text-amber-400">
+                  Notice: The Campus Lead has not configured departments for this chapter yet. You will be joined as General/Unassigned.
                 </div>
               ) : (
                 <div>
@@ -194,17 +211,22 @@ function JoinChapterContent() {
                 </div>
               )}
 
-              {department === "Other" && configuredDepts.length > 0 && (
-                <div>
-                  <FieldLabel className="text-white/80">Specify Department Name</FieldLabel>
-                  <Input
-                    value={customDept}
-                    onChange={(e) => setCustomDept(e.target.value)}
-                    placeholder="e.g. Biotechnology Engineering"
-                    className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
-                  />
-                </div>
-              )}
+              <div>
+                <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                  <GraduationCap size={14} />
+                  <span>3. Academic Year</span>
+                </FieldLabel>
+                <Select
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                >
+                  <option value="1st Year" className="bg-[var(--charcoal-900)] text-white">1st Year</option>
+                  <option value="2nd Year" className="bg-[var(--charcoal-900)] text-white">2nd Year</option>
+                  <option value="3rd Year" className="bg-[var(--charcoal-900)] text-white">3rd Year</option>
+                  <option value="4th Year" className="bg-[var(--charcoal-900)] text-white">4th Year</option>
+                </Select>
+              </div>
 
               <Button
                 type="submit"
@@ -220,7 +242,7 @@ function JoinChapterContent() {
               <CheckCircle2 size={52} className="mx-auto text-emerald-400" />
               <h3 className="font-bold text-xl text-white">🎉 Welcome to {successChapter.name}!</h3>
               <p className="text-xs text-white/60 leading-relaxed max-w-xs mx-auto">
-                You are now a registered student member of <strong>{successChapter.college || successChapter.name}</strong> under <strong>{department === "Other" ? customDept : department}</strong>.
+                You are now a registered student member of <strong>{successChapter.college || successChapter.name}</strong> under <strong>{department || "General"}</strong> ({year}).
               </p>
               <Button variant="orange" onClick={handleGoToChapter} className="w-full py-3 font-bold">
                 Go to Chapter Dashboard →

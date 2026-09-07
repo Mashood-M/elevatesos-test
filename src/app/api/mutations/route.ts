@@ -939,7 +939,7 @@ export async function POST(req: Request) {
 
     // 22. CHAPTER INVITE CODE MUTATIONS
     if (type === "chapter_invite_join") {
-      const { code, codeId, userId, chapterId, department } = data;
+      const { code, codeId, userId, chapterId, department, year } = data;
       const cleanCode = (code || "").trim().toUpperCase();
 
       // 1. Locate invite token by id or token string
@@ -972,6 +972,9 @@ export async function POST(req: Request) {
         }
         if (department && typeof department === "string") {
           profileUpdates.department = department.trim();
+        }
+        if (year && typeof year === "string") {
+          profileUpdates.year = year.trim();
         }
 
         const { data: updatedProfile } = await admin
@@ -1091,6 +1094,7 @@ export async function POST(req: Request) {
           code: cleanCode || tokenRow?.token,
           userId,
           department,
+          year,
           joinedAt: new Date().toISOString(),
         }),
       });

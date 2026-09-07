@@ -80,7 +80,7 @@ export default function ChapterStudentsPage({
     fullName: "",
     email: "",
     phone: "",
-    department: "Computer Science & Engineering",
+    department: "Unassigned",
     year: "1st Year",
     section: "A",
     skills: "",
@@ -103,7 +103,7 @@ export default function ChapterStudentsPage({
         fullName: p.fullName,
         email: p.email || "",
         phone: p.phone || "",
-        department: p.department || "Computer Science & Engineering",
+        department: p.department?.trim() || "Unassigned",
         year: p.year || "1st Year",
         section: p.section || "A",
         skills: p.skills || [],
@@ -119,9 +119,8 @@ export default function ChapterStudentsPage({
     const deptsFromStore = (store.departments ?? [])
       .filter((d) => !activeChapter.id || d.chapterId === activeChapter.id)
       .map((d) => d.name);
-    const deptsFromStudents = studentList.map((s) => s.department).filter(Boolean);
-    return [...new Set([...deptsFromStore, ...deptsFromStudents])].sort();
-  }, [store.departments, activeChapter.id, studentList]);
+    return [...new Set(deptsFromStore)].sort();
+  }, [store.departments, activeChapter.id]);
 
   const filteredStudents = studentList.filter((s) => {
     const matchesSearch =
@@ -133,7 +132,9 @@ export default function ChapterStudentsPage({
     const matchesFilter = filterStatus === "all" || s.status === filterStatus;
     const matchesDepartment =
       selectedDepartmentFilter === "all" ||
-      s.department.toLowerCase() === selectedDepartmentFilter.toLowerCase();
+      s.department.toLowerCase() === selectedDepartmentFilter.toLowerCase() ||
+      (selectedDepartmentFilter.toLowerCase() === "unassigned" &&
+        (!s.department || s.department.toLowerCase() === "unassigned"));
     return matchesSearch && matchesFilter && matchesDepartment;
   });
 
@@ -162,7 +163,7 @@ export default function ChapterStudentsPage({
       fullName: "",
       email: "",
       phone: "",
-      department: "Computer Science & Engineering",
+      department: "Unassigned",
       year: "1st Year",
       section: "A",
       skills: "",
@@ -202,7 +203,7 @@ export default function ChapterStudentsPage({
               fullName: r.name,
               email: r.email,
               phone: "+91 90000 00000",
-              department: "Computer Science & Engineering",
+              department: "Unassigned",
               year: "1st Year",
               section: "A",
               skills: ["Tech"],
@@ -399,7 +400,7 @@ export default function ChapterStudentsPage({
                 onClick={() => setSelectedDepartmentFilter(dept)}
                 className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                   isSelected
-                    ? "bg-orange-500 text-white shadow-sm"
+                    ? "bg-[var(--accent)] text-white shadow-sm"
                     : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
                 }`}
               >
@@ -407,6 +408,27 @@ export default function ChapterStudentsPage({
               </button>
             );
           })}
+          {studentList.some(
+            (s) => !s.department || s.department.toLowerCase() === "unassigned",
+          ) && (
+            <button
+              type="button"
+              onClick={() => setSelectedDepartmentFilter("Unassigned")}
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                selectedDepartmentFilter.toLowerCase() === "unassigned"
+                  ? "bg-[var(--accent)] text-white shadow-sm"
+                  : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
+              }`}
+            >
+              Unassigned (
+              {
+                studentList.filter(
+                  (s) => !s.department || s.department.toLowerCase() === "unassigned",
+                ).length
+              }
+              )
+            </button>
+          )}
         </div>
       )}
 
@@ -611,14 +633,12 @@ export default function ChapterStudentsPage({
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   >
-                    <option value="Computer Science & Engineering">Computer Science (CSE)</option>
-                    <option value="AI & Data Science">AI & Data Science (AI&DS)</option>
-                    <option value="Computer Science & Business Systems">CS & Business Systems (CSBS)</option>
-                    <option value="Cyber Security">Cyber Security</option>
-                    <option value="Electronics & Communication">Electronics (ECE)</option>
-                    <option value="Civil Engineering">Civil Engineering</option>
-                    <option value="Mechanical Engineering">Mechanical Engineering</option>
-                    <option value="Fire & Safety Engineering">Fire & Safety</option>
+                    <option value="Unassigned">-- Unassigned --</option>
+                    {chapterDepartments.map((dept: string) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

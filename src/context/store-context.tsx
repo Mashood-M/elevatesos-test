@@ -278,7 +278,7 @@ type StoreContextValue = {
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
   generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
   revokeChapterInviteCode: (codeId: string) => boolean;
-  joinChapterWithCode: (code: string, userId: string, department?: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
+  joinChapterWithCode: (code: string, userId: string, department?: string, year?: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -2528,7 +2528,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       },
-      joinChapterWithCode: (inputCode, userId, department) => {
+      joinChapterWithCode: (inputCode, userId, department, year) => {
         const cleanCode = inputCode.trim().toUpperCase();
         if (!cleanCode) {
           return { success: false, message: "Please enter an invite code." };
@@ -2600,6 +2600,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 ...p,
                 chapterId: targetChapter.id,
                 department: department?.trim() || p.department,
+                year: year?.trim() || p.year,
                 status: "active" as const,
               }
               : p
@@ -2634,6 +2635,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               chapterId: targetChapter.id,
               userId: targetUserId,
               department: department?.trim(),
+              year: year?.trim(),
               joinedAt: new Date().toISOString(),
             }),
             createdAt: new Date().toISOString(),
@@ -2674,6 +2676,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               userId: targetUserId,
               chapterId: targetChapter.id,
               department: department?.trim(),
+              year: year?.trim(),
             },
           }),
         }).catch((err) => {
@@ -2687,6 +2690,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .update({
               chapter_id: targetChapter.id,
               department: department?.trim() || null,
+              year: year?.trim() || null,
               status: "active",
             })
             .eq("id", targetUserId)

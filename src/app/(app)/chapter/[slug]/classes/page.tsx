@@ -172,7 +172,7 @@ export default function ChapterClassesPage({
   }, [chapterStudents, studentSearch, selectedDeptFilter]);
 
   if (!chapter) {
-    return <p className="text-orange">// Chapter not found</p>;
+    return <p className="text-[var(--accent)]">// Chapter not found</p>;
   }
 
   function startCreate() {
@@ -379,13 +379,13 @@ export default function ChapterClassesPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
-              <span className="self-center rounded-md bg-[var(--accent)]/10 px-2.5 py-1 text-[12px] font-medium text-[var(--accent)]">
+              <span className="self-center rounded-full bg-[var(--accent)]/10 px-3 py-1 text-[12px] font-semibold text-[var(--accent)] border border-[var(--accent)]/20">
                 {flash}
               </span>
             ) : null}
             {canManage && activeTab === "classes" ? (
               <Button
-                variant="primary"
+                variant="orange"
                 onClick={startCreate}
                 disabled={!departments.length}
               >
@@ -394,11 +394,12 @@ export default function ChapterClassesPage({
             ) : null}
             {canManage && activeTab === "departments" ? (
               <Button
-                variant="ghost"
-                className="text-xs text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/10 flex items-center gap-1.5 py-1.5 h-auto"
+                variant="secondary"
+                size="sm"
                 onClick={handleAddAllStandardDepts}
+                className="text-xs"
               >
-                <Sparkles size={13} />
+                <Sparkles size={13} className="text-[var(--accent)]" />
                 <span>Add All Standard Depts</span>
               </Button>
             ) : null}
@@ -406,20 +407,26 @@ export default function ChapterClassesPage({
         }
       />
 
-      {/* Modern Tab Bar */}
-      <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-border/70 pb-3">
+      {/* Unified Brand Tab Navigation */}
+      <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-border pb-3">
         <button
           type="button"
           onClick={() => setActiveTab("departments")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
             activeTab === "departments"
-              ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-sm"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
           }`}
         >
-          <Building2 size={15} />
+          <Building2 size={14} />
           <span>Departments</span>
-          <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              activeTab === "departments"
+                ? "bg-white/25 text-white"
+                : "bg-bg text-text-mute"
+            }`}
+          >
             {departments.length}
           </span>
         </button>
@@ -427,15 +434,21 @@ export default function ChapterClassesPage({
         <button
           type="button"
           onClick={() => setActiveTab("classes")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
             activeTab === "classes"
-              ? "bg-orange-500/15 text-orange-400 border border-orange-500/40 shadow-sm"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
           }`}
         >
-          <GraduationCap size={15} />
+          <GraduationCap size={14} />
           <span>Classes & Divisions</span>
-          <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] text-orange-300">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              activeTab === "classes"
+                ? "bg-white/25 text-white"
+                : "bg-bg text-text-mute"
+            }`}
+          >
             {cohorts.length}
           </span>
         </button>
@@ -443,29 +456,35 @@ export default function ChapterClassesPage({
         <button
           type="button"
           onClick={() => setActiveTab("students")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
             activeTab === "students"
-              ? "bg-fuchsia-500/15 text-fuchsia-400 border border-fuchsia-500/40 shadow-sm"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
           }`}
         >
-          <Users size={15} />
+          <Users size={14} />
           <span>Students & Departments</span>
-          <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] text-fuchsia-300">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              activeTab === "students"
+                ? "bg-white/25 text-white"
+                : "bg-bg text-text-mute"
+            }`}
+          >
             {chapterStudents.length}
           </span>
         </button>
       </div>
 
       {!canManage ? (
-        <TerminalPanel title="read.only" className="mb-6">
+        <TerminalPanel title="read.only" accent="orange" className="mb-6">
           <p className="text-sm text-text-dim">
             Class lists are managed by chapter executives (Campus Lead, Faculty Coordinator, Secretary,
             Elevates Coordinator). Ask them to add your division.
           </p>
           <Link
             href={`/chapter/${slug}`}
-            className="mt-3 inline-block text-[var(--accent)]"
+            className="mt-3 inline-block text-[var(--accent)] font-semibold"
           >
             Back to chapter
           </Link>
@@ -479,16 +498,18 @@ export default function ChapterClassesPage({
         <TerminalPanel
           title="departments"
           meta={`${departments.length} configured`}
-          accent="cyan"
+          accent="orange"
           className="mb-6"
         >
           <div className="space-y-5">
             {/* Header info */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3">
-              <div className="flex items-center gap-2">
-                <Building2 size={18} className="text-cyan-400" />
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
+                  <Building2 size={18} />
+                </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-text">
+                  <h3 className="text-sm font-bold text-text">
                     College Academic Departments
                   </h3>
                   <p className="text-[12px] text-text-dim">
@@ -497,33 +518,34 @@ export default function ChapterClassesPage({
                 </div>
               </div>
               <Button
-                variant="ghost"
-                className="text-xs text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/10 flex items-center gap-1.5 py-1.5 h-auto"
+                variant="secondary"
+                size="sm"
+                className="text-xs"
                 onClick={handleAddAllStandardDepts}
               >
-                <Sparkles size={13} />
+                <Sparkles size={13} className="text-[var(--accent)]" />
                 <span>Add All Standard Depts</span>
               </Button>
             </div>
 
             {deptError ? (
-              <p className="rounded-[8px] bg-red-500/10 border border-red-500/30 px-3 py-2 text-xs text-red-400 font-medium">
+              <p className="rounded-[12px] bg-red-500/10 border border-red-500/25 px-3 py-2 text-xs text-red-500 font-medium">
                 {deptError}
               </p>
             ) : null}
 
             {/* Option 1: Select from standard college departments */}
-            <div className="rounded-[14px] bg-bg/60 border border-border/60 p-3.5 space-y-3">
-              <p className="text-xs font-semibold text-text flex items-center gap-1.5">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500/20 text-[11px] text-cyan-400">
+            <div className="rounded-[16px] bg-bg/70 border border-border p-4 space-y-3">
+              <p className="text-xs font-bold text-text flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
                   1
                 </span>
-                Select from College Department List (Standard Presets):
+                Select from Standard College Department List:
               </p>
 
               <div className="flex flex-wrap items-center gap-2">
                 <Select
-                  className="max-w-md text-xs"
+                  className="max-w-md text-xs bg-bg-panel"
                   value={selectedStandardDept}
                   onChange={(e) => setSelectedStandardDept(e.target.value)}
                 >
@@ -540,7 +562,8 @@ export default function ChapterClassesPage({
                   })}
                 </Select>
                 <Button
-                  variant="primary"
+                  variant="orange"
+                  size="sm"
                   onClick={() => handleAddStandardDept(selectedStandardDept)}
                   disabled={!selectedStandardDept}
                   className="text-xs"
@@ -565,21 +588,21 @@ export default function ChapterClassesPage({
                         type="button"
                         onClick={() => !isAdded && handleAddStandardDept(dept)}
                         disabled={isAdded}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition ${
                           isAdded
-                            ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 cursor-default"
-                            : "bg-bg-panel hover:bg-cyan-500/15 text-text-dim hover:text-cyan-300 border border-border/70 hover:border-cyan-500/40 cursor-pointer active:scale-95"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 cursor-default"
+                            : "bg-bg-panel hover:bg-[var(--accent)]/10 text-text-dim hover:text-[var(--accent)] border border-border hover:border-[var(--accent)]/30 cursor-pointer active:scale-95"
                         }`}
                       >
                         {isAdded ? (
                           <>
-                            <Check size={11} className="text-emerald-400" />
+                            <Check size={11} className="text-emerald-500" />
                             <span>{dept}</span>
                             <span className="text-[9px] opacity-75 font-normal">(Added)</span>
                           </>
                         ) : (
                           <>
-                            <Plus size={11} className="text-cyan-400" />
+                            <Plus size={11} className="text-[var(--accent)]" />
                             <span>{dept}</span>
                           </>
                         )}
@@ -591,16 +614,16 @@ export default function ChapterClassesPage({
             </div>
 
             {/* Option 2: Add custom department */}
-            <div className="rounded-[14px] bg-bg/60 border border-border/60 p-3.5 space-y-2">
-              <p className="text-xs font-semibold text-text flex items-center gap-1.5">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500/20 text-[11px] text-orange-400">
+            <div className="rounded-[16px] bg-bg/70 border border-border p-4 space-y-2">
+              <p className="text-xs font-bold text-text flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
                   2
                 </span>
                 Add Other Department (Custom for this chapter only):
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <Input
-                  className="max-w-md text-xs"
+                  className="max-w-md text-xs bg-bg-panel"
                   placeholder="e.g. Biomedical Engineering, Robotics, Architecture..."
                   value={newDeptName}
                   onChange={(e) => setNewDeptName(e.target.value)}
@@ -610,30 +633,31 @@ export default function ChapterClassesPage({
                 />
                 <Button
                   variant="orange"
+                  size="sm"
                   onClick={addCustomDepartment}
                   disabled={!newDeptName.trim()}
                   className="text-xs"
                 >
-                  <Plus size={13} className="mr-1" /> Add Custom Department
+                  <Plus size={13} /> Add Custom Department
                 </Button>
               </div>
               <p className="text-[11px] text-text-dim">
-                Custom departments added here will be saved to Supabase specifically for this chapter.
+                Custom departments added here are saved to Supabase specifically for this chapter.
               </p>
             </div>
 
             {/* Configured departments list */}
             <div className="pt-2">
-              <p className="text-xs font-semibold text-text mb-2">
+              <p className="text-xs font-bold text-text mb-2.5">
                 Configured Departments in this Chapter ({departments.length})
               </p>
 
               {!departments.length ? (
-                <div className="rounded-[12px] border border-dashed border-border/70 p-5 text-center text-xs text-text-dim">
+                <div className="rounded-[14px] border border-dashed border-border p-6 text-center text-xs text-text-dim">
                   No departments added yet. Select from the standard list above or add a custom department.
                 </div>
               ) : (
-                <ul className="grid gap-2 sm:grid-cols-2">
+                <ul className="grid gap-2.5 sm:grid-cols-2">
                   {departments.map((d) => {
                     const classCount = cohorts.filter(
                       (c) => c.department.trim().toLowerCase() === d.name.trim().toLowerCase(),
@@ -645,12 +669,12 @@ export default function ChapterClassesPage({
                     return (
                       <li
                         key={d.id}
-                        className="flex flex-col justify-between gap-2 rounded-[12px] bg-bg border border-border/70 shadow-[var(--shadow-sm)] p-3"
+                        className="flex flex-col justify-between gap-2 rounded-[14px] bg-bg-panel border border-border shadow-[var(--shadow-sm)] p-3.5 hover:border-[var(--accent)]/30 transition"
                       >
                         {renamingId === d.id ? (
                           <div className="flex flex-1 flex-wrap gap-1.5">
                             <Input
-                              className="text-xs"
+                              className="text-xs bg-bg"
                               value={renameValue}
                               onChange={(e) => setRenameValue(e.target.value)}
                               onKeyDown={(e) => {
@@ -659,7 +683,7 @@ export default function ChapterClassesPage({
                             />
                             <div className="flex gap-1.5 w-full justify-end mt-1">
                               <Button
-                                variant="primary"
+                                variant="orange"
                                 size="sm"
                                 onClick={saveRename}
                                 className="text-xs py-1 h-auto"
@@ -682,15 +706,15 @@ export default function ChapterClassesPage({
                         ) : (
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              <p className="font-semibold text-xs text-text">{d.name}</p>
-                              <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-text-dim">
-                                <span className="rounded bg-bg-panel px-1.5 py-0.5 border border-border/50">
+                              <p className="font-bold text-xs text-text">{d.name}</p>
+                              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-text-dim">
+                                <span className="rounded-full bg-bg px-2.5 py-0.5 border border-border">
                                   {classCount} {classCount === 1 ? "class" : "classes"}
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => viewStudentsForDept(d.name)}
-                                  className="rounded bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30 px-1.5 py-0.5 flex items-center gap-1 transition"
+                                  className="rounded-full bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/20 px-2.5 py-0.5 flex items-center gap-1 transition font-medium"
                                   title="Click to view students in this department"
                                 >
                                   <span>{studentCount} students</span>
@@ -703,15 +727,15 @@ export default function ChapterClassesPage({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => startRename(d)}
-                                className="text-[11px] py-1 px-2 h-auto text-text-dim hover:text-text"
+                                className="text-[11px] py-1 px-2.5 h-auto text-text-dim hover:text-text"
                               >
                                 Rename
                               </Button>
                               <Button
-                                variant="orange"
+                                variant="ghost"
                                 size="sm"
                                 onClick={() => removeDepartment(d)}
-                                className="text-[11px] py-1 px-2 h-auto"
+                                className="text-[11px] py-1 px-2.5 h-auto text-red-500 hover:text-red-600 hover:bg-red-500/10"
                               >
                                 Delete
                               </Button>
@@ -745,7 +769,7 @@ export default function ChapterClassesPage({
                     Create a department first before setting up classes.
                   </p>
                   <Button
-                    variant="primary"
+                    variant="orange"
                     onClick={() => setActiveTab("departments")}
                     className="text-xs"
                   >
@@ -847,7 +871,7 @@ export default function ChapterClassesPage({
                   ) : null}
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button
-                      variant="primary"
+                      variant="orange"
                       onClick={save}
                       disabled={!draft.department || !draft.rep1Id}
                     >
@@ -873,7 +897,7 @@ export default function ChapterClassesPage({
             <p className="mb-4 text-sm text-[var(--accent)]">{error}</p>
           ) : null}
 
-          <TerminalPanel title="class.list" meta={`${cohorts.length} classes`}>
+          <TerminalPanel title="class.list" meta={`${cohorts.length} classes`} accent="orange">
             {!cohorts.length ? (
               <div className="py-6 text-center space-y-3">
                 <p className="text-sm text-text-dim">
@@ -881,12 +905,12 @@ export default function ChapterClassesPage({
                 </p>
                 {canManage ? (
                   departments.length ? (
-                    <Button variant="primary" size="sm" onClick={startCreate}>
+                    <Button variant="orange" size="sm" onClick={startCreate}>
                       <Plus size={14} className="mr-1" /> Create First Class Division
                     </Button>
                   ) : (
                     <Button
-                      variant="primary"
+                      variant="orange"
                       size="sm"
                       onClick={() => setActiveTab("departments")}
                     >
@@ -905,12 +929,12 @@ export default function ChapterClassesPage({
                   return (
                     <li
                       key={c.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3.5 border border-border/60"
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3.5 border border-border"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-semibold text-text">{cohortLabel(c)}</p>
-                          <span className="rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-medium">
+                          <p className="font-bold text-text">{cohortLabel(c)}</p>
+                          <span className="rounded-full bg-[var(--accent-soft)] text-[var(--accent-hover)] border border-[var(--accent)]/20 px-2.5 py-0.5 text-[10px] font-semibold">
                             {c.department}
                           </span>
                         </div>
@@ -921,7 +945,7 @@ export default function ChapterClassesPage({
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {ids.map((_, i) => (
-                            <Badge key={i} tone={i === 0 ? "cyan" : "magenta"}>
+                            <Badge key={i} tone={i === 0 ? "orange" : "mute"}>
                               rep {i + 1}
                             </Badge>
                           ))}
@@ -933,8 +957,9 @@ export default function ChapterClassesPage({
                             Edit
                           </Button>
                           <Button
-                            variant="orange"
+                            variant="ghost"
                             onClick={() => remove(c.id, cohortLabel(c))}
+                            className="text-red-500 hover:text-red-600 hover:bg-red-500/10"
                           >
                             Delete
                           </Button>
@@ -956,19 +981,23 @@ export default function ChapterClassesPage({
         <TerminalPanel
           title="students.directory"
           meta={`${chapterStudents.length} students`}
-          accent="magenta"
+          accent="orange"
           className="mb-6"
         >
           <div className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-                  <Users size={16} className="text-fuchsia-400" />
-                  Student Directory by Department
-                </h3>
-                <p className="text-[12px] text-text-dim">
-                  Filter and view students enrolled across different departments in {chapter.name}.
-                </p>
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
+                  <Users size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text">
+                    Student Directory by Department
+                  </h3>
+                  <p className="text-[12px] text-text-dim">
+                    Filter and view students enrolled across different departments in {chapter.name}.
+                  </p>
+                </div>
               </div>
 
               <div className="relative w-full sm:w-64">
@@ -980,20 +1009,20 @@ export default function ChapterClassesPage({
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
                   placeholder="Search student, email, phone..."
-                  className="pl-8 text-xs"
+                  className="pl-8 text-xs bg-bg"
                 />
               </div>
             </div>
 
             {/* Department Filter Pills */}
-            <div className="flex flex-wrap gap-1.5 border-b border-border/50 pb-3">
+            <div className="flex flex-wrap gap-1.5 border-b border-border pb-3">
               <button
                 type="button"
                 onClick={() => setSelectedDeptFilter("all")}
                 className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                   selectedDeptFilter === "all"
-                    ? "bg-text text-bg-page shadow-sm"
-                    : "bg-bg text-text-dim hover:text-text border border-border/50"
+                    ? "bg-[var(--accent)] text-white shadow-sm"
+                    : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                 }`}
               >
                 All Departments ({chapterStudents.length})
@@ -1011,8 +1040,8 @@ export default function ChapterClassesPage({
                     onClick={() => setSelectedDeptFilter(dept.name)}
                     className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                       isSelected
-                        ? "bg-fuchsia-500 text-white shadow-sm"
-                        : "bg-bg text-text-dim hover:text-text border border-border/50"
+                        ? "bg-[var(--accent)] text-white shadow-sm"
+                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                     }`}
                   >
                     {dept.name} ({count})
@@ -1027,8 +1056,8 @@ export default function ChapterClassesPage({
                   onClick={() => setSelectedDeptFilter("Unassigned")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                     selectedDeptFilter === "Unassigned"
-                      ? "bg-fuchsia-500 text-white shadow-sm"
-                      : "bg-bg text-text-dim hover:text-text border border-border/50"
+                      ? "bg-[var(--accent)] text-white shadow-sm"
+                      : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                   }`}
                 >
                   Unassigned (
@@ -1044,29 +1073,29 @@ export default function ChapterClassesPage({
 
             {/* Students List Table */}
             {!filteredChapterStudents.length ? (
-              <div className="rounded-[12px] border border-dashed border-border/70 p-6 text-center text-xs text-text-dim">
+              <div className="rounded-[14px] border border-dashed border-border p-6 text-center text-xs text-text-dim">
                 No students found
                 {selectedDeptFilter !== "all" ? ` in ${selectedDeptFilter}` : ""}
                 {studentSearch ? ` matching "${studentSearch}"` : ""}.
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-[12px] border border-border/60 bg-bg">
+              <div className="overflow-x-auto rounded-[14px] border border-border bg-bg-panel shadow-[var(--shadow-sm)]">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-border text-text-dim">
-                      <th className="px-3 py-2.5 font-semibold">Student Name</th>
-                      <th className="px-3 py-2.5 font-semibold">Contact</th>
-                      <th className="px-3 py-2.5 font-semibold">Department</th>
-                      <th className="px-3 py-2.5 font-semibold">Year & Division</th>
-                      <th className="px-3 py-2.5 font-semibold">Status / Role</th>
+                    <tr className="border-b border-border text-text-dim bg-bg/50">
+                      <th className="px-3.5 py-3 font-semibold">Student Name</th>
+                      <th className="px-3.5 py-3 font-semibold">Contact</th>
+                      <th className="px-3.5 py-3 font-semibold">Department</th>
+                      <th className="px-3.5 py-3 font-semibold">Year & Division</th>
+                      <th className="px-3.5 py-3 font-semibold">Status / Role</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {filteredChapterStudents.map((stu) => (
-                      <tr key={stu.id} className="hover:bg-bg-panel/40">
-                        <td className="px-3 py-2.5 font-medium text-text">
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--secondary-soft)] text-[11px] font-bold text-[var(--secondary)] shrink-0">
+                      <tr key={stu.id} className="hover:bg-bg/40 transition">
+                        <td className="px-3.5 py-3 font-medium text-text">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[11px] font-bold text-[var(--accent)] shrink-0">
                               {stu.fullName.charAt(0)}
                             </span>
                             <div>
@@ -1079,27 +1108,27 @@ export default function ChapterClassesPage({
                             </div>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-text-dim">
-                          <p>{stu.email}</p>
+                        <td className="px-3.5 py-3 text-text-dim">
+                          <p className="text-text">{stu.email}</p>
                           {stu.phone ? (
-                            <p className="text-[11px] text-text-dim/80">{stu.phone}</p>
+                            <p className="text-[11px] text-text-mute">{stu.phone}</p>
                           ) : null}
                         </td>
 
                         {/* Read-Only Department Badge */}
-                        <td className="px-3 py-2.5">
-                          <span className="inline-block rounded bg-bg-panel border border-border/60 px-2 py-0.5 text-[11px] font-medium text-text">
+                        <td className="px-3.5 py-3">
+                          <span className="inline-block rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-medium text-text">
                             {stu.department || "Unassigned"}
                           </span>
                         </td>
 
-                        <td className="px-3 py-2.5 text-text-dim">
+                        <td className="px-3.5 py-3 text-text-dim">
                           {stu.year ? stu.year : "—"}
                           {stu.section ? ` · Sec ${stu.section}` : ""}
                         </td>
-                        <td className="px-3 py-2.5">
+                        <td className="px-3.5 py-3">
                           {stu.cohortLabel ? (
-                            <Badge tone="cyan">Rep · {stu.cohortLabel}</Badge>
+                            <Badge tone="orange">Rep · {stu.cohortLabel}</Badge>
                           ) : (
                             <span className="text-[11px] text-text-dim capitalize">
                               {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}

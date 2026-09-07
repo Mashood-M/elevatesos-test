@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       const name = parts[0] || "";
       const email = parts[1] || "";
       const phone = parts[2] || "";
-      const department = parts[3] || "Computer Science & Engineering";
+      const department = parts[3] || "Unassigned";
       const year = parts[4] || "1st Year";
       const rawSkills = parts[5] || "";
 

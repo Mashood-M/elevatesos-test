@@ -140,7 +140,9 @@ export function canAccessPath(
     const rest = chapterMatch[2] ?? "";
     if (isHqRole(roleKey)) return true;
     const effectiveSlug = chapterSlug ?? "";
-    if (effectiveSlug && slug !== effectiveSlug) return false;
+    // Allow viewing event details across chapters (for open-to-all events)
+    const isEventDetail = rest.startsWith("events/");
+    if (!isEventDetail && effectiveSlug && slug !== effectiveSlug) return false;
 
     // Reports — students + exec + faculty (document system)
     const firstSeg = rest.split("/")[0] ?? "";

@@ -143,6 +143,7 @@ export default function ChapterIndexPage() {
                       href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : `/notifications`}
                       className="bg-bg shadow-[var(--shadow-sm)]"
                       meta={`${chapter ? chapter.college : "Elevates"} · open for all participants`}
+                      hideStatus={true}
                       footer={
                         <>
                           {eligibility.ok ? (

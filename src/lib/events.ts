@@ -55,8 +55,9 @@ export function canRegisterNow(
     };
   }
 
-  // 5. Chapter-only visibility — only members of the same chapter can join
-  if (event.visibility === "chapter_only") {
+  // 5. Chapter-only visibility — only members of the same chapter can join.
+  // Open-to-all events never require chapter membership.
+  if (event.visibility === "chapter_only" && !isOpenToAllEvent(event)) {
     const userProfile = store.profiles.find((p) => p.id === userId);
     if (!userProfile?.chapterId || userProfile.chapterId !== event.chapterId) {
       return {
@@ -101,12 +102,6 @@ export function isEventVisibleToUser(
     userRoleKey === "campus_lead" ||
     userRoleKey === "chairman";
 
-  // Draft / un-published events: visible to managers and same-chapter members.
-  // Students see the event but the UI hides the "draft" label for them.
-  if (event.status === "draft" || event.status === "pending_approval") {
-    if (!isManager && userChapterId !== event.chapterId) return false;
-  }
-
   // HQ roles can see all events
   if (userRoleKey === "founder" || userRoleKey === "hq_admin") {
     return true;
@@ -117,9 +112,15 @@ export function isEventVisibleToUser(
     return isManager;
   }
 
-  // Open to all events are visible to everyone
+  // Open to all events are visible to everyone across chapters
   if (isOpenToAllEvent(event)) {
     return true;
+  }
+
+  // Draft / un-published events: visible to managers and same-chapter members.
+  // Students see the event but the UI hides the "draft" label for them.
+  if (event.status === "draft" || event.status === "pending_approval") {
+    if (!isManager && userChapterId !== event.chapterId) return false;
   }
 
   // Chapter-only events are ONLY visible to members of that specific chapter

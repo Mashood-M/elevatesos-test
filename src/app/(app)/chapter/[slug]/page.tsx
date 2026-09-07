@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { use, useEffect, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
@@ -43,12 +44,20 @@ export default function ChapterDashboardPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const { slug } = use(params);
+
+  useEffect(() => {
+    if (slug === "events") {
+      router.replace("/chapter");
+    }
+  }, [slug, router]);
+
   const { store } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);

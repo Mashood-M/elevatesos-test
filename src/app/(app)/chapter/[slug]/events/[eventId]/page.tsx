@@ -193,7 +193,7 @@ export default function EventDetailPage({
       <div className="py-16 text-center">
         <p className="font-semibold">Event not found</p>
         <Link
-          href={`/chapter/${slug}/events`}
+          href={session.chapterId ? `/chapter/${slug}/events` : `/chapter`}
           className="mt-2 inline-block text-[var(--accent)]"
         >
           Back to events
@@ -551,7 +551,7 @@ export default function EventDetailPage({
           actions={
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <Link
-                href={`/chapter/${slug}/events`}
+                href={session.chapterId ? `/chapter/${slug}/events` : `/chapter`}
                 className="text-[12px] font-medium text-text-dim hover:text-[var(--accent)]"
               >
                 ← Events

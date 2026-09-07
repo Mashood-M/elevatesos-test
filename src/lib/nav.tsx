@@ -221,13 +221,14 @@ export function navGroupsForRole(
   }
 
   // Student
+  const eventsHref = slug ? `${base}/events` : "/chapter";
   return [
     {
       label: "Explore",
       items: [
-        { href: base, label: "Chapter", icon: I.chapter },
+        { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
         { href: "/join", label: "🔑 Join Chapter / Code", icon: I.forms },
-        { href: `${base}/events`, label: "Events", icon: I.events },
+        { href: eventsHref, label: "Events", icon: I.events },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },
         {

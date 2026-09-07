@@ -40,6 +40,25 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     ? (store.departments ?? []).filter((d) => d.chapterId === targetChapter.id)
     : [];
 
+  const [forceShowForm, setForceShowForm] = useState(false);
+
+  const currentChapterId =
+    session.chapterId ||
+    store.profiles.find((p) => p.id === session.userId)?.chapterId;
+  const currentChapter = currentChapterId
+    ? store.chapters.find((c) => c.id === currentChapterId)
+    : null;
+
+  const handleReset = () => {
+    setInviteCode("");
+    setDepartment("");
+    setCustomDept("");
+    setErrorMsg("");
+    setSuccessChapter(null);
+    setForceShowForm(false);
+    onClose();
+  };
+
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
@@ -47,6 +66,11 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     const finalDept = department === "Other" ? customDept.trim() : department.trim();
     if (!finalDept) {
       setErrorMsg("Please select or enter your academic department.");
+      return;
+    }
+
+    if (currentChapter && targetChapter && currentChapter.id === targetChapter.id) {
+      setErrorMsg(`You are already an active member of ${currentChapter.name}.`);
       return;
     }
 
@@ -61,15 +85,6 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     }
   };
 
-  const handleReset = () => {
-    setInviteCode("");
-    setDepartment("");
-    setCustomDept("");
-    setErrorMsg("");
-    setSuccessChapter(null);
-    onClose();
-  };
-
   const handleGoToChapter = () => {
     const slug = successChapter?.slug;
     handleReset();
@@ -78,14 +93,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     }
   };
 
-  const currentChapterId =
-    session.chapterId ||
-    store.profiles.find((p) => p.id === session.userId)?.chapterId;
-  const currentChapter = currentChapterId
-    ? store.chapters.find((c) => c.id === currentChapterId)
-    : null;
-
-  if (currentChapter) {
+  if (currentChapter && !forceShowForm) {
     return (
       <Dialog open={isOpen} onClose={handleReset} title="Join Chapter">
         <div className="p-6 max-w-sm w-full bg-bg-panel rounded-[18px] border border-border shadow-2xl text-center space-y-4">
@@ -95,7 +103,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
           <div>
             <h3 className="font-bold text-base text-text">Already in Chapter</h3>
             <p className="mt-1.5 text-xs text-text-dim">
-              You are already in the chapter{currentChapter.name ? ` (${currentChapter.name})` : ""}.
+              You are currently enrolled in {currentChapter.name}.
             </p>
           </div>
           <Button
@@ -105,6 +113,13 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
           >
             OK
           </Button>
+          <button
+            type="button"
+            onClick={() => setForceShowForm(true)}
+            className="text-[11px] text-text-dim hover:text-white underline pt-1 block mx-auto"
+          >
+            Have an invite code for another chapter? Enter Code
+          </button>
         </div>
       </Dialog>
     );

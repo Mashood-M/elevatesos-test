@@ -970,8 +970,16 @@ export async function POST(req: Request) {
       // 3. Mark invite token with latest user and increment uses_count
       const effectiveTokenId = tokenRow?.id || (isUuid(codeId) ? codeId : null);
       const tokenString = cleanCode || tokenRow?.token || "";
-      const currentUses = Number(tokenRow?.uses_count ?? 0);
-      const nextUses = currentUses + 1;
+
+      // Count prior usages from activity_logs for this token
+      const { count: priorLogCount } = await admin
+        .from("activity_logs")
+        .select("id", { count: "exact", head: true })
+        .eq("action", "chapter_invite_used")
+        .eq("entity_id", tokenString);
+
+      const baseCount = Math.max(Number(tokenRow?.uses_count ?? 0), Number(priorLogCount ?? 0));
+      const nextUses = baseCount + 1;
 
       // Try atomic RPC function first (if user ran the SQL helper in Supabase)
       let rpcSucceeded = false;
@@ -1016,9 +1024,9 @@ export async function POST(req: Request) {
       }
 
       // 4. Record usage in activity_logs for permanent, multi-user join count tracking
+      // NOTE: Do NOT pass chapter_id as column because activity_logs schema only has [id, actor_id, action, entity, entity_id, meta, created_at]
       await admin.from("activity_logs").insert({
         actor_id: validProfileId,
-        chapter_id: isUuid(chapterId) ? chapterId : null,
         action: "chapter_invite_used",
         entity: "chapter_invite_code",
         entity_id: cleanCode || tokenRow?.token || effectiveTokenId || "UNKNOWN",

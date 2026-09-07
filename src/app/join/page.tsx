@@ -36,6 +36,15 @@ function JoinChapterContent() {
     ? (store.departments ?? []).filter((d) => d.chapterId === targetChapter.id)
     : [];
 
+  const [forceShowForm, setForceShowForm] = useState(false);
+
+  const existingChapterId =
+    session.chapterId ||
+    store.profiles.find((p) => p.id === session.userId)?.chapterId;
+  const existingChapter = existingChapterId
+    ? store.chapters.find((c) => c.id === existingChapterId)
+    : null;
+
   function handleJoin(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg("");
@@ -43,6 +52,11 @@ function JoinChapterContent() {
     const finalDept = department === "Other" ? customDept.trim() : department.trim();
     if (!finalDept) {
       setErrorMsg("Please select or enter your academic department.");
+      return;
+    }
+
+    if (existingChapter && targetChapter && existingChapter.id === targetChapter.id) {
+      setErrorMsg(`You are already an active member of ${existingChapter.name}.`);
       return;
     }
 
@@ -63,14 +77,7 @@ function JoinChapterContent() {
     }
   }
 
-  const existingChapterId =
-    session.chapterId ||
-    store.profiles.find((p) => p.id === session.userId)?.chapterId;
-  const existingChapter = existingChapterId
-    ? store.chapters.find((c) => c.id === existingChapterId)
-    : null;
-
-  if (existingChapter) {
+  if (existingChapter && !forceShowForm) {
     return (
       <div className="min-h-dvh bg-[var(--charcoal-900)] px-6 py-14 text-white flex items-center justify-center">
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
@@ -81,7 +88,7 @@ function JoinChapterContent() {
             <div>
               <h3 className="font-bold text-lg text-text">Already in Chapter</h3>
               <p className="mt-1.5 text-xs text-text-dim leading-relaxed">
-                You are already in the chapter{existingChapter.name ? ` (${existingChapter.name})` : ""}.
+                You are currently enrolled in {existingChapter.name}.
               </p>
             </div>
             <Button
@@ -89,8 +96,15 @@ function JoinChapterContent() {
               onClick={() => router.push(`/chapter/${existingChapter.slug}`)}
               className="w-full py-2.5 text-xs font-bold"
             >
-              OK
+              Go to My Chapter
             </Button>
+            <button
+              type="button"
+              onClick={() => setForceShowForm(true)}
+              className="text-[11px] text-text-dim hover:text-white underline pt-1 block mx-auto"
+            >
+              Have an invite code for another chapter? Enter Code
+            </button>
           </div>
         </div>
       </div>

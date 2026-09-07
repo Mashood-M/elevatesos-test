@@ -106,6 +106,22 @@ export async function POST(req: Request) {
         console.error("Mutation error (project):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      try {
+        const teamIds = Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [];
+        await admin.from("project_members").delete().eq("project_id", projId);
+        if (teamIds.length > 0) {
+          await admin.from("project_members").insert(
+            teamIds.map((uid: string) => ({
+              project_id: projId,
+              user_id: uid,
+            }))
+          );
+        }
+      } catch (pmErr) {
+        console.warn("project_members sync notice:", pmErr);
+      }
+
       await revalidateWeb(["projects", `project:${slug}`]);
       return NextResponse.json({ ok: true, id: projId });
     }
@@ -128,6 +144,7 @@ export async function POST(req: Request) {
       }
       const slug = c.slug ?? slugify(c.title || c.name || "cluster");
       const clusterId = isUuid(c.id) ? c.id : genUuid();
+      const memberIds: string[] = Array.isArray(c.memberIds) ? c.memberIds.filter(isUuid) : [];
       const { error } = await admin.from("clusters").upsert({
         id: clusterId,
         chapter_id: c.chapterId,
@@ -136,12 +153,28 @@ export async function POST(req: Request) {
         description: c.description ?? c.subtitle,
         access_mode: c.accessMode ?? "open",
         roadmap: c.roadmap || [],
+        member_ids: memberIds,
       });
 
       if (error) {
         console.error("Mutation error (cluster):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      try {
+        await admin.from("cluster_members").delete().eq("cluster_id", clusterId);
+        if (memberIds.length > 0) {
+          await admin.from("cluster_members").insert(
+            memberIds.map((uid: string) => ({
+              cluster_id: clusterId,
+              user_id: uid,
+            }))
+          );
+        }
+      } catch (cmErr) {
+        console.warn("cluster_members sync notice:", cmErr);
+      }
+
       await revalidateWeb(["peer-labs", `cluster:${slug}`]);
       return NextResponse.json({ ok: true, id: clusterId });
     }
@@ -202,7 +235,7 @@ export async function POST(req: Request) {
         city: chapter.city,
         status: chapter.status,
         health_score: chapter.healthScore ?? 0,
-        published: chapter.published ?? false,
+        published: chapter.published !== undefined ? Boolean(chapter.published) : true,
         district: chapter.district,
         logo_url: chapter.logoUrl,
         member_count: chapter.memberCount ?? 0,
@@ -393,6 +426,29 @@ export async function POST(req: Request) {
         console.error("Mutation error (form):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      if (form.eventId && isUuid(form.eventId) && Array.isArray(form.questions)) {
+        try {
+          await admin.from("event_form_fields").delete().eq("event_id", form.eventId);
+          if (form.questions.length > 0) {
+            await admin.from("event_form_fields").insert(
+              form.questions.map((q: any, idx: number) => ({
+                event_id: form.eventId,
+                field_id: q.id || `field_${idx}`,
+                label: q.title || q.label || `Field ${idx + 1}`,
+                field_type: q.type || "short_text",
+                required: Boolean(q.required),
+                options: Array.isArray(q.options) ? q.options : [],
+                placeholder: q.placeholder || null,
+                sort_order: idx,
+              }))
+            );
+          }
+        } catch (effErr) {
+          console.warn("event_form_fields sync notice:", effErr);
+        }
+      }
+
       return NextResponse.json({ ok: true, id: formId });
     }
 

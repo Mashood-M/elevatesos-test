@@ -13,6 +13,18 @@ export function canCreateEvent(roleKey: RoleKey): boolean {
   );
 }
 
+export function canManageClasses(roleKey: RoleKey): boolean {
+  return (
+    isHqRole(roleKey) ||
+    roleKey === "campus_lead" ||
+    roleKey === "faculty_coordinator" ||
+    roleKey === "chairman" ||
+    roleKey === "vice_chairman" ||
+    roleKey === "secretary" ||
+    roleKey === "elevates_coordinator"
+  );
+}
+
 export function hasPermission(
   store: ElevatesStore,
   roleKey: RoleKey,
@@ -20,6 +32,11 @@ export function hasPermission(
 ): boolean {
   if (permission === "event.create") {
     return canCreateEvent(roleKey);
+  }
+  if (permission === "class.manage") {
+    if (canManageClasses(roleKey)) {
+      return true;
+    }
   }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle,
@@ -65,6 +65,7 @@ export default function ChapterStudentsPage({
   const [studentList, setStudentList] = useState<PreCollectedStudent[]>(DEFAULT_PRE_COLLECTED);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "unclaimed" | "claimed">("all");
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState("all");
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
@@ -114,6 +115,14 @@ export default function ChapterStudentsPage({
     }
   }, [store.profiles, activeChapter.id]);
 
+  const chapterDepartments = useMemo(() => {
+    const deptsFromStore = (store.departments ?? [])
+      .filter((d) => !activeChapter.id || d.chapterId === activeChapter.id)
+      .map((d) => d.name);
+    const deptsFromStudents = studentList.map((s) => s.department).filter(Boolean);
+    return [...new Set([...deptsFromStore, ...deptsFromStudents])].sort();
+  }, [store.departments, activeChapter.id, studentList]);
+
   const filteredStudents = studentList.filter((s) => {
     const matchesSearch =
       s.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -122,7 +131,10 @@ export default function ChapterStudentsPage({
       s.department.toLowerCase().includes(search.toLowerCase()) ||
       s.skills.some((sk) => sk.toLowerCase().includes(search.toLowerCase()));
     const matchesFilter = filterStatus === "all" || s.status === filterStatus;
-    return matchesSearch && matchesFilter;
+    const matchesDepartment =
+      selectedDepartmentFilter === "all" ||
+      s.department.toLowerCase() === selectedDepartmentFilter.toLowerCase();
+    return matchesSearch && matchesFilter && matchesDepartment;
   });
 
   const handleAddStudent = (e: React.FormEvent) => {
@@ -348,17 +360,55 @@ export default function ChapterStudentsPage({
             <button
               key={st}
               onClick={() => setFilterStatus(st)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
-                filterStatus === st
+              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${filterStatus === st
                   ? "bg-text text-bg-page shadow-sm"
                   : "bg-bg-panel text-text-dim hover:text-text"
-              }`}
+                }`}
             >
               {st === "all" ? "All Students" : st === "unclaimed" ? "Unclaimed (Pending)" : "Synced Accounts"}
             </button>
           ))}
         </div>
       </div>
+
+      {/* Department Filter Pills */}
+      {chapterDepartments.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-xs text-text-dim mr-1">Department:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedDepartmentFilter("all")}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+              selectedDepartmentFilter === "all"
+                ? "bg-text text-bg-page shadow-sm"
+                : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
+            }`}
+          >
+            All Departments ({studentList.length})
+          </button>
+          {chapterDepartments.map((dept: string) => {
+            const count = studentList.filter(
+              (s) => s.department.toLowerCase() === dept.toLowerCase(),
+            ).length;
+            const isSelected =
+              selectedDepartmentFilter.toLowerCase() === dept.toLowerCase();
+            return (
+              <button
+                key={dept}
+                type="button"
+                onClick={() => setSelectedDepartmentFilter(dept)}
+                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
+                  isSelected
+                    ? "bg-orange-500 text-white shadow-sm"
+                    : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
+                }`}
+              >
+                {dept} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Multi-Select Action Bar */}
       {selectedStudentIds.length > 0 && (
@@ -654,11 +704,10 @@ export default function ChapterStudentsPage({
                         <span className="text-text-mute">({res.email})</span>
                       </div>
                       <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                          res.status === "success"
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${res.status === "success"
                             ? "bg-emerald-500/20 text-emerald-400"
                             : "bg-red-500/20 text-red-400"
-                        }`}
+                          }`}
                       >
                         {res.status === "success" ? "Success" : res.message}
                       </span>

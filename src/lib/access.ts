@@ -108,7 +108,9 @@ export function canAccessPath(
     pathname === "/notifications" ||
     pathname === "/eos" ||
     pathname.startsWith("/eos/") ||
-    pathname === "/my-qr"
+    pathname === "/my-qr" ||
+    pathname === "/events" ||
+    pathname.startsWith("/events/")
   ) {
     return true;
   }

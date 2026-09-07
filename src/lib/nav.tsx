@@ -221,7 +221,7 @@ export function navGroupsForRole(
   }
 
   // Student
-  const eventsHref = slug ? `${base}/events` : "/chapter";
+  const eventsHref = slug ? `${base}/events` : "/events";
   return [
     {
       label: "Explore",

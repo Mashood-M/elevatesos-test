@@ -119,11 +119,94 @@ export default function ChapterIndexPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="space-y-6">
-          {/* Open to All Events */}
+          {/* Start Here / Explore Tracks */}
+          <TerminalPanel title="Start here" meta="Explore" accent="orange">
+            <ol className="divide-y divide-border/80">
+              <li>
+                <Link
+                  href="/events"
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-3.5 hover:text-[var(--accent)] transition-colors"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                      01
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[13px] text-text">Browse Events</p>
+                      <p className="text-[12px] text-text-dim">
+                        Explore and register for open workshops, hackathons, and challenges across campuses
+                      </p>
+                    </div>
+                  </div>
+                  <Badge tone="cyan">{openEvents.length} open</Badge>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/eos"
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-3.5 hover:text-[var(--accent)] transition-colors"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                      02
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[13px] text-text">Explore Playbook</p>
+                      <p className="text-[12px] text-text-dim">
+                        Elevates principles, workflows, and builder tracks
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-text-mute">→</span>
+                </Link>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setIsJoinModalOpen(true)}
+                  className="w-full flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-3.5 text-left hover:text-[var(--accent)] transition-colors"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                      03
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[13px] text-text">Join College Chapter</p>
+                      <p className="text-[12px] text-text-dim">
+                        Have a college invite code? Join your campus chapter instantly
+                      </p>
+                    </div>
+                  </div>
+                  <Badge tone="orange">Code required</Badge>
+                </button>
+              </li>
+              <li>
+                <Link
+                  href="/referrals"
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-3.5 hover:text-[var(--accent)] transition-colors"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
+                      04
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[13px] text-text">Invite Friends</p>
+                      <p className="text-[12px] text-text-dim">
+                        Share Elevates invite links and build your network
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-text-mute">→</span>
+                </Link>
+              </li>
+            </ol>
+          </TerminalPanel>
+
+          {/* Upcoming Events Spotlight */}
           <TerminalPanel
-            title="open.events"
-            meta={`${openEvents.length} open to all`}
-            accent="orange"
+            title="upcoming.spotlight"
+            meta={`${openEvents.length} open events`}
+            accent="cyan"
           >
             {openEvents.length === 0 ? (
               <div className="py-8 text-center">
@@ -132,38 +215,48 @@ export default function ChapterIndexPage() {
                 </p>
               </div>
             ) : (
-              <div className="grid gap-3">
-                {openEvents.map((ev) => {
-                  const eligibility = canRegisterNow(store, ev, session.userId);
-                  const chapter = store.chapters.find((c) => c.id === ev.chapterId);
-                  return (
-                    <TicketCard
-                      key={ev.id}
-                      event={ev}
-                      href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : `/notifications`}
-                      className="bg-bg shadow-[var(--shadow-sm)]"
-                      meta={`${chapter ? chapter.college : "Elevates"} · open for all participants`}
-                      hideStatus={true}
-                      footer={
-                        <>
-                          {eligibility.ok ? (
-                            <Link href={`/f/${eligibility.formId}`}>
-                              <Button variant="orange" className="h-9 px-4">
-                                Register
-                              </Button>
-                            </Link>
-                          ) : (
-                            <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
-                              <Button variant="primary" className="h-9 px-4">
-                                Open Event
-                              </Button>
-                            </Link>
-                          )}
-                        </>
-                      }
-                    />
-                  );
-                })}
+              <div className="space-y-4">
+                <div className="grid gap-3">
+                  {openEvents.slice(0, 2).map((ev) => {
+                    const eligibility = canRegisterNow(store, ev, session.userId);
+                    const chapter = store.chapters.find((c) => c.id === ev.chapterId);
+                    return (
+                      <TicketCard
+                        key={ev.id}
+                        event={ev}
+                        href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : `/notifications`}
+                        className="bg-bg shadow-[var(--shadow-sm)]"
+                        meta={`${chapter ? chapter.college : "Elevates"} · open for all participants`}
+                        hideStatus={true}
+                        footer={
+                          <>
+                            {eligibility.ok ? (
+                              <Link href={`/f/${eligibility.formId}`}>
+                                <Button variant="orange" className="h-8 px-3 text-xs">
+                                  Register
+                                </Button>
+                              </Link>
+                            ) : (
+                              <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
+                                <Button variant="primary" className="h-8 px-3 text-xs">
+                                  Open Event
+                                </Button>
+                              </Link>
+                            )}
+                          </>
+                        }
+                      />
+                    );
+                  })}
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <Link href="/events">
+                    <Button variant="ghost" className="text-xs font-semibold text-[var(--accent)] hover:underline">
+                      View all {openEvents.length} open events →
+                    </Button>
+                  </Link>
+                </div>
               </div>
             )}
           </TerminalPanel>

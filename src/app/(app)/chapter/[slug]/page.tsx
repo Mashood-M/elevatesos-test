@@ -54,7 +54,7 @@ export default function ChapterDashboardPage({
 
   useEffect(() => {
     if (slug === "events") {
-      router.replace("/chapter");
+      router.replace("/events");
     }
   }, [slug, router]);
 

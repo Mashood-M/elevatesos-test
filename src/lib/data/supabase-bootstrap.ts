@@ -491,7 +491,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         description: cl.description ?? "",
         leaderId: cl.leader_id ?? undefined,
         accessMode: cl.access_mode ?? "open",
-        memberIds: [],
+        memberIds: Array.isArray(cl.member_ids) ? cl.member_ids : [],
         roadmap: Array.isArray(cl.roadmap) ? cl.roadmap : [],
       })) ?? [];
 

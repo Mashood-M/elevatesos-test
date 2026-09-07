@@ -11,11 +11,13 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
-import { canManageClasses, hasPermission, isHqRole } from "@/lib/permissions";
+import { canManageClasses, hasPermission } from "@/lib/permissions";
 import type { ClassCohort, Department } from "@/types";
 import {
   Building2,
   Check,
+  ChevronRight,
+  GraduationCap,
   Plus,
   Search,
   Sparkles,
@@ -77,6 +79,9 @@ export default function ChapterClassesPage({
   const canManage =
     canManageClasses(session.roleKey) ||
     hasPermission(store, session.roleKey, "class.manage");
+
+  // Tab State: "departments" | "classes" | "students"
+  const [activeTab, setActiveTab] = useState<"departments" | "classes" | "students">("departments");
 
   const yearSuggestions = store.academicYears ?? [];
   const divisionSuggestions = store.academicDivisions ?? [];
@@ -360,20 +365,25 @@ export default function ChapterClassesPage({
     window.setTimeout(() => setFlash(""), 1400);
   }
 
+  function viewStudentsForDept(deptName: string) {
+    setSelectedDeptFilter(deptName);
+    setActiveTab("students");
+  }
+
   return (
     <div>
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Classes"
-        description="Student-led — create departments first, then class divisions and assign 1–2 representatives (any gender; second is optional). Faculty is optional."
+        title="Classes & Departments"
+        description="Manage college academic departments, class cohorts with representatives, and student directory by department."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {flash ? (
-              <span className="self-center text-[12px] text-[var(--accent)]">
+              <span className="self-center rounded-md bg-[var(--accent)]/10 px-2.5 py-1 text-[12px] font-medium text-[var(--accent)]">
                 {flash}
               </span>
             ) : null}
-            {canManage ? (
+            {canManage && activeTab === "classes" ? (
               <Button
                 variant="primary"
                 onClick={startCreate}
@@ -382,9 +392,70 @@ export default function ChapterClassesPage({
                 {showForm && !editingId ? "Close form" : "New class"}
               </Button>
             ) : null}
+            {canManage && activeTab === "departments" ? (
+              <Button
+                variant="ghost"
+                className="text-xs text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/10 flex items-center gap-1.5 py-1.5 h-auto"
+                onClick={handleAddAllStandardDepts}
+              >
+                <Sparkles size={13} />
+                <span>Add All Standard Depts</span>
+              </Button>
+            ) : null}
           </div>
         }
       />
+
+      {/* Modern Tab Bar */}
+      <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-border/70 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("departments")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+            activeTab === "departments"
+              ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/40 shadow-sm"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+          }`}
+        >
+          <Building2 size={15} />
+          <span>Departments</span>
+          <span className="rounded-full bg-cyan-500/20 px-2 py-0.5 text-[10px] text-cyan-300">
+            {departments.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("classes")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+            activeTab === "classes"
+              ? "bg-orange-500/15 text-orange-400 border border-orange-500/40 shadow-sm"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+          }`}
+        >
+          <GraduationCap size={15} />
+          <span>Classes & Divisions</span>
+          <span className="rounded-full bg-orange-500/20 px-2 py-0.5 text-[10px] text-orange-300">
+            {cohorts.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("students")}
+          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${
+            activeTab === "students"
+              ? "bg-fuchsia-500/15 text-fuchsia-400 border border-fuchsia-500/40 shadow-sm"
+              : "bg-bg-panel text-text-dim hover:text-text border border-border/50 hover:bg-bg"
+          }`}
+        >
+          <Users size={15} />
+          <span>Students & Departments</span>
+          <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] text-fuchsia-300">
+            {chapterStudents.length}
+          </span>
+        </button>
+      </div>
 
       {!canManage ? (
         <TerminalPanel title="read.only" className="mb-6">
@@ -401,8 +472,10 @@ export default function ChapterClassesPage({
         </TerminalPanel>
       ) : null}
 
-      {/* Departments Management Panel */}
-      {canManage ? (
+      {/* ========================================================= */}
+      {/* TAB 1: DEPARTMENTS (Add & List) */}
+      {/* ========================================================= */}
+      {activeTab === "departments" && (
         <TerminalPanel
           title="departments"
           meta={`${departments.length} configured`}
@@ -614,9 +687,15 @@ export default function ChapterClassesPage({
                                 <span className="rounded bg-bg-panel px-1.5 py-0.5 border border-border/50">
                                   {classCount} {classCount === 1 ? "class" : "classes"}
                                 </span>
-                                <span className="rounded bg-bg-panel px-1.5 py-0.5 border border-border/50">
-                                  {studentCount} {studentCount === 1 ? "student" : "students"}
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => viewStudentsForDept(d.name)}
+                                  className="rounded bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30 px-1.5 py-0.5 flex items-center gap-1 transition"
+                                  title="Click to view students in this department"
+                                >
+                                  <span>{studentCount} students</span>
+                                  <ChevronRight size={10} />
+                                </button>
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -647,357 +726,395 @@ export default function ChapterClassesPage({
             </div>
           </div>
         </TerminalPanel>
-      ) : null}
+      )}
 
-      {/* Class Form */}
-      {canManage && showForm ? (
-        <TerminalPanel
-          title={editingId ? "edit.class" : "create.class"}
-          accent="orange"
-          className="mb-6"
-        >
-          {!departments.length ? (
-            <p className="text-sm text-[var(--accent)]">
-              Create a department first.
-            </p>
-          ) : (
-            <>
-              <div className="grid gap-3 md:grid-cols-3">
-                <div>
-                  <FieldLabel>Department</FieldLabel>
-                  <Select
-                    value={draft.department}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, department: e.target.value }))
-                    }
+      {/* ========================================================= */}
+      {/* TAB 2: CLASSES & DIVISIONS (Cohorts & Reps) */}
+      {/* ========================================================= */}
+      {activeTab === "classes" && (
+        <>
+          {canManage && showForm ? (
+            <TerminalPanel
+              title={editingId ? "edit.class" : "create.class"}
+              accent="orange"
+              className="mb-6"
+            >
+              {!departments.length ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-[var(--accent)]">
+                    Create a department first before setting up classes.
+                  </p>
+                  <Button
+                    variant="primary"
+                    onClick={() => setActiveTab("departments")}
+                    className="text-xs"
                   >
-                    <option value="">Select…</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </Select>
+                    Go to Departments Tab
+                  </Button>
                 </div>
-                <div>
-                  <FieldLabel>Year</FieldLabel>
-                  <Input
-                    list="year-suggestions"
-                    placeholder="1st / 2nd / …"
-                    value={draft.year}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, year: e.target.value }))
-                    }
-                  />
-                  <datalist id="year-suggestions">
-                    {yearSuggestions.map((y) => (
-                      <option key={y} value={y} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <FieldLabel>Division</FieldLabel>
-                  <Input
-                    list="division-suggestions"
-                    placeholder="T1 / T2 / A / …"
-                    value={draft.section}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, section: e.target.value }))
-                    }
-                  />
-                  <datalist id="division-suggestions">
-                    {divisionSuggestions.map((s) => (
-                      <option key={s} value={s} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <FieldLabel>Representative 1 (required)</FieldLabel>
-                  <Select
-                    value={draft.rep1Id}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, rep1Id: e.target.value }))
-                    }
-                  >
-                    <option value="">Select…</option>
-                    {chapterPeople.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                        {p.department ? ` (${p.department})` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <FieldLabel>Representative 2 (optional)</FieldLabel>
-                  <Select
-                    value={draft.rep2Id}
-                    onChange={(e) =>
-                      setDraft((d) => ({ ...d, rep2Id: e.target.value }))
-                    }
-                  >
-                    <option value="">None — single rep</option>
-                    {chapterPeople.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.fullName}
-                        {p.department ? ` (${p.department})` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-              <p className="mt-2 text-[12px] text-text-dim">
-                Minimum one rep. Second is optional when class strength only needs
-                one person — both can be any gender.
-              </p>
-              {error ? (
-                <p className="mt-3 text-sm text-[var(--accent)]">{error}</p>
-              ) : null}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button
-                  variant="primary"
-                  onClick={save}
-                  disabled={!draft.department || !draft.rep1Id}
-                >
-                  {editingId ? "Save changes" : "Create class"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditingId(null);
-                    setError("");
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </>
-          )}
-        </TerminalPanel>
-      ) : null}
-
-      {canManage && error && !showForm ? (
-        <p className="mb-4 text-sm text-[var(--accent)]">{error}</p>
-      ) : null}
-
-      {/* Class Cohorts List */}
-      <TerminalPanel title="class.list" meta={`${cohorts.length} classes`}>
-        {!cohorts.length ? (
-          <p className="text-sm text-text-dim">
-            No classes yet.
-            {canManage
-              ? departments.length
-                ? " Create first-year T1/T2/T3 and department years."
-                : " Add a department above, then create classes."
-              : ""}
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {cohorts.map((c) => {
-              const ids = cohortRepIds(c);
-              const names = ids.map(
-                (id) => store.profiles.find((p) => p.id === id)?.fullName ?? id,
-              );
-              return (
-                <li
-                  key={c.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold">{cohortLabel(c)}</p>
-                    <p className="mt-1 text-[12px] text-text-dim">
-                      {names.length
-                        ? names.map((n, i) => `Rep ${i + 1}: ${n}`).join(" · ")
-                        : "No representatives"}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {ids.map((_, i) => (
-                        <Badge key={i} tone={i === 0 ? "cyan" : "magenta"}>
-                          rep {i + 1}
-                        </Badge>
-                      ))}
+              ) : (
+                <>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div>
+                      <FieldLabel>Department</FieldLabel>
+                      <Select
+                        value={draft.department}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, department: e.target.value }))
+                        }
+                      >
+                        <option value="">Select…</option>
+                        {departments.map((d) => (
+                          <option key={d.id} value={d.name}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <FieldLabel>Year</FieldLabel>
+                      <Input
+                        list="year-suggestions"
+                        placeholder="1st / 2nd / …"
+                        value={draft.year}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, year: e.target.value }))
+                        }
+                      />
+                      <datalist id="year-suggestions">
+                        {yearSuggestions.map((y) => (
+                          <option key={y} value={y} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <FieldLabel>Division</FieldLabel>
+                      <Input
+                        list="division-suggestions"
+                        placeholder="T1 / T2 / A / …"
+                        value={draft.section}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, section: e.target.value }))
+                        }
+                      />
+                      <datalist id="division-suggestions">
+                        {divisionSuggestions.map((s) => (
+                          <option key={s} value={s} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <FieldLabel>Representative 1 (required)</FieldLabel>
+                      <Select
+                        value={draft.rep1Id}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, rep1Id: e.target.value }))
+                        }
+                      >
+                        <option value="">Select…</option>
+                        {chapterPeople.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.fullName}
+                            {p.department ? ` (${p.department})` : ""}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+                    <div>
+                      <FieldLabel>Representative 2 (optional)</FieldLabel>
+                      <Select
+                        value={draft.rep2Id}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, rep2Id: e.target.value }))
+                        }
+                      >
+                        <option value="">None — single rep</option>
+                        {chapterPeople.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.fullName}
+                            {p.department ? ` (${p.department})` : ""}
+                          </option>
+                        ))}
+                      </Select>
                     </div>
                   </div>
-                  {canManage ? (
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="ghost" onClick={() => startEdit(c)}>
-                        Edit
-                      </Button>
-                      <Button
-                        variant="orange"
-                        onClick={() => remove(c.id, cohortLabel(c))}
-                      >
-                        Delete
-                      </Button>
-                    </div>
+                  <p className="mt-2 text-[12px] text-text-dim">
+                    Minimum one rep. Second is optional when class strength only needs
+                    one person — both can be any gender.
+                  </p>
+                  {error ? (
+                    <p className="mt-3 text-sm text-[var(--accent)]">{error}</p>
                   ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </TerminalPanel>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button
+                      variant="primary"
+                      onClick={save}
+                      disabled={!draft.department || !draft.rep1Id}
+                    >
+                      {editingId ? "Save changes" : "Create class"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setShowForm(false);
+                        setEditingId(null);
+                        setError("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TerminalPanel>
+          ) : null}
 
-      {/* Students by Department Panel */}
-      <TerminalPanel
-        title="students.by_department"
-        meta={`${chapterStudents.length} students`}
-        accent="magenta"
-        className="mt-6"
-      >
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-                <Users size={16} className="text-fuchsia-400" />
-                Chapter Students Directory by Department
-              </h3>
-              <p className="text-[12px] text-text-dim">
-                Filter and view students in different departments from {chapter.name}.
-              </p>
+          {canManage && error && !showForm ? (
+            <p className="mb-4 text-sm text-[var(--accent)]">{error}</p>
+          ) : null}
+
+          <TerminalPanel title="class.list" meta={`${cohorts.length} classes`}>
+            {!cohorts.length ? (
+              <div className="py-6 text-center space-y-3">
+                <p className="text-sm text-text-dim">
+                  No classes or divisions configured yet.
+                </p>
+                {canManage ? (
+                  departments.length ? (
+                    <Button variant="primary" size="sm" onClick={startCreate}>
+                      <Plus size={14} className="mr-1" /> Create First Class Division
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setActiveTab("departments")}
+                    >
+                      Add a Department First
+                    </Button>
+                  )
+                ) : null}
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {cohorts.map((c) => {
+                  const ids = cohortRepIds(c);
+                  const names = ids.map(
+                    (id) => store.profiles.find((p) => p.id === id)?.fullName ?? id,
+                  );
+                  return (
+                    <li
+                      key={c.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3.5 border border-border/60"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-text">{cohortLabel(c)}</p>
+                          <span className="rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-medium">
+                            {c.department}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[12px] text-text-dim">
+                          {names.length
+                            ? names.map((n, i) => `Rep ${i + 1}: ${n}`).join(" · ")
+                            : "No representatives assigned"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {ids.map((_, i) => (
+                            <Badge key={i} tone={i === 0 ? "cyan" : "magenta"}>
+                              rep {i + 1}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      {canManage ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button variant="ghost" onClick={() => startEdit(c)}>
+                            Edit
+                          </Button>
+                          <Button
+                            variant="orange"
+                            onClick={() => remove(c.id, cohortLabel(c))}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </TerminalPanel>
+        </>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 3: STUDENTS & DEPARTMENTS (Read-Only Directory) */}
+      {/* ========================================================= */}
+      {activeTab === "students" && (
+        <TerminalPanel
+          title="students.directory"
+          meta={`${chapterStudents.length} students`}
+          accent="magenta"
+          className="mb-6"
+        >
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-text flex items-center gap-2">
+                  <Users size={16} className="text-fuchsia-400" />
+                  Student Directory by Department
+                </h3>
+                <p className="text-[12px] text-text-dim">
+                  Filter and view students enrolled across different departments in {chapter.name}.
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search
+                  size={14}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim"
+                />
+                <Input
+                  value={studentSearch}
+                  onChange={(e) => setStudentSearch(e.target.value)}
+                  placeholder="Search student, email, phone..."
+                  className="pl-8 text-xs"
+                />
+              </div>
             </div>
 
-            <div className="relative w-full sm:w-64">
-              <Search
-                size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim"
-              />
-              <Input
-                value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder="Search students..."
-                className="pl-8 text-xs"
-              />
-            </div>
-          </div>
-
-          {/* Department Filter Pills */}
-          <div className="flex flex-wrap gap-1.5 border-b border-border/50 pb-3">
-            <button
-              type="button"
-              onClick={() => setSelectedDeptFilter("all")}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                selectedDeptFilter === "all"
-                  ? "bg-text text-bg-page shadow-sm"
-                  : "bg-bg text-text-dim hover:text-text border border-border/50"
-              }`}
-            >
-              All Departments ({chapterStudents.length})
-            </button>
-            {departments.map((dept) => {
-              const count = chapterStudents.filter(
-                (s) => s.deptNorm.toLowerCase() === dept.name.trim().toLowerCase(),
-              ).length;
-              const isSelected =
-                selectedDeptFilter.toLowerCase() === dept.name.trim().toLowerCase();
-              return (
+            {/* Department Filter Pills */}
+            <div className="flex flex-wrap gap-1.5 border-b border-border/50 pb-3">
+              <button
+                type="button"
+                onClick={() => setSelectedDeptFilter("all")}
+                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                  selectedDeptFilter === "all"
+                    ? "bg-text text-bg-page shadow-sm"
+                    : "bg-bg text-text-dim hover:text-text border border-border/50"
+                }`}
+              >
+                All Departments ({chapterStudents.length})
+              </button>
+              {departments.map((dept) => {
+                const count = chapterStudents.filter(
+                  (s) => s.deptNorm.toLowerCase() === dept.name.trim().toLowerCase(),
+                ).length;
+                const isSelected =
+                  selectedDeptFilter.toLowerCase() === dept.name.trim().toLowerCase();
+                return (
+                  <button
+                    key={dept.id}
+                    type="button"
+                    onClick={() => setSelectedDeptFilter(dept.name)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      isSelected
+                        ? "bg-fuchsia-500 text-white shadow-sm"
+                        : "bg-bg text-text-dim hover:text-text border border-border/50"
+                    }`}
+                  >
+                    {dept.name} ({count})
+                  </button>
+                );
+              })}
+              {chapterStudents.some(
+                (s) => !s.department || s.department === "Unassigned",
+              ) && (
                 <button
-                  key={dept.id}
                   type="button"
-                  onClick={() => setSelectedDeptFilter(dept.name)}
+                  onClick={() => setSelectedDeptFilter("Unassigned")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    isSelected
+                    selectedDeptFilter === "Unassigned"
                       ? "bg-fuchsia-500 text-white shadow-sm"
                       : "bg-bg text-text-dim hover:text-text border border-border/50"
                   }`}
                 >
-                  {dept.name} ({count})
+                  Unassigned (
+                  {
+                    chapterStudents.filter(
+                      (s) => !s.department || s.department === "Unassigned",
+                    ).length
+                  }
+                  )
                 </button>
-              );
-            })}
-            {chapterStudents.some(
-              (s) => !s.department || s.department === "Unassigned",
-            ) && (
-              <button
-                type="button"
-                onClick={() => setSelectedDeptFilter("Unassigned")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                  selectedDeptFilter === "Unassigned"
-                    ? "bg-fuchsia-500 text-white shadow-sm"
-                    : "bg-bg text-text-dim hover:text-text border border-border/50"
-                }`}
-              >
-                Unassigned (
-                {
-                  chapterStudents.filter(
-                    (s) => !s.department || s.department === "Unassigned",
-                  ).length
-                }
-                )
-              </button>
+              )}
+            </div>
+
+            {/* Students List Table */}
+            {!filteredChapterStudents.length ? (
+              <div className="rounded-[12px] border border-dashed border-border/70 p-6 text-center text-xs text-text-dim">
+                No students found
+                {selectedDeptFilter !== "all" ? ` in ${selectedDeptFilter}` : ""}
+                {studentSearch ? ` matching "${studentSearch}"` : ""}.
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-[12px] border border-border/60 bg-bg">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-text-dim">
+                      <th className="px-3 py-2.5 font-semibold">Student Name</th>
+                      <th className="px-3 py-2.5 font-semibold">Contact</th>
+                      <th className="px-3 py-2.5 font-semibold">Department</th>
+                      <th className="px-3 py-2.5 font-semibold">Year & Division</th>
+                      <th className="px-3 py-2.5 font-semibold">Status / Role</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredChapterStudents.map((stu) => (
+                      <tr key={stu.id} className="hover:bg-bg-panel/40">
+                        <td className="px-3 py-2.5 font-medium text-text">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--secondary-soft)] text-[11px] font-bold text-[var(--secondary)] shrink-0">
+                              {stu.fullName.charAt(0)}
+                            </span>
+                            <div>
+                              <p className="font-semibold text-text">{stu.fullName}</p>
+                              {stu.elevatesId ? (
+                                <span className="text-[10px] text-text-dim">
+                                  {stu.elevatesId}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-text-dim">
+                          <p>{stu.email}</p>
+                          {stu.phone ? (
+                            <p className="text-[11px] text-text-dim/80">{stu.phone}</p>
+                          ) : null}
+                        </td>
+
+                        {/* Read-Only Department Badge */}
+                        <td className="px-3 py-2.5">
+                          <span className="inline-block rounded bg-bg-panel border border-border/60 px-2 py-0.5 text-[11px] font-medium text-text">
+                            {stu.department || "Unassigned"}
+                          </span>
+                        </td>
+
+                        <td className="px-3 py-2.5 text-text-dim">
+                          {stu.year ? stu.year : "—"}
+                          {stu.section ? ` · Sec ${stu.section}` : ""}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {stu.cohortLabel ? (
+                            <Badge tone="cyan">Rep · {stu.cohortLabel}</Badge>
+                          ) : (
+                            <span className="text-[11px] text-text-dim capitalize">
+                              {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
-
-          {/* Students List / Table */}
-          {!filteredChapterStudents.length ? (
-            <div className="rounded-[12px] border border-dashed border-border/70 p-6 text-center text-xs text-text-dim">
-              No students found
-              {selectedDeptFilter !== "all" ? ` in ${selectedDeptFilter}` : ""}
-              {studentSearch ? ` matching "${studentSearch}"` : ""}.
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-[12px] border border-border/60 bg-bg">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-text-dim">
-                    <th className="px-3 py-2.5 font-semibold">Student Name</th>
-                    <th className="px-3 py-2.5 font-semibold">Contact</th>
-                    <th className="px-3 py-2.5 font-semibold">Department</th>
-                    <th className="px-3 py-2.5 font-semibold">Year & Division</th>
-                    <th className="px-3 py-2.5 font-semibold">Status / Role</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredChapterStudents.map((stu) => (
-                    <tr key={stu.id} className="hover:bg-bg-panel/40">
-                      <td className="px-3 py-2.5 font-medium text-text">
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--secondary-soft)] text-[11px] font-bold text-[var(--secondary)]">
-                            {stu.fullName.charAt(0)}
-                          </span>
-                          <div>
-                            <p className="font-semibold text-text">{stu.fullName}</p>
-                            {stu.elevatesId ? (
-                              <span className="text-[10px] text-text-dim">
-                                {stu.elevatesId}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 text-text-dim">
-                        <p>{stu.email}</p>
-                        {stu.phone ? (
-                          <p className="text-[11px] text-text-dim/80">{stu.phone}</p>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-block rounded bg-bg-panel border border-border/60 px-2 py-0.5 text-[11px] font-medium text-text">
-                          {stu.department || "Unassigned"}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-text-dim">
-                        {stu.year ? stu.year : "—"}
-                        {stu.section ? ` · Sec ${stu.section}` : ""}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        {stu.cohortLabel ? (
-                          <Badge tone="cyan">Rep · {stu.cohortLabel}</Badge>
-                        ) : (
-                          <span className="text-[11px] text-text-dim capitalize">
-                            {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </TerminalPanel>
+        </TerminalPanel>
+      )}
     </div>
   );
 }

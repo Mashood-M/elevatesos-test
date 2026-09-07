@@ -23,6 +23,7 @@ export function TicketCard({
   meta,
   footer,
   className,
+  hideStatus = false,
 }: {
   event: EventItem;
   href?: string;
@@ -31,6 +32,8 @@ export function TicketCard({
   /** Actions below the ticket body — keep outside the title link */
   footer?: ReactNode;
   className?: string;
+  /** When true, suppresses the status badge (e.g. hides "draft" from student-facing views) */
+  hideStatus?: boolean;
 }) {
   const body = (
     <>
@@ -48,9 +51,11 @@ export function TicketCard({
           {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") && (
             <Badge tone="cyan">Open to All</Badge>
           )}
-          <Badge tone={statusTone[event.status] ?? "mute"}>
-            {event.status.replaceAll("_", " ")}
-          </Badge>
+          {!hideStatus && (
+            <Badge tone={statusTone[event.status] ?? "mute"}>
+              {event.status.replaceAll("_", " ")}
+            </Badge>
+          )}
         </div>
       </div>
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-text-dim">

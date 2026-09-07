@@ -101,9 +101,10 @@ export function isEventVisibleToUser(
     userRoleKey === "campus_lead" ||
     userRoleKey === "chairman";
 
-  // Draft / un-published events are HIDDEN by default from non-managers until published
+  // Draft / un-published events: visible to managers and same-chapter members.
+  // Students see the event but the UI hides the "draft" label for them.
   if (event.status === "draft" || event.status === "pending_approval") {
-    if (!isManager) return false;
+    if (!isManager && userChapterId !== event.chapterId) return false;
   }
 
   // HQ roles can see all events

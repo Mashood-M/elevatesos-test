@@ -572,6 +572,7 @@ export default function EventDetailPage({
             <TicketCard
               event={event}
               meta={`${seatsLeft} seats left · closes ${new Date(event.registrationEnd).toLocaleDateString()}`}
+              hideStatus={true}
             />
             <TerminalPanel title="about">
               {event.description ? (

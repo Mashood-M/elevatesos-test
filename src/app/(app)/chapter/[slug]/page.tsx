@@ -244,6 +244,7 @@ export default function ChapterDashboardPage({
                     key={event.id}
                     event={event}
                     href={`/chapter/${slug}/events/${event.id}`}
+                    hideStatus={isStudent}
                   />
                 ))}
               </div>

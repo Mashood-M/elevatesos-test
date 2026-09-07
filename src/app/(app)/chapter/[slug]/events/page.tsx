@@ -537,6 +537,7 @@ export default function ChapterEventsPage({
                   event={ev}
                   href={`/chapter/${slug}/events/${ev.id}`}
                   className="bg-bg shadow-[var(--shadow-sm)]"
+                  hideStatus={!canManage}
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
                     <>

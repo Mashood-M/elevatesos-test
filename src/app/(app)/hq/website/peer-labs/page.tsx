@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 
 export interface LessonPhase {
   id: string;
@@ -283,7 +284,13 @@ export default function PeerLabsCMSPage() {
                 <label className="font-semibold text-text-dim block mb-1">Track Title</label>
                 <Input
                   value={editingLab.title}
-                  onChange={(e) => setEditingLab({ ...editingLab, title: e.target.value })}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const currentAuto = finalizeSlug(editingLab.title);
+                    const isAuto = !editingLab.slug || editingLab.slug === currentAuto;
+                    const autoSlug = isAuto ? finalizeSlug(val) : editingLab.slug;
+                    setEditingLab({ ...editingLab, title: val, slug: autoSlug });
+                  }}
                   placeholder="e.g. Cybersecurity Lab"
                 />
               </div>
@@ -293,7 +300,18 @@ export default function PeerLabsCMSPage() {
                   <label className="font-semibold text-text-dim block mb-1">Slug</label>
                   <Input
                     value={editingLab.slug}
-                    onChange={(e) => setEditingLab({ ...editingLab, slug: e.target.value })}
+                    onChange={(e) =>
+                      setEditingLab({
+                        ...editingLab,
+                        slug: formatSlugInput(e.target.value),
+                      })
+                    }
+                    onBlur={() =>
+                      setEditingLab({
+                        ...editingLab,
+                        slug: finalizeSlug(editingLab.slug),
+                      })
+                    }
                     placeholder="cybersec-defense-lab"
                   />
                 </div>
@@ -470,7 +488,10 @@ export default function PeerLabsCMSPage() {
                 variant="orange"
                 size="sm"
                 onClick={async () => {
-                  const saved = editingLab;
+                  const cleanSlug = finalizeSlug(
+                    editingLab.slug || editingLab.title || "peer-lab",
+                  );
+                  const saved = { ...editingLab, slug: cleanSlug };
                   if (isNew) setLabs((prev) => [...prev, saved]);
                   else
                     setLabs((prev) =>

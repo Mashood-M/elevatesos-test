@@ -227,7 +227,20 @@ type StoreContextValue = {
   ) => FormResponse | null;
   deleteFormResponse: (id: string) => void;
   createChapter: (
-    input: Pick<Chapter, "name" | "slug" | "college" | "city" | "status">,
+    input: Pick<Chapter, "name" | "slug" | "college" | "city" | "status"> &
+      Partial<
+        Pick<
+          Chapter,
+          | "district"
+          | "state"
+          | "coordinates"
+          | "latitude"
+          | "longitude"
+          | "location"
+          | "mapUrl"
+          | "customSettings"
+        >
+      >,
   ) => Chapter;
   updateChapter: (
     id: string,
@@ -238,10 +251,18 @@ type StoreContextValue = {
         | "slug"
         | "college"
         | "city"
+        | "district"
+        | "state"
         | "status"
         | "facultyId"
         | "notes"
         | "healthScore"
+        | "coordinates"
+        | "latitude"
+        | "longitude"
+        | "location"
+        | "mapUrl"
+        | "customSettings"
       >
     >,
   ) => void;
@@ -2213,9 +2234,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const trimmed = {
           name: input.name.trim(),
           slug: input.slug.trim(),
-          college: input.college.trim(),
+          college: (input.college || input.name).trim(),
           city: input.city.trim(),
+          district: input.district?.trim() || undefined,
+          state: input.state?.trim() || undefined,
           status: input.status,
+          coordinates: input.coordinates?.trim() || undefined,
+          latitude:
+            typeof input.latitude === "number" && !isNaN(input.latitude)
+              ? input.latitude
+              : undefined,
+          longitude:
+            typeof input.longitude === "number" && !isNaN(input.longitude)
+              ? input.longitude
+              : undefined,
+          location: input.location?.trim() || undefined,
+          mapUrl: input.mapUrl?.trim() || undefined,
         };
         const chapterId = genUuid();
         const chapter: Chapter = {
@@ -2225,12 +2259,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           slug: trimmed.slug,
           college: trimmed.college,
           city: trimmed.city,
+          district: trimmed.district,
+          state: trimmed.state,
           status: trimmed.status,
           healthScore: 0,
           memberCount: 0,
           eventCount: 0,
           projectCount: 0,
           foundedAt: new Date().toISOString(),
+          coordinates: trimmed.coordinates,
+          latitude: trimmed.latitude,
+          longitude: trimmed.longitude,
+          location: trimmed.location,
+          mapUrl: trimmed.mapUrl,
+          customSettings: {
+            ...(input.customSettings || {}),
+            coordinates: trimmed.coordinates,
+            latitude: trimmed.latitude,
+            longitude: trimmed.longitude,
+            location: trimmed.location,
+            map_url: trimmed.mapUrl,
+          },
         };
         setStore((s) => ({
           ...s,
@@ -2271,7 +2320,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateChapter: (id, patch) => {
         const prevChapter = store.chapters.find((c) => c.id === id);
         if (!prevChapter) return;
-        const updated = { ...prevChapter, ...patch, id: prevChapter.id };
+        const updated: Chapter = {
+          ...prevChapter,
+          ...patch,
+          id: prevChapter.id,
+          customSettings: {
+            ...(prevChapter.customSettings || {}),
+            ...(patch.customSettings || {}),
+            ...(patch.coordinates !== undefined
+              ? { coordinates: patch.coordinates }
+              : {}),
+            ...(patch.latitude !== undefined
+              ? { latitude: patch.latitude }
+              : {}),
+            ...(patch.longitude !== undefined
+              ? { longitude: patch.longitude }
+              : {}),
+            ...(patch.location !== undefined
+              ? { location: patch.location }
+              : {}),
+            ...(patch.mapUrl !== undefined ? { map_url: patch.mapUrl } : {}),
+          },
+        };
         setStore((s) => ({
           ...s,
           chapters: s.chapters.map((c) => (c.id === id ? updated : c)),

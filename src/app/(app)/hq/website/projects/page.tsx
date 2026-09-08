@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 
 type ProjectStatus =
   | "live"
@@ -330,11 +331,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
-function TInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
+function TInput({ value, onChange, onBlur, placeholder, mono }: { value: string; onChange: (v: string) => void; onBlur?: () => void; placeholder?: string; mono?: boolean }) {
   return (
     <input
       className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`}
-      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+      value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder}
     />
   );
 }
@@ -430,9 +431,27 @@ function FlagshipEditor({ project, onSave, onClose }: { project: FlagshipProject
         </div>
         <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
           {tab === "overview" && (<>
-            <Field label="Title"><TInput value={d.title} onChange={(v) => u({ title: v })} /></Field>
+            <Field label="Title">
+              <TInput
+                value={d.title}
+                onChange={(v) => {
+                  const currentAuto = finalizeSlug(d.title);
+                  const isAuto = !d.slug || d.slug === currentAuto;
+                  const autoSlug = isAuto ? finalizeSlug(v) : d.slug;
+                  u({ title: v, slug: autoSlug });
+                }}
+              />
+            </Field>
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Slug"><TInput value={d.slug} onChange={(v) => u({ slug: v })} mono placeholder="vibranium-event-platform" /></Field>
+              <Field label="Slug">
+                <TInput
+                  value={d.slug}
+                  onChange={(v) => u({ slug: formatSlugInput(v) })}
+                  onBlur={() => u({ slug: finalizeSlug(d.slug) })}
+                  mono
+                  placeholder="vibranium-event-platform"
+                />
+              </Field>
               <Field label="Status">
                 <select className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text" value={d.status} onChange={(e) => u({ status: e.target.value as ProjectStatus })}>
                   {["live", "live-incomplete", "live-unmaintained", "paused", "archived", "never-launched"].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -765,8 +784,12 @@ export default function ProjectsCMSPage() {
       {editing && (
         <FlagshipEditor project={editing} onClose={() => { setEditing(null); setIsNew(false); }}
           onSave={async (saved) => {
-            if (isNew) setFlagship((prev) => [...prev, saved]);
-            else setFlagship((prev) => prev.map((p) => (p.id === saved.id ? saved : p)));
+            const cleanSaved = {
+              ...saved,
+              slug: finalizeSlug(saved.slug || saved.title || "project"),
+            };
+            if (isNew) setFlagship((prev) => [...prev, cleanSaved]);
+            else setFlagship((prev) => prev.map((p) => (p.id === cleanSaved.id ? cleanSaved : p)));
 
             try {
               await fetch("/api/mutations", {
@@ -775,14 +798,14 @@ export default function ProjectsCMSPage() {
                 body: JSON.stringify({
                   type: "project",
                   data: {
-                    id: saved.id,
-                    title: saved.title,
-                    slug: saved.slug,
-                    description: saved.summary || saved.tagline,
-                    stage: saved.status === "live" ? "production" : "active",
-                    projectType: saved.type,
-                    repositoryUrl: saved.repo,
-                    demoUrl: saved.live,
+                    id: cleanSaved.id,
+                    title: cleanSaved.title,
+                    slug: cleanSaved.slug,
+                    description: cleanSaved.summary || cleanSaved.tagline,
+                    stage: cleanSaved.status === "live" ? "production" : "active",
+                    projectType: cleanSaved.type,
+                    repositoryUrl: cleanSaved.repo,
+                    demoUrl: cleanSaved.live,
                     isShowcased: true,
                   },
                 }),

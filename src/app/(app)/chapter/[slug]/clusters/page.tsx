@@ -11,6 +11,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 
 export default function ChapterClustersPage({
   params,
@@ -46,13 +47,11 @@ export default function ChapterClustersPage({
       setFlash("Name is required.");
       return;
     }
-    const nextSlug =
-      slugInput.trim() ||
-      name
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "");
+    const nextSlug = finalizeSlug(slugInput || name);
+    if (!nextSlug) {
+      setFlash("Slug is required.");
+      return;
+    }
     if (clusters.some((c) => c.slug === nextSlug)) {
       setFlash("That slug already exists in this chapter.");
       return;
@@ -98,7 +97,15 @@ export default function ChapterClustersPage({
               <FieldLabel>Name</FieldLabel>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const currentAuto = finalizeSlug(name);
+                  const isAuto = !slugInput || slugInput === currentAuto;
+                  setName(val);
+                  if (isAuto) {
+                    setSlugInput(finalizeSlug(val));
+                  }
+                }}
                 placeholder="Product Design"
               />
             </div>
@@ -106,7 +113,8 @@ export default function ChapterClustersPage({
               <FieldLabel>Slug</FieldLabel>
               <Input
                 value={slugInput}
-                onChange={(e) => setSlugInput(e.target.value)}
+                onChange={(e) => setSlugInput(formatSlugInput(e.target.value))}
+                onBlur={() => setSlugInput(finalizeSlug(slugInput))}
                 placeholder="product-design"
               />
             </div>

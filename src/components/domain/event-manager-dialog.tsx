@@ -24,6 +24,7 @@ import {
   formatDisplayTime,
   getDefaultUpcomingEventTimes,
 } from "@/components/domain/date-time-pickers";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import type { EventItem as StoreEventItem } from "@/types";
 
 export type EventStatus = "Completed" | "Upcoming" | "Ongoing" | "Cancelled";
@@ -108,11 +109,13 @@ export function Field({
 export function TInput({
   value,
   onChange,
+  onBlur,
   placeholder,
   mono,
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   mono?: boolean;
 }) {
@@ -123,6 +126,7 @@ export function TInput({
       }`}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
       placeholder={placeholder}
     />
   );
@@ -392,9 +396,9 @@ export function EventEditor({
                 value={d.title}
                 onChange={(e) => {
                   const val = e.target.value;
-                  const autoSlug = !d.slug || d.slug === d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")
-                    ? val.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-                    : d.slug;
+                  const currentAutoSlug = finalizeSlug(d.title);
+                  const isAutoSlug = !d.slug || d.slug === currentAutoSlug;
+                  const autoSlug = isAutoSlug ? finalizeSlug(val) : d.slug;
                   u({ title: val, slug: autoSlug });
                 }}
                 placeholder="VIBE CODING WORKSHOP"
@@ -424,7 +428,8 @@ export function EventEditor({
             <Field label="Slug (URL path)">
               <TInput
                 value={d.slug}
-                onChange={(v) => u({ slug: v })}
+                onChange={(v) => u({ slug: formatSlugInput(v) })}
+                onBlur={() => u({ slug: finalizeSlug(d.slug) })}
                 mono
                 placeholder="vibe-coding-brototype"
               />
@@ -493,7 +498,16 @@ export function EventEditor({
                   <Field label="Case Study Slug (on /projects/[slug])">
                     <TInput
                       value={currentPlatform.caseStudySlug}
-                      onChange={(v) => updatePlatform({ caseStudySlug: v })}
+                      onChange={(v) =>
+                        updatePlatform({ caseStudySlug: formatSlugInput(v) })
+                      }
+                      onBlur={() =>
+                        updatePlatform({
+                          caseStudySlug: finalizeSlug(
+                            currentPlatform.caseStudySlug,
+                          ),
+                        })
+                      }
                       mono
                       placeholder="vibranium-event-platform"
                     />
@@ -843,12 +857,7 @@ export function EventManagerCreateDialog({
       store.chapters[0];
 
     const eventId = saved.id || `evt-${Date.now()}`;
-    const slug =
-      saved.slug ||
-      saved.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+    const slug = finalizeSlug(saved.slug || saved.title || "event");
 
     // Resolve ISO startsAt and endsAt
     let startsAt = saved.isoStartDate;
@@ -928,8 +937,9 @@ export function EventManagerCreateDialog({
             enabled: true,
             platformName: saved.platform.platformName || saved.title,
             tagline: saved.platform.tagline,
-            caseStudySlug:
+            caseStudySlug: finalizeSlug(
               saved.platform.caseStudySlug || slug || "platform-case-study",
+            ),
             liveUrl: saved.platform.liveUrl,
             repoUrl: saved.platform.repoUrl,
             highlightMetric: saved.platform.highlightMetric,

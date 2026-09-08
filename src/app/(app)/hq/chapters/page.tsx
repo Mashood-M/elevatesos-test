@@ -14,13 +14,21 @@ import { useStore } from "@/context/store-context";
 import { calculateChapterActivityScore } from "@/lib/analytics";
 import { healthLabel } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
+import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
 
 type DraftChapter = {
   name: string;
   slug: string;
-  college: string;
   city: string;
+  district?: string;
+  state?: string;
   status: "active" | "inactive" | "onboarding";
+  coordinates?: string;
+  latitude?: number;
+  longitude?: number;
+  location?: string;
 };
 
 type StatusFilter = "all" | DraftChapter["status"];
@@ -28,17 +36,18 @@ type StatusFilter = "all" | DraftChapter["status"];
 const emptyDraft = (): DraftChapter => ({
   name: "",
   slug: "",
-  college: "",
   city: "",
+  district: "",
+  state: "Kerala",
   status: "onboarding",
+  coordinates: "",
+  latitude: undefined,
+  longitude: undefined,
+  location: "",
 });
 
 function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
+  return finalizeSlug(name);
 }
 
 export default function HqChaptersPage() {
@@ -71,6 +80,8 @@ export default function HqChaptersPage() {
         c.name.toLowerCase().includes(q) ||
         c.college.toLowerCase().includes(q) ||
         c.city.toLowerCase().includes(q) ||
+        (c.district && c.district.toLowerCase().includes(q)) ||
+        (c.state && c.state.toLowerCase().includes(q)) ||
         c.slug.toLowerCase().includes(q)
       );
     });
@@ -85,13 +96,22 @@ export default function HqChaptersPage() {
 
   function handleCreate() {
     const name = draft.name.trim();
-    const college = draft.college.trim();
     const city = draft.city.trim();
-    if (!name || !college || !city) {
-      setFlash("Name, college, and city are required.");
+    if (!name || !city) {
+      setFlash("Chapter name and city are required.");
       return;
     }
-    const slug = (draft.slug.trim() || slugify(name)).replace(/^-+|-+$/g, "");
+    const coords =
+      draft.coordinates?.trim() ||
+      (draft.latitude != null && draft.longitude != null
+        ? `${draft.latitude}, ${draft.longitude}`
+        : "");
+    const loc = draft.location?.trim() || "";
+    if (!coords && !loc) {
+      setFlash("Please select a location on the map or type coordinates.");
+      return;
+    }
+    const slug = finalizeSlug(draft.slug || name);
     if (!slug) {
       setFlash("Slug is required.");
       return;
@@ -103,9 +123,15 @@ export default function HqChaptersPage() {
     const chapter = createChapter({
       name,
       slug,
-      college,
+      college: name, // Chapter name and college name are the same
       city,
+      district: draft.district,
+      state: draft.state,
       status: draft.status,
+      coordinates: coords || undefined,
+      latitude: draft.latitude,
+      longitude: draft.longitude,
+      location: loc || undefined,
     });
     setCreateOpen(false);
     setDraft(emptyDraft());
@@ -179,7 +205,7 @@ export default function HqChaptersPage() {
               <thead>
                 <tr className="border-b border-border text-[11px] text-text-mute">
                   <th className="pb-2 pr-4">Chapter</th>
-                  <th className="pb-2 pr-4">College</th>
+                  <th className="pb-2 pr-4">Coordinates / Map</th>
                   <th className="pb-2 pr-4">City</th>
                   <th className="pb-2 pr-4">Status</th>
                   <th className="pb-2 pr-4">Activity Score</th>
@@ -206,8 +232,35 @@ export default function HqChaptersPage() {
                         </Link>
                         <p className="text-[10px] text-text-mute">/{c.slug}</p>
                       </td>
-                      <td className="py-3 pr-4 text-text-dim">{c.college}</td>
-                      <td className="py-3 pr-4 text-text-dim">{c.city}</td>
+                      <td className="py-3 pr-4 text-text-dim">
+                        {c.coordinates ? (
+                          <a
+                            href={
+                              c.mapUrl ||
+                              `https://www.google.com/maps?q=${c.coordinates}`
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-[11px] text-[var(--accent)] hover:underline inline-flex items-center gap-1"
+                          >
+                            📍 {c.coordinates}
+                          </a>
+                        ) : c.location ? (
+                          <span className="text-[11px] text-text-dim">
+                            📍 {c.location}
+                          </span>
+                        ) : (
+                          <span className="text-text-mute text-[11px]">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 pr-4 text-text-dim">
+                        <div className="font-medium text-text">{c.city}</div>
+                        {c.district || c.state ? (
+                          <div className="text-[11px] text-text-mute">
+                            {[c.district, c.state].filter(Boolean).join(", ")}
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="py-3 pr-4">
                         <Badge
                           tone={
@@ -263,8 +316,9 @@ export default function HqChaptersPage() {
         onClose={() => setCreateOpen(false)}
         title="New chapter"
         description="Adds a campus chapter to the network. Continues to chapter settings."
+        className="max-w-xl"
       >
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
             <FieldLabel>Chapter name</FieldLabel>
             <Input
@@ -286,37 +340,77 @@ export default function HqChaptersPage() {
             <Input
               value={draft.slug}
               onChange={(e) => {
-                const raw = e.target.value;
-                // Sanitize: replace spaces with dashes, strip non-URL chars in real-time
-                const sanitized = raw
-                  .toLowerCase()
-                  .replace(/ /g, "-")
-                  .replace(/[^a-z0-9-]/g, "");
-                // Only lock auto-generation if user has actually typed something
+                const sanitized = formatSlugInput(e.target.value);
                 setSlugTouched(sanitized.length > 0);
                 setDraft((d) => ({ ...d, slug: sanitized }));
+              }}
+              onBlur={() => {
+                setDraft((d) => ({ ...d, slug: finalizeSlug(d.slug) }));
               }}
               placeholder="nit-calicut"
             />
           </div>
-          <div>
-            <FieldLabel>College</FieldLabel>
-            <Input
-              value={draft.college}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, college: e.target.value }))
-              }
-              placeholder="National Institute of Technology"
-            />
-          </div>
-          <div>
-            <FieldLabel>City</FieldLabel>
-            <Input
-              value={draft.city}
-              onChange={(e) => setDraft((d) => ({ ...d, city: e.target.value }))}
-              placeholder="Calicut"
-            />
-          </div>
+          <ChapterCitySelect
+            city={draft.city}
+            district={draft.district}
+            state={draft.state}
+            onChange={(sel) => {
+              setDraft((d) => ({
+                ...d,
+                city: sel.city,
+                district: sel.district,
+                state: sel.state,
+                coordinates:
+                  sel.lat != null && sel.lng != null && !d.coordinates
+                    ? `${sel.lat.toFixed(6)}, ${sel.lng.toFixed(6)}`
+                    : d.coordinates,
+                latitude:
+                  sel.lat != null && d.latitude == null ? sel.lat : d.latitude,
+                longitude:
+                  sel.lng != null && d.longitude == null ? sel.lng : d.longitude,
+                location:
+                  d.location ||
+                  (sel.district ? `${sel.city}, ${sel.district}` : sel.city),
+              }));
+            }}
+            onCoordinatesSuggest={(coords) => {
+              setDraft((d) => ({
+                ...d,
+                coordinates:
+                  d.coordinates ||
+                  `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,
+                latitude: d.latitude ?? coords.lat,
+                longitude: d.longitude ?? coords.lng,
+              }));
+            }}
+          />
+
+          <ChapterLocationPicker
+            value={{
+              coordinates: draft.coordinates,
+              latitude: draft.latitude,
+              longitude: draft.longitude,
+              location: draft.location,
+            }}
+            onChange={(locVal) => {
+              setDraft((d) => ({
+                ...d,
+                coordinates: locVal.coordinates,
+                latitude: locVal.latitude,
+                longitude: locVal.longitude,
+                location: locVal.location,
+              }));
+            }}
+            onCityChange={(city, district, state) => {
+              setDraft((d) => ({
+                ...d,
+                city,
+                ...(district ? { district } : {}),
+                ...(state ? { state } : {}),
+              }));
+            }}
+          />
+
           <div>
             <FieldLabel>Initial status</FieldLabel>
             <Select

@@ -15,9 +15,12 @@ import { calculateChapterActivityScore } from "@/lib/analytics";
 import { activityLabel, hasPermission, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import type { Chapter } from "@/types";
 import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-code-manager";
 import { ChapterDepartmentManager } from "@/components/chapter/chapter-department-manager";
+import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
+import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
 
 export default function ChapterSettingsPage({
   params,
@@ -117,10 +120,17 @@ export default function ChapterSettingsPage({
         | "slug"
         | "college"
         | "city"
+        | "district"
+        | "state"
         | "status"
         | "facultyId"
         | "notes"
         | "healthScore"
+        | "coordinates"
+        | "latitude"
+        | "longitude"
+        | "location"
+        | "mapUrl"
       >
     >,
   ) {
@@ -210,7 +220,7 @@ export default function ChapterSettingsPage({
 
       <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
         <div className="space-y-4">
-          <TerminalPanel title="College profile">
+          <TerminalPanel title="Chapter & Campus profile">
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <FieldLabel>Chapter name</FieldLabel>
@@ -219,7 +229,7 @@ export default function ChapterSettingsPage({
                   disabled={!canManage}
                   onBlur={(e) => {
                     if (e.target.value !== chapter.name) {
-                      saveField({ name: e.target.value });
+                      saveField({ name: e.target.value, college: e.target.value });
                     }
                   }}
                 />
@@ -229,36 +239,74 @@ export default function ChapterSettingsPage({
                 <Input
                   defaultValue={chapter.slug}
                   disabled={!canManage || !isHqRole(session.roleKey)}
+                  onChange={(e) => {
+                    e.target.value = formatSlugInput(e.target.value);
+                  }}
                   onBlur={(e) => {
+                    const finalSlug = finalizeSlug(e.target.value);
+                    e.target.value = finalSlug;
                     if (
                       isHqRole(session.roleKey) &&
-                      e.target.value !== chapter.slug
+                      finalSlug !== chapter.slug
                     ) {
-                      saveField({ slug: e.target.value });
+                      saveField({ slug: finalSlug });
                     }
                   }}
                 />
               </div>
-              <div>
-                <FieldLabel>College</FieldLabel>
-                <Input
-                  defaultValue={chapter.college}
+              <div className="md:col-span-2">
+                <ChapterCitySelect
+                  city={chapter.city}
+                  district={chapter.district}
+                  state={chapter.state}
                   disabled={!canManage}
-                  onBlur={(e) => {
-                    if (e.target.value !== chapter.college) {
-                      saveField({ college: e.target.value });
+                  onChange={(sel) => {
+                    if (canManage) {
+                      saveField({
+                        city: sel.city,
+                        district: sel.district,
+                        state: sel.state,
+                      });
+                    }
+                  }}
+                  onCoordinatesSuggest={(coords) => {
+                    if (canManage && !chapter.coordinates) {
+                      saveField({
+                        coordinates: `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,
+                        latitude: coords.lat,
+                        longitude: coords.lng,
+                      });
                     }
                   }}
                 />
               </div>
-              <div>
-                <FieldLabel>City</FieldLabel>
-                <Input
-                  defaultValue={chapter.city}
-                  disabled={!canManage}
-                  onBlur={(e) => {
-                    if (e.target.value !== chapter.city) {
-                      saveField({ city: e.target.value });
+              <div className="md:col-span-2">
+                <ChapterLocationPicker
+                  value={{
+                    coordinates: chapter.coordinates,
+                    latitude: chapter.latitude,
+                    longitude: chapter.longitude,
+                    location: chapter.location,
+                    mapUrl: chapter.mapUrl,
+                  }}
+                  onChange={(locVal) => {
+                    if (canManage) {
+                      saveField({
+                        coordinates: locVal.coordinates,
+                        latitude: locVal.latitude,
+                        longitude: locVal.longitude,
+                        location: locVal.location,
+                        mapUrl: locVal.mapUrl,
+                      });
+                    }
+                  }}
+                  onCityChange={(city, district, state) => {
+                    if (canManage) {
+                      saveField({
+                        city,
+                        ...(district ? { district } : {}),
+                        ...(state ? { state } : {}),
+                      });
                     }
                   }}
                 />

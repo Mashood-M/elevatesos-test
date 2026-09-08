@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import {
   DatePickerInput,
   TimePickerInput,
@@ -104,8 +105,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
-function TInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
-  return <input className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
+function TInput({ value, onChange, onBlur, placeholder, mono }: { value: string; onChange: (v: string) => void; onBlur?: () => void; placeholder?: string; mono?: boolean }) {
+  return <input className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`} value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder} />;
 }
 function TArea({ value, onChange, placeholder, rows = 4 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
   return <textarea rows={rows} className="w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-xs text-text resize-none" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
@@ -187,8 +188,18 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
           {/* Main Info */}
           <div className="space-y-4">
             <Field label="Event Title (displayed in UPPERCASE on /events)">
-              <input className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-sm font-bold uppercase text-text tracking-tight"
-                value={d.title} onChange={(e) => u({ title: e.target.value })} placeholder="VIBE CODING WORKSHOP" />
+              <input
+                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-sm font-bold uppercase text-text tracking-tight"
+                value={d.title}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const currentAutoSlug = finalizeSlug(d.title);
+                  const isAutoSlug = !d.slug || d.slug === currentAutoSlug;
+                  const autoSlug = isAutoSlug ? finalizeSlug(val) : d.slug;
+                  u({ title: val, slug: autoSlug });
+                }}
+                placeholder="VIBE CODING WORKSHOP"
+              />
             </Field>
 
             {/* Chapter Linkage */}
@@ -212,7 +223,13 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
             </Field>
 
             <Field label="Slug (URL path)">
-              <TInput value={d.slug} onChange={(v) => u({ slug: v })} mono placeholder="vibe-coding-brototype" />
+              <TInput
+                value={d.slug}
+                onChange={(v) => u({ slug: formatSlugInput(v) })}
+                onBlur={() => u({ slug: finalizeSlug(d.slug) })}
+                mono
+                placeholder="vibe-coding-brototype"
+              />
             </Field>
             <Field label="Tagline (appears under title on event card)">
               <TInput value={d.tagline} onChange={(v) => u({ tagline: v })} placeholder="Build, Create & Innovate · AI-Assisted Development" />
@@ -263,7 +280,8 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
                   <Field label="Case Study Slug (on /projects/[slug])">
                     <TInput
                       value={currentPlatform.caseStudySlug}
-                      onChange={(v) => updatePlatform({ caseStudySlug: v })}
+                      onChange={(v) => updatePlatform({ caseStudySlug: formatSlugInput(v) })}
+                      onBlur={() => updatePlatform({ caseStudySlug: finalizeSlug(currentPlatform.caseStudySlug) })}
                       mono
                       placeholder="vibranium-event-platform"
                     />
@@ -736,11 +754,12 @@ export default function EventsCMSPage() {
             const visibility =
               saved.format === "Campus Exclusive" ? "chapter_only" : "open_to_all";
 
+            const cleanSlug = finalizeSlug(saved.slug || saved.title || "event");
             const storeEvent: any = {
               id: saved.id,
               chapterId: targetChapterId,
               title: saved.title || "Untitled Event",
-              slug: saved.slug,
+              slug: cleanSlug,
               bannerEmoji: "EVENT",
               summary: saved.tagline || saved.description,
               description:
@@ -793,10 +812,11 @@ export default function EventsCMSPage() {
                     enabled: true,
                     platformName: saved.platform.platformName || saved.title,
                     tagline: saved.platform.tagline,
-                    caseStudySlug:
+                    caseStudySlug: finalizeSlug(
                       saved.platform.caseStudySlug ||
-                      saved.slug ||
-                      "platform-case-study",
+                      cleanSlug ||
+                      "platform-case-study"
+                    ),
                     liveUrl: saved.platform.liveUrl,
                     repoUrl: saved.platform.repoUrl,
                     highlightMetric: saved.platform.highlightMetric,

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { ensureTestChapter } from "@/lib/chapters";
 import { deduplicateEvents } from "@/lib/events";
+import { extractLocationFromNotes } from "@/lib/slug";
 import type {
   BrandKit,
   Chapter,
@@ -247,26 +248,69 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       : [];
 
     const chapters: Chapter[] = ensureTestChapter(
-      (chapterRows ?? []).map((c: Record<string, any>) => ({
-        id: c.id,
-        elevatesId: c.elevates_id ?? undefined,
-        organizationId: c.organization_id,
-        name: c.name,
-        slug: c.slug,
-        college: c.college,
-        city: c.city ?? "",
-        status: c.status,
-        healthScore: Number(c.health_score ?? 0),
-        memberCount: Number(c.member_count ?? 0),
-        eventCount: Number(c.event_count ?? 0),
-        projectCount: Number(c.project_count ?? 0),
-        foundedAt: c.founded_at ?? new Date().toISOString(),
-        facultyId: c.faculty_id ?? undefined,
-        notes: c.notes ?? undefined,
-        published: Boolean(c.published),
-        logoUrl: c.logo_url ?? undefined,
-        district: c.district ?? undefined,
-      })),
+      (chapterRows ?? []).map((c: Record<string, any>) => {
+        const cs = (c.custom_settings as Record<string, any>) || {};
+        let notes: string | undefined = c.notes ?? undefined;
+        let coords: string | undefined = c.coordinates ?? cs.coordinates ?? undefined;
+        let lat: number | undefined =
+          c.latitude != null
+            ? Number(c.latitude)
+            : cs.latitude != null
+              ? Number(cs.latitude)
+              : undefined;
+        let lng: number | undefined =
+          c.longitude != null
+            ? Number(c.longitude)
+            : cs.longitude != null
+              ? Number(cs.longitude)
+              : undefined;
+        let loc: string | undefined = c.location ?? cs.location ?? undefined;
+        let mapUrl: string | undefined = c.map_url ?? cs.map_url ?? undefined;
+        let district: string | undefined = c.district ?? cs.district ?? undefined;
+        let state: string | undefined = c.state ?? cs.state ?? undefined;
+
+        if (notes) {
+          const extracted = extractLocationFromNotes(notes);
+          if (extracted.geo) {
+            if (!coords) coords = extracted.geo.coordinates;
+            if (lat == null && extracted.geo.latitude != null) lat = extracted.geo.latitude;
+            if (lng == null && extracted.geo.longitude != null) lng = extracted.geo.longitude;
+            if (!loc) loc = extracted.geo.location;
+            if (!mapUrl) mapUrl = extracted.geo.mapUrl;
+            if (!district) district = extracted.geo.district;
+            if (!state) state = extracted.geo.state;
+          }
+          notes = extracted.userNotes || undefined;
+        }
+
+        return {
+          id: c.id,
+          elevatesId: c.elevates_id ?? undefined,
+          organizationId: c.organization_id,
+          name: c.name,
+          slug: c.slug,
+          college: c.college,
+          city: c.city ?? "",
+          status: c.status,
+          healthScore: Number(c.health_score ?? 0),
+          memberCount: Number(c.member_count ?? 0),
+          eventCount: Number(c.event_count ?? 0),
+          projectCount: Number(c.project_count ?? 0),
+          foundedAt: c.founded_at ?? new Date().toISOString(),
+          facultyId: c.faculty_id ?? undefined,
+          notes,
+          published: Boolean(c.published),
+          logoUrl: c.logo_url ?? undefined,
+          district,
+          state,
+          coordinates: coords,
+          latitude: lat,
+          longitude: lng,
+          location: loc,
+          mapUrl: mapUrl,
+          customSettings: cs,
+        };
+      }),
     );
 
     const events: EventItem[] = deduplicateEvents(

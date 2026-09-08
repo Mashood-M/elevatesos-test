@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
+import { embedLocationInNotes } from "@/lib/slug";
 
 // Default Root Organization UUID seeded in database migration 001/002
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -237,12 +238,12 @@ export async function POST(req: Request) {
     if (type === "chapter") {
       const chapter = data;
       const chapterId = isUuid(chapter.id) ? chapter.id : genUuid();
-      const { error } = await admin.from("chapters").upsert({
+      const basePayload: Record<string, any> = {
         id: chapterId,
         organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : DEFAULT_ORG_ID,
         name: chapter.name,
         slug: chapter.slug,
-        college: chapter.college,
+        college: chapter.college || chapter.name,
         city: chapter.city,
         status: chapter.status,
         health_score: chapter.healthScore ?? 0,
@@ -252,7 +253,60 @@ export async function POST(req: Request) {
         member_count: chapter.memberCount ?? 0,
         event_count: chapter.eventCount ?? 0,
         project_count: chapter.projectCount ?? 0,
+      };
+
+      const geoData: Record<string, any> = {};
+      if (chapter.coordinates) geoData.coordinates = chapter.coordinates;
+      if (chapter.latitude != null && !isNaN(chapter.latitude)) geoData.latitude = chapter.latitude;
+      if (chapter.longitude != null && !isNaN(chapter.longitude)) geoData.longitude = chapter.longitude;
+      if (chapter.location) geoData.location = chapter.location;
+      if (chapter.mapUrl) geoData.map_url = chapter.mapUrl;
+
+      const notesWithGeo = embedLocationInNotes(chapter.notes, {
+        coordinates: chapter.coordinates,
+        latitude: chapter.latitude,
+        longitude: chapter.longitude,
+        location: chapter.location,
+        mapUrl: chapter.mapUrl,
+        district: chapter.district,
+        state: chapter.state,
       });
+
+      // Attempt 1: Try with dedicated columns and notes
+      let { error } = await admin.from("chapters").upsert({
+        ...basePayload,
+        ...geoData,
+        notes: notesWithGeo,
+      });
+
+      // Fallback if dedicated columns are not in remote schema cache yet
+      if (error && (error.message.includes("column") || error.message.includes("schema cache"))) {
+        // Attempt 2: Try custom_settings JSONB if migration 009 is present
+        const res2 = await admin.from("chapters").upsert({
+          ...basePayload,
+          notes: notesWithGeo,
+          custom_settings: {
+            ...(chapter.customSettings || {}),
+            ...geoData,
+          },
+        });
+        error = res2.error;
+
+        // Attempt 3: If custom_settings column is missing in schema cache, fall back to notes
+        if (error && (error.message.includes("custom_settings") || error.message.includes("schema cache"))) {
+          const res3 = await admin.from("chapters").upsert({
+            ...basePayload,
+            notes: notesWithGeo,
+          });
+          error = res3.error;
+
+          // Attempt 4: Absolute minimal base columns if notes is also rejected
+          if (error && error.message.includes("column")) {
+            const res4 = await admin.from("chapters").upsert(basePayload);
+            error = res4.error;
+          }
+        }
+      }
 
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

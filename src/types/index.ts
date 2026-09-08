@@ -188,6 +188,13 @@ export interface Chapter {
   published?: boolean;
   logoUrl?: string;
   district?: string;
+  state?: string;
+  coordinates?: string;
+  latitude?: number;
+  longitude?: number;
+  location?: string;
+  mapUrl?: string;
+  customSettings?: Record<string, any>;
 }
 
 export interface Profile {

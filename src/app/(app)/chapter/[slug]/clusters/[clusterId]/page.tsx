@@ -11,6 +11,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { isHqRole } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 
 export default function ClusterDetailPage({
   params,
@@ -220,9 +221,16 @@ export default function ClusterDetailPage({
                   <FieldLabel>Slug</FieldLabel>
                   <Input
                     defaultValue={cluster.slug}
-                    onBlur={(e) =>
-                      updateCluster(cluster.id, { slug: e.target.value })
-                    }
+                    onChange={(e) => {
+                      e.target.value = formatSlugInput(e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      const finalSlug = finalizeSlug(e.target.value);
+                      e.target.value = finalSlug;
+                      if (finalSlug !== cluster.slug) {
+                        updateCluster(cluster.id, { slug: finalSlug });
+                      }
+                    }}
                   />
                 </div>
                 <div className="md:col-span-2">

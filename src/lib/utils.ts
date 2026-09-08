@@ -21,3 +21,14 @@ export function initials(name: string) {
     .slice(0, 2)
     .toUpperCase();
 }
+
+export {
+  formatSlugInput,
+  finalizeSlug,
+  slugify,
+  embedLocationInNotes,
+  extractLocationFromNotes,
+} from "@/lib/slug";
+export type { ChapterGeoData } from "@/lib/slug";
+
+

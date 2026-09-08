@@ -283,7 +283,7 @@ export default function HqSettingsPage() {
               <div>
                 <p className="text-xs font-semibold text-text">Reset to Factory Seed Dataset</p>
                 <p className="text-xs text-text-dim mt-0.5">
-                  Restores default chapters, events, user permissions, and verified rosters in this browser.
+                  Restores default chapters, events, user permissions, and verified directories in this browser.
                 </p>
               </div>
               <Button

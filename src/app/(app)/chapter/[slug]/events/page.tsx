@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow, resolveChapter } from "@/lib/access";
+import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
 import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
@@ -387,7 +387,13 @@ export default function ChapterEventsPage({
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
                     <>
-                      {ev.status === "draft" && canPublish ? (
+                      {isFacultyRole(session.roleKey) ? (
+                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                          <Button variant="primary" className="h-9 px-4">
+                            View details
+                          </Button>
+                        </Link>
+                      ) : ev.status === "draft" && canPublish ? (
                         <Button
                           variant="orange"
                           className="h-9 px-4"
@@ -416,7 +422,7 @@ export default function ChapterEventsPage({
                           </Button>
                         </Link>
                       )}
-                      {secondary ? (
+                      {secondary && !isFacultyRole(session.roleKey) ? (
                         <Link
                           href={secondary.href}
                           className="text-[12px] font-medium text-text-dim hover:text-[var(--accent)]"

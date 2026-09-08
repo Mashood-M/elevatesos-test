@@ -287,7 +287,7 @@ function LoginInner() {
             Your campus workspace.
           </h1>
           <p className="mt-5 max-w-[36ch] text-[14px] leading-relaxed text-white/50">
-            Unified operations, verified leadership rosters, live events, and attendance check-ins for Elevates chapters across Kerala.
+            Unified operations, verified leadership directories, live events, and attendance check-ins for Elevates chapters across Kerala.
           </p>
         </div>
         <p className="relative font-[family-name:var(--font-mono)] text-[12px] text-white/30">

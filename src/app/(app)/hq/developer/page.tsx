@@ -148,7 +148,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
     path: "/chapters/campus-chapter",
     category: "Chapters",
     title: "Get Chapter Detail & Leadership",
-    description: "Returns chapter profile, verified execom roster, faculty coordinator, and active events.",
+    description: "Returns chapter profile, verified execom directory, faculty coordinator, and active events.",
     requiresAuth: false,
     sampleResponse: JSON.stringify(
       {

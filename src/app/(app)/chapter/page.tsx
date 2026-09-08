@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
+import { isFacultyRole } from "@/lib/access";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 
@@ -230,7 +231,13 @@ export default function ChapterIndexPage() {
                         hideStatus={true}
                         footer={
                           <>
-                            {eligibility.ok ? (
+                            {isFacultyRole(session.roleKey) ? (
+                              <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
+                                <Button variant="primary" className="h-8 px-3 text-xs">
+                                  View Details
+                                </Button>
+                              </Link>
+                            ) : eligibility.ok ? (
                               <Link href={`/f/${eligibility.formId}`}>
                                 <Button variant="orange" className="h-8 px-3 text-xs">
                                   Register

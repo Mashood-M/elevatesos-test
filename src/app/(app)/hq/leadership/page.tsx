@@ -259,7 +259,7 @@ export default function HqLeadershipPage() {
                             setExpandedId(open ? null : chapter.id)
                           }
                         >
-                          {open ? "Hide roster" : "Roster"}
+                          {open ? "Hide directory" : "Directory"}
                         </Button>
                         <Link href={`/chapter/${chapter.slug}/leadership`}>
                           <Button variant="primary">Open chapter</Button>

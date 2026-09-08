@@ -455,14 +455,6 @@ export default function ChapterStudentsPage({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border text-text-dim">
-                <th className="pb-3 w-8">
-                  <input
-                    type="checkbox"
-                    checked={selectedStudentIds.length > 0 && selectedStudentIds.length === filteredStudents.length}
-                    onChange={toggleSelectAll}
-                    className="rounded border-border"
-                  />
-                </th>
                 <th className="pb-3 font-semibold">Student Name</th>
                 <th className="pb-3 font-semibold">Contact & Phone</th>
                 <th className="pb-3 font-semibold">Department & Year</th>
@@ -474,14 +466,6 @@ export default function ChapterStudentsPage({
             <tbody className="divide-y divide-border">
               {filteredStudents.map((stu) => (
                 <tr key={stu.id} className="group hover:bg-bg-page/50">
-                  <td className="py-3 w-8">
-                    <input
-                      type="checkbox"
-                      checked={selectedStudentIds.includes(stu.id)}
-                      onChange={() => toggleSelectStudent(stu.id)}
-                      className="rounded border-border"
-                    />
-                  </td>
                   <td className="py-3">
                     <div className="flex items-center gap-2.5">
                       <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">

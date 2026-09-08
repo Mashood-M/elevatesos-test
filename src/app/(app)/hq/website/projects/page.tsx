@@ -161,7 +161,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
       "Real-Time Monitoring: Live tracking of event participation levels powered by Supabase.",
       "Automated Registrations: Smart validation for on-stage and off-stage event limits per student.",
       "Operational Oversight: Comprehensive Audit Logs to monitor system-wide configuration changes and user logins.",
-      "Professional Reporting: Integrated PDF generation for student registrations and event rosters using jsPDF.",
+      "Professional Reporting: Integrated PDF generation for student registrations and event directories using jsPDF.",
     ],
     howItHeldUp: {
       summary: "Built with lessons learned from Vibranium — cleaner architecture with Vite + Supabase, zero rush-hour bugs, and instant real-time result updates.",
@@ -170,7 +170,7 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
     },
     whatWeWouldDoDifferently: [
       "Provide offline judge draft saving in local storage before pushing to Supabase.",
-      "Batch PDF roster generation for 50+ events should be offloaded to a background web worker.",
+      "Batch PDF directory generation for 50+ events should be offloaded to a background web worker.",
     ],
     builders: [
       { role: "Main Dev Overall", name: "Sarhan Qadir KVM", founderId: "sarhan-qadir-kvm" },

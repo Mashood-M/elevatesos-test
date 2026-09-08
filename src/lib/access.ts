@@ -245,7 +245,7 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
       href: `${base}/announcements`,
       access: "student",
     },
-    { title: "Students", subtitle: "Student roster", href: `${base}/students`, access: "executive" },
+    { title: "Students", subtitle: "Student directory", href: `${base}/students`, access: "executive" },
     { title: "Analytics", subtitle: "Chapter analytics", href: `${base}/analytics`, access: "executive" },
     { title: "Attendance", subtitle: "Check-in & QR", href: `${base}/attendance`, access: "executive" },
     { title: "Classes", subtitle: "Class sections", href: `${base}/classes`, access: "executive" },

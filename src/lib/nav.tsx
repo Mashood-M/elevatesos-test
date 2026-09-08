@@ -196,7 +196,7 @@ export function navGroupsForRole(
       {
         label: "People & ops",
         items: [
-          { href: `${base}/students`, label: "Student Roster", icon: I.students },
+          { href: `${base}/students`, label: "Student Directory", icon: I.students },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
           { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },

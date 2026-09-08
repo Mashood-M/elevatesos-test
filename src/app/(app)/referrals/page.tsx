@@ -385,20 +385,20 @@ export default function UnifiedReferralsPage() {
 
               <div className="mt-4 pt-4 border-t border-border flex items-center gap-2 text-[11px] text-text-mute">
                 <CircleDot size={12} className="text-[var(--accent)]" />
-                <span>When your invitee registers, they automatically join your referral roster.</span>
+                <span>When your invitee registers, they automatically join your referral directory.</span>
               </div>
             </TerminalPanel>
           </div>
 
-          {/* Personal Referrals Roster */}
+          {/* Personal Referrals Directory */}
           <div className="xl:col-span-2 space-y-6">
-            <TerminalPanel title="my.referral_roster" meta={`${myTokens.length} invites total`}>
+            <TerminalPanel title="my.referral_directory" meta={`${myTokens.length} invites total`}>
               {myTokens.length === 0 ? (
                 <div className="py-8 text-center">
                   <Users size={32} className="mx-auto mb-2 text-text-mute opacity-40" />
                   <p className="text-[13px] font-medium text-text-dim">No referrals yet</p>
                   <p className="mt-1 text-[11px] text-text-mute">
-                    Share your invite link with classmates to start building your referral roster.
+                    Share your invite link with classmates to start building your referral directory.
                   </p>
                 </div>
               ) : (

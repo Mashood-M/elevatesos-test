@@ -18,6 +18,7 @@ import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput } from "@/lib/datetime";
 import { formatDateTime } from "@/lib/utils";
+import { Search, Users, GraduationCap, X } from "lucide-react";
 import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
 
 
@@ -169,13 +170,16 @@ export default function EventDetailPage({
   );
   const isOps = canEdit || canReview || canApprove;
   const isFacultyMonitor = isFaculty && !isOps;
-  const isStudentView = !isOps && !isFacultyMonitor;
+  const isStudentView = !isOps && !isFacultyMonitor && !isFaculty;
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [queueFlash, setQueueFlash] = useState("");
   const [publishFlash, setPublishFlash] = useState("");
   const [qrCopied, setQrCopied] = useState(false);
+  const [studentSearch, setStudentSearch] = useState("");
+  const [studentStatusFilter, setStudentStatusFilter] = useState<string>("all");
+  const [studentDeptFilter, setStudentDeptFilter] = useState<string>("all");
 
   useEffect(() => {
     if (event && !editing) {
@@ -187,6 +191,56 @@ export default function EventDetailPage({
     () => (event ? store.registrations.filter((r) => r.eventId === event.id) : []),
     [store.registrations, event],
   );
+
+  const registeredStudents = useMemo(() => {
+    return regs.map((reg) => {
+      const user = store.profiles.find((p) => p.id === reg.userId);
+      const rep = reg.representativeId
+        ? store.profiles.find((p) => p.id === reg.representativeId)
+        : undefined;
+      return {
+        reg,
+        user,
+        rep,
+        fullName: user?.fullName || reg.guestName || "Anonymous Student",
+        department: user?.department || "Unassigned",
+        year: user?.year || "—",
+        email: user?.email || reg.guestEmail || "—",
+        phone: user?.phone || "—",
+        elevatesId: user?.elevatesId,
+        status: reg.status,
+      };
+    });
+  }, [regs, store.profiles]);
+
+  const availableDepts = useMemo(() => {
+    const set = new Set<string>();
+    registeredStudents.forEach((s) => {
+      if (s.department && s.department !== "Unassigned") set.add(s.department);
+    });
+    return Array.from(set).sort();
+  }, [registeredStudents]);
+
+  const filteredRegisteredStudents = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    return registeredStudents.filter((item) => {
+      if (studentStatusFilter !== "all" && item.status !== studentStatusFilter) {
+        return false;
+      }
+      if (studentDeptFilter !== "all" && item.department !== studentDeptFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.fullName.toLowerCase().includes(q) ||
+        item.department.toLowerCase().includes(q) ||
+        item.year.toLowerCase().includes(q) ||
+        item.email.toLowerCase().includes(q) ||
+        item.status.toLowerCase().includes(q) ||
+        (item.elevatesId && item.elevatesId.toLowerCase().includes(q))
+      );
+    });
+  }, [registeredStudents, studentSearch, studentStatusFilter, studentDeptFilter]);
 
   if (!chapter || !event || !isEventVisibleToUser(event, session.chapterId, session.roleKey)) {
     return (
@@ -707,7 +761,7 @@ export default function EventDetailPage({
               >
                 ← Events
               </Link>
-              {canAttendance ? (
+              {canAttendance || isFaculty ? (
                 <Link
                   href={`/chapter/${slug}/attendance?eventId=${event.id}`}
                   className="hover:text-[var(--accent)]"
@@ -732,6 +786,9 @@ export default function EventDetailPage({
                 </button>
               ) : null}
             </div>
+            {isFaculty ? (
+              <Badge tone="cyan">Faculty Oversight</Badge>
+            ) : null}
             {canEdit ? (
               <div className="flex flex-wrap items-center gap-2">
                 {editing ? (
@@ -1294,11 +1351,60 @@ export default function EventDetailPage({
             </div>
           </TerminalPanel>
         ) : (
-          <TerminalPanel title="monitor" meta="read-only">
-            <p className="text-[13px] leading-relaxed text-text-dim">
-              Faculty liaison view — chapters publish without faculty approval.
-              Monitor delivery from stats and the roster below.
-            </p>
+          <TerminalPanel title="faculty.oversight" meta="read-only">
+            <div className="space-y-3.5 text-[13px]">
+              <div className="rounded-[10px] border border-border/70 bg-bg p-3.5 shadow-[var(--shadow-sm)]">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-text">Faculty Coordinator Oversight</p>
+                  <Badge tone="cyan">Faculty View</Badge>
+                </div>
+                <p className="mt-1.5 text-xs text-text-dim leading-relaxed">
+                  As the faculty advisor, you have institutional oversight over this chapter event.
+                  Review student participation, department-wise registration counts, and attendance delivery below.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">
+                    Total Registrations
+                  </span>
+                  <p className="mt-1 text-xl font-bold text-text">{regs.length}</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">Student signups</p>
+                </div>
+                <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-500">
+                    Approved Attendees
+                  </span>
+                  <p className="mt-1 text-xl font-bold text-emerald-500">{approved}</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">Confirmed seats</p>
+                </div>
+                <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">
+                    Pending Review
+                  </span>
+                  <p className="mt-1 text-xl font-bold text-amber-500">{pending}</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">In verification queue</p>
+                </div>
+                <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                    Available Seats
+                  </span>
+                  <p className="mt-1 text-xl font-bold text-[var(--accent)]">{seatsLeft} / {event.capacity}</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">{waitlisted} on waitlist</p>
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-border/50 bg-bg/50 px-3.5 py-2.5 text-xs text-text-dim flex items-center justify-between">
+                <span>View full event attendance:</span>
+                <Link
+                  href={`/chapter/${slug}/attendance?eventId=${event.id}`}
+                  className="font-medium text-[var(--accent)] hover:underline"
+                >
+                  Attendance Registry →
+                </Link>
+              </div>
+            </div>
           </TerminalPanel>
         )}
       </div>
@@ -1352,37 +1458,167 @@ export default function EventDetailPage({
         </TerminalPanel>
       ) : null}
 
-      <TerminalPanel title="roster" meta={`${regs.length} registrations`}>
-        {!regs.length ? (
-          <p className="text-sm text-text-dim">No registrations yet.</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {regs.map((reg) => {
-              const user = store.profiles.find((p) => p.id === reg.userId);
-              const rep = reg.representativeId
-                ? store.profiles.find((p) => p.id === reg.representativeId)
-                : undefined;
-              return (
-                <li
-                  key={reg.id}
-                  className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm"
+      <TerminalPanel
+        title="student.directory"
+        meta={`${filteredRegisteredStudents.length} of ${regs.length} registrations`}
+        accent={isFaculty ? "cyan" : undefined}
+      >
+        <div className="space-y-4">
+          {/* Search and Filters Bar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" size={14} />
+              <Input
+                value={studentSearch}
+                onChange={(e) => setStudentSearch(e.target.value)}
+                placeholder="Search by student name, department, academic year, email..."
+                className="pl-8 h-9 text-xs"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                value={studentStatusFilter}
+                onChange={(e) => setStudentStatusFilter(e.target.value)}
+                className="h-9 text-xs min-w-[130px]"
+              >
+                <option value="all">All Statuses</option>
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+                <option value="reviewed">Reviewed</option>
+                <option value="waitlisted">Waitlisted</option>
+                <option value="rejected">Rejected</option>
+              </Select>
+
+              {availableDepts.length > 0 ? (
+                <Select
+                  value={studentDeptFilter}
+                  onChange={(e) => setStudentDeptFilter(e.target.value)}
+                  className="h-9 text-xs min-w-[140px]"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium">
-                      {user?.fullName ?? reg.userId}
-                    </p>
-                    {rep ? (
-                      <p className="text-[11px] text-text-dim">
-                        Rep: {rep.fullName}
-                      </p>
-                    ) : null}
-                  </div>
-                  <Badge tone={regStatusTone(reg.status)}>{reg.status}</Badge>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+                  <option value="all">All Departments</option>
+                  {availableDepts.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </Select>
+              ) : null}
+
+              {(studentSearch || studentStatusFilter !== "all" || studentDeptFilter !== "all") ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStudentSearch("");
+                    setStudentStatusFilter("all");
+                    setStudentDeptFilter("all");
+                  }}
+                  className="h-9 px-2 text-xs text-text-dim hover:text-text"
+                >
+                  <X size={13} className="mr-1" /> Reset
+                </Button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Table or Empty State */}
+          {!regs.length ? (
+            <div className="rounded-[12px] border border-dashed border-border/80 bg-bg p-8 text-center">
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-bg-panel text-text-dim">
+                <Users size={20} />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-text">No student registrations yet</p>
+              <p className="mt-1 text-xs text-text-dim max-w-sm mx-auto">
+                When students register for this event, their names, departments, academic years, and registration statuses will appear here.
+              </p>
+            </div>
+          ) : !filteredRegisteredStudents.length ? (
+            <div className="rounded-[12px] border border-dashed border-border/80 bg-bg p-8 text-center">
+              <p className="text-sm font-medium text-text">No registered students match your search</p>
+              <p className="mt-1 text-xs text-text-dim">Try modifying your keyword or status filter.</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStudentSearch("");
+                  setStudentStatusFilter("all");
+                  setStudentDeptFilter("all");
+                }}
+                className="mt-3 h-8 text-xs text-[var(--accent)]"
+              >
+                Clear all filters
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-[10px] border border-border bg-bg">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-bg-panel/60 font-medium text-text-dim">
+                    <th className="py-2.5 px-3 w-10">#</th>
+                    <th className="py-2.5 px-3">Student Name</th>
+                    <th className="py-2.5 px-3">Department</th>
+                    <th className="py-2.5 px-3">Academic Year</th>
+                    <th className="py-2.5 px-3">Email Address</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Registered At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {filteredRegisteredStudents.map((item, idx) => (
+                    <tr
+                      key={item.reg.id}
+                      className="transition-colors hover:bg-bg-panel/50"
+                    >
+                      <td className="py-2.5 px-3 text-text-mute font-mono text-[11px]">
+                        {idx + 1}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <div className="min-w-[140px]">
+                          <p className="font-semibold text-text">
+                            {item.fullName}
+                          </p>
+                          {item.elevatesId ? (
+                            <p className="font-mono text-[10px] text-text-mute">
+                              {item.elevatesId}
+                            </p>
+                          ) : null}
+                          {item.rep ? (
+                            <p className="text-[10px] text-text-dim">
+                              Rep: {item.rep.fullName}
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="inline-block rounded-[6px] border border-border/80 bg-bg-panel px-2 py-0.5 text-[11px] font-medium text-text">
+                          {item.department}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-text-dim font-medium">
+                        {item.year}
+                      </td>
+                      <td className="py-2.5 px-3 text-text-dim font-mono text-[11px]">
+                        {item.email}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <Badge tone={regStatusTone(item.status)}>
+                          {item.status.replaceAll("_", " ")}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-3 text-text-mute text-[11px]">
+                        {new Date(item.reg.createdAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </TerminalPanel>
     </div>
   );

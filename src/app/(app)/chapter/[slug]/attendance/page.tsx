@@ -426,7 +426,7 @@ export default function ChapterAttendancePage({
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
         title="Attendance Desk"
-        description="Verify arrivals & checkpoints via QR scanner, roster matrix, bulk input, or class representative."
+        description="Verify arrivals & checkpoints via QR scanner, directory matrix, bulk input, or class representative."
         actions={
           hasEvent && isMultiSession ? (
             <Button
@@ -554,7 +554,7 @@ export default function ChapterAttendancePage({
               }
             >
               <option value="qr">QR scan</option>
-              <option value="manual">Manual (roster table)</option>
+              <option value="manual">Manual (directory table)</option>
               <option value="representative">Class representative</option>
               <option value="bulk">Bulk list</option>
             </Select>
@@ -657,7 +657,7 @@ export default function ChapterAttendancePage({
 
         {method === "manual" ? (
           <p className="mt-4 border-t border-border/70 pt-4 text-[13px] text-text-dim">
-            Use the roster below — click Check in or toggle status per student.
+            Use the directory below — click Check in or toggle status per student.
           </p>
         ) : null}
 
@@ -730,9 +730,9 @@ export default function ChapterAttendancePage({
         ) : null}
       </TerminalPanel>
 
-      {/* Roster Table Matrix */}
+      {/* Directory Table Matrix */}
       <TerminalPanel
-        title="Roster"
+        title="Directory"
         meta={`${filteredRoster.length}${
           rosterQuery ? ` / ${approvedRegs.length}` : ""
         } approved`}
@@ -744,7 +744,7 @@ export default function ChapterAttendancePage({
             onChange={(e) => setRosterQuery(e.target.value)}
             placeholder="Search name, email, or QR"
             disabled={!hasEvent}
-            aria-label="Filter roster"
+            aria-label="Filter directory"
           />
         </div>
 

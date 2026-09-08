@@ -13,6 +13,7 @@ import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/ev
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { hasPermission } from "@/lib/permissions";
+import { isFacultyRole } from "@/lib/access";
 import { Search, Sparkles, Calendar, ArrowRight } from "lucide-react";
 import type { EventItem } from "@/types";
 
@@ -217,7 +218,13 @@ export default function OpenEventsPage() {
                   hideStatus={true}
                   footer={
                     <>
-                      {eligibility.ok ? (
+                      {isFacultyRole(session.roleKey) ? (
+                        <Link href={eventHref}>
+                          <Button variant="primary" className="h-9 px-4">
+                            View Details
+                          </Button>
+                        </Link>
+                      ) : eligibility.ok ? (
                         <Link href={`/f/${eligibility.formId}`}>
                           <Button variant="orange" className="h-9 px-4">
                             Register

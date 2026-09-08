@@ -141,9 +141,10 @@ export function RoleSwitcher() {
   };
 
   const loggedUserId = session.authUserId || session.userId;
+  const currentProfile = store.profiles.find((p) => p.id === loggedUserId);
 
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && isHqUser) {
       return localStorage.getItem("elevates_locked_chapter_id");
     }
     return null;
@@ -160,23 +161,27 @@ export function RoleSwitcher() {
   const allChapters = useMemo(() => ensureTestChapter(store.chapters), [store.chapters]);
   const defaultTestCh = allChapters.find(isTestChapter) ?? TEST_CHAPTER_DEFAULT;
 
-  const selectedChapter = useMemo<Chapter>(() => {
-    const targetId = session.chapterId || selectedChapterId;
+  const selectedChapter = useMemo<Chapter | null>(() => {
+    const targetId = session.chapterId || currentProfile?.chapterId || (isHqUser ? selectedChapterId : null);
     if (targetId) {
       const match = allChapters.find((c) => c.id === targetId);
       if (match) return match;
     }
-    if (typeof window !== "undefined") {
+    if (isHqUser && typeof window !== "undefined") {
       const savedId = localStorage.getItem("elevates_locked_chapter_id");
       if (savedId) {
         const savedMatch = allChapters.find((c) => c.id === savedId);
         if (savedMatch) return savedMatch;
       }
     }
-    // Prefer first real chapter if available, fallback to test chapter
-    const firstReal = allChapters.find((c) => !isTestChapter(c));
-    return firstReal || defaultTestCh;
-  }, [session.chapterId, selectedChapterId, allChapters, defaultTestCh]);
+    // Only HQ administrators have a fallback chapter to browse when not assigned to a chapter
+    if (isHqUser) {
+      const firstReal = allChapters.find((c) => !isTestChapter(c));
+      return firstReal || defaultTestCh;
+    }
+    // For normal students or members who have not joined any chapter, return null
+    return null;
+  }, [session.chapterId, selectedChapterId, currentProfile?.chapterId, allChapters, defaultTestCh, isHqUser]);
 
   const { testChapter, otherChapters } = useMemo(() => {
     return filterAndSortChapters(store.chapters, searchQuery);
@@ -217,7 +222,14 @@ export function RoleSwitcher() {
     }
 
     // Chapter-scoped role: Use the confirmed/selected chapter directly
-    const targetChapter = selectedChapter || defaultTestCh;
+    if (!selectedChapter) {
+      // If student hasn't joined a chapter yet, prompt them to join
+      setSession(loggedUserId, target.roleKey, undefined);
+      router.push("/join");
+      return;
+    }
+
+    const targetChapter = selectedChapter;
     setSession(loggedUserId, target.roleKey, targetChapter.id);
     router.push(homeForRole(target.roleKey, targetChapter.slug));
   }
@@ -267,8 +279,8 @@ export function RoleSwitcher() {
               {activeInfo.label}
             </span>
             <span className="block truncate text-[10px] text-[var(--rail-fg)]/60 leading-tight">
-              {activeInfo.isChapterScoped && selectedChapter
-                ? selectedChapter.name
+              {activeInfo.isChapterScoped
+                ? (selectedChapter ? selectedChapter.name : "No chapter joined")
                 : isHqUser
                   ? "HQ Network"
                   : "Switch role"}
@@ -381,15 +393,15 @@ export function RoleSwitcher() {
                         onClick={handleToggleList}
                         className="flex items-center gap-1.5 flex-1 min-w-0 px-1 py-0.5 cursor-pointer"
                       >
-                        {isTestChapter(selectedChapter) ? (
+                        {selectedChapter && isTestChapter(selectedChapter) ? (
                           <FlaskConical size={12} className="shrink-0 text-amber-500" />
                         ) : (
                           <Building2 size={12} className="shrink-0 text-[var(--text-mute)]" />
                         )}
                         <span className="truncate text-[11px] font-semibold text-[var(--text)]">
-                          {selectedChapter.name}
+                          {selectedChapter?.name || "Select chapter"}
                         </span>
-                        {isTestChapter(selectedChapter) && (
+                        {selectedChapter && isTestChapter(selectedChapter) && (
                           <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.1 text-[7px] font-bold uppercase text-amber-600 dark:text-amber-300">
                             Test
                           </span>
@@ -439,14 +451,14 @@ export function RoleSwitcher() {
                           className={cn(
                             "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition",
                             "bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20",
-                            selectedChapter.id === testChapter.id && "font-bold ring-1 ring-amber-500/50",
+                            selectedChapter?.id === testChapter.id && "font-bold ring-1 ring-amber-500/50",
                           )}
                         >
                           <span className="truncate flex items-center gap-1">
                             <FlaskConical size={10} className="text-amber-500" />
                             {testChapter.name}
                           </span>
-                          {selectedChapter.id === testChapter.id && (
+                          {selectedChapter?.id === testChapter.id && (
                             <Check size={10} className="text-amber-600 shrink-0" />
                           )}
                         </button>
@@ -454,7 +466,7 @@ export function RoleSwitcher() {
 
                       {/* Other Chapters */}
                       {otherChapters.map((c) => {
-                        const isSel = selectedChapter.id === c.id;
+                        const isSel = selectedChapter?.id === c.id;
                         return (
                           <button
                             key={c.id}

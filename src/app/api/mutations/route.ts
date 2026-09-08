@@ -28,7 +28,18 @@ export async function POST(req: Request) {
         : "11111111-1111-1111-1111-111111111111";
 
       const slug = event.slug ?? slugify(event.title || "event");
-      const eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : genUuid());
+      let eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : null);
+      if (!eventId) {
+        const { data: existing } = await admin
+          .from("events")
+          .select("id")
+          .eq("chapter_id", event.chapterId)
+          .or(`slug.eq.${slug},title.eq.${event.title}`)
+          .limit(1)
+          .maybeSingle();
+
+        eventId = existing?.id || genUuid();
+      }
       const { error } = await admin.from("events").upsert({
         id: eventId,
         chapter_id: event.chapterId,

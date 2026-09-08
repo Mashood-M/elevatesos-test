@@ -1,5 +1,6 @@
 import { navItemsForRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { isEventVisibleToUser } from "@/lib/events";
 import type { ElevatesStore, RoleKey } from "@/types";
 
 export type SearchCategory =
@@ -75,7 +76,7 @@ export function buildSearchIndex(
   }
 
   for (const e of store.events) {
-    if (!chapterIds.has(e.chapterId) && !isHqRole(roleKey)) continue;
+    if (!isEventVisibleToUser(e, store.session.chapterId, roleKey)) continue;
     const chapter = store.chapters.find((c) => c.id === e.chapterId);
     results.push({
       id: `ev-${e.id}`,

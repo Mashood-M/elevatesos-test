@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 import { ensureTestChapter } from "@/lib/chapters";
+import { deduplicateEvents } from "@/lib/events";
 import type {
   BrandKit,
   Chapter,
@@ -268,7 +269,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       })),
     );
 
-    const events: EventItem[] =
+    const events: EventItem[] = deduplicateEvents(
       eventRows?.map((e: Record<string, any>) => ({
         id: e.id,
         chapterId: e.chapter_id,
@@ -297,7 +298,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         summary: e.summary ?? undefined,
         bannerUrl: e.banner_url ?? undefined,
         mode: e.mode ?? undefined,
-      })) ?? [];
+      })) ?? [],
+    );
 
     const projects: Project[] =
       projectRows?.map((p: Record<string, any>) => ({

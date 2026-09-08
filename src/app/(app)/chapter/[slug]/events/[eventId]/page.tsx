@@ -13,7 +13,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { TicketCard } from "@/components/ui/ticket-card";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole } from "@/lib/access";
-import { canRegisterNow } from "@/lib/events";
+import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput } from "@/lib/datetime";
@@ -188,13 +188,16 @@ export default function EventDetailPage({
     [store.registrations, event],
   );
 
-  if (!chapter || !event) {
+  if (!chapter || !event || !isEventVisibleToUser(event, session.chapterId, session.roleKey)) {
     return (
       <div className="py-16 text-center">
-        <p className="font-semibold">Event not found</p>
+        <p className="font-semibold text-text">Event not found</p>
+        <p className="mt-1 text-xs text-text-dim">
+          This event is closed or exclusive to members of this campus chapter.
+        </p>
         <Link
           href={session.chapterId ? `/chapter/${slug}/events` : `/events`}
-          className="mt-2 inline-block text-[var(--accent)]"
+          className="mt-3 inline-block text-[var(--accent)] text-sm"
         >
           Back to events
         </Link>
@@ -997,6 +1000,7 @@ export default function EventDetailPage({
                 <FieldLabel>Starts</FieldLabel>
                 <Input
                   type="datetime-local"
+                  min={toLocalInput(new Date().toISOString())}
                   value={draft.startsAt}
                   onChange={(e) =>
                     setDraft((d) =>
@@ -1009,6 +1013,7 @@ export default function EventDetailPage({
                 <FieldLabel>Ends</FieldLabel>
                 <Input
                   type="datetime-local"
+                  min={draft.startsAt || toLocalInput(new Date().toISOString())}
                   value={draft.endsAt}
                   onChange={(e) =>
                     setDraft((d) => (d ? { ...d, endsAt: e.target.value } : d))
@@ -1019,6 +1024,7 @@ export default function EventDetailPage({
                 <FieldLabel>Registration opens</FieldLabel>
                 <Input
                   type="datetime-local"
+                  min={toLocalInput(new Date().toISOString())}
                   value={draft.registrationStart}
                   onChange={(e) =>
                     setDraft((d) =>
@@ -1031,6 +1037,7 @@ export default function EventDetailPage({
                 <FieldLabel>Registration closes</FieldLabel>
                 <Input
                   type="datetime-local"
+                  min={draft.registrationStart || toLocalInput(new Date().toISOString())}
                   value={draft.registrationEnd}
                   onChange={(e) =>
                     setDraft((d) =>

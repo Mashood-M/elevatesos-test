@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, canRegisterNow } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
+import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
+import { hasPermission } from "@/lib/permissions";
 import { Search, Sparkles, Calendar, ArrowRight } from "lucide-react";
 import type { EventItem } from "@/types";
 
@@ -22,16 +24,18 @@ export default function OpenEventsPage() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const canCreate = hasPermission(store, session.roleKey, "event.create");
 
   // All events open across chapters / colleges
   const allOpenEvents = useMemo(() => {
     return store.events
-      .filter((e) => isOpenToAllEvent(e))
+      .filter((e) => isOpenToAllEvent(e) && isEventVisibleToUser(e, session.chapterId, session.roleKey))
       .sort(
         (a, b) =>
           new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
       );
-  }, [store.events]);
+  }, [store.events, session.chapterId, session.roleKey]);
 
   // Filtered by search and category/status tab
   const filteredEvents = useMemo(() => {
@@ -72,6 +76,11 @@ export default function OpenEventsPage() {
         description="Workshops, challenges, and hands-on sessions open to all students across campuses"
         actions={
           <div className="flex items-center gap-2">
+            {canCreate ? (
+              <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+                Create event
+              </Button>
+            ) : null}
             {!session.chapterId ? (
               <Button variant="orange" onClick={() => setIsJoinModalOpen(true)}>
                 Join Chapter with Code
@@ -88,6 +97,14 @@ export default function OpenEventsPage() {
         isOpen={isJoinModalOpen}
         onClose={() => setIsJoinModalOpen(false)}
       />
+
+      {canCreate ? (
+        <EventManagerCreateDialog
+          open={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          chapterId={session.chapterId || undefined}
+        />
+      ) : null}
 
       {/* Filter & Search Bar */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">

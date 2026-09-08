@@ -48,8 +48,10 @@ export function TicketCard({
           <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") && (
+          {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") ? (
             <Badge tone="cyan">Open to All</Badge>
+          ) : (
+            <Badge tone="mute">Campus Exclusive</Badge>
           )}
           {!hideStatus && (
             <Badge tone={statusTone[event.status] ?? "mute"}>

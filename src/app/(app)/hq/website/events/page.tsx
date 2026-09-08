@@ -5,6 +5,8 @@ import { useStore } from "@/context/store-context";
 import Link from "next/link";
 import {
   Building2,
+  Calendar,
+  Clock,
   Edit,
   ExternalLink,
   Plus,
@@ -26,6 +28,17 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DatePickerInput,
+  TimePickerInput,
+  getTodayDateKey,
+  getCurrentTimeKey,
+  parseToDateKey,
+  parseToTimeKey,
+  formatDisplayDate,
+  formatDisplayTime,
+  getDefaultUpcomingEventTimes,
+} from "@/components/domain/date-time-pickers";
 
 type EventStatus = "Completed" | "Upcoming" | "Ongoing" | "Cancelled";
 type EventFormat = "Campus Exclusive" | "Open" | "Online" | "Multi-Campus";
@@ -97,6 +110,8 @@ function TInput({ value, onChange, placeholder, mono }: { value: string; onChang
 function TArea({ value, onChange, placeholder, rows = 4 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
   return <textarea rows={rows} className="w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-xs text-text resize-none" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
 }
+
+
 function StrList({ items, onChange, placeholder }: { items: string[]; onChange: (v: string[]) => void; placeholder: string }) {
   return (
     <div className="space-y-2">
@@ -331,12 +346,94 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Start Date (display)"><TInput value={d.startDate} onChange={(v) => u({ startDate: v })} placeholder="Jul 22, 2026" /></Field>
-            <Field label="End Date (display)"><TInput value={d.endDate} onChange={(v) => u({ endDate: v })} placeholder="Jul 22, 2026" /></Field>
+            <Field label="Start Date">
+              <DatePickerInput
+                value={d.startDate || d.isoStartDate}
+                min={getTodayDateKey()}
+                onChange={(dateKey, displayDate) => {
+                  const startTimeKey = parseToTimeKey(d.startTime, d.isoStartDate);
+                  const newIsoStart = `${dateKey}T${startTimeKey}:00`;
+                  const currentEndKey = parseToDateKey(d.endDate, d.isoEndDate);
+                  const updates: Partial<EventItem> = {
+                    startDate: displayDate,
+                    isoStartDate: new Date(newIsoStart).toISOString(),
+                  };
+                  if (!currentEndKey || currentEndKey < dateKey) {
+                    updates.endDate = displayDate;
+                    const endTimeKey = parseToTimeKey(d.endTime, d.isoEndDate);
+                    updates.isoEndDate = new Date(`${dateKey}T${endTimeKey}:00`).toISOString();
+                  }
+                  u(updates);
+                }}
+              />
+            </Field>
+            <Field label="End Date">
+              <DatePickerInput
+                value={d.endDate || d.isoEndDate}
+                align="right"
+                min={parseToDateKey(d.startDate, d.isoStartDate) || getTodayDateKey()}
+                onChange={(dateKey, displayDate) => {
+                  const endTimeKey = parseToTimeKey(d.endTime, d.isoEndDate);
+                  u({
+                    endDate: displayDate,
+                    isoEndDate: new Date(`${dateKey}T${endTimeKey}:00`).toISOString(),
+                  });
+                }}
+              />
+            </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Start Time"><TInput value={d.startTime} onChange={(v) => u({ startTime: v })} placeholder="10:00 AM" /></Field>
-            <Field label="End Time"><TInput value={d.endTime} onChange={(v) => u({ endTime: v })} placeholder="4:00 PM" /></Field>
+            <Field label="Start Time">
+              <TimePickerInput
+                value={d.startTime || d.isoStartDate}
+                min={
+                  parseToDateKey(d.startDate, d.isoStartDate) === getTodayDateKey()
+                    ? getCurrentTimeKey()
+                    : undefined
+                }
+                onChange={(timeKey, displayTime) => {
+                  const startDateKey =
+                    parseToDateKey(d.startDate, d.isoStartDate) || getTodayDateKey();
+                  const updates: Partial<EventItem> = {
+                    startTime: displayTime,
+                    isoStartDate: new Date(`${startDateKey}T${timeKey}:00`).toISOString(),
+                  };
+                  const endDateKey =
+                    parseToDateKey(d.endDate, d.isoEndDate) || startDateKey;
+                  const currentEndTimeKey = parseToTimeKey(d.endTime, d.isoEndDate);
+                  if (startDateKey === endDateKey && currentEndTimeKey < timeKey) {
+                    updates.endTime = displayTime;
+                    updates.isoEndDate = new Date(`${endDateKey}T${timeKey}:00`).toISOString();
+                  }
+                  u(updates);
+                }}
+              />
+            </Field>
+            <Field label="End Time">
+              <TimePickerInput
+                value={d.endTime || d.isoEndDate}
+                align="right"
+                isEndTime={true}
+                baseStartTime={d.startTime || d.isoStartDate}
+                min={
+                  parseToDateKey(d.startDate, d.isoStartDate) ===
+                  (parseToDateKey(d.endDate, d.isoEndDate) ||
+                    parseToDateKey(d.startDate, d.isoStartDate))
+                    ? parseToTimeKey(d.startTime, d.isoStartDate)
+                    : undefined
+                }
+                onChange={(timeKey, displayTime) => {
+                  const endDateKey =
+                    parseToDateKey(d.endDate, d.isoEndDate) ||
+                    parseToDateKey(d.startDate, d.isoStartDate) ||
+                    getTodayDateKey();
+                  u({
+                    endTime: displayTime,
+                    isoEndDate: new Date(`${endDateKey}T${timeKey}:00`).toISOString(),
+                  });
+                }}
+              />
+            </Field>
           </div>
 
           <Field label="Venue"><TInput value={d.venue} onChange={(v) => u({ venue: v })} placeholder="Main Seminar Hall / Campus Auditorium" /></Field>
@@ -374,7 +471,7 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
 }
 
 export default function EventsCMSPage() {
-  const { store } = useStore();
+  const { store, createEvent, updateEvent, deleteEvent } = useStore();
   const [events, setEvents] = useState<EventItem[]>([]);
 
   useEffect(() => {
@@ -386,7 +483,9 @@ export default function EventsCMSPage() {
         tagline: e.summary || e.description || "",
         description: e.description || "",
         fullDescription: e.description || "",
-        format: "Campus Exclusive",
+        format: (e.visibility === "open_to_all" || e.visibility === "public" || e.visibility === "all_chapters")
+          ? (e.mode === "online" ? "Online" : "Open")
+          : "Campus Exclusive",
         category: (e.category as EventCategory) || "Workshop",
         status: ((e.status as string) === "completed" ? "Completed" : (e.status as string) === "registration_open" ? "Ongoing" : "Upcoming") as EventStatus,
         startDate: e.startsAt ? new Date(e.startsAt).toLocaleDateString() : "",
@@ -399,10 +498,22 @@ export default function EventsCMSPage() {
         locationName: "",
         organizer: [{ name: "ELEVATES" }],
         hosts: [],
-        topics: [],
-        attendeesCount: 50,
+        topics: e.topics || [],
+        attendeesCount: e.capacity || 50,
         coverImage: e.bannerUrl || "",
         featured: true,
+        platform: e.platform?.enabled
+          ? {
+              enabled: true,
+              platformName: e.platform.platformName || e.title,
+              tagline: e.platform.tagline || "",
+              caseStudySlug: e.caseStudy?.caseStudySlug || e.slug || "case-study",
+              liveUrl: e.platform.liveUrl,
+              repoUrl: e.platform.repoUrl,
+              highlightMetric: e.platform.highlightMetric,
+              architectureSummary: e.platform.architectureSummary,
+            }
+          : undefined,
         chapterSlug: store.chapters.find((c) => c.id === e.chapterId)?.slug || store.chapters[0]?.slug || "ch-main",
         chapterName: store.chapters.find((c) => c.id === e.chapterId)?.name || store.chapters[0]?.name || "Campus Chapter",
       }));
@@ -425,17 +536,24 @@ export default function EventsCMSPage() {
     return matchQ && matchStatus && matchChapter && matchPlatform;
   });
 
-  const blank = (): EventItem => ({
-    id: `evt-${Date.now()}`, slug: "", title: "", tagline: "", description: "", fullDescription: "",
-    format: "Campus Exclusive", category: "Workshop", status: "Upcoming",
-    startDate: "", endDate: "", startTime: "", endTime: "",
-    isoStartDate: "", isoEndDate: "",
-    venue: "Main Seminar Hall", locationName: "",
-    organizer: [{ name: "ELEVATES" }], hosts: [{ name: "", role: "" }],
-    topics: [], attendeesCount: 0, coverImage: "", featured: false,
-    platform: { enabled: false, platformName: "", tagline: "", caseStudySlug: "" },
-    chapterSlug: store.chapters[0]?.slug || "ch-main", chapterName: store.chapters[0]?.name || "Campus Chapter",
-  });
+  const blank = (): EventItem => {
+    const times = getDefaultUpcomingEventTimes();
+    const startDate = times.displayDate;
+    return {
+      id: `evt-${Date.now()}`, slug: "", title: "", tagline: "", description: "", fullDescription: "",
+      format: "Campus Exclusive", category: "Workshop", status: "Upcoming",
+      startDate, endDate: startDate,
+      startTime: times.displayStartTime,
+      endTime: times.displayEndTime,
+      isoStartDate: times.isoStartDate,
+      isoEndDate: times.isoEndDate,
+      venue: "Main Seminar Hall", locationName: "",
+      organizer: [{ name: "ELEVATES" }], hosts: [{ name: "", role: "" }],
+      topics: [], attendeesCount: 50, coverImage: "", featured: false,
+      platform: { enabled: false, platformName: "", tagline: "", caseStudySlug: "" },
+      chapterSlug: store.chapters[0]?.slug || "ch-main", chapterName: store.chapters[0]?.name || "Campus Chapter",
+    };
+  };
 
   const platformEventsCount = events.filter((e) => e.platform?.enabled).length;
 
@@ -597,18 +715,9 @@ export default function EventsCMSPage() {
 
               <div className="flex flex-col gap-2 shrink-0">
                 <Button variant="secondary" size="sm" onClick={() => { setEditing(evt); setIsNew(false); }}><Edit size={13} /> Edit</Button>
-                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={async () => {
+                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => {
                   if (confirm(`Delete event "${evt.title}"?`)) {
-                    setEvents((prev) => prev.filter((x) => x.id !== evt.id));
-                    try {
-                      await fetch("/api/mutations", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ type: "delete_event", data: { id: evt.id, slug: evt.slug } }),
-                      });
-                    } catch (e) {
-                      console.error("Failed to delete event in DB:", e);
-                    }
+                    deleteEvent(evt.id);
                   }
                 }}><Trash2 size={13} /></Button>
               </div>
@@ -620,35 +729,89 @@ export default function EventsCMSPage() {
       {editing && (
         <EventEditor event={editing} onClose={() => { setEditing(null); setIsNew(false); }}
           onSave={async (saved) => {
-            if (isNew) setEvents((prev) => [saved, ...prev]);
-            else setEvents((prev) => prev.map((e) => (e.id === saved.id ? saved : e)));
-            
-            // Persist to Supabase and revalidate cache
-            try {
-              const payload = {
-                id: saved.id,
-                chapterId: store.chapters.find((c) => c.slug === saved.chapterSlug)?.id || store.chapters?.[0]?.id || "",
-                title: saved.title,
-                slug: saved.slug,
-                summary: saved.tagline || saved.description,
-                description: saved.fullDescription || saved.description,
-                venue: saved.venue,
-                startsAt: saved.isoStartDate || new Date().toISOString(),
-                endsAt: saved.isoEndDate || new Date(Date.now() + 7200000).toISOString(),
-                capacity: saved.attendeesCount || 60,
-                status: saved.status?.toLowerCase() === "upcoming" ? "upcoming" : "completed",
-                bannerUrl: saved.coverImage || "/images/og-default.png",
-                category: saved.category,
-                visibility: "public",
-              };
-              await fetch("/api/mutations", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: "event", data: payload }),
-              });
-            } catch (err) {
-              console.error("Failed to persist event:", err);
+            const targetChapter =
+              store.chapters.find((c) => c.slug === saved.chapterSlug) ||
+              store.chapters[0];
+            const targetChapterId = targetChapter?.id || "";
+            const visibility =
+              saved.format === "Campus Exclusive" ? "chapter_only" : "open_to_all";
+
+            const storeEvent: any = {
+              id: saved.id,
+              chapterId: targetChapterId,
+              title: saved.title || "Untitled Event",
+              slug: saved.slug,
+              bannerEmoji: "EVENT",
+              summary: saved.tagline || saved.description,
+              description:
+                saved.fullDescription ||
+                saved.description ||
+                "Event organized by ELEVATES.",
+              venue: saved.venue || "Main Seminar Hall",
+              startsAt: saved.isoStartDate || new Date().toISOString(),
+              endsAt:
+                saved.isoEndDate ||
+                new Date(Date.now() + 7200000).toISOString(),
+              organizerId: store.session.userId,
+              capacity: saved.attendeesCount || 60,
+              waitlistCapacity: 15,
+              visibility,
+              mode:
+                saved.format === "Online"
+                  ? "online"
+                  : saved.format === "Multi-Campus"
+                  ? "hybrid"
+                  : "in_person",
+              registrationStart: new Date().toISOString(),
+              registrationEnd:
+                saved.isoEndDate ||
+                new Date(Date.now() + 7200000).toISOString(),
+              status:
+                saved.status?.toLowerCase() === "upcoming"
+                  ? "draft"
+                  : saved.status?.toLowerCase() === "ongoing"
+                  ? "registration_open"
+                  : "completed",
+              certificateEnabled: true,
+              ticketNo: `NO. ${String(store.events.length + 10).padStart(2, "0")}`,
+              category: saved.category?.toUpperCase() || "WORKSHOP",
+              topics: saved.topics || [],
+              bannerUrl: saved.coverImage || undefined,
+              platform: saved.platform?.enabled
+                ? {
+                    enabled: true,
+                    platformName: saved.platform.platformName || saved.title,
+                    tagline: saved.platform.tagline,
+                    liveUrl: saved.platform.liveUrl,
+                    repoUrl: saved.platform.repoUrl,
+                    highlightMetric: saved.platform.highlightMetric,
+                    architectureSummary: saved.platform.architectureSummary,
+                  }
+                : undefined,
+              caseStudy: saved.platform?.enabled
+                ? {
+                    enabled: true,
+                    platformName: saved.platform.platformName || saved.title,
+                    tagline: saved.platform.tagline,
+                    caseStudySlug:
+                      saved.platform.caseStudySlug ||
+                      saved.slug ||
+                      "platform-case-study",
+                    liveUrl: saved.platform.liveUrl,
+                    repoUrl: saved.platform.repoUrl,
+                    highlightMetric: saved.platform.highlightMetric,
+                    architectureSummary: saved.platform.architectureSummary,
+                  }
+                : undefined,
+            };
+
+            if (isNew) {
+              createEvent(storeEvent);
+            } else {
+              updateEvent(saved.id, storeEvent);
             }
+            setEditing(null);
+            setIsNew(false);
           }}
         />
       )}

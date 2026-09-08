@@ -145,7 +145,16 @@ export default function HqCalendarPage() {
         month={month}
         onMonthChange={setMonth}
         selectedDateKey={selectedDateKey}
-        onSelectDate={canCreate ? setSelectedDateKey : undefined}
+        onSelectDate={
+          canCreate
+            ? (key) => {
+                const today = new Date().toISOString().slice(0, 10);
+                if (key >= today) {
+                  setSelectedDateKey(key);
+                }
+              }
+            : undefined
+        }
         canCreate={canCreate}
       />
 

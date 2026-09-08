@@ -9,7 +9,7 @@ import { TicketCard } from "@/components/ui/ticket-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, canRegisterNow } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
@@ -70,7 +70,7 @@ export default function ChapterIndexPage() {
 
   // Independent Student Hub (no chapter assigned) — privacy preserving, open-to-all events only
   const openEvents = store.events
-    .filter((e) => isOpenToAllEvent(e))
+    .filter((e) => isOpenToAllEvent(e) && isEventVisibleToUser(e, session.chapterId, session.roleKey))
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
   return (

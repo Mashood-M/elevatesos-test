@@ -20,6 +20,7 @@ import {
   type YearMonth,
 } from "@/lib/datetime";
 import { hasPermission } from "@/lib/permissions";
+import { isEventVisibleToUser } from "@/lib/events";
 import type { EventStatus } from "@/types";
 
 export default function ChapterCalendarPage({
@@ -39,8 +40,10 @@ export default function ChapterCalendarPage({
 
   const events = useMemo(() => {
     if (!chapter) return [];
-    return store.events.filter((e) => e.chapterId === chapter.id);
-  }, [store.events, chapter]);
+    return store.events
+      .filter((e) => e.chapterId === chapter.id)
+      .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
+  }, [store.events, chapter, session.chapterId, session.roleKey]);
 
   const monthPrefix = `${month.year}-${String(month.month).padStart(2, "0")}`;
   const monthList = useMemo(() => {
@@ -79,7 +82,16 @@ export default function ChapterCalendarPage({
         month={month}
         onMonthChange={setMonth}
         selectedDateKey={selectedDateKey}
-        onSelectDate={canCreate ? setSelectedDateKey : undefined}
+        onSelectDate={
+          canCreate
+            ? (key) => {
+                const today = new Date().toISOString().slice(0, 10);
+                if (key >= today) {
+                  setSelectedDateKey(key);
+                }
+              }
+            : undefined
+        }
         canCreate={canCreate}
       />
 

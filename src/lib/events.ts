@@ -55,9 +55,9 @@ export function canRegisterNow(
     };
   }
 
-  // 5. Chapter-only visibility — only members of the same chapter can join.
+  // 5. Chapter closed visibility — only members of the same chapter can join.
   // Open-to-all events never require chapter membership.
-  if (event.visibility === "chapter_only" && !isOpenToAllEvent(event)) {
+  if (!isOpenToAllEvent(event)) {
     const userProfile = store.profiles.find((p) => p.id === userId);
     if (!userProfile?.chapterId || userProfile.chapterId !== event.chapterId) {
       return {
@@ -90,43 +90,81 @@ export function isOpenToAllEvent(event: EventItem): boolean {
   );
 }
 
-/** Determine whether a given event is visible to a user based on privacy/visibility rules. */
+/**
+ * Deduplicates an array of events by ID, (chapterId + slug), and (chapterId + title).
+ * When duplicate entries are found, the first valid one is preserved.
+ */
+export function deduplicateEvents(events: EventItem[]): EventItem[] {
+  const seenIds = new Set<string>();
+  const seenChapterSlugs = new Set<string>();
+  const seenChapterTitles = new Set<string>();
+  const deduplicated: EventItem[] = [];
+
+  for (const ev of events) {
+    if (!ev || !ev.title) continue;
+
+    // 1. Check ID
+    if (ev.id) {
+      const idNorm = ev.id.trim().toLowerCase();
+      if (seenIds.has(idNorm)) continue;
+      seenIds.add(idNorm);
+    }
+
+    // 2. Check chapterId + slug
+    if (ev.chapterId && ev.slug) {
+      const slugKey = `${ev.chapterId.trim().toLowerCase()}::${ev.slug.trim().toLowerCase()}`;
+      if (seenChapterSlugs.has(slugKey)) continue;
+      seenChapterSlugs.add(slugKey);
+    }
+
+    // 3. Check chapterId + title
+    if (ev.chapterId && ev.title) {
+      const titleKey = `${ev.chapterId.trim().toLowerCase()}::${ev.title.trim().toLowerCase()}`;
+      if (seenChapterTitles.has(titleKey)) continue;
+      seenChapterTitles.add(titleKey);
+    }
+
+    deduplicated.push(ev);
+  }
+
+  return deduplicated;
+}
+
+/**
+ * Determine whether a given event is visible to a user based on privacy/visibility rules:
+ * - HQ roles (founder, hq_admin) can see all events across all chapters.
+ * - Draft / unapproved events are only visible to HQ or managers of that specific chapter.
+ * - Open events (open_to_all, public, all_chapters) are visible across all chapters and to non-chapter members.
+ * - Closed / chapter-exclusive events ONLY show on the chapter under users who belong to that chapter.
+ */
 export function isEventVisibleToUser(
   event: EventItem,
   userChapterId?: string,
   userRoleKey?: string,
 ): boolean {
-  const isManager =
-    userRoleKey === "founder" ||
-    userRoleKey === "hq_admin" ||
-    userRoleKey === "campus_lead" ||
-    userRoleKey === "chairman";
-
-  // HQ roles can see all events
+  // 1. HQ roles can see all events
   if (userRoleKey === "founder" || userRoleKey === "hq_admin") {
     return true;
   }
 
-  // Closed / private events are hidden unless manager
-  if (event.visibility === "closed") {
-    return isManager;
+  const isSameChapter = Boolean(userChapterId && userChapterId === event.chapterId);
+  const isChapterManager =
+    isSameChapter &&
+    (userRoleKey === "campus_lead" ||
+      userRoleKey === "chairman" ||
+      userRoleKey === "vice_chairman" ||
+      userRoleKey === "secretary");
+
+  // 2. Draft / un-published events: ONLY visible to HQ or managers of that specific chapter
+  if (event.status === "draft" || event.status === "pending_approval") {
+    return isChapterManager;
   }
 
-  // Open to all events are visible to everyone across chapters
+  // 3. Open to all events: visible across all chapters and to non-chapter members
   if (isOpenToAllEvent(event)) {
     return true;
   }
 
-  // Draft / un-published events: visible to managers and same-chapter members.
-  // Students see the event but the UI hides the "draft" label for them.
-  if (event.status === "draft" || event.status === "pending_approval") {
-    if (!isManager && userChapterId !== event.chapterId) return false;
-  }
-
-  // Chapter-only events are ONLY visible to members of that specific chapter
-  if (event.visibility === "chapter_only") {
-    return Boolean(userChapterId && userChapterId === event.chapterId);
-  }
-
-  return true;
+  // 4. Closed / chapter-only events: ONLY visible to users who belong to this chapter
+  return isSameChapter;
 }

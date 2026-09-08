@@ -88,6 +88,7 @@ import {
   isAssignableLeadershipRole,
   isSingletonLeadershipRole,
 } from "@/lib/leadership";
+import { deduplicateEvents } from "@/lib/events";
 import { resolveBrandKit } from "@/lib/brand/kit";
 import { isDemoMode } from "@/lib/mode";
 import { hasPermission, isHqRole } from "@/lib/permissions";
@@ -196,6 +197,7 @@ type StoreContextValue = {
   ) => boolean;
   createEvent: (event: EventItem) => void;
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
+  deleteEvent: (id: string) => void;
   /** Add a new global event category. Category is uppercased and de-duplicated. Returns true if added, false if duplicate. */
   addEventCategory: (category: string) => boolean;
   /** Update and persist organization settings (presets, categories, standard depts, etc.) to Supabase */
@@ -908,8 +910,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toastEmitter = null;
     };
   }, []);
+
+  function sanitizeStore(s: ElevatesStore): ElevatesStore {
+    const norm = normalizeStore(s);
+    return {
+      ...norm,
+      events: deduplicateEvents(norm.events ?? []),
+    };
+  }
+
   const [store, setStore] = useState<ElevatesStore>(() =>
-    normalizeStore({
+    sanitizeStore({
       organization: {
         id: "org-elevates",
         name: "Elevates",
@@ -986,12 +997,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setDataSource("demo");
         const saved = loadDemoStore();
         if (!cancelled && saved) {
-          setStore(normalizeStore(saved));
+          setStore(sanitizeStore(saved));
         }
       } else {
         const result = await loadStoreFromSupabase();
         if (!cancelled) {
-          setStore(normalizeStore(result.store));
+          setStore(sanitizeStore(result.store));
           setDataSource(result._dataSource as DataSource);
           if (result._dataSource !== "database") {
             console.warn(`⚠️ FALLBACK DATA SERVED — Store Hydration — source: ${result._dataSource}`);
@@ -1484,20 +1495,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           actorId,
         ),
       createEvent: (event) => {
-        const eventId = isUuid(event.id) ? event.id : genUuid();
+        const targetChapterId = isUuid(event.chapterId)
+          ? event.chapterId
+          : store.chapters.find((c) => isUuid(c.id))?.id || event.chapterId;
         const activeUserId = isUuid(store.session.userId)
           ? store.session.userId
           : isUuid(store.session.authUserId)
             ? store.session.authUserId
             : undefined;
         const organizerId = isUuid(event.organizerId) ? event.organizerId : activeUserId;
-        const chapterId = isUuid(event.chapterId)
-          ? event.chapterId
-          : store.chapters.find((c) => isUuid(c.id))?.id;
+
+        // Check if duplicate event exists in store by id, or by chapterId + slug, or chapterId + title
+        const existingIndex = store.events.findIndex((e) => {
+          if (event.id && e.id === event.id) return true;
+          if (
+            event.slug &&
+            e.slug &&
+            e.chapterId === targetChapterId &&
+            e.slug.trim().toLowerCase() === event.slug.trim().toLowerCase()
+          ) {
+            return true;
+          }
+          if (
+            e.chapterId === targetChapterId &&
+            e.title.trim().toLowerCase() === event.title.trim().toLowerCase()
+          ) {
+            return true;
+          }
+          return false;
+        });
+
+        const existing = existingIndex >= 0 ? store.events[existingIndex] : undefined;
+        const eventId = existing?.id || (isUuid(event.id) ? event.id : genUuid());
+        const slug =
+          event.slug ||
+          existing?.slug ||
+          event.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
 
         const forms = defaultFormsForEvent(
           eventId,
-          chapterId || event.chapterId,
+          targetChapterId,
           event.title,
         );
         const regFields = forms[0].questions.map(questionToField);
@@ -1505,44 +1545,72 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           event.status === "pending_approval"
             ? ("registration_open" as const)
             : event.status;
-        const normalized = {
+
+        const normalized: EventItem = {
+          ...existing,
           ...event,
           id: eventId,
-          chapterId: chapterId || event.chapterId,
-          organizerId: organizerId || event.organizerId,
+          slug,
+          chapterId: targetChapterId,
+          organizerId: organizerId || existing?.organizerId || event.organizerId,
           status,
         };
-        setStore((s) => ({
-          ...s,
-          events: [normalized, ...s.events],
-          forms: [...forms, ...(s.forms ?? [])],
-          eventForms: [
-            { eventId, fields: regFields },
-            ...s.eventForms,
-          ],
-          activityLogs: [
-            log(
-              s.session.userId,
-              "event_created",
-              "event",
-              eventId,
-              normalized.title,
-            ),
-            ...s.activityLogs,
-          ],
-        }));
+
+        setStore((s) => {
+          const filtered = s.events.filter((e) => {
+            if (e.id === eventId) return false;
+            if (
+              slug &&
+              e.slug &&
+              e.chapterId === targetChapterId &&
+              e.slug.trim().toLowerCase() === slug.trim().toLowerCase()
+            ) {
+              return false;
+            }
+            if (
+              e.chapterId === targetChapterId &&
+              e.title.trim().toLowerCase() === normalized.title.trim().toLowerCase()
+            ) {
+              return false;
+            }
+            return true;
+          });
+
+          return {
+            ...s,
+            events: [normalized, ...filtered],
+            forms: existingIndex >= 0 ? s.forms : [...forms, ...(s.forms ?? [])],
+            eventForms:
+              existingIndex >= 0
+                ? s.eventForms
+                : [{ eventId, fields: regFields }, ...s.eventForms],
+            activityLogs: [
+              log(
+                s.session.userId,
+                existingIndex >= 0 ? "event_updated" : "event_created",
+                "event",
+                eventId,
+                normalized.title,
+              ),
+              ...s.activityLogs,
+            ],
+          };
+        });
+
         void runPersist(persistEvent(normalized), {
-          errorMessage: `Failed to create event "${normalized.title}"`,
+          errorMessage: `Failed to persist event "${normalized.title}"`,
           rollback: () => {
-            setStore((s) => ({
-              ...s,
-              events: s.events.filter((e) => e.id !== eventId),
-              forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
-              eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
-            }));
+            if (existingIndex < 0) {
+              setStore((s) => ({
+                ...s,
+                events: s.events.filter((e) => e.id !== eventId),
+                forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
+                eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
+              }));
+            }
           },
         }).then((ok) => {
-          if (ok) {
+          if (ok && existingIndex < 0) {
             forms.forEach((f) =>
               void runPersist(persistForm(f), {
                 errorMessage: `Failed to persist form "${f.title}"`,
@@ -1580,6 +1648,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               events: s.events.map((e) => (e.id === id ? prev : e)),
             }));
           },
+        });
+      },
+      deleteEvent: (id) => {
+        const ev = store.events.find((e) => e.id === id);
+        setStore((s) => ({
+          ...s,
+          events: s.events.filter((e) => e.id !== id),
+          forms: (s.forms ?? []).filter((f) => f.eventId !== id),
+          eventForms: s.eventForms.filter((f) => f.eventId !== id),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "event_deleted",
+              "event",
+              id,
+              ev?.title || "Deleted Event",
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(deleteEventRemote(id, ev?.slug), {
+          errorMessage: `Failed to delete event`,
         });
       },
       addEventCategory: (category) => {
@@ -4889,7 +4979,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       resetDemoStore: () => {
         void loadStoreFromSupabase().then((result) => {
-          setStore(normalizeStore(result.store));
+          setStore(sanitizeStore(result.store));
           setDataSource(result._dataSource as DataSource);
         });
       },

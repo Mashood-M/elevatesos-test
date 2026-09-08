@@ -17,6 +17,7 @@ import { isEventVisibleToUser } from "@/lib/events";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { formatDate } from "@/lib/utils";
+import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
 const STUDENT_START = [
   {
@@ -73,19 +74,7 @@ export default function ChapterDashboardPage({
   const activityScore = chapter ? calculateChapterActivityScore(store, chapter.id) : 0;
 
   if (!chapter) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">
-          Chapter not found
-        </p>
-        <p className="mt-2 text-xs text-text-dim max-w-md mx-auto">
-          This campus chapter is not yet registered or opened. HQ and HQ Admins only can manage un-opened chapters.
-        </p>
-        <Link href="/hq/chapters" className="mt-4 inline-block text-xs font-semibold text-[var(--accent)] hover:underline">
-          Back to network →
-        </Link>
-      </div>
-    );
+    return <ChapterNotFound />;
   }
 
   const showOps =

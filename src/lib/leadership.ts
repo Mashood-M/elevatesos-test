@@ -44,6 +44,8 @@ export function roleKeyLabel(key: RoleKey): string {
       return "Class Rep";
     case "student":
       return "Student";
+    case "alumni":
+      return "Alumni";
     case "faculty_coordinator":
       return "Faculty";
     case "vice_chairman":

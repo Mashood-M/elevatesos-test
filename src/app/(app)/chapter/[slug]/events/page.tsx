@@ -16,6 +16,7 @@ import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
+import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import type { EventItem, EventStatus } from "@/types";
 
 
@@ -83,12 +84,7 @@ export default function ChapterEventsPage({
   }
 
   if (!chapter) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">Chapter not found</p>
-        <p className="mt-2 text-xs text-text-dim max-w-md mx-auto">This campus chapter is not yet registered or opened. HQ and HQ Admins only can manage un-opened chapters.</p>
-      </div>
-    );
+    return <ChapterNotFound />;
   }
 
   const events = store.events

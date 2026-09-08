@@ -12,6 +12,7 @@ import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
 export default function ChapterClustersPage({
   params,
@@ -29,7 +30,7 @@ export default function ChapterClustersPage({
   const [leaderId, setLeaderId] = useState("");
   const [flash, setFlash] = useState("");
 
-  if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
+  if (!chapter) return <ChapterNotFound />;
 
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
   const role = store.session.roleKey;

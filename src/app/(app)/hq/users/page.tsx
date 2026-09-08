@@ -16,7 +16,18 @@ import { CheckSquare, Square, ShieldCheck, Mail } from "lucide-react";
 
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
 
-// The 6 canonical roles with their powers description
+// The canonical role order used everywhere on this page
+const ROLE_ORDER: RoleKey[] = [
+  "founder",
+  "hq_admin",
+  "campus_lead",
+  "class_representative",
+  "faculty_coordinator",
+  "student",
+  "alumni",
+];
+
+// The 7 canonical roles with their powers description
 const SIX_ROLES: {
   key: RoleKey;
   label: string;
@@ -48,16 +59,22 @@ const SIX_ROLES: {
     powers: "Assigned by Campus Lead · Attendance, events, and report access · No role-assign power",
   },
   {
+    key: "faculty_coordinator",
+    label: "Faculty",
+    scope: "chapter",
+    powers: "Assigned by HQ Admin · Faculty monitor view · No role-assign power",
+  },
+  {
     key: "student",
     label: "Student",
     scope: "chapter",
     powers: "Assigned by Campus Lead · Events, clusters, projects, announcements · No role-assign power",
   },
   {
-    key: "faculty_coordinator",
-    label: "Faculty",
+    key: "alumni",
+    label: "Alumni",
     scope: "chapter",
-    powers: "Assigned by HQ Admin · Faculty monitor view · No role-assign power",
+    powers: "Graduated students · Read-only access to chapter events and announcements · No role-assign power",
   },
 ];
 
@@ -137,9 +154,11 @@ export default function HqUsersPage() {
   // per-role chapter id map: { [roleKey]: chapterId }
   const [roleModalChapters, setRoleModalChapters] = useState<Record<string, string>>({});
 
-  const allowedRoleKeys: RoleKey[] = ["founder", "hq_admin", "campus_lead", "faculty_coordinator", "class_representative", "student", "alumni"];
-  const hqRoles = store.roles.filter((r) => r.scope === "hq" && allowedRoleKeys.includes(r.key as RoleKey));
-  const chapterRoles = store.roles.filter((r) => r.scope === "chapter" && allowedRoleKeys.includes(r.key as RoleKey));
+  const allowedRoleKeys: RoleKey[] = ["founder", "hq_admin", "campus_lead", "class_representative", "faculty_coordinator", "student", "alumni"];
+  const sortByOrder = (a: { key: string }, b: { key: string }) =>
+    ROLE_ORDER.indexOf(a.key as RoleKey) - ROLE_ORDER.indexOf(b.key as RoleKey);
+  const hqRoles = store.roles.filter((r) => r.scope === "hq" && allowedRoleKeys.includes(r.key as RoleKey)).sort(sortByOrder);
+  const chapterRoles = store.roles.filter((r) => r.scope === "chapter" && allowedRoleKeys.includes(r.key as RoleKey)).sort(sortByOrder);
   const filtersActive = Boolean(
     q.trim() || filterChapter || filterRole || filterStatus !== "all",
   );
@@ -527,11 +546,14 @@ export default function HqUsersPage() {
               onChange={(e) => setFilterRole(e.target.value)}
             >
               <option value="">All</option>
-              {store.roles.filter((r) => allowedRoleKeys.includes(r.key as RoleKey)).map((r) => (
-                <option key={r.id} value={r.key}>
-                  {r.name}
-                </option>
-              ))}
+              {store.roles
+                .filter((r) => allowedRoleKeys.includes(r.key as RoleKey))
+                .sort((a, b) => ROLE_ORDER.indexOf(a.key as RoleKey) - ROLE_ORDER.indexOf(b.key as RoleKey))
+                .map((r) => (
+                  <option key={r.id} value={r.key}>
+                    {r.name}
+                  </option>
+                ))}
             </Select>
           </div>
           <div>

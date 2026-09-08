@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import type { ProjectStage } from "@/types";
 
 const stages: ProjectStage[] = ["idea", "planning", "building", "testing", "demo", "showcase"];
@@ -29,7 +30,7 @@ export default function ChapterProjectsPage({
   const { store } = useStore();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
-  if (!chapter) return <p className="text-orange">// Chapter not found</p>;
+  if (!chapter) return <ChapterNotFound />;
 
   const projects = store.projects.filter((p) => p.chapterId === chapter.id);
 

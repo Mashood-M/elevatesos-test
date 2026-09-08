@@ -1,15 +1,15 @@
 "use client";
 
-import { use, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
-import { useStore } from "@/context/store-context";
+import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
-import { hasPermission } from "@/lib/permissions";
+import { hasPermission, isHqRole } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import type { AnnouncementAudience } from "@/types";
@@ -25,36 +25,33 @@ const audienceTone: Record<
   student: "mute",
 };
 
-export default function ChapterAnnouncementsPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = use(params);
+export default function AnnouncementsPage() {
   const { store, createAnnouncement } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const { session } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [audience, setAudience] = useState<AnnouncementAudience>("chapter");
+  const [audience, setAudience] = useState<AnnouncementAudience>("global");
   const [flash, setFlash] = useState("");
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
 
+  const userChapterId = session.chapterId;
+  const chapter = userChapterId ? store.chapters.find((c) => c.id === userChapterId) : null;
+  const noChapter = !chapter && !isHqRole(session.roleKey);
+
   const canPublish = hasPermission(
     store,
-    store.session.roleKey,
+    session.roleKey,
     "announcement.publish",
   );
 
-  // If no chapter resolved, show only global (HQ) announcements + a join prompt
-  const noChapter = !chapter;
-
+  // If no chapter resolved, show only global (HQ) announcements + join banner
   const announcements = store.announcements
     .filter((a) =>
       noChapter
         ? a.audience === "global"
         : a.audience === "global" ||
-          (a.chapterId === chapter!.id &&
+          (chapter && a.chapterId === chapter.id &&
             ["chapter", "cluster", "executive", "student"].includes(a.audience)),
     )
     .sort(
@@ -72,8 +69,8 @@ export default function ChapterAnnouncementsPage({
       title: title.trim(),
       body: body.trim(),
       audience,
-      chapterId: audience === "global" ? undefined : chapter!.id,
-      authorId: store.session.userId,
+      chapterId: audience === "global" ? undefined : chapter?.id,
+      authorId: session.userId,
     });
     setTitle("");
     setBody("");
@@ -83,13 +80,17 @@ export default function ChapterAnnouncementsPage({
   return (
     <div>
       <PageHeader
-        eyebrow={chapterEyebrow(store.session.roleKey, "people")}
+        eyebrow={chapterEyebrow(session.roleKey, "people")}
         title="Announcements"
-        description="Broadcast messages — chapter notices, cluster alerts, and executive syncs."
+        description="Broadcast messages — official notices from Elevates HQ and campus updates."
         actions={
-          canPublish && !noChapter ? (
+          canPublish && (!noChapter || isHqRole(session.roleKey)) ? (
             <Button variant="orange" onClick={() => setOpen((v) => !v)}>
               {open ? "Cancel" : "New announcement"}
+            </Button>
+          ) : noChapter ? (
+            <Button variant="orange" onClick={() => setIsJoinModalOpen(true)}>
+              🔑 Join chapter with code
             </Button>
           ) : null
         }
@@ -103,7 +104,7 @@ export default function ChapterAnnouncementsPage({
               Join chapter to see
             </p>
             <p className="text-[12px] text-text-dim mt-0.5">
-              Showing HQ network announcements. Join a college chapter to see your campus notices, cluster alerts, and team updates.
+              Showing HQ network announcements. Join a college chapter to view your campus notices, cluster alerts, and team updates.
             </p>
           </div>
           <Button
@@ -135,9 +136,14 @@ export default function ChapterAnnouncementsPage({
                   setAudience(e.target.value as AnnouncementAudience)
                 }
               >
-                <option value="chapter">Chapter</option>
-                <option value="executive">Executive</option>
-                <option value="student">Students</option>
+                {isHqRole(session.roleKey) && <option value="global">Global (HQ Network)</option>}
+                {chapter && (
+                  <>
+                    <option value="chapter">Chapter</option>
+                    <option value="executive">Executive</option>
+                    <option value="student">Students</option>
+                  </>
+                )}
               </Select>
             </div>
             <div>
@@ -161,11 +167,22 @@ export default function ChapterAnnouncementsPage({
 
       <TerminalPanel title="Feed" meta={`${announcements.length} messages`}>
         {announcements.length === 0 ? (
-          <p className="text-[13px] text-text-dim">
-            {noChapter
-              ? "No HQ announcements yet. Join a chapter to see chapter notices."
-              : "No announcements yet."}
-          </p>
+          <div className="py-6 text-center">
+            <p className="text-[13px] text-text-dim">
+              {noChapter
+                ? "No HQ announcements yet. Join a chapter to see chapter notices."
+                : "No announcements yet."}
+            </p>
+            {noChapter && (
+              <Button
+                variant="ghost"
+                className="mt-3 text-xs"
+                onClick={() => setIsJoinModalOpen(true)}
+              >
+                Enter invite code →
+              </Button>
+            )}
+          </div>
         ) : null}
         <div className="space-y-4">
           {announcements.map((a) => {
@@ -198,47 +215,6 @@ export default function ChapterAnnouncementsPage({
           })}
         </div>
       </TerminalPanel>
-
-      {canPublish ? (
-        <TerminalPanel
-          title="Outbound log"
-          meta="demo email · WhatsApp"
-          className="mt-4"
-        >
-          <p className="mb-3 text-[12px] text-text-mute">
-            Demo delivery queue — no real provider. Approvals and announcements
-            append here.
-          </p>
-          {(store.outboundMessages ?? []).filter(
-            (m) =>
-              m.relatedEntity === "announcement" ||
-              m.relatedEntity === "registration" ||
-              m.relatedEntity === "event",
-          ).length === 0 ? (
-            <p className="text-[13px] text-text-dim">No outbound messages yet.</p>
-          ) : (
-            <ul className="max-h-64 space-y-2 overflow-y-auto">
-              {(store.outboundMessages ?? []).slice(0, 30).map((m) => (
-                <li
-                  key={m.id}
-                  className="rounded-[10px] bg-bg px-3 py-2 text-[12px]"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={m.channel === "whatsapp" ? "green" : "cyan"}>
-                      {m.channel}
-                    </Badge>
-                    <span className="font-medium">{m.title}</span>
-                    <span className="text-text-mute">{m.status}</span>
-                  </div>
-                  <p className="mt-1 truncate text-text-dim">
-                    → {m.toAddress}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </TerminalPanel>
-      ) : null}
 
       <ChapterJoinModal
         isOpen={isJoinModalOpen}

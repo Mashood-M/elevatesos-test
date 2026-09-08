@@ -21,6 +21,7 @@ import { roleKeyLabel } from "@/lib/leadership";
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
     "/hq",
+    "/chapter",
     "/executive",
     "/faculty",
     "/workflows",
@@ -28,8 +29,22 @@ function isNavActive(pathname: string, href: string) {
     "/eos",
   ]);
   if (roots.has(href)) return pathname === href;
-  // Chapter home is exact-match only so child routes don't keep it lit.
-  if (/^\/chapter\/[^/]+$/.test(href)) return pathname === href;
+
+  // Chapter home (e.g. /chapter/kiet) is exact-match only so child routes don't keep it lit.
+  // Known subroutes like /chapter/clusters or /chapter/projects shouldn't be treated as a chapter home slug.
+  const knownChapterSubroutes = new Set([
+    "/chapter/clusters",
+    "/chapter/projects",
+    "/chapter/events",
+    "/chapter/announcements",
+    "/chapter/students",
+    "/chapter/calendar",
+    "/chapter/reports",
+  ]);
+  if (/^\/chapter\/[^/]+$/.test(href) && !knownChapterSubroutes.has(href)) {
+    return pathname === href;
+  }
+
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -328,16 +343,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {session.roleKey === "student" && !session.chapterId ? (
-                <Link
-                  href="/join"
-                  className="hidden sm:flex items-center gap-1.5 rounded-full bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 px-3 py-1.5 text-[12px] font-semibold text-orange-400 transition"
-                >
-                  <span>🔑</span>
-                  <span>Join Chapter</span>
-                </Link>
-              ) : null}
-
               <Link
                 href={alertsHref}
                 className="relative flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim hover:text-text shadow-[var(--shadow-sm)]"

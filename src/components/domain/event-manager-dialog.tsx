@@ -4,14 +4,17 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
+  Building2,
   Calendar,
   Clock,
   Laptop,
+  Lock,
   Plus,
   Sparkles,
   Star,
   X,
 } from "lucide-react";
+import { isHqRole } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import {
   DatePickerInput,
@@ -345,10 +348,16 @@ export function EventEditor({
   event,
   onSave,
   onClose,
+  isHqUser = false,
+  lockedChapterName,
 }: {
   event: CmsEventItem;
   onSave: (e: CmsEventItem) => void;
   onClose: () => void;
+  /** If true, show the full chapter dropdown (HQ roles). If false, lock to the user's own chapter. */
+  isHqUser?: boolean;
+  /** The display name of the locked chapter (for non-HQ users). */
+  lockedChapterName?: string;
 }) {
   const { store } = useStore();
   const [d, setD] = useState<CmsEventItem>(event);
@@ -406,24 +415,39 @@ export function EventEditor({
             </Field>
 
             {/* Chapter Linkage */}
-            <Field label="Associated Campus Chapter (Links event to Chapter Portal)">
-              <select
-                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
-                value={d.chapterSlug}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const ch = store.chapters.find((c) => c.slug === val);
-                  u({ chapterSlug: val, chapterName: ch ? ch.name : val });
-                }}
-              >
-                <option value="hq">ELEVATES HQ / Network Wide</option>
-                {store.chapters.map((c) => (
-                  <option key={c.id} value={c.slug}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {isHqUser ? (
+              <Field label="Associated Campus Chapter (Links event to Chapter Portal)">
+                <select
+                  className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+                  value={d.chapterSlug}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const ch = store.chapters.find((c) => c.slug === val);
+                    u({ chapterSlug: val, chapterName: ch ? ch.name : val });
+                  }}
+                >
+                  <option value="hq">ELEVATES HQ / Network Wide</option>
+                  {store.chapters.map((c) => (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field label="Campus Chapter">
+                <div className="flex h-9 w-full items-center gap-2 rounded-[var(--radius-md)] border border-border bg-bg-panel px-3 text-xs text-text-dim cursor-not-allowed select-none">
+                  <Building2 size={13} className="shrink-0 text-[var(--accent)]" />
+                  <span className="flex-1 truncate font-semibold text-text">
+                    {lockedChapterName || d.chapterName || "Your Chapter"}
+                  </span>
+                  <Lock size={11} className="shrink-0 opacity-40" />
+                </div>
+                <p className="mt-1 text-[10px] text-text-mute">
+                  Events are created under your chapter. Only HQ can assign to a different chapter.
+                </p>
+              </Field>
+            )}
 
             <Field label="Slug (URL path)">
               <TInput
@@ -830,6 +854,9 @@ export function EventManagerCreateDialog({
   const { store, createEvent } = useStore();
   const { session } = useCurrentUser();
 
+  // Determine if the current user is an HQ-level role
+  const isHqUser = isHqRole(session.roleKey);
+
   // Find target chapter
   const resolvedChapter =
     store.chapters.find(
@@ -963,6 +990,8 @@ export function EventManagerCreateDialog({
       event={blank}
       onSave={handleSave}
       onClose={onClose}
+      isHqUser={isHqUser}
+      lockedChapterName={resolvedChapter?.name}
     />
   );
 }

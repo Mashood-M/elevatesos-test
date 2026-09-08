@@ -222,6 +222,7 @@ export function navGroupsForRole(
 
   // Student
   const eventsHref = slug ? `${base}/events` : "/events";
+  const announcementsHref = slug ? `${base}/announcements` : "/announcements";
   return [
     {
       label: "Explore",
@@ -232,7 +233,7 @@ export function navGroupsForRole(
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },
         {
-          href: `${base}/announcements`,
+          href: announcementsHref,
           label: "Announcements",
           icon: I.announcements,
         },

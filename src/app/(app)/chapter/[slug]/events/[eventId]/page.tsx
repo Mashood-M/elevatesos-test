@@ -264,17 +264,12 @@ export default function EventDetailPage({
 
   const approved = regs.filter((r) => r.status === "approved").length;
   const waitlisted = regs.filter((r) => r.status === "waitlisted").length;
-  const pending = regs.filter(
-    (r) => r.status === "pending" || r.status === "reviewed",
-  ).length;
   const seatsLeft = Math.max(0, event.capacity - approved);
   const regForm = getEventForm(store, event.id, "registration");
   const fbForm = getEventForm(store, event.id, "feedback");
   const myReg = regs.find((r) => r.userId === session.userId);
   const organizer = store.profiles.find((p) => p.id === event.organizerId);
-  const queue = regs.filter(
-    (r) => r.status === "pending" || r.status === "reviewed",
-  );
+  const queue = regs.filter((r) => r.status === "waitlisted");
   const eligibility = canRegisterNow(store, event, session.userId);
 
   function startEdit() {
@@ -695,19 +690,9 @@ export default function EventDetailPage({
                 <Badge tone={regStatusTone(myReg.status)}>
                   {myReg.status.replaceAll("_", " ")}
                 </Badge>
-                {myReg.status === "pending" ? (
-                  <p className="text-[13px] text-text-dim">
-                    Waiting for class representative review.
-                  </p>
-                ) : null}
-                {myReg.status === "reviewed" ? (
-                  <p className="text-[13px] text-text-dim">
-                    Reviewed — waiting for secretary approval.
-                  </p>
-                ) : null}
                 {myReg.status === "waitlisted" ? (
-                  <p className="text-[13px] text-text-dim">
-                    You are on the waitlist. A seat may open if someone drops.
+                  <p className="text-[13px] text-amber-500 font-medium">
+                    You are on the waiting list because event capacity is full. Waiting list approvals are granted exclusively by the Campus Lead.
                   </p>
                 ) : null}
                 {myReg.status === "approved" && myReg.qrCode ? (
@@ -864,7 +849,7 @@ export default function EventDetailPage({
       ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Registered" value={regs.length} hint={`${pending} in queue`} />
+        <Stat label="Registered" value={regs.length} hint={`${approved} confirmed · ${waitlisted} waitlist`} />
         <Stat label="Approved" value={approved} hint={`${waitlisted} waitlist`} />
         <Stat
           label="Capacity"
@@ -1402,17 +1387,17 @@ export default function EventDetailPage({
                 </div>
                 <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-500">
-                    Pending Review
+                    Waiting List
                   </span>
-                  <p className="mt-1 text-xl font-bold text-amber-500">{pending}</p>
-                  <p className="mt-0.5 text-[11px] text-text-dim">In verification queue</p>
+                  <p className="mt-1 text-xl font-bold text-amber-500">{waitlisted}</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">Requires Campus Lead approval</p>
                 </div>
                 <div className="rounded-[10px] border border-border/60 bg-bg p-3 shadow-[var(--shadow-sm)]">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                     Available Seats
                   </span>
                   <p className="mt-1 text-xl font-bold text-[var(--accent)]">{seatsLeft} / {event.capacity}</p>
-                  <p className="mt-0.5 text-[11px] text-text-dim">{waitlisted} on waitlist</p>
+                  <p className="mt-0.5 text-[11px] text-text-dim">{seatsLeft > 0 ? "Open for instant registration" : "Capacity reached"}</p>
                 </div>
               </div>
 
@@ -1430,8 +1415,29 @@ export default function EventDetailPage({
         )}
       </div>
 
-      {(canApprove || canReview) && queue.length > 0 ? (
-        <TerminalPanel title="approval.queue" accent="orange" className="mb-6">
+      {queue.length > 0 ? (
+        <TerminalPanel
+          title="waiting.list.approvals"
+          meta={`${queue.length} student${queue.length === 1 ? "" : "s"} on waitlist`}
+          accent="orange"
+          className="mb-6"
+        >
+          <div className="mb-3 flex items-start gap-2.5 rounded-[10px] bg-amber-500/10 p-3 text-xs text-amber-400">
+            <span className="text-base leading-none">ℹ️</span>
+            <div>
+              <p className="font-semibold">Event Capacity Waiting List</p>
+              <p className="mt-0.5 text-text-dim leading-relaxed">
+                Registrations are approved automatically with an instant QR pass as long as seats are available.
+                These students joined the waiting list after the {event.capacity}-seat limit was reached.
+                <strong> Only the Campus Lead</strong> has authority to approve waitlisted students and grant them a confirmed seat with a check-in QR code.
+              </p>
+            </div>
+          </div>
+          {queueFlash ? (
+            <div className="mb-3 rounded-[8px] bg-[var(--accent)]/10 px-3 py-2 text-xs font-medium text-[var(--accent)]">
+              {queueFlash}
+            </div>
+          ) : null}
           <ul className="space-y-3">
             {queue.map((reg) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
@@ -1441,36 +1447,34 @@ export default function EventDetailPage({
                   className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-bg p-3 shadow-[var(--shadow-sm)]"
                 >
                   <div>
-                    <p className="font-bold">{user?.fullName}</p>
-                    <p className="text-[11px] text-text-dim">{reg.status}</p>
+                    <p className="font-bold text-text">{user?.fullName || reg.guestName || "Student"}</p>
+                    <p className="text-[11px] text-text-dim">
+                      {user?.department || "Unassigned"} • Year {user?.year || "—"} • Registered {new Date(reg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
                   </div>
-                  <div className="flex gap-2">
-                    {reg.status === "pending" && (canReview || canApprove) ? (
-                      <Button
-                        variant="orange"
-                        onClick={() => handleRegAction(reg.id, "reviewed")}
-                      >
-                        Review
-                      </Button>
-                    ) : null}
-                    {canApprove &&
-                    (reg.status === "reviewed" || reg.status === "pending") ? (
-                      <Button
-                        variant="green"
-                        onClick={() => handleRegAction(reg.id, "approved")}
-                      >
-                        Approve → QR
-                      </Button>
-                    ) : null}
-                    {(canReview || canApprove) &&
-                    (reg.status === "pending" || reg.status === "reviewed") ? (
-                      <Button
-                        variant="danger"
-                        onClick={() => handleRegAction(reg.id, "rejected")}
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
+                  <div className="flex items-center gap-2">
+                    {canApprove ? (
+                      <>
+                        <Button
+                          variant="green"
+                          className="h-8 px-3 text-[12px]"
+                          onClick={() => handleRegAction(reg.id, "approved")}
+                        >
+                          Approve Seat → Mint QR
+                        </Button>
+                        <Button
+                          variant="danger"
+                          className="h-8 px-3 text-[12px]"
+                          onClick={() => handleRegAction(reg.id, "rejected")}
+                        >
+                          Decline
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-border/50 px-2.5 py-1 text-[11px] font-medium text-text-dim">
+                        Approvals restricted to Campus Lead
+                      </span>
+                    )}
                   </div>
                 </li>
               );

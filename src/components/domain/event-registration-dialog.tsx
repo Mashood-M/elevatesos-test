@@ -158,7 +158,14 @@ export function EventRegistrationDialog({
         return;
       }
 
-      setRegisteredReg(registration);
+      const finalStatus = res.status || "approved";
+      const finalReg: EventRegistration = {
+        ...registration,
+        status: finalStatus,
+        qrCode: finalStatus === "approved" ? qrCode : "",
+      };
+
+      setRegisteredReg(finalReg);
       onSuccess?.();
     } catch (err: any) {
       setError(err?.message || "Failed to register. Please try again.");
@@ -222,16 +229,39 @@ export function EventRegistrationDialog({
         {/* ALREADY REGISTERED VIEW */}
         {activeReg ? (
           <div className="space-y-4">
-            <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
-              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mb-2">
-                <CheckCircle2 size={22} />
+            <div
+              className={`rounded-[14px] border p-4 text-center ${
+                activeReg.status === "waitlisted"
+                  ? "border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400"
+                  : "border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
+              }`}
+            >
+              <div
+                className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full mb-2 ${
+                  activeReg.status === "waitlisted"
+                    ? "bg-amber-500/15 text-amber-500"
+                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                }`}
+              >
+                {activeReg.status === "waitlisted" ? (
+                  <Clock size={22} />
+                ) : (
+                  <CheckCircle2 size={22} />
+                )}
               </div>
-              <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
-                Registration Confirmed
+              <p className="text-sm font-bold">
+                {activeReg.status === "waitlisted"
+                  ? "Placed on Waiting List"
+                  : "Seat Confirmed!"}
               </p>
               <p className="mt-0.5 text-[12px] text-text-dim">
-                Status: <span className="font-semibold capitalize text-text">{activeReg.status}</span>
-                {activeReg.status === "pending" ? " (waiting for class rep review)" : ""}
+                Status:{" "}
+                <span className="font-semibold capitalize text-text">
+                  {activeReg.status}
+                </span>
+                {activeReg.status === "waitlisted"
+                  ? " — Event seats are full. The Campus Lead will review and approve seats if spots open."
+                  : " — Your registration is approved and your check-in QR code is ready below."}
               </p>
             </div>
 

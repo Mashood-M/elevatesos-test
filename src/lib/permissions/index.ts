@@ -38,6 +38,9 @@ export function hasPermission(
       return true;
     }
   }
+  if (permission === "registration.approve") {
+    return roleKey === "campus_lead" || roleKey === "chairman" || isSuperAdmin(roleKey);
+  }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {
     return true;

@@ -111,11 +111,11 @@ export default function ChapterEventsPage({
         new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
     );
 
-  const pendingApproval = store.registrations.filter((r) => {
+  const waitlistRegistrations = store.registrations.filter((r) => {
     const ev = store.events.find((e) => e.id === r.eventId);
     return (
       ev?.chapterId === chapter.id &&
-      (r.status === "reviewed" || r.status === "pending")
+      r.status === "waitlisted"
     );
   });
 
@@ -160,18 +160,18 @@ export default function ChapterEventsPage({
         }
       />
 
-      {(canApprove || canReview) && pendingApproval.length > 0 ? (
+      {waitlistRegistrations.length > 0 ? (
         <div className="mb-5 rounded-[var(--radius)] border border-border/80 bg-bg-panel px-4 py-3 shadow-[var(--shadow-sm)]">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-[12px] font-semibold tracking-[-0.01em] text-text">
-                Needs attention ({pendingApproval.length} pending registration{pendingApproval.length === 1 ? "" : "s"})
+                Waiting List Approvals ({waitlistRegistrations.length} student{waitlistRegistrations.length === 1 ? "" : "s"} on waitlist)
               </p>
               <p className="text-[11px] text-text-dim">
-                Class Reps and Campus Leads can select multiple student registrations and approve them in batch.
+                Registration is automatically approved when seats are available. Only the Campus Lead can approve students from the waiting list.
               </p>
             </div>
-            {selectedRegIds.length > 0 && (
+            {canApprove && selectedRegIds.length > 0 && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
@@ -181,7 +181,7 @@ export default function ChapterEventsPage({
                     setSelectedRegIds([]);
                   }}
                 >
-                  Reject Selected
+                  Decline Selected
                 </Button>
                 <Button
                   variant="green"
@@ -197,7 +197,7 @@ export default function ChapterEventsPage({
             )}
           </div>
           <ul className="divide-y divide-border/80">
-            {pendingApproval.map((reg) => {
+            {waitlistRegistrations.map((reg) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
               const ev = store.events.find((e) => e.id === reg.eventId);
               const isSelected = selectedRegIds.includes(reg.id);
@@ -207,14 +207,16 @@ export default function ChapterEventsPage({
                   className="flex flex-wrap items-center justify-between gap-2 py-2.5"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelectReg(reg.id)}
-                      className="rounded border-border"
-                    />
+                    {canApprove && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectReg(reg.id)}
+                        className="rounded border-border"
+                      />
+                    )}
                     <p className="text-[13px] font-medium text-text">
-                      {user?.fullName}
+                      {user?.fullName || reg.guestName || "Student"}
                       <span className="font-normal text-text-dim">
                         {" "}
                         · {ev?.title}
@@ -222,54 +224,41 @@ export default function ChapterEventsPage({
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge tone="orange">{reg.status}</Badge>
-                    {reg.status === "pending" && (canReview || canApprove) ? (
-                      <Button
-                        variant="orange"
-                        className="h-8 px-3 text-[12px]"
-                        onClick={() =>
-                          updateRegistrationStatus(
-                            reg.id,
-                            "reviewed",
-                            session.userId,
-                          )
-                        }
-                      >
-                        Review
-                      </Button>
-                    ) : null}
-                    {canApprove &&
-                    (reg.status === "reviewed" || reg.status === "pending") ? (
-                      <Button
-                        variant="green"
-                        className="h-8 px-3 text-[12px]"
-                        onClick={() =>
-                          updateRegistrationStatus(
-                            reg.id,
-                            "approved",
-                            session.userId,
-                          )
-                        }
-                      >
-                        Approve → QR
-                      </Button>
-                    ) : null}
-                    {(canReview || canApprove) &&
-                    (reg.status === "pending" || reg.status === "reviewed") ? (
-                      <Button
-                        variant="danger"
-                        className="h-8 px-3 text-[12px]"
-                        onClick={() =>
-                          updateRegistrationStatus(
-                            reg.id,
-                            "rejected",
-                            session.userId,
-                          )
-                        }
-                      >
-                        Reject
-                      </Button>
-                    ) : null}
+                    <Badge tone="orange">waitlisted</Badge>
+                    {canApprove ? (
+                      <>
+                        <Button
+                          variant="green"
+                          className="h-8 px-3 text-[12px]"
+                          onClick={() =>
+                            updateRegistrationStatus(
+                              reg.id,
+                              "approved",
+                              session.userId,
+                            )
+                          }
+                        >
+                          Approve → QR
+                        </Button>
+                        <Button
+                          variant="danger"
+                          className="h-8 px-3 text-[12px]"
+                          onClick={() =>
+                            updateRegistrationStatus(
+                              reg.id,
+                              "rejected",
+                              session.userId,
+                            )
+                          }
+                        >
+                          Decline
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="rounded-full bg-border/50 px-2 py-0.5 text-[11px] text-text-dim">
+                        Campus Lead only
+                      </span>
+                    )}
                   </div>
                 </li>
               );

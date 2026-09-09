@@ -87,7 +87,7 @@ import {
 import { deduplicateEvents } from "@/lib/events";
 import { resolveBrandKit } from "@/lib/brand/kit";
 import { isDemoMode } from "@/lib/mode";
-import { hasPermission, isHqRole } from "@/lib/permissions";
+import { hasPermission, isHqRole, isSuperAdmin } from "@/lib/permissions";
 import { slugifyCategoryKey } from "@/lib/resources/categories";
 import {
   outboundEventReminders,
@@ -200,7 +200,7 @@ type StoreContextValue = {
   updateOrgSettings: (patch: Record<string, any>) => Promise<boolean>;
   registerForEvent: (
     registration: EventRegistration,
-  ) => { ok: true } | { ok: false; message: string };
+  ) => { ok: true; status?: RegistrationStatus } | { ok: false; message: string };
   issueCertificate: (eventId: string, userId: string, achievement?: string) => CheckInResult;
   revokeCertificate: (id: string, isRevoked?: boolean) => boolean;
   saveEventForm: (eventId: string, fields: FormField[]) => void;
@@ -1109,32 +1109,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           let nextStatus = status;
           if (status === "approved") {
-            const event = s.events.find((e) => e.id === reg.eventId);
-            if (event) {
-              const approvedCount = s.registrations.filter(
-                (r) =>
-                  r.eventId === reg.eventId &&
-                  r.id !== id &&
-                  r.status === "approved",
-              ).length;
-              if (approvedCount >= event.capacity) {
-                const waitlistedCount = s.registrations.filter(
-                  (r) =>
-                    r.eventId === reg.eventId &&
-                    r.id !== id &&
-                    r.status === "waitlisted",
-                ).length;
-                if (waitlistedCount >= event.waitlistCapacity) {
-                  result = {
-                    ok: false,
-                    message:
-                      "Event is full and the waitlist is full — cannot approve.",
-                  };
-                  return s;
-                }
-                nextStatus = "waitlisted";
-                result = { ok: true, status: "waitlisted" };
-              }
+            const actorRole = s.session.roleKey;
+            const isAuthorized =
+              actorRole === "campus_lead" ||
+              actorRole === "chairman" ||
+              isSuperAdmin(actorRole);
+
+            if (!isAuthorized) {
+              result = {
+                ok: false,
+                message:
+                  "Access restricted: Only the Campus Lead can approve registrations from the waiting list.",
+              };
+              return s;
             }
           }
           return {
@@ -1728,12 +1715,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return res.ok;
       },
       registerForEvent: (registration) => {
-        let result: { ok: true } | { ok: false; message: string } = {
+        let result: { ok: true; status?: RegistrationStatus } | { ok: false; message: string } = {
           ok: true,
+          status: "approved",
         };
         const regId = isUuid(registration.id) ? registration.id : genUuid();
-        const qrCode = registration.qrCode || mintQrCode(registration.eventId, registration.userId);
-        const normalized = { ...registration, id: regId, qrCode };
+        let normalized: EventRegistration;
         setStore((s) => {
           const event = s.events.find((e) => e.id === registration.eventId);
           if (!event) {
@@ -1777,6 +1764,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             return s;
           }
+
+          // Capacity-driven instant approval vs waitlist:
+          // If approved registrations < capacity, auto-approve immediately and mint QR code.
+          // If approved registrations >= capacity, place on waitlist without QR code.
+          const approvedCount = s.registrations.filter(
+            (r) => r.eventId === registration.eventId && r.status === "approved",
+          ).length;
+          const cap = typeof event.capacity === "number" && event.capacity > 0 ? event.capacity : 100;
+          const hasSeat = approvedCount < cap;
+
+          const assignedStatus: RegistrationStatus = hasSeat ? "approved" : "waitlisted";
+          const qrCode = hasSeat
+            ? (registration.qrCode || mintQrCode(registration.eventId, registration.userId))
+            : "";
+
+          normalized = {
+            ...registration,
+            id: regId,
+            status: assignedStatus,
+            qrCode,
+          };
+          result = { ok: true, status: assignedStatus };
+
           const userProf = s.profiles.find((p) => p.id === registration.userId);
           return {
             ...s,
@@ -1790,13 +1800,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 "event_registered",
                 "event",
                 registration.eventId,
-                `${userProf?.fullName ?? "User"} registered for event "${event.title}" on ${new Date().toLocaleString()}`,
+                `${userProf?.fullName ?? "User"} registered for event "${event.title}" (${hasSeat ? "Seat Confirmed" : "Waitlisted"}) on ${new Date().toLocaleString()}`,
               ),
               ...s.activityLogs,
             ],
           };
         });
-        if (result.ok) {
+        if (result.ok && normalized!) {
           void runPersist(persistRegistration(normalized), {
             errorMessage: "Failed to save registration",
             rollback: () => {
@@ -3077,10 +3087,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       batchUpdateRegistrationStatus: (registrationIds, status, actorId) => {
         if (!registrationIds.length) return false;
         const prevRegistrations = store.registrations;
+        if (status === "approved") {
+          const actorRole = store.session.roleKey;
+          const isAuthorizedCampusLead =
+            actorRole === "campus_lead" ||
+            actorRole === "chairman" ||
+            isSuperAdmin(actorRole);
+
+          if (!isAuthorizedCampusLead) {
+            return false;
+          }
+        }
         setStore((s) => {
-          const updated = s.registrations.map((r) =>
-            registrationIds.includes(r.id) ? { ...r, status } : r,
-          );
+          const updated = s.registrations.map((r) => {
+            if (!registrationIds.includes(r.id)) return r;
+            const qrCode = status === "approved" ? r.qrCode || mintQrCode(r.eventId, r.userId) : r.qrCode;
+            return { ...r, status, qrCode };
+          });
           return {
             ...s,
             registrations: updated,

@@ -349,6 +349,33 @@ export async function POST(req: Request) {
         const { data: prof } = await admin.from("profiles").select("id").eq("id", reg.userId).maybeSingle();
         if (prof) validUserId = prof.id;
       }
+
+      // Security check: If registration status is being approved manually, only Campus Lead or Super Admin can approve
+      if (reg.status === "approved" && isUuid(reg.approvedBy)) {
+        const { data: approverRoles } = await admin
+          .from("user_roles")
+          .select("role_key")
+          .eq("user_id", reg.approvedBy);
+
+        const isAuthorized = approverRoles?.some((r: any) =>
+          r.role_key === "campus_lead" ||
+          r.role_key === "chairman" ||
+          r.role_key === "founder" ||
+          r.role_key === "hq_admin"
+        );
+
+        if (!isAuthorized) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Access restricted: Only the Campus Lead is authorized to approve student event registrations from the waiting list.",
+            },
+            { status: 403 },
+          );
+        }
+      }
+
       const { error } = await admin.from("event_registrations").upsert({
         id: regId,
         event_id: isUuid(reg.eventId) ? reg.eventId : null,

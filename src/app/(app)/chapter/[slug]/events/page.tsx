@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
+import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
 import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
@@ -58,6 +59,7 @@ export default function ChapterEventsPage({
   const [showForm, setShowForm] = useState(false);
   const [statusChip, setStatusChip] = useState<StatusChip>("all");
   const [search, setSearch] = useState("");
+  const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
 
 
   const canCreate = hasPermission(store, session.roleKey, "event.create");
@@ -406,11 +408,13 @@ export default function ChapterEventsPage({
                           Draft (pending publish)
                         </Button>
                       ) : eligibility.ok ? (
-                        <Link href={`/f/${eligibility.formId}`}>
-                          <Button variant="orange" className="h-9 px-4">
-                            Register
-                          </Button>
-                        </Link>
+                        <Button
+                          variant="orange"
+                          className="h-9 px-4"
+                          onClick={() => setSelectedEventForReg(ev)}
+                        >
+                          Register
+                        </Button>
                       ) : (
                         <Link href={`/chapter/${slug}/events/${ev.id}`}>
                           <Button variant="primary" className="h-9 px-4">
@@ -440,6 +444,12 @@ export default function ChapterEventsPage({
         onClose={() => setShowForm(false)}
         chapterSlug={chapter.slug}
         chapterId={chapter.id}
+      />
+
+      <EventRegistrationDialog
+        open={Boolean(selectedEventForReg)}
+        onClose={() => setSelectedEventForReg(null)}
+        event={selectedEventForReg}
       />
     </div>
   );

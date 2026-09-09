@@ -12,6 +12,7 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
+import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { hasPermission } from "@/lib/permissions";
 import { isFacultyRole } from "@/lib/access";
 import { Search, Sparkles, Calendar, ArrowRight } from "lucide-react";
@@ -26,6 +27,7 @@ export default function OpenEventsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
   const canCreate = hasPermission(store, session.roleKey, "event.create");
 
   // All events open across chapters / colleges
@@ -225,11 +227,13 @@ export default function OpenEventsPage() {
                           </Button>
                         </Link>
                       ) : eligibility.ok ? (
-                        <Link href={`/f/${eligibility.formId}`}>
-                          <Button variant="orange" className="h-9 px-4">
-                            Register
-                          </Button>
-                        </Link>
+                        <Button
+                          variant="orange"
+                          className="h-9 px-4"
+                          onClick={() => setSelectedEventForReg(ev)}
+                        >
+                          Register
+                        </Button>
                       ) : (
                         <Link href={eventHref}>
                           <Button variant="primary" className="h-9 px-4">
@@ -268,6 +272,12 @@ export default function OpenEventsPage() {
           </div>
         </div>
       ) : null}
+
+      <EventRegistrationDialog
+        open={Boolean(selectedEventForReg)}
+        onClose={() => setSelectedEventForReg(null)}
+        event={selectedEventForReg}
+      />
     </div>
   );
 }

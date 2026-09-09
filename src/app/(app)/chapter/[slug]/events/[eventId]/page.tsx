@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QRCode from "react-qr-code";
 import { FormSharePanel } from "@/components/domain/form-share-panel";
+import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
@@ -180,6 +181,7 @@ export default function EventDetailPage({
   const [studentSearch, setStudentSearch] = useState("");
   const [studentStatusFilter, setStudentStatusFilter] = useState<string>("all");
   const [studentDeptFilter, setStudentDeptFilter] = useState<string>("all");
+  const [registerOpen, setRegisterOpen] = useState(false);
 
   useEffect(() => {
     if (event && !editing) {
@@ -614,11 +616,13 @@ export default function EventDetailPage({
                 ← Events
               </Link>
               {eligibility.ok ? (
-                <Link href={`/f/${eligibility.formId}`}>
-                  <Button variant="orange" className="h-8 px-3 text-[12px]">
-                    Register
-                  </Button>
-                </Link>
+                <Button
+                  variant="orange"
+                  className="h-8 px-3 text-[12px]"
+                  onClick={() => setRegisterOpen(true)}
+                >
+                  Register
+                </Button>
               ) : null}
             </div>
           }
@@ -668,13 +672,24 @@ export default function EventDetailPage({
             meta={myReg && myReg.status !== "rejected" ? myReg.status : "none"}
           >
             {!myReg || myReg.status === "rejected" ? (
-              <p className="text-[13px] text-text-dim">
-                {myReg?.status === "rejected"
-                  ? "Your previous registration was rejected. Use Register above if the form is still open."
-                  : eligibility.ok
-                    ? "You are not registered yet — use Register above."
-                    : eligibility.reason}
-              </p>
+              <div className="space-y-3">
+                <p className="text-[13px] text-text-dim">
+                  {myReg?.status === "rejected"
+                    ? "Your previous registration was rejected. Use Register above if the form is still open."
+                    : eligibility.ok
+                      ? "You are not registered yet — register now with your student profile."
+                      : eligibility.reason}
+                </p>
+                {eligibility.ok ? (
+                  <Button
+                    variant="orange"
+                    className="h-8 px-3 text-[12px]"
+                    onClick={() => setRegisterOpen(true)}
+                  >
+                    Register now
+                  </Button>
+                ) : null}
+              </div>
             ) : (
               <div className="space-y-3">
                 <Badge tone={regStatusTone(myReg.status)}>
@@ -741,6 +756,12 @@ export default function EventDetailPage({
             ) : null}
           </TerminalPanel>
         </div>
+
+        <EventRegistrationDialog
+          open={registerOpen}
+          onClose={() => setRegisterOpen(false)}
+          event={event}
+        />
       </div>
     );
   }

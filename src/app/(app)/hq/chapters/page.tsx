@@ -13,7 +13,7 @@ import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
 import { calculateChapterActivityScore } from "@/lib/analytics";
 import { activityLabel } from "@/lib/permissions";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
@@ -290,7 +290,14 @@ export default function HqChaptersPage() {
                         {score}% · {activityLabel(score)}
                       </td>
                       <td className="py-3 pr-4">{members}</td>
-                      <td className="py-3 pr-4">{formatDate(c.foundedAt)}</td>
+                      <td className="py-3 pr-4">
+                        <div>{formatDate(c.foundedAt)}</div>
+                        {c.createdAt && (
+                          <div className="text-[10px] text-text-mute font-mono">
+                            {formatDateTime(c.createdAt)}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3">
                         <div className="flex flex-wrap gap-x-3 gap-y-1">
                           <Link

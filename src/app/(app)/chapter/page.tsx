@@ -14,10 +14,13 @@ import { isHqRole } from "@/lib/permissions";
 import { isFacultyRole } from "@/lib/access";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
+import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
+import type { EventItem } from "@/types";
 
 export default function ChapterIndexPage() {
   const [mounted, setMounted] = useState(false);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
   const router = useRouter();
   const { store, hydrated } = useStore();
   const { session } = useCurrentUser();
@@ -238,11 +241,13 @@ export default function ChapterIndexPage() {
                                 </Button>
                               </Link>
                             ) : eligibility.ok ? (
-                              <Link href={`/f/${eligibility.formId}`}>
-                                <Button variant="orange" className="h-8 px-3 text-xs">
-                                  Register
-                                </Button>
-                              </Link>
+                              <Button
+                                variant="orange"
+                                className="h-8 px-3 text-xs"
+                                onClick={() => setSelectedEventForReg(ev)}
+                              >
+                                Register
+                              </Button>
                             ) : (
                               <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
                                 <Button variant="primary" className="h-8 px-3 text-xs">
@@ -324,6 +329,12 @@ export default function ChapterIndexPage() {
           </TerminalPanel>
         </div>
       </div>
+
+      <EventRegistrationDialog
+        open={Boolean(selectedEventForReg)}
+        onClose={() => setSelectedEventForReg(null)}
+        event={selectedEventForReg}
+      />
     </div>
   );
 }

@@ -173,11 +173,27 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("leadership_applications").select("*"),
       supabase.from("chapter_standard_checks").select("*"),
       Promise.race([
-        supabase.auth.getSession().catch(() => null),
+        supabase.auth.getSession().catch((err: any) => {
+          if (
+            err?.code === "refresh_token_not_found" ||
+            err?.message?.includes("Refresh Token")
+          ) {
+            void supabase.auth.signOut().catch(() => {});
+          }
+          return null;
+        }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]),
       Promise.race([
-        supabase.auth.getUser().catch(() => null),
+        supabase.auth.getUser().catch((err: any) => {
+          if (
+            err?.code === "refresh_token_not_found" ||
+            err?.message?.includes("Refresh Token")
+          ) {
+            void supabase.auth.signOut().catch(() => {});
+          }
+          return null;
+        }),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]),
     ]);
@@ -319,6 +335,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           eventCount: Number(c.event_count ?? 0),
           projectCount: Number(c.project_count ?? 0),
           foundedAt: c.founded_at ?? new Date().toISOString(),
+          createdAt: c.created_at ?? undefined,
           facultyId: c.faculty_id ?? undefined,
           campusLeadId: c.campus_lead_id ?? cs.campus_lead_id ?? cs.campusLeadId ?? undefined,
           notes,
@@ -411,6 +428,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             : undefined),
         email: p.email,
         fullName: p.full_name,
+        createdAt: p.created_at ?? undefined,
+        joinedAt: p.created_at ?? undefined,
         avatarUrl: p.avatar_url ?? undefined,
         department: p.department ?? undefined,
         year: p.year ?? undefined,
@@ -520,6 +539,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         roleKey: ur.role_key ?? undefined,
         chapterId: ur.chapter_id ?? undefined,
         organizationId: ur.organization_id ?? undefined,
+        createdAt: ur.created_at ?? undefined,
       })) ?? [];
 
     const seenUserRoles = new Set<string>();
@@ -540,6 +560,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         endDate: lt.end_date,
         status: lt.status,
         handoverNotes: lt.handover_notes ?? undefined,
+        createdAt: lt.created_at ?? undefined,
       })) ?? [];
 
     const leadershipAssignments =
@@ -549,6 +570,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         userId: la.user_id,
         roleKey: la.role_key,
         title: la.title,
+        createdAt: la.created_at ?? undefined,
       })) ?? [];
 
     const eventPermissions =

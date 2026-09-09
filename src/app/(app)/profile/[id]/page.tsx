@@ -171,10 +171,15 @@ export default function ProfilePage({
   }
 
   const chapter = store.chapters.find((c) => c.id === profile.chapterId);
-  const roles = store.userRoles
+  type RoleWithTimestamp = { role: (typeof store.roles)[0]; createdAt: string | undefined };
+  const rolesWithUr: RoleWithTimestamp[] = store.userRoles
     .filter((ur) => ur.userId === id)
-    .map((ur) => store.roles.find((r) => r.id === ur.roleId))
-    .filter(Boolean);
+    .map((ur) => {
+      const r = store.roles.find((role) => role.id === ur.roleId || role.key === ur.roleKey);
+      return r ? { role: r, createdAt: ur.createdAt } : null;
+    })
+    .filter((item): item is RoleWithTimestamp => item !== null);
+  const roles = rolesWithUr.map((ru) => ru.role);
   const certs = store.certificates.filter((c) => c.userId === id);
   const eventsAttended = store.attendance.filter((a) => a.userId === id);
   const projects = store.projects.filter((p) => p.teamIds.includes(id));
@@ -245,6 +250,12 @@ export default function ProfilePage({
                   </>
                 ) : null}
               </p>
+              {(profile.createdAt || profile.joinedAt) ? (
+                <p className="mt-1 text-[12px] text-text-mute flex items-center gap-1.5 font-mono">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80" />
+                  <span>Joined {formatDateTime((profile.createdAt || profile.joinedAt)!)}</span>
+                </p>
+              ) : null}
               {profile.bio ? (
                 <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-text-dim">
                   {profile.bio}
@@ -263,10 +274,20 @@ export default function ProfilePage({
                     (s: any) => s.key === derived.journeyStage || s.stage === derived.journeyStage,
                   )?.label ?? "Awareness"}
                 </Badge>
-                {roles.map((r) => (
-                  <Badge key={r!.id} tone="magenta">
-                    {r!.name}
-                  </Badge>
+                {rolesWithUr.map(({ role, createdAt }) => (
+                  <span
+                    key={role.id}
+                    title={createdAt ? `Assigned ${formatDateTime(createdAt)}` : undefined}
+                  >
+                    <Badge tone="magenta">
+                      {role.name}
+                      {createdAt && (
+                        <span className="ml-1 opacity-75 text-[10px] font-mono">
+                          · {formatDateTime(createdAt)}
+                        </span>
+                      )}
+                    </Badge>
+                  </span>
                 ))}
                 {profile.badges.map((b) => (
                   <Badge key={b} tone="green">

@@ -199,6 +199,7 @@ export interface Chapter {
   location?: string;
   mapUrl?: string;
   customSettings?: Record<string, any>;
+  createdAt?: string;
 }
 
 export interface Profile {
@@ -207,6 +208,8 @@ export interface Profile {
   elevatesId?: string;
   email: string;
   fullName: string;
+  createdAt?: string;
+  joinedAt?: string;
   avatarUrl?: string;
   department?: string;
   year?: string;
@@ -290,6 +293,7 @@ export interface UserRole {
   isPermanent?: boolean;
   validFrom?: string;
   validTo?: string;
+  createdAt?: string;
 }
 
 export interface LeadershipTerm {
@@ -301,6 +305,7 @@ export interface LeadershipTerm {
   endDate: string;
   status: LeadershipStatus;
   handoverNotes?: string;
+  createdAt?: string;
 }
 
 export interface LeadershipAssignment {
@@ -309,6 +314,7 @@ export interface LeadershipAssignment {
   userId: string;
   roleKey: RoleKey;
   title: string;
+  createdAt?: string;
 }
 
 export interface EventCaseStudy {

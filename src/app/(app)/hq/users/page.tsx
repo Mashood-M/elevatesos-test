@@ -12,6 +12,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
+import { formatDateTime } from "@/lib/utils";
 import { CheckSquare, Square, ShieldCheck, Mail } from "lucide-react";
 
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
@@ -842,7 +843,7 @@ export default function HqUsersPage() {
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {rows.map(({ profile, roles, status, chapter }) => (
+            {rows.map(({ profile, roles, status, chapter, urs }) => (
               <li
                 key={profile.id}
                 className="flex flex-wrap items-center justify-between gap-3 py-3.5"
@@ -864,19 +865,46 @@ export default function HqUsersPage() {
                       {status}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-[12px] text-text-dim">
-                    {profile.email}
-                    {chapter ? ` · ${chapter.name}` : " · HQ"}
+                  <p className="mt-1 text-[12px] text-text-dim flex flex-wrap items-center gap-x-2">
+                    <span>{profile.email}</span>
+                    <span>·</span>
+                    <span>{chapter ? chapter.name : "HQ"}</span>
+                    {(profile.createdAt || profile.joinedAt) ? (
+                      <>
+                        <span>·</span>
+                        <span className="font-mono text-[11px] text-text-mute">
+                          Joined {formatDateTime((profile.createdAt || profile.joinedAt)!)}
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {roles.length ? (
-                      roles.map((r, idx) =>
-                        r ? (
-                          <Badge key={`${profile.id}-${r.id}-${r.key}-${idx}`} tone="cyan">
-                            {roleKeyLabel(r.key)}
-                          </Badge>
-                        ) : null,
-                      )
+                      roles.map((r, idx) => {
+                        if (!r) return null;
+                        const matchingUr = urs.find(
+                          (u) => u.roleId === r.id || u.roleKey === r.key,
+                        );
+                        return (
+                          <span
+                            key={`${profile.id}-${r.id}-${r.key}-${idx}`}
+                            title={
+                              matchingUr?.createdAt
+                                ? `Assigned ${formatDateTime(matchingUr.createdAt)}`
+                                : undefined
+                            }
+                          >
+                            <Badge tone="cyan">
+                              {roleKeyLabel(r.key)}
+                              {matchingUr?.createdAt && (
+                                <span className="ml-1 text-[10px] opacity-75 font-mono">
+                                  · {formatDateTime(matchingUr.createdAt)}
+                                </span>
+                              )}
+                            </Badge>
+                          </span>
+                        );
+                      })
                     ) : (
                       <span className="text-[11px] text-text-mute">
                         No roles

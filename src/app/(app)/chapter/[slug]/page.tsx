@@ -16,7 +16,7 @@ import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "
 import { isEventVisibleToUser } from "@/lib/events";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
-import { formatDate, initials } from "@/lib/utils";
+import { formatDate, formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
@@ -98,6 +98,31 @@ export default function ChapterDashboardPage({
       (a, b) =>
         new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
     );
+
+  const chapterLogs = (store.activityLogs ?? [])
+    .filter((l) => {
+      if (l.entity === "chapter" && l.entityId === chapter.id) return true;
+      if (
+        l.meta &&
+        (l.meta.includes(chapter.id) ||
+          l.meta.includes(chapter.slug) ||
+          l.meta.includes(chapter.name))
+      )
+        return true;
+      if (
+        l.entity === "leadership_term" &&
+        store.leadershipTerms.some(
+          (t) => t.id === l.entityId && t.chapterId === chapter.id,
+        )
+      )
+        return true;
+      return false;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    )
+    .slice(0, 5);
 
   return (
     <div>
@@ -312,8 +337,8 @@ export default function ChapterDashboardPage({
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-text-dim">Established</dt>
-                  <dd className="font-medium">
-                    {new Date(chapter.foundedAt).getFullYear()}
+                  <dd className="font-medium font-mono text-[11px]">
+                    {chapter.createdAt ? formatDateTime(chapter.createdAt) : formatDate(chapter.foundedAt)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
@@ -429,6 +454,39 @@ export default function ChapterDashboardPage({
                   </Link>
                 )}
               </div>
+            )}
+          </TerminalPanel>
+
+          <TerminalPanel
+            title="Recent Activity"
+            meta={`${chapterLogs.length} updates`}
+          >
+            {!chapterLogs.length ? (
+              <p className="py-3 text-[13px] text-text-mute">
+                No activity logged yet for this chapter.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60 text-[12px]">
+                {chapterLogs.map((log) => {
+                  const actor = store.profiles.find((p) => p.id === log.actorId);
+                  return (
+                    <li key={log.id} className="py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-text truncate">
+                          {actor?.fullName ?? "System"}
+                        </span>
+                        <span className="font-mono text-[10px] text-[var(--accent)] shrink-0">
+                          {formatDateTime(log.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-text-dim truncate">
+                        {log.action.replaceAll("_", " ")}
+                        {log.meta ? ` · ${log.meta}` : ""}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </TerminalPanel>
         </div>

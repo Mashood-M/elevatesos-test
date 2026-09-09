@@ -10,7 +10,7 @@ import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 
 type StatusFilter = "all" | "active_cycle" | "no_cycle" | "onboarding";
 
@@ -233,8 +233,13 @@ export default function HqLeadershipPage() {
                                         {user?.fullName ?? "Unknown"}
                                       </Link>
                                     </span>
-                                    <span className="text-[11px] text-text-mute">
-                                      {roleKeyLabel(a.roleKey)}
+                                    <span className="text-[11px] text-text-mute flex items-center gap-1.5 font-mono">
+                                      <span>{roleKeyLabel(a.roleKey)}</span>
+                                      {a.createdAt && (
+                                        <span className="text-[10px] text-text-dim">
+                                          · Appointed {formatDateTime(a.createdAt)}
+                                        </span>
+                                      )}
                                     </span>
                                   </li>
                                 );

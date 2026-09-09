@@ -25,6 +25,7 @@ export default function HqAuditPage() {
   const { store } = useStore();
   const [q, setQ] = useState("");
   const [actionFilter, setActionFilter] = useState<"all" | string>("all");
+  const [entityFilter, setEntityFilter] = useState<"all" | string>("all");
 
   const logs = useMemo(
     () =>
@@ -40,6 +41,22 @@ export default function HqAuditPage() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [logs]);
 
+  const entityOptions = useMemo(() => {
+    const set = new Set(logs.map((l) => l.entity));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [logs]);
+
+  const chapterCount = logs.filter(
+    (l) => l.entity === "chapter" || l.action.startsWith("chapter_"),
+  ).length;
+  const roleCount = logs.filter(
+    (l) =>
+      l.entity === "role" ||
+      l.entity === "leadership_assignment" ||
+      l.entity === "leadership_term" ||
+      l.action.includes("role") ||
+      l.action.includes("leadership"),
+  ).length;
   const registrationCount = logs.filter((l) =>
     l.action.startsWith("registration_"),
   ).length;
@@ -52,6 +69,7 @@ export default function HqAuditPage() {
     const needle = q.trim().toLowerCase();
     return logs.filter((log) => {
       if (actionFilter !== "all" && log.action !== actionFilter) return false;
+      if (entityFilter !== "all" && log.entity !== entityFilter) return false;
       if (!needle) return true;
       const actor =
         store.profiles.find((p) => p.id === log.actorId)?.fullName ??
@@ -65,7 +83,7 @@ export default function HqAuditPage() {
         (log.meta ?? "").toLowerCase().includes(needle)
       );
     });
-  }, [logs, q, actionFilter, store.profiles]);
+  }, [logs, q, actionFilter, entityFilter, store.profiles]);
 
   function exportCsv() {
     const header = [
@@ -123,16 +141,12 @@ export default function HqAuditPage() {
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat label="Total Logs" value={logs.length} accent="cyan" />
-        <Stat label="Unique Actions" value={uniqueActions} accent="magenta" />
+        <Stat label="Chapter Logs" value={chapterCount} accent="orange" hint="Chapters & cycles" />
+        <Stat label="Role & Access Logs" value={roleCount} accent="magenta" hint="Roles & leadership" />
         <Stat
           label="Registrations"
           value={registrationCount}
           accent="green"
-        />
-        <Stat
-          label="Reports Approved"
-          value={reportsApproved}
-          accent="orange"
         />
       </div>
 
@@ -150,7 +164,21 @@ export default function HqAuditPage() {
               placeholder="Actor, action, entity, meta…"
             />
           </div>
-          <div className="w-full md:w-56">
+          <div className="w-full md:w-48">
+            <FieldLabel>Entity</FieldLabel>
+            <Select
+              value={entityFilter}
+              onChange={(e) => setEntityFilter(e.target.value)}
+            >
+              <option value="all">All entities</option>
+              {entityOptions.map((entity) => (
+                <option key={entity} value={entity}>
+                  {entity.replaceAll("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-full md:w-48">
             <FieldLabel>Action</FieldLabel>
             <Select
               value={actionFilter}

@@ -12,7 +12,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import type { Chapter } from "@/types";
@@ -112,6 +112,21 @@ export default function ChapterSettingsPage({
         p.id === ch.facultyId,
     );
   }, [store.profiles, ch.id, currentCampusLeadId, ch.facultyId]);
+
+  const chapterLogs = useMemo(() => {
+    const memberSet = new Set(members.map((m) => m.id));
+    return (store.activityLogs ?? [])
+      .filter((l) => {
+        if (l.entity === "chapter" && l.entityId === ch.id) return true;
+        if (l.meta && (l.meta.includes(ch.id) || l.meta.includes(ch.slug) || l.meta.includes(ch.name))) return true;
+        if (l.entity === "leadership_term" && leadershipTerms.some((t) => t.id === l.entityId)) return true;
+        if (l.entity === "leadership_assignment" && executives.some((e) => e.id === l.entityId)) return true;
+        if (memberSet.has(l.actorId)) return true;
+        return false;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 6);
+  }, [store.activityLogs, ch.id, ch.slug, ch.name, members, leadershipTerms, executives]);
 
   function saveField(
     patch: Partial<
@@ -495,9 +510,9 @@ export default function ChapterSettingsPage({
             </div>
             <dl className="mt-4 grid gap-2 text-[12px] text-text-dim sm:grid-cols-3">
               <div className="flex justify-between gap-2 border-t border-border pt-2">
-                <dt>Founded</dt>
-                <dd className="font-medium text-text">
-                  {formatDate(chapter.foundedAt)}
+                <dt>Founded / Created</dt>
+                <dd className="font-medium text-text font-mono text-[11px]">
+                  {chapter.createdAt ? formatDateTime(chapter.createdAt) : formatDate(chapter.foundedAt)}
                 </dd>
               </div>
               <div className="flex justify-between gap-2 border-t border-border pt-2">
@@ -668,6 +683,41 @@ export default function ChapterSettingsPage({
               </Link>
             </TerminalPanel>
           ) : null}
+
+          <TerminalPanel
+            title="Chapter Activity"
+            meta={`${chapterLogs.length} recent logs`}
+          >
+            {!chapterLogs.length ? (
+              <p className="py-3 text-[13px] text-text-mute">
+                No activity logged yet for this chapter.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60 text-[12px]">
+                {chapterLogs.map((log) => {
+                  const actor = store.profiles.find((p) => p.id === log.actorId);
+                  return (
+                    <li key={log.id} className="py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-text">
+                          {actor?.fullName ?? "System"}
+                        </span>
+                        <span className="font-mono text-[10px] text-[var(--accent)]">
+                          {formatDateTime(log.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-text-dim">
+                        {log.action.replaceAll("_", " ")}
+                        {log.meta ? (
+                          <span className="text-text-mute"> · {log.meta}</span>
+                        ) : null}
+                      </p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </TerminalPanel>
         </div>
       </div>
     </div>

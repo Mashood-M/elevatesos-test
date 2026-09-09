@@ -1719,7 +1719,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ok: true,
         };
         const regId = isUuid(registration.id) ? registration.id : genUuid();
-        const normalized = { ...registration, id: regId, qrCode: registration.qrCode || "" };
+        const qrCode = registration.qrCode || mintQrCode(registration.eventId, registration.userId);
+        const normalized = { ...registration, id: regId, qrCode };
         setStore((s) => {
           const event = s.events.find((e) => e.id === registration.eventId);
           if (!event) {
@@ -1763,11 +1764,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             return s;
           }
+          const userProf = s.profiles.find((p) => p.id === registration.userId);
           return {
             ...s,
             registrations: [
               normalized,
               ...s.registrations,
+            ],
+            activityLogs: [
+              log(
+                registration.userId,
+                "event_registered",
+                "event",
+                registration.eventId,
+                `${userProf?.fullName ?? "User"} registered for event "${event.title}" on ${new Date().toLocaleString()}`,
+              ),
+              ...s.activityLogs,
             ],
           };
         });
@@ -2282,7 +2294,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s.chapters,
           ],
           activityLogs: [
-            log(s.session.userId, "chapter_created", "chapter", chapter.id),
+            log(
+              s.session.userId,
+              "chapter_created",
+              "chapter",
+              chapter.id,
+              `Chapter "${chapter.name}" (${chapter.slug}) created on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
           notifications: [
@@ -2400,7 +2418,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userRoles: updatedUserRoles,
             chapters: s.chapters.map((c) => (c.id === id ? updated : c)),
             activityLogs: [
-              log(s.session.userId, "chapter_updated", "chapter", id),
+              log(
+                s.session.userId,
+                "chapter_updated",
+                "chapter",
+                id,
+                `Chapter "${updated.name}" updated on ${new Date().toLocaleString()}`,
+              ),
               ...s.activityLogs,
             ],
           };
@@ -2421,7 +2445,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           chapters: s.chapters.filter((c) => c.id !== id),
           activityLogs: [
-            log(s.session.userId, "chapter_deleted", "chapter", id),
+            log(
+              s.session.userId,
+              "chapter_deleted",
+              "chapter",
+              id,
+              `Chapter "${prev?.name ?? id}" deleted on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3431,12 +3461,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const updatedProfiles = assignedChapId
             ? s.profiles.map((p) => (p.id === userId ? { ...p, chapterId: assignedChapId } : p))
             : s.profiles;
+          const roleSummary = assignments.map((a) => a.roleKey).join(", ") || "none";
           return {
             ...s,
             profiles: updatedProfiles,
             userRoles: [...others, ...built, ...leadershipLinked],
             activityLogs: [
-              log(s.session.userId, "user_roles_set", "profile", userId),
+              log(
+                s.session.userId,
+                "user_roles_set",
+                "profile",
+                userId,
+                `Roles [${roleSummary}] assigned to ${profile.fullName} on ${new Date().toLocaleString()}`,
+              ),
               ...s.activityLogs,
             ],
           };
@@ -3488,6 +3525,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 "role_permission_set",
                 "role",
                 role.id,
+                `Permission "${permission.name}" (${permission.key}) ${allowed ? "granted to" : "revoked from"} role "${role.name}" on ${new Date().toLocaleString()}`,
               ),
               ...s.activityLogs,
             ],
@@ -3516,7 +3554,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           departments: [department, ...(s.departments ?? [])],
           activityLogs: [
-            log(s.session.userId, "department_created", "department", department.id),
+            log(
+              s.session.userId,
+              "department_created",
+              "department",
+              department.id,
+              `Department "${department.name}" created on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3566,7 +3610,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : p,
           ),
           activityLogs: [
-            log(s.session.userId, "department_updated", "department", id),
+            log(
+              s.session.userId,
+              "department_updated",
+              "department",
+              id,
+              `Department "${updatedDept.name}" updated on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3598,7 +3648,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           departments: (s.departments ?? []).filter((d) => d.id !== id),
           activityLogs: [
-            log(s.session.userId, "department_deleted", "department", id),
+            log(
+              s.session.userId,
+              "department_deleted",
+              "department",
+              id,
+              `Department "${existing.name}" deleted on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3662,7 +3718,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           classCohorts: [cohort, ...(s.classCohorts ?? [])],
           activityLogs: [
-            log(s.session.userId, "class_cohort_created", "class_cohort", cohort.id),
+            log(
+              s.session.userId,
+              "class_cohort_created",
+              "class_cohort",
+              cohort.id,
+              `Class cohort ${cohort.department} ${cohort.year}-${cohort.section} created on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3724,7 +3786,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             c.id === id ? next : c,
           ),
           activityLogs: [
-            log(s.session.userId, "class_cohort_updated", "class_cohort", id),
+            log(
+              s.session.userId,
+              "class_cohort_updated",
+              "class_cohort",
+              id,
+              `Class cohort ${next.department} ${next.year}-${next.section} updated on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3745,7 +3813,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ...s,
           classCohorts: (s.classCohorts ?? []).filter((c) => c.id !== id),
           activityLogs: [
-            log(s.session.userId, "class_cohort_deleted", "class_cohort", id),
+            log(
+              s.session.userId,
+              "class_cohort_deleted",
+              "class_cohort",
+              id,
+              `Class cohort ${existing ? `${existing.department} ${existing.year}-${existing.section}` : id} deleted on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3780,6 +3854,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           endDate,
           status,
           handoverNotes: input.handoverNotes?.trim() || undefined,
+          createdAt: new Date().toISOString(),
         };
         setStore((s) => {
           let terms = [...s.leadershipTerms, term];
@@ -3810,7 +3885,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             leadershipTerms: terms,
             userRoles,
             activityLogs: [
-              log(s.session.userId, "leadership_term_created", "leadership_term", term.id),
+              log(
+                s.session.userId,
+                "leadership_term_created",
+                "leadership_term",
+                term.id,
+                `Leadership term "${term.title}" (${term.academicYear}) created on ${new Date().toLocaleString()}`,
+              ),
               ...s.activityLogs,
             ],
           };
@@ -3885,7 +3966,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             leadershipTerms: terms,
             userRoles,
             activityLogs: [
-              log(s.session.userId, "leadership_term_updated", "leadership_term", id),
+              log(
+                s.session.userId,
+                "leadership_term_updated",
+                "leadership_term",
+                id,
+                `Leadership term "${next.title}" (${next.academicYear}) updated on ${new Date().toLocaleString()}`,
+              ),
               ...s.activityLogs,
             ],
           };
@@ -3911,7 +3998,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ),
           userRoles: s.userRoles.filter((ur) => ur.leadershipTermId !== id),
           activityLogs: [
-            log(s.session.userId, "leadership_term_archived", "leadership_term", id),
+            log(
+              s.session.userId,
+              "leadership_term_archived",
+              "leadership_term",
+              id,
+              `Leadership term "${existing.title}" (${existing.academicYear}) archived on ${new Date().toLocaleString()}`,
+            ),
             ...s.activityLogs,
           ],
         }));
@@ -3949,7 +4042,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           userId: input.userId,
           roleKey: input.roleKey,
           title,
+          createdAt: new Date().toISOString(),
         };
+        const memberProfile = store.profiles.find((p) => p.id === input.userId);
         setStore((s) => {
           let userRoles = s.userRoles;
           if (term.status === "active") {
@@ -3965,6 +4060,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 "leadership_assignment_added",
                 "leadership_assignment",
                 assignment.id,
+                `Assigned ${memberProfile?.fullName ?? input.userId} as ${title} (${input.roleKey}) on ${new Date().toLocaleString()}`,
               ),
               ...s.activityLogs,
             ],
@@ -4030,6 +4126,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 "leadership_assignment_updated",
                 "leadership_assignment",
                 id,
+                `Updated leadership assignment for "${next.title}" (${next.roleKey}) on ${new Date().toLocaleString()}`,
               ),
               ...s.activityLogs,
             ],
@@ -4067,6 +4164,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 "leadership_assignment_removed",
                 "leadership_assignment",
                 id,
+                `Removed leadership assignment "${existing.title}" (${existing.roleKey}) on ${new Date().toLocaleString()}`,
               ),
               ...s.activityLogs,
             ],

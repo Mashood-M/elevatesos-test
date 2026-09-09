@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 import type { RoleKey, ScopeLevel } from "@/types";
 
@@ -58,6 +58,24 @@ export default function HqPermissionsPage() {
         grantedByRole.get(selected.key)?.has(p.key),
       )
     : [];
+
+  const roleLogs = useMemo(() => {
+    return (store.activityLogs ?? [])
+      .filter(
+        (l) =>
+          l.entity === "role" ||
+          l.entity === "leadership_assignment" ||
+          l.entity === "leadership_term" ||
+          l.action.includes("role") ||
+          l.action.includes("permission") ||
+          l.action.includes("leadership"),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
+      .slice(0, 8);
+  }, [store.activityLogs]);
 
   const tabs: { id: ScopeFilter; label: string }[] = [
     { id: "all", label: "All" },
@@ -237,6 +255,45 @@ export default function HqPermissionsPage() {
           </TerminalPanel>
         </div>
       ) : null}
+
+      <div className="mt-6">
+        <TerminalPanel
+          title="Role & Access Activity"
+          meta={`${roleLogs.length} recent changes`}
+        >
+          {!roleLogs.length ? (
+            <p className="py-4 text-[13px] text-text-mute">
+              No role or permission changes logged yet.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border/60 text-[12px]">
+              {roleLogs.map((log) => {
+                const actor = store.profiles.find((p) => p.id === log.actorId);
+                return (
+                  <li key={log.id} className="py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Badge tone="mute">{log.action.replaceAll("_", " ")}</Badge>
+                        <span className="font-semibold text-text">
+                          {actor?.fullName ?? "System"}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[11px] text-[var(--accent)]">
+                        {formatDateTime(log.createdAt)}
+                      </span>
+                    </div>
+                    {log.meta && (
+                      <p className="mt-1 text-[12px] text-text-dim">
+                        {log.meta}
+                      </p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </TerminalPanel>
+      </div>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import {
   roleKeyLabel,
 } from "@/lib/leadership";
 import { hasPermission, isHqRole } from "@/lib/permissions";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import type {
   LeadershipAssignment,
   LeadershipStatus,
@@ -708,8 +708,13 @@ export default function ChapterLeadershipPage({
                                   >
                                     {user?.fullName ?? "Unknown"}
                                   </Link>
-                                  <span className="ml-2 text-[11px] uppercase text-text-mute">
+                                  <span className="ml-2 text-[11px] uppercase text-text-mute font-mono">
                                     [{roleKeyLabel(a.roleKey)}]
+                                    {a.createdAt && (
+                                      <span className="ml-1 text-[10px] text-text-dim lowercase font-normal">
+                                        · Appointed {formatDateTime(a.createdAt)}
+                                      </span>
+                                    )}
                                   </span>
                                 </div>
                                 {canEditTeam ? (

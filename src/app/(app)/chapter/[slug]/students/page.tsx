@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isSuperAdmin } from "@/lib/permissions";
-import { initials } from "@/lib/utils";
+import { formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { roleKeyLabel } from "@/lib/leadership";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
@@ -52,6 +52,8 @@ interface ChapterMemberItem {
     tone: "orange" | "cyan" | "green" | "magenta" | "mute";
   };
   collectedAt: string;
+  createdAt?: string;
+  joinedAt?: string;
 }
 
 function resolveMemberRole(
@@ -179,6 +181,8 @@ export default function ChapterStudentsPage({
         status,
         roleInfo,
         collectedAt: new Date().toISOString().split("T")[0],
+        createdAt: p.createdAt,
+        joinedAt: p.joinedAt || p.createdAt,
       };
     });
   }, [
@@ -726,10 +730,15 @@ export default function ChapterStudentsPage({
                             >
                               {stu.fullName}
                             </Link>
-                            <div className="mt-0.5 flex items-center gap-1.5">
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                               <Badge tone={stu.roleInfo.tone}>
                                 {stu.roleInfo.label}
                               </Badge>
+                              {(stu.createdAt || stu.joinedAt) ? (
+                                <span className="font-mono text-[10px] text-text-mute">
+                                  Joined {formatDateTime((stu.createdAt || stu.joinedAt)!)}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </div>

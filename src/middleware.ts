@@ -166,9 +166,9 @@ export async function middleware(request: NextRequest) {
 
   // Unauthenticated user or invalid session accessing protected route
   if (isProtectedApp && !user) {
-    // If getUser failed due to network/connectivity issues OR timed out, AND session cookies exist:
-    // Do NOT force-redirect to /login. Allow request through using existing session cookie.
-    if ((isNetworkError || user === null) && hasAuthCookie) {
+    // Only allow through on genuine network errors / offline mode with existing cookies,
+    // NEVER when the user failed authentication with invalid / expired tokens.
+    if (isNetworkError && hasAuthCookie) {
       supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
       supabaseResponse.headers.set("Pragma", "no-cache");
       return supabaseResponse;
@@ -179,9 +179,15 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
     const redirectResponse = NextResponse.redirect(redirectUrl);
-    // Copy cookies so session updates aren't lost
-    supabaseResponse.cookies.getAll().forEach((c) => {
-      redirectResponse.cookies.set(c.name, c.value);
+    // Delete stale auth cookies so browser does not loop with invalid refresh tokens
+    request.cookies.getAll().forEach((c) => {
+      if (
+        c.name.startsWith("sb-") ||
+        c.name.includes("auth-token") ||
+        c.name.includes("supabase")
+      ) {
+        redirectResponse.cookies.delete(c.name);
+      }
     });
     return redirectResponse;
   }

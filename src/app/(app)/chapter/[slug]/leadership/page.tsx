@@ -318,6 +318,29 @@ export default function ChapterLeadershipPage({
     flashMsg("Assignment removed");
   }
 
+  if (session.roleKey === "class_representative") {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow={chapterEyebrow(session.roleKey, "people")}
+          title="Leadership"
+          description="Chapter executive leadership is managed by Campus Leads and Faculty."
+        />
+        <TerminalPanel title="access.restricted" accent="orange">
+          <p className="text-sm text-text-dim">
+            Class Representatives do not have permission to view or manage chapter executive leadership cycles.
+          </p>
+          <Link
+            href={`/chapter/${slug}`}
+            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
+          >
+            ← Back to chapter
+          </Link>
+        </TerminalPanel>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader

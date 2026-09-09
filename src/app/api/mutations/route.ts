@@ -387,6 +387,55 @@ export async function POST(req: Request) {
         const { data: prof } = await admin.from("profiles").select("id").eq("id", att.userId).maybeSingle();
         if (prof) validUserId = prof.id;
       }
+
+      // If checked_in_by is a class representative, verify that the attendee belongs to their class cohort in Supabase
+      if (isUuid(att.checkedInBy) && validUserId) {
+        const { data: repRole } = await admin
+          .from("user_roles")
+          .select("role_key")
+          .eq("user_id", att.checkedInBy)
+          .eq("role_key", "class_representative")
+          .maybeSingle();
+
+        if (repRole) {
+          // Find the class cohorts assigned to this representative
+          const { data: cohorts } = await admin
+            .from("class_cohorts")
+            .select("department, academic_year, division")
+            .or(`representative_id.eq.${att.checkedInBy},rep_ids.cs.{${att.checkedInBy}}`);
+
+          // Fetch attendee profile
+          const { data: attendeeProfile } = await admin
+            .from("profiles")
+            .select("department, year, section")
+            .eq("id", validUserId)
+            .maybeSingle();
+
+          if (cohorts && cohorts.length > 0 && attendeeProfile) {
+            const matchesClass = cohorts.some((c: any) => {
+              const deptMatch =
+                (c.department || "").trim().toLowerCase() ===
+                (attendeeProfile.department || "").trim().toLowerCase();
+              const yearMatch =
+                (c.academic_year || "").trim().toLowerCase() ===
+                (attendeeProfile.year || "").trim().toLowerCase();
+              return deptMatch && yearMatch;
+            });
+
+            if (!matchesClass) {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error:
+                    "Access restricted: Class Representatives can only record attendance for students in their assigned class cohort.",
+                },
+                { status: 403 },
+              );
+            }
+          }
+        }
+      }
+
       const rec = {
         id: attId,
         event_id: isUuid(att.eventId) ? att.eventId : null,
@@ -448,6 +497,27 @@ export async function POST(req: Request) {
         // Certificates table requires non-null user_id referencing profiles(id)
         console.warn("Certificate user_id does not reference an existing profile, skipping DB sync:", cert.userId);
         return NextResponse.json({ ok: true, id: certId, skipped: true });
+      }
+
+      // Disallow Class Representatives from issuing certificates
+      if (isUuid(cert.issuedBy)) {
+        const { data: repRole } = await admin
+          .from("user_roles")
+          .select("role_key")
+          .eq("user_id", cert.issuedBy)
+          .eq("role_key", "class_representative")
+          .maybeSingle();
+
+        if (repRole) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Access restricted: Class Representatives are not authorized to issue certificates.",
+            },
+            { status: 403 },
+          );
+        }
       }
 
       const { error } = await admin.from("certificates").upsert({
@@ -745,14 +815,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
       const cohortId = isUuid(cohort.id) ? cohort.id : genUuid();
-      const repId = Array.isArray(cohort.repIds) && cohort.repIds.length > 0 && isUuid(cohort.repIds[0]) ? cohort.repIds[0] : (isUuid(cohort.representativeId) ? cohort.representativeId : null);
+      const validRepIds: string[] = Array.isArray(cohort.repIds)
+        ? cohort.repIds.filter(isUuid)
+        : (isUuid(cohort.representativeId) ? [cohort.representativeId] : []);
       const { error } = await admin.from("class_cohorts").upsert({
         id: cohortId,
         chapter_id: cohort.chapterId,
         department: cohort.department,
         year: cohort.year,
         section: cohort.section,
-        rep_ids: repId ? [repId] : [],
+        rep_ids: validRepIds,
       });
 
       if (error) {

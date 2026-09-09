@@ -686,7 +686,9 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         department: cc.department,
         year: cc.year,
         section: cc.section,
-        repIds: cc.representative_id ? [cc.representative_id] : [],
+        repIds: Array.isArray(cc.rep_ids) && cc.rep_ids.length > 0
+          ? cc.rep_ids
+          : (cc.representative_id ? [cc.representative_id] : []),
       })) ?? [];
 
     const formResponses: import("@/types").FormResponse[] =

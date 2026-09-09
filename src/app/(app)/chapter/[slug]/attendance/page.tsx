@@ -19,8 +19,9 @@ import {
   type OfflineCheckInItem,
 } from "@/lib/attendance/offline-queue";
 import { hasPermission } from "@/lib/permissions";
+import { cohortRepIds } from "@/lib/forms/helpers";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { AttendanceStatus, EventAttendanceSession } from "@/types";
+import type { AttendanceStatus, ClassCohort, EventAttendanceSession } from "@/types";
 
 type DeskMessage = { tone: "ok" | "err"; text: string };
 
@@ -34,6 +35,29 @@ export default function ChapterAttendancePage({
   const { store, checkIn, updateAttendance, issueCertificate, updateEvent } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
+
+  // Class Representative Scoped Cohort
+  const myClassCohort = useMemo(() => {
+    if (session.roleKey !== "class_representative" || !chapter) return null;
+    const fromCohorts = (store.classCohorts ?? []).find(
+      (c) =>
+        (c.chapterId === chapter.id || !c.chapterId) &&
+        cohortRepIds(c).includes(session.userId),
+    );
+    if (fromCohorts) return fromCohorts;
+    const myProfile = store.profiles.find((p) => p.id === session.userId);
+    if (myProfile?.department && myProfile?.year) {
+      return {
+        id: "rep-profile-cohort",
+        chapterId: chapter.id,
+        department: myProfile.department,
+        year: myProfile.year,
+        section: myProfile.section || "",
+        repIds: [session.userId],
+      } as ClassCohort;
+    }
+    return null;
+  }, [session.roleKey, session.userId, store.classCohorts, store.profiles, chapter]);
 
   const [selectedEvent, setSelectedEvent] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<string>("");
@@ -112,13 +136,30 @@ export default function ChapterAttendancePage({
   const activeSessionObj = attendanceSessions.find((s) => s.id === activeSessionId) || attendanceSessions[0];
   const isMultiSession = attendanceSessions.length > 1;
 
-  const approvedRegs = useMemo(
-    () =>
-      store.registrations.filter(
-        (r) => r.eventId === eventId && r.status === "approved",
-      ),
-    [store.registrations, eventId],
-  );
+  const approvedRegs = useMemo(() => {
+    let regs = store.registrations.filter(
+      (r) => r.eventId === eventId && r.status === "approved",
+    );
+    if (session.roleKey === "class_representative" && myClassCohort) {
+      regs = regs.filter((reg) => {
+        const user = store.profiles.find((p) => p.id === reg.userId);
+        if (!user) return false;
+        const matchDept =
+          (user.department || "").trim().toLowerCase() ===
+          myClassCohort.department.trim().toLowerCase();
+        const matchYear =
+          (user.year || "").trim().toLowerCase() ===
+          myClassCohort.year.trim().toLowerCase();
+        const matchSec =
+          !myClassCohort.section ||
+          !user.section ||
+          user.section.trim().toLowerCase() ===
+            myClassCohort.section.trim().toLowerCase();
+        return matchDept && matchYear && matchSec;
+      });
+    }
+    return regs;
+  }, [store.registrations, store.profiles, eventId, session.roleKey, myClassCohort]);
 
   const filteredRoster = useMemo(() => {
     const q = rosterQuery.trim().toLowerCase();
@@ -219,6 +260,23 @@ export default function ChapterAttendancePage({
         setFlash({ tone: "err", text: "Select an event first." });
         return false;
       }
+      if (session.roleKey === "class_representative" && myClassCohort) {
+        const reg = store.registrations.find((r) => r.id === registrationId);
+        const user = store.profiles.find((p) => p.id === reg?.userId);
+        const matchDept =
+          (user?.department || "").trim().toLowerCase() ===
+          myClassCohort.department.trim().toLowerCase();
+        const matchYear =
+          (user?.year || "").trim().toLowerCase() ===
+          myClassCohort.year.trim().toLowerCase();
+        if (!matchDept || !matchYear) {
+          setFlash({
+            tone: "err",
+            text: `Access restricted: As Class Rep for ${myClassCohort.department} (${myClassCohort.year}), you can only mark attendance for your class.`,
+          });
+          return false;
+        }
+      }
       const result = checkIn(registrationId, st, m, userId, eid, targetId, targetName);
       if (!result.ok) {
         setFlash({ tone: "err", text: result.message });
@@ -230,7 +288,7 @@ export default function ChapterAttendancePage({
       });
       return true;
     },
-    [checkIn],
+    [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles],
   );
 
   const handleQrScan = useCallback(
@@ -270,6 +328,23 @@ export default function ChapterAttendancePage({
         });
         return;
       }
+      if (session.roleKey === "class_representative" && myClassCohort) {
+        const user = store.profiles.find((p) => p.id === reg.userId);
+        const matchDept =
+          (user?.department || "").trim().toLowerCase() ===
+          myClassCohort.department.trim().toLowerCase();
+        const matchYear =
+          (user?.year || "").trim().toLowerCase() ===
+          myClassCohort.year.trim().toLowerCase();
+        if (!matchDept || !matchYear) {
+          setFlash({
+            tone: "err",
+            text: `Access restricted: Student belongs to ${user?.department || "another dept"} (${user?.year || "another year"}), outside your class.`,
+          });
+          setQrInput("");
+          return;
+        }
+      }
       const existing = store.attendance.find(
         (a) => a.registrationId === reg.id && (a.sessionId === sessId || a.session === sessId),
       );
@@ -291,7 +366,7 @@ export default function ChapterAttendancePage({
       }
       setQrInput("");
     },
-    [qrInput, store.registrations, store.attendance, updateAttendance, runCheckIn],
+    [qrInput, store.registrations, store.attendance, store.profiles, updateAttendance, runCheckIn, session.roleKey, myClassCohort],
   );
 
   const onCameraScan = useCallback(
@@ -346,6 +421,16 @@ export default function ChapterAttendancePage({
               line.toLowerCase()),
       );
       if (reg) {
+        if (session.roleKey === "class_representative" && myClassCohort) {
+          const user = store.profiles.find((p) => p.id === reg.userId);
+          const matchDept =
+            (user?.department || "").trim().toLowerCase() ===
+            myClassCohort.department.trim().toLowerCase();
+          const matchYear =
+            (user?.year || "").trim().toLowerCase() ===
+            myClassCohort.year.trim().toLowerCase();
+          if (!matchDept || !matchYear) continue;
+        }
         const res = checkIn(
           reg.id,
           status,
@@ -459,6 +544,21 @@ export default function ChapterAttendancePage({
           </>
         )}
       </div>
+
+      {/* Class Representative Scope Banner */}
+      {session.roleKey === "class_representative" && myClassCohort && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-xs text-cyan-400">
+          <div className="flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>
+              <strong>Class Representative Attendance Desk:</strong> Filtered to your class &mdash;{" "}
+              <strong>{myClassCohort.department} · {myClassCohort.year}{myClassCohort.section ? ` (Sec ${myClassCohort.section})` : ""}</strong>.
+              Showing {approvedRegs.length} registered student{approvedRegs.length === 1 ? "" : "s"}.
+            </span>
+          </div>
+          <Badge tone="cyan">Class Scoped</Badge>
+        </div>
+      )}
 
       <TerminalPanel
         title="Check-in desk"
@@ -769,7 +869,9 @@ export default function ChapterAttendancePage({
                     <th className="pb-2">Action</th>
                   </>
                 )}
-                <th className="pb-2">Certificate</th>
+                {session.roleKey !== "class_representative" && (
+                  <th className="pb-2">Certificate</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -937,30 +1039,32 @@ export default function ChapterAttendancePage({
                     )}
 
                     {/* Certificate Column */}
-                    <td className="py-3">
-                      {cert ? (
-                        <Badge tone="green">Issued · {cert.certificateId}</Badge>
-                      ) : (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
-                        <Button
-                          variant="orange"
-                          className="h-7 text-[11px]"
-                          onClick={() => {
-                            const res = issueCertificate(reg.eventId, reg.userId);
-                            setFlash(
-                              res.ok
-                                ? { tone: "ok", text: `Issued cert for ${user?.fullName}` }
-                                : { tone: "err", text: res.message },
-                            );
-                          }}
-                        >
-                          Issue cert ↗
-                        </Button>
-                      ) : (
-                        <span className="text-[11px] text-text-mute">
-                          {isMultiSession ? `Requires ${attendanceSessions.length} terms` : "Requires check-in"}
-                        </span>
-                      )}
-                    </td>
+                    {session.roleKey !== "class_representative" && (
+                      <td className="py-3">
+                        {cert ? (
+                          <Badge tone="green">Issued · {cert.certificateId}</Badge>
+                        ) : (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
+                          <Button
+                            variant="orange"
+                            className="h-7 text-[11px]"
+                            onClick={() => {
+                              const res = issueCertificate(reg.eventId, reg.userId);
+                              setFlash(
+                                res.ok
+                                  ? { tone: "ok", text: `Issued cert for ${user?.fullName}` }
+                                  : { tone: "err", text: res.message },
+                              );
+                            }}
+                          >
+                            Issue cert ↗
+                          </Button>
+                        ) : (
+                          <span className="text-[11px] text-text-mute">
+                            {isMultiSession ? `Requires ${attendanceSessions.length} terms` : "Requires check-in"}
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

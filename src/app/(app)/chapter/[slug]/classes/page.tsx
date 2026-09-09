@@ -14,14 +14,22 @@ import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
 import type { ClassCohort, Department } from "@/types";
 import {
+  AlertCircle,
   Building2,
   Check,
+  CheckCircle2,
   ChevronRight,
+  Filter,
   GraduationCap,
+  Lock,
   Plus,
   Search,
+  ShieldCheck,
   Sparkles,
+  UserCheck,
+  UserMinus,
   Users,
+  X,
 } from "lucide-react";
 
 type Draft = {
@@ -71,6 +79,8 @@ export default function ChapterClassesPage({
     createClassCohort,
     updateClassCohort,
     deleteClassCohort,
+    setUserRoles,
+    updateUser,
   } = useStore();
   const { session } = useCurrentUser();
   const { confirm } = useAppDialogs();
@@ -80,8 +90,8 @@ export default function ChapterClassesPage({
     canManageClasses(session.roleKey) ||
     hasPermission(store, session.roleKey, "class.manage");
 
-  // Tab State: "departments" | "classes" | "students"
-  const [activeTab, setActiveTab] = useState<"departments" | "classes" | "students">("departments");
+  // Tab State: "departments" | "classes" | "assign"
+  const [activeTab, setActiveTab] = useState<"departments" | "classes" | "assign" | "students">("departments");
 
   const yearSuggestions = store.academicYears ?? [];
   const divisionSuggestions = store.academicDivisions ?? [];
@@ -137,10 +147,13 @@ export default function ChapterClassesPage({
       .map((p) => {
         const cohort = (store.classCohorts ?? []).find(
           (c) =>
-            c.chapterId === chapter.id &&
+            (c.chapterId === chapter.id || !c.chapterId) &&
             cohortRepIds(c).includes(p.id),
         );
-        const userRole = (store.userRoles ?? []).find((ur) => ur.userId === p.id);
+        const userRole =
+          (store.userRoles ?? []).find(
+            (ur) => ur.userId === p.id && (ur.chapterId === chapter.id || !ur.chapterId),
+          ) || (store.userRoles ?? []).find((ur) => ur.userId === p.id);
         return {
           ...p,
           roleKey: userRole?.roleKey || "student",
@@ -170,6 +183,175 @@ export default function ChapterClassesPage({
       return matchesSearch && matchesDept;
     });
   }, [chapterStudents, studentSearch, selectedDeptFilter]);
+
+  const DEFAULT_ACADEMIC_YEARS = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+  const activeYears = useMemo(() => {
+    const fromStore = store.academicYears ?? [];
+    return fromStore.length > 0 ? fromStore : DEFAULT_ACADEMIC_YEARS;
+  }, [store.academicYears]);
+
+  const totalRepsCount = useMemo(() => {
+    return chapterStudents.filter(
+      (s) => s.roleKey === "class_representative" || Boolean(s.cohortLabel),
+    ).length;
+  }, [chapterStudents]);
+
+  // Modal State for Class Rep Assignment
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignModalDept, setAssignModalDept] = useState("");
+  const [assignModalYear, setAssignModalYear] = useState("");
+  const [assignModalSection, setAssignModalSection] = useState("A");
+  const [assignModalStudentId, setAssignModalStudentId] = useState("");
+  const [assignModalError, setAssignModalError] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  const eligibleCandidates = useMemo(() => {
+    if (!assignModalDept || !assignModalYear) return { inSlot: [], others: chapterStudents };
+    const inSlot = chapterStudents.filter(
+      (s) =>
+        s.deptNorm.toLowerCase() === assignModalDept.trim().toLowerCase() &&
+        s.year &&
+        s.year.trim().toLowerCase() === assignModalYear.trim().toLowerCase(),
+    );
+    const others = chapterStudents.filter(
+      (s) =>
+        !(
+          s.deptNorm.toLowerCase() === assignModalDept.trim().toLowerCase() &&
+          s.year &&
+          s.year.trim().toLowerCase() === assignModalYear.trim().toLowerCase()
+        ),
+    );
+    return { inSlot, others };
+  }, [chapterStudents, assignModalDept, assignModalYear]);
+
+  function openAssignModal(deptName?: string, year?: string, studentId?: string) {
+    const d = deptName || departments[0]?.name || "";
+    const y = year || activeYears[0] || "1st Year";
+    setAssignModalDept(d);
+    setAssignModalYear(y);
+    setAssignModalSection("A");
+    setAssignModalStudentId(studentId || "");
+    setAssignModalError("");
+    setAssignModalOpen(true);
+  }
+
+  async function executeAssignClassRep() {
+    if (!chapter) return;
+    if (!assignModalStudentId) {
+      setAssignModalError("Please select a student to appoint as Class Representative.");
+      return;
+    }
+    if (!assignModalDept) {
+      setAssignModalError("Please select a department.");
+      return;
+    }
+    if (!assignModalYear) {
+      setAssignModalError("Please select an academic year.");
+      return;
+    }
+
+    const student = store.profiles.find((p) => p.id === assignModalStudentId);
+    if (!student) {
+      setAssignModalError("Selected student profile not found.");
+      return;
+    }
+
+    setIsAssigning(true);
+    setAssignModalError("");
+
+    try {
+      // 1. STRICT CAMPUS LEAD CONSTRAINT: ONLY assign "class_representative"
+      const okRole = setUserRoles(assignModalStudentId, [
+        { roleKey: "class_representative", chapterId: chapter.id },
+      ]);
+      if (!okRole) {
+        throw new Error("Could not assign class representative role in database.");
+      }
+
+      // 2. Class Cohort in Chapter
+      const existingCohort = (store.classCohorts ?? []).find(
+        (c) =>
+          c.chapterId === chapter.id &&
+          c.department.trim().toLowerCase() === assignModalDept.trim().toLowerCase() &&
+          c.year.trim().toLowerCase() === assignModalYear.trim().toLowerCase() &&
+          (!assignModalSection || c.section.trim().toLowerCase() === assignModalSection.trim().toLowerCase()),
+      );
+
+      if (existingCohort) {
+        const currentReps = cohortRepIds(existingCohort);
+        if (!currentReps.includes(assignModalStudentId)) {
+          updateClassCohort(existingCohort.id, {
+            repIds: [...currentReps, assignModalStudentId],
+          });
+        }
+      } else {
+        createClassCohort({
+          chapterId: chapter.id,
+          department: assignModalDept,
+          year: assignModalYear,
+          section: assignModalSection.trim() || "A",
+          repIds: [assignModalStudentId],
+        });
+      }
+
+      // 3. Update student profile department, year, and section
+      updateUser(assignModalStudentId, {
+        department: assignModalDept,
+        year: assignModalYear,
+        ...(assignModalSection.trim() ? { section: assignModalSection.trim() } : {}),
+      });
+
+      setFlash(`✓ Appointed ${student.fullName} as Class Rep for ${assignModalDept} (${assignModalYear})!`);
+      window.setTimeout(() => setFlash(""), 2800);
+      setAssignModalOpen(false);
+    } catch (err: any) {
+      setAssignModalError(err?.message || "Failed to assign Class Representative.");
+    } finally {
+      setIsAssigning(false);
+    }
+  }
+
+  async function handleRemoveClassRep(studentId: string) {
+    if (!chapter) return;
+    const student = store.profiles.find((p) => p.id === studentId);
+    if (!student) return;
+
+    const confirmed = await confirm({
+      title: "Remove Class Representative",
+      description: `Are you sure you want to remove ${student.fullName} as Class Representative? Their role will revert to Student Member.`,
+      confirmLabel: "Remove Role",
+      danger: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      // 1. Revert user role back to student
+      setUserRoles(studentId, [
+        { roleKey: "student", chapterId: chapter.id },
+      ]);
+
+      // 2. Remove student from all matching cohorts in this chapter
+      const matchingCohorts = (store.classCohorts ?? []).filter(
+        (c) =>
+          (c.chapterId === chapter.id || !c.chapterId) &&
+          cohortRepIds(c).includes(studentId),
+      );
+
+      for (const c of matchingCohorts) {
+        const updatedRepIds = cohortRepIds(c).filter((id) => id !== studentId);
+        updateClassCohort(c.id, {
+          repIds: updatedRepIds,
+        });
+      }
+
+      setFlash(`✓ Removed ${student.fullName} from Class Representative role.`);
+      window.setTimeout(() => setFlash(""), 2800);
+    } catch (err: any) {
+      console.error("Failed to remove class rep:", err);
+      setFlash("Failed to remove Class Representative role.");
+      window.setTimeout(() => setFlash(""), 3000);
+    }
+  }
 
   if (!chapter) {
     return <p className="text-[var(--accent)]">// Chapter not found</p>;
@@ -370,6 +552,29 @@ export default function ChapterClassesPage({
     setActiveTab("students");
   }
 
+  if (session.roleKey === "class_representative") {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow={chapterEyebrow(session.roleKey, "programs")}
+          title="Classes & Departments"
+          description="Class cohort and department management is restricted to Campus Leads and Faculty."
+        />
+        <TerminalPanel title="access.restricted" accent="orange">
+          <p className="text-sm text-text-dim">
+            Class Representatives do not have permission to view or manage classes and departments.
+          </p>
+          <Link
+            href={`/chapter/${slug}`}
+            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
+          >
+            ← Back to chapter
+          </Link>
+        </TerminalPanel>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
@@ -455,23 +660,23 @@ export default function ChapterClassesPage({
 
         <button
           type="button"
-          onClick={() => setActiveTab("students")}
+          onClick={() => setActiveTab("assign")}
           className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
-            activeTab === "students"
+            activeTab === "assign" || activeTab === "students"
               ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
               : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
           }`}
         >
-          <Users size={14} />
-          <span>Students & Departments</span>
+          <UserCheck size={14} />
+          <span>Assign Class Reps</span>
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-              activeTab === "students"
+              activeTab === "assign" || activeTab === "students"
                 ? "bg-white/25 text-white"
                 : "bg-bg text-text-mute"
             }`}
           >
-            {chapterStudents.length}
+            {totalRepsCount} Appointed
           </span>
         </button>
       </div>
@@ -975,174 +1180,414 @@ export default function ChapterClassesPage({
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: STUDENTS & DEPARTMENTS (Read-Only Directory) */}
+      {/* TAB 3: ASSIGN CLASS REPS (Year-Wise Department Coverage) */}
       {/* ========================================================= */}
-      {activeTab === "students" && (
-        <TerminalPanel
-          title="students.directory"
-          meta={`${chapterStudents.length} students`}
-          accent="orange"
-          className="mb-6"
-        >
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
-                  <Users size={18} />
+      {(activeTab === "assign" || activeTab === "students") && (
+        <div className="space-y-6">
+          {/* Overview & Role Scope Panel */}
+          <TerminalPanel
+            title="class_rep.assignment_hub"
+            meta={`${totalRepsCount} Class Reps Appointed`}
+            accent="orange"
+            className="mb-6"
+          >
+            {/* Role restriction callout & description */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border pb-4">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/15 text-[var(--accent)]">
+                    <UserCheck size={16} />
+                  </span>
+                  <h3 className="text-base font-bold text-text">Assign Class Representatives</h3>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-500">
+                    <Lock size={10} /> Campus Lead Scope: Class Rep Only
+                  </span>
                 </div>
-                <div>
-                  <h3 className="text-sm font-bold text-text">
-                    Student Directory by Department
-                  </h3>
-                  <p className="text-[12px] text-text-dim">
-                    Filter and view students enrolled across different departments in {chapter.name}.
-                  </p>
-                </div>
+                <p className="text-xs text-text-dim max-w-2xl">
+                  Campus Leads can appoint students as <strong>Class Representatives</strong> for their respective departments and academic years. Search or filter students below to appoint or remove Class Representatives.
+                </p>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search
-                  size={14}
-                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim"
-                />
-                <Input
-                  value={studentSearch}
-                  onChange={(e) => setStudentSearch(e.target.value)}
-                  placeholder="Search student, email, phone..."
-                  className="pl-8 text-xs bg-bg"
-                />
-              </div>
+              {canManage && (
+                <Button
+                  variant="orange"
+                  size="sm"
+                  onClick={() => openAssignModal()}
+                  disabled={!departments.length}
+                  className="shrink-0"
+                >
+                  <Plus size={14} className="mr-1" /> Appoint Class Rep
+                </Button>
+              )}
             </div>
 
-            {/* Department Filter Pills */}
-            <div className="flex flex-wrap gap-1.5 border-b border-border pb-3">
-              <button
-                type="button"
-                onClick={() => setSelectedDeptFilter("all")}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                  selectedDeptFilter === "all"
-                    ? "bg-[var(--accent)] text-white shadow-sm"
-                    : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
-                }`}
-              >
-                All Departments ({chapterStudents.length})
-              </button>
-              {departments.map((dept) => {
-                const count = chapterStudents.filter(
-                  (s) => s.deptNorm.toLowerCase() === dept.name.trim().toLowerCase(),
-                ).length;
-                const isSelected =
-                  selectedDeptFilter.toLowerCase() === dept.name.trim().toLowerCase();
-                return (
-                  <button
-                    key={dept.id}
-                    type="button"
-                    onClick={() => setSelectedDeptFilter(dept.name)}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                      isSelected
-                        ? "bg-[var(--accent)] text-white shadow-sm"
-                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
-                    }`}
-                  >
-                    {dept.name} ({count})
-                  </button>
-                );
-              })}
-              {chapterStudents.some(
-                (s) => !s.department || s.department === "Unassigned",
-              ) && (
+            {/* 3-Stat Metric Cards */}
+            <div className="grid grid-cols-3 gap-3 pt-4">
+              <div className="rounded-xl border border-border bg-bg p-3.5 shadow-sm">
+                <p className="text-[11px] font-medium text-text-dim">Enrolled Students</p>
+                <p className="mt-1 text-xl font-black text-text">{chapterStudents.length}</p>
+                <p className="mt-0.5 text-[10px] text-text-mute">Students in chapter</p>
+              </div>
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-medium text-emerald-600">Appointed Class Reps</p>
+                  <CheckCircle2 size={13} className="text-emerald-500" />
+                </div>
+                <p className="mt-1 text-xl font-black text-emerald-600">{totalRepsCount}</p>
+                <p className="mt-0.5 text-[10px] text-emerald-600/70">Active class representatives</p>
+              </div>
+              <div className="rounded-xl border border-border bg-bg p-3.5 shadow-sm">
+                <p className="text-[11px] font-medium text-text-dim">Academic Departments</p>
+                <p className="mt-1 text-xl font-black text-text">{departments.length}</p>
+                <p className="mt-0.5 text-[10px] text-text-mute">Configured in chapter</p>
+              </div>
+            </div>
+          </TerminalPanel>
+
+          {/* Student Directory & Quick Action Table */}
+          <TerminalPanel
+            title="students.directory_and_roles"
+            meta={`${chapterStudents.length} students`}
+            accent="orange"
+            className="mb-6"
+          >
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
+                    <Users size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-text">
+                      Student Directory & Role Management
+                    </h3>
+                    <p className="text-[12px] text-text-dim">
+                      Filter students by department and appoint or remove Class Representatives.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search
+                    size={14}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-dim"
+                  />
+                  <Input
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    placeholder="Search student, email, phone..."
+                    className="pl-8 text-xs bg-bg"
+                  />
+                </div>
+              </div>
+
+              {/* Department Filter Pills */}
+              <div className="flex flex-wrap gap-1.5 border-b border-border pb-3">
                 <button
                   type="button"
-                  onClick={() => setSelectedDeptFilter("Unassigned")}
+                  onClick={() => setSelectedDeptFilter("all")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    selectedDeptFilter === "Unassigned"
+                    selectedDeptFilter === "all"
                       ? "bg-[var(--accent)] text-white shadow-sm"
                       : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                   }`}
                 >
-                  Unassigned (
-                  {
-                    chapterStudents.filter(
-                      (s) => !s.department || s.department === "Unassigned",
-                    ).length
-                  }
-                  )
+                  All Departments ({chapterStudents.length})
                 </button>
+                {departments.map((dept) => {
+                  const count = chapterStudents.filter(
+                    (s) => s.deptNorm.toLowerCase() === dept.name.trim().toLowerCase(),
+                  ).length;
+                  const isSelected =
+                    selectedDeptFilter.toLowerCase() === dept.name.trim().toLowerCase();
+                  return (
+                    <button
+                      key={dept.id}
+                      type="button"
+                      onClick={() => setSelectedDeptFilter(dept.name)}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                        isSelected
+                          ? "bg-[var(--accent)] text-white shadow-sm"
+                          : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                      }`}
+                    >
+                      {dept.name} ({count})
+                    </button>
+                  );
+                })}
+                {chapterStudents.some(
+                  (s) => !s.department || s.department === "Unassigned",
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDeptFilter("Unassigned")}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+                      selectedDeptFilter === "Unassigned"
+                        ? "bg-[var(--accent)] text-white shadow-sm"
+                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                    }`}
+                  >
+                    Unassigned (
+                    {
+                      chapterStudents.filter(
+                        (s) => !s.department || s.department === "Unassigned",
+                      ).length
+                    }
+                    )
+                  </button>
+                )}
+              </div>
+
+              {/* Students List Table */}
+              {!filteredChapterStudents.length ? (
+                <div className="rounded-[14px] border border-dashed border-border p-6 text-center text-xs text-text-dim">
+                  No students found
+                  {selectedDeptFilter !== "all" ? ` in ${selectedDeptFilter}` : ""}
+                  {studentSearch ? ` matching "${studentSearch}"` : ""}.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-[14px] border border-border bg-bg-panel shadow-[var(--shadow-sm)]">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-text-dim bg-bg/50">
+                        <th className="px-3.5 py-3 font-semibold">Student Name</th>
+                        <th className="px-3.5 py-3 font-semibold">Contact</th>
+                        <th className="px-3.5 py-3 font-semibold">Department</th>
+                        <th className="px-3.5 py-3 font-semibold">Year & Division</th>
+                        <th className="px-3.5 py-3 font-semibold">Status / Role</th>
+                        {canManage && (
+                          <th className="px-3.5 py-3 font-semibold text-right">Class Rep Action</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {filteredChapterStudents.map((stu) => {
+                        const isClassRep =
+                          stu.roleKey === "class_representative" ||
+                          (stu.roleKey !== "student" && Boolean(stu.cohortLabel));
+                        return (
+                          <tr key={stu.id} className="hover:bg-bg/40 transition">
+                            <td className="px-3.5 py-3 font-medium text-text">
+                              <div className="flex items-center gap-2.5">
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[11px] font-bold text-[var(--accent)] shrink-0">
+                                  {stu.fullName.charAt(0)}
+                                </span>
+                                <div>
+                                  <p className="font-semibold text-text">{stu.fullName}</p>
+                                  {stu.elevatesId ? (
+                                    <span className="text-[10px] text-text-dim">
+                                      {stu.elevatesId}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3.5 py-3 text-text-dim">
+                              <p className="text-text">{stu.email}</p>
+                              {stu.phone ? (
+                                <p className="text-[11px] text-text-mute">{stu.phone}</p>
+                              ) : null}
+                            </td>
+
+                            <td className="px-3.5 py-3">
+                              <span className="inline-block rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-medium text-text">
+                                {stu.department || "Unassigned"}
+                              </span>
+                            </td>
+
+                            <td className="px-3.5 py-3 text-text-dim">
+                              {stu.year ? stu.year : "—"}
+                              {stu.section ? ` · Sec ${stu.section}` : ""}
+                            </td>
+                            <td className="px-3.5 py-3">
+                              {isClassRep ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600">
+                                  <CheckCircle2 size={12} /> Class Rep {stu.cohortLabel ? `· ${stu.cohortLabel}` : ""}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-text-dim capitalize">
+                                  {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}
+                                </span>
+                              )}
+                            </td>
+
+                            {canManage && (
+                              <td className="px-3.5 py-3 text-right">
+                                {isClassRep ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleRemoveClassRep(stu.id)}
+                                    className="text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10 py-1 h-7"
+                                  >
+                                    Remove Rep
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() =>
+                                      openAssignModal(
+                                        stu.deptNorm !== "Unassigned"
+                                          ? stu.deptNorm
+                                          : departments[0]?.name,
+                                        stu.year || activeYears[0],
+                                        stu.id,
+                                      )
+                                    }
+                                    className="text-xs text-[var(--accent)] hover:bg-[var(--accent)]/10 py-1 h-7"
+                                  >
+                                    <UserCheck size={12} className="mr-1" />
+                                    Assign as Class Rep
+                                  </Button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
+          </TerminalPanel>
 
-            {/* Students List Table */}
-            {!filteredChapterStudents.length ? (
-              <div className="rounded-[14px] border border-dashed border-border p-6 text-center text-xs text-text-dim">
-                No students found
-                {selectedDeptFilter !== "all" ? ` in ${selectedDeptFilter}` : ""}
-                {studentSearch ? ` matching "${studentSearch}"` : ""}.
+          {/* Modal for Appointing Class Rep */}
+          {assignModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="w-full max-w-lg rounded-2xl border border-border bg-bg-panel p-6 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-border pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--accent)]/15 text-[var(--accent)]">
+                      <UserCheck size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-text">Appoint Class Representative</h3>
+                      <p className="text-[11px] text-text-dim">Assign student to department & academic year</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAssignModalOpen(false)}
+                    className="rounded-lg p-1 text-text-dim hover:text-text hover:bg-bg"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Strict Role Policy Callout */}
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 flex items-start gap-2.5">
+                  <ShieldCheck size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-text-dim leading-relaxed">
+                    <strong className="text-text font-semibold">Strict Role Restriction:</strong>{" "}
+                    As a Campus Lead, you are authorized to assign <strong>only</strong> the{" "}
+                    <span className="text-[var(--accent)] font-bold">Class Representative</span> role.
+                  </div>
+                </div>
+
+                {assignModalError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+                    {assignModalError}
+                  </div>
+                )}
+
+                <div className="space-y-3.5 text-xs">
+                  <div>
+                    <FieldLabel>Department *</FieldLabel>
+                    <Select
+                      value={assignModalDept}
+                      onChange={(e) => setAssignModalDept(e.target.value)}
+                    >
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.name}>
+                          {d.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <FieldLabel>Academic Year *</FieldLabel>
+                      <Select
+                        value={assignModalYear}
+                        onChange={(e) => setAssignModalYear(e.target.value)}
+                      >
+                        {activeYears.map((yr) => (
+                          <option key={yr} value={yr}>
+                            {yr}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+
+                    <div>
+                      <FieldLabel>Class Section</FieldLabel>
+                      <Input
+                        value={assignModalSection}
+                        onChange={(e) => setAssignModalSection(e.target.value)}
+                        placeholder="e.g. A or B"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Select Student to Appoint *</FieldLabel>
+                    <Select
+                      value={assignModalStudentId}
+                      onChange={(e) => setAssignModalStudentId(e.target.value)}
+                    >
+                      <option value="">-- Choose student --</option>
+                      {eligibleCandidates.inSlot.length > 0 && (
+                        <optgroup
+                          label={`Enrolled in ${assignModalDept} (${assignModalYear}) — Recommended`}
+                        >
+                          {eligibleCandidates.inSlot.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              ★ {s.fullName} {s.section ? `(Sec ${s.section})` : ""} — {s.email}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {eligibleCandidates.others.length > 0 && (
+                        <optgroup label="Other Students in Chapter">
+                          {eligibleCandidates.others.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.fullName} ({s.department || "No Dept"} · {s.year || "No Year"}) — {s.email}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </Select>
+                    <p className="mt-1 text-[10px] text-text-mute">
+                      Upon confirmation, this student will receive the Class Representative role and be linked to this department cohort in Supabase.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAssignModalOpen(false)}
+                    disabled={isAssigning}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    onClick={executeAssignClassRep}
+                    disabled={isAssigning || !assignModalStudentId}
+                  >
+                    {isAssigning ? "Assigning..." : "Confirm & Appoint Class Rep"}
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto rounded-[14px] border border-border bg-bg-panel shadow-[var(--shadow-sm)]">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-border text-text-dim bg-bg/50">
-                      <th className="px-3.5 py-3 font-semibold">Student Name</th>
-                      <th className="px-3.5 py-3 font-semibold">Contact</th>
-                      <th className="px-3.5 py-3 font-semibold">Department</th>
-                      <th className="px-3.5 py-3 font-semibold">Year & Division</th>
-                      <th className="px-3.5 py-3 font-semibold">Status / Role</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {filteredChapterStudents.map((stu) => (
-                      <tr key={stu.id} className="hover:bg-bg/40 transition">
-                        <td className="px-3.5 py-3 font-medium text-text">
-                          <div className="flex items-center gap-2.5">
-                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[11px] font-bold text-[var(--accent)] shrink-0">
-                              {stu.fullName.charAt(0)}
-                            </span>
-                            <div>
-                              <p className="font-semibold text-text">{stu.fullName}</p>
-                              {stu.elevatesId ? (
-                                <span className="text-[10px] text-text-dim">
-                                  {stu.elevatesId}
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-3.5 py-3 text-text-dim">
-                          <p className="text-text">{stu.email}</p>
-                          {stu.phone ? (
-                            <p className="text-[11px] text-text-mute">{stu.phone}</p>
-                          ) : null}
-                        </td>
-
-                        {/* Read-Only Department Badge */}
-                        <td className="px-3.5 py-3">
-                          <span className="inline-block rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-medium text-text">
-                            {stu.department || "Unassigned"}
-                          </span>
-                        </td>
-
-                        <td className="px-3.5 py-3 text-text-dim">
-                          {stu.year ? stu.year : "—"}
-                          {stu.section ? ` · Sec ${stu.section}` : ""}
-                        </td>
-                        <td className="px-3.5 py-3">
-                          {stu.cohortLabel ? (
-                            <Badge tone="orange">Rep · {stu.cohortLabel}</Badge>
-                          ) : (
-                            <span className="text-[11px] text-text-dim capitalize">
-                              {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </TerminalPanel>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -349,7 +349,20 @@ type StoreContextValue = {
   updateUser: (
     id: string,
     patch: Partial<
-      Pick<Profile, "fullName" | "email" | "chapterId" | "status" | "bio">
+      Pick<
+        Profile,
+        | "fullName"
+        | "email"
+        | "chapterId"
+        | "status"
+        | "bio"
+        | "department"
+        | "year"
+        | "section"
+        | "phone"
+        | "skills"
+        | "interests"
+      >
     >,
   ) => boolean;
   deleteUser: (id: string) => boolean;
@@ -2141,6 +2154,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         let result: CheckInResult = { ok: true };
         const certId = genUuid();
         setStore((s) => {
+          if (s.session.roleKey === "class_representative") {
+            result = {
+              ok: false,
+              message: "Access restricted: Class Representatives are not authorized to issue certificates.",
+            };
+            return s;
+          }
           if (
             s.certificates.some(
               (c) => c.eventId === eventId && c.userId === userId && !c.isRevoked,
@@ -3424,6 +3444,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   : {}),
                 ...(patch.status !== undefined ? { status: patch.status } : {}),
                 ...(patch.bio !== undefined ? { bio: patch.bio } : {}),
+                ...(patch.department !== undefined ? { department: patch.department } : {}),
+                ...(patch.year !== undefined ? { year: patch.year } : {}),
+                ...(patch.section !== undefined ? { section: patch.section } : {}),
+                ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+                ...(patch.skills !== undefined ? { skills: patch.skills } : {}),
+                ...(patch.interests !== undefined ? { interests: patch.interests } : {}),
               };
             }),
             activityLogs: [
@@ -3734,15 +3760,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               .filter(Boolean),
           ),
         ].slice(0, 2);
-        if (!department || !year || !section || repIds.length < 1) {
+        if (!department || !year || !section) {
           return null;
         }
-        const deptOk = (store.departments ?? []).some(
-          (d) =>
-            d.chapterId === input.chapterId &&
-            d.name.trim().toUpperCase() === department.toUpperCase(),
-        );
-        if (!deptOk) return null;
+        if ((store.departments ?? []).length > 0) {
+          const deptOk = (store.departments ?? []).some(
+            (d) =>
+              d.chapterId === input.chapterId &&
+              d.name.trim().toUpperCase() === department.toUpperCase(),
+          );
+          if (!deptOk) return null;
+        }
         const dup = (store.classCohorts ?? []).some(
           (c) =>
             c.chapterId === input.chapterId &&
@@ -3752,9 +3780,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         if (dup) return null;
         const repsOk = repIds.every((id) =>
-          store.profiles.some(
-            (p) => p.id === id && p.chapterId === input.chapterId,
-          ),
+          store.profiles.some((p) => p.id === id),
         );
         if (!repsOk) return null;
         const cohortId = input.id && isUuid(input.id) ? input.id : genUuid();
@@ -3801,35 +3827,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               .filter(Boolean),
           ),
         ].slice(0, 2);
-        const next: ClassCohort = {
+        const next: ClassCohort & { boyRepId?: string; girlRepId?: string; representativeId?: string } = {
           id: existing.id,
           chapterId: existing.chapterId,
           department: (patch.department ?? existing.department).trim(),
           year: (patch.year ?? existing.year).trim(),
           section: (patch.section ?? existing.section).trim(),
           repIds,
+          boyRepId: undefined,
+          girlRepId: undefined,
+          representativeId: undefined,
         };
         if (!next.department || !next.year || !next.section) return false;
-        if (next.repIds.length < 1) return false;
-        const deptOk = (store.departments ?? []).some(
-          (d) =>
-            d.chapterId === next.chapterId &&
-            d.name.trim().toUpperCase() === next.department.toUpperCase(),
-        );
-        if (!deptOk) return false;
-        const dup = (store.classCohorts ?? []).some(
-          (c) =>
-            c.id !== id &&
-            c.chapterId === next.chapterId &&
-            c.department.trim().toUpperCase() === next.department.toUpperCase() &&
-            c.year.trim().toLowerCase() === next.year.toLowerCase() &&
-            c.section.trim().toUpperCase() === next.section.toUpperCase(),
-        );
-        if (dup) return false;
+        if (
+          patch.department &&
+          patch.department.trim().toUpperCase() !== existing.department.trim().toUpperCase() &&
+          (store.departments ?? []).length > 0
+        ) {
+          const deptOk = (store.departments ?? []).some(
+            (d) =>
+              d.chapterId === next.chapterId &&
+              d.name.trim().toUpperCase() === next.department.toUpperCase(),
+          );
+          if (!deptOk) return false;
+        }
+        if (
+          (patch.department && patch.department.trim().toUpperCase() !== existing.department.trim().toUpperCase()) ||
+          (patch.year && patch.year.trim().toLowerCase() !== existing.year.trim().toLowerCase()) ||
+          (patch.section && patch.section.trim().toUpperCase() !== existing.section.trim().toUpperCase())
+        ) {
+          const dup = (store.classCohorts ?? []).some(
+            (c) =>
+              c.id !== id &&
+              c.chapterId === next.chapterId &&
+              c.department.trim().toUpperCase() === next.department.toUpperCase() &&
+              c.year.trim().toLowerCase() === next.year.toLowerCase() &&
+              c.section.trim().toUpperCase() === next.section.toUpperCase(),
+          );
+          if (dup) return false;
+        }
         const repsOk = next.repIds.every((rid) =>
-          store.profiles.some(
-            (p) => p.id === rid && p.chapterId === next.chapterId,
-          ),
+          store.profiles.some((p) => p.id === rid),
         );
         if (!repsOk) return false;
         setStore((s) => ({

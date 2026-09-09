@@ -178,6 +178,12 @@ export function canAccessPath(
       "certificates",
     ];
     if (firstSeg && opsRoots.includes(firstSeg)) {
+      if (
+        roleKey === "class_representative" &&
+        (firstSeg === "certificates" || firstSeg === "leadership" || firstSeg === "classes")
+      ) {
+        return false;
+      }
       return isExecutiveRole(roleKey) || isFacultyRole(roleKey);
     }
 
@@ -310,6 +316,14 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
       return isFacultyRole(roleKey) || isHqRole(roleKey);
     }
     if (item.access === "executive") {
+      if (
+        roleKey === "class_representative" &&
+        (item.href.endsWith("/certificates") ||
+          item.href.endsWith("/leadership") ||
+          item.href.endsWith("/classes"))
+      ) {
+        return false;
+      }
       return (
         isExecutiveRole(roleKey) ||
         isFacultyRole(roleKey) ||

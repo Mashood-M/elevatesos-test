@@ -30,10 +30,10 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isSuperAdmin } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
-import { generateElevatesId } from "@/lib/forms/helpers";
+import { generateElevatesId, cohortRepIds } from "@/lib/forms/helpers";
 import { roleKeyLabel } from "@/lib/leadership";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
-import type { Chapter, LeadershipAssignment, LeadershipTerm, Profile, RoleKey, UserRole } from "@/types";
+import type { Chapter, ClassCohort, LeadershipAssignment, LeadershipTerm, Profile, RoleKey, UserRole } from "@/types";
 
 interface ChapterMemberItem {
   id: string;
@@ -146,12 +146,50 @@ export default function ChapterStudentsPage({
     interests: "",
   });
 
+  // Class Representative Scoped Cohort
+  const myClassCohort = useMemo(() => {
+    if (session.roleKey !== "class_representative" || !targetChapter) return null;
+    const fromCohorts = (store.classCohorts ?? []).find(
+      (c) =>
+        (c.chapterId === targetChapter.id || !c.chapterId) &&
+        cohortRepIds(c).includes(session.userId),
+    );
+    if (fromCohorts) return fromCohorts;
+    const myProfile = store.profiles.find((p) => p.id === session.userId);
+    if (myProfile?.department && myProfile?.year) {
+      return {
+        id: "rep-profile-cohort",
+        chapterId: targetChapter.id,
+        department: myProfile.department,
+        year: myProfile.year,
+        section: myProfile.section || "",
+        repIds: [session.userId],
+      } as ClassCohort;
+    }
+    return null;
+  }, [session.roleKey, session.userId, store.classCohorts, store.profiles, targetChapter]);
+
   // Strictly filter profiles that belong ONLY to this chapter
+  // For Class Representatives: strictly filter to students belonging to their assigned class!
   const chapterMembers: ChapterMemberItem[] = useMemo(() => {
     if (!targetChapter) return [];
-    const rawProfiles = (store.profiles ?? []).filter(
+    let rawProfiles = (store.profiles ?? []).filter(
       (p) => p.chapterId === targetChapter.id,
     );
+
+    if (session.roleKey === "class_representative" && myClassCohort) {
+      rawProfiles = rawProfiles.filter((p) => {
+        const matchDept =
+          (p.department || "").trim().toLowerCase() === myClassCohort.department.trim().toLowerCase();
+        const matchYear =
+          (p.year || "").trim().toLowerCase() === myClassCohort.year.trim().toLowerCase();
+        const matchSec =
+          !myClassCohort.section ||
+          !p.section ||
+          p.section.trim().toLowerCase() === myClassCohort.section.trim().toLowerCase();
+        return matchDept && matchYear && matchSec;
+      });
+    }
 
     return rawProfiles.map((p) => {
       const elevatesId = p.elevatesId || generateElevatesId(p.id);
@@ -457,31 +495,54 @@ export default function ChapterStudentsPage({
             >
               <Download size={14} /> Export CSV
             </Button>
-            <Link href="/referrals">
-              <Button
-                variant="secondary"
-                className="flex items-center gap-1.5 text-xs"
-              >
-                Invite Students
-              </Button>
-            </Link>
-            <Button
-              variant="secondary"
-              onClick={() => setIsBulkOpen(true)}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              <FileSpreadsheet size={14} /> Bulk CSV Import
-            </Button>
-            <Button
-              variant="orange"
-              onClick={() => setIsAdding(true)}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              <Plus size={14} /> Add Member
-            </Button>
+            {session.roleKey !== "class_representative" && (
+              <>
+                <Link href="/referrals">
+                  <Button
+                    variant="secondary"
+                    className="flex items-center gap-1.5 text-xs"
+                  >
+                    Invite Students
+                  </Button>
+                </Link>
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsBulkOpen(true)}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <FileSpreadsheet size={14} /> Bulk CSV Import
+                </Button>
+                <Button
+                  variant="orange"
+                  onClick={() => setIsAdding(true)}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Plus size={14} /> Add Member
+                </Button>
+              </>
+            )}
           </div>
         }
       />
+
+      {session.roleKey === "class_representative" && myClassCohort && (
+        <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3.5 flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <GraduationCap className="h-5 w-5 text-cyan-400 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-text">Class Representative View</p>
+              <p className="text-[11px] text-text-dim">
+                Showing only enrolled students in your class:{" "}
+                <strong className="text-cyan-400">
+                  {myClassCohort.department} · {myClassCohort.year}
+                  {myClassCohort.section ? ` (Sec ${myClassCohort.section})` : ""}
+                </strong>
+              </p>
+            </div>
+          </div>
+          <Badge tone="cyan">{chapterMembers.length} Students in Class</Badge>
+        </div>
+      )}
 
       {syncSuccessMsg && (
         <div className="rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-400 animate-fade-in">
@@ -492,9 +553,9 @@ export default function ChapterStudentsPage({
       {/* Stats Cards */}
       <div className="grid gap-3 sm:grid-cols-4">
         <Stat
-          label="Chapter Members"
+          label={session.roleKey === "class_representative" ? "Class Members" : "Chapter Members"}
           value={chapterMembers.length}
-          hint="Strictly this chapter"
+          hint={session.roleKey === "class_representative" ? "Enrolled in your class" : "Strictly this chapter"}
           accent="cyan"
         />
         <Stat
@@ -509,12 +570,21 @@ export default function ChapterStudentsPage({
           hint="Pre-registered"
           accent="orange"
         />
-        <Stat
-          label="Campus Departments"
-          value={chapterDepartments.length}
-          hint={targetChapter.city || targetChapter.college}
-          accent="magenta"
-        />
+        {session.roleKey !== "class_representative" ? (
+          <Stat
+            label="Campus Departments"
+            value={chapterDepartments.length}
+            hint={targetChapter.city || targetChapter.college}
+            accent="magenta"
+          />
+        ) : (
+          <Stat
+            label="Assigned Cohort"
+            value={myClassCohort ? `${myClassCohort.year}${myClassCohort.section ? ` · Sec ${myClassCohort.section}` : ""}` : "Class"}
+            hint={myClassCohort?.department || "Your class"}
+            accent="magenta"
+          />
+        )}
       </div>
 
       {/* Search & Status Filter */}
@@ -524,7 +594,11 @@ export default function ChapterStudentsPage({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by Elevates ID (ELV-...), name, email, role, or phone..."
+            placeholder={
+              session.roleKey === "class_representative"
+                ? "Search by Elevates ID (ELV-...), name, email, or phone..."
+                : "Search by Elevates ID (ELV-...), name, email, role, or phone..."
+            }
             className="pl-9 text-xs"
           />
         </div>
@@ -551,7 +625,7 @@ export default function ChapterStudentsPage({
       </div>
 
       {/* Department Filter Pills */}
-      {chapterDepartments.length > 0 && (
+      {session.roleKey !== "class_representative" && chapterDepartments.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <span className="text-xs text-text-dim mr-1">Department:</span>
           <button
@@ -611,27 +685,29 @@ export default function ChapterStudentsPage({
       )}
 
       {/* Role Filter Pills */}
-      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-        <span className="text-xs text-text-dim mr-1">Role:</span>
-        {(["all", "Campus Lead", "Faculty", "Class Rep", "Student"] as const).map((r) => {
-          const isSelected =
-            selectedRoleFilter === (r === "all" ? "all" : r.toLowerCase());
-          return (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setSelectedRoleFilter(r === "all" ? "all" : r.toLowerCase())}
-              className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
-                isSelected
-                  ? "bg-text text-bg-page shadow-sm"
-                  : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
-              }`}
-            >
-              {r}
-            </button>
-          );
-        })}
-      </div>
+      {session.roleKey !== "class_representative" && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <span className="text-xs text-text-dim mr-1">Role:</span>
+          {(["all", "Campus Lead", "Faculty", "Class Rep", "Student"] as const).map((r) => {
+            const isSelected =
+              selectedRoleFilter === (r === "all" ? "all" : r.toLowerCase());
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setSelectedRoleFilter(r === "all" ? "all" : r.toLowerCase())}
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
+                  isSelected
+                    ? "bg-text text-bg-page shadow-sm"
+                    : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
+                }`}
+              >
+                {r}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Multi-Select Action Bar */}
       {selectedStudentIds.length > 0 && (
@@ -668,7 +744,9 @@ export default function ChapterStudentsPage({
                   />
                 </th>
                 <th className="pb-3 font-semibold">Member Number</th>
-                <th className="pb-3 font-semibold">Member Name & Role</th>
+                <th className="pb-3 font-semibold">
+                  {session.roleKey === "class_representative" ? "Member Name" : "Member Name & Role"}
+                </th>
                 <th className="pb-3 font-semibold">Contact & Phone</th>
                 <th className="pb-3 font-semibold">Department & Year</th>
                 <th className="pb-3 font-semibold">Skills / Tags</th>
@@ -731,9 +809,11 @@ export default function ChapterStudentsPage({
                               {stu.fullName}
                             </Link>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <Badge tone={stu.roleInfo.tone}>
-                                {stu.roleInfo.label}
-                              </Badge>
+                              {session.roleKey !== "class_representative" && (
+                                <Badge tone={stu.roleInfo.tone}>
+                                  {stu.roleInfo.label}
+                                </Badge>
+                              )}
                               {(stu.createdAt || stu.joinedAt) ? (
                                 <span className="font-mono text-[10px] text-text-mute">
                                   Joined {formatDateTime((stu.createdAt || stu.joinedAt)!)}

@@ -156,6 +156,29 @@ export default function ChapterCertificatesPage({
     );
   }
 
+  if (session.roleKey === "class_representative") {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow="Programs"
+          title="Certificates"
+          description="Chapter certificate management is restricted to Campus Leads and Faculty."
+        />
+        <TerminalPanel title="access.restricted" accent="orange">
+          <p className="text-sm text-text-dim">
+            Class Representatives do not have permission to issue or manage chapter certificates.
+          </p>
+          <Link
+            href={`/chapter/${slug}`}
+            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
+          >
+            ← Back to chapter
+          </Link>
+        </TerminalPanel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader

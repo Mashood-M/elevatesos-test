@@ -47,14 +47,15 @@ export type RepresentativeOption = {
 export function cohortRepIds(c: ClassCohort & {
   boyRepId?: string;
   girlRepId?: string;
+  representativeId?: string;
 }): string[] {
-  if (Array.isArray(c.repIds) && c.repIds.length) {
+  if (Array.isArray(c.repIds)) {
     return [...new Set(c.repIds.map((id) => id.trim()).filter(Boolean))].slice(
       0,
       2,
     );
   }
-  const legacy = [c.boyRepId, c.girlRepId]
+  const legacy = [c.boyRepId, c.girlRepId, c.representativeId]
     .map((id) => (id ?? "").trim())
     .filter(Boolean);
   return [...new Set(legacy)].slice(0, 2);

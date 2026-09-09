@@ -189,8 +189,12 @@ export function navGroupsForRole(
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
           { href: `${base}/projects`, label: "Projects", icon: I.projects },
-          { href: `${base}/classes`, label: "Classes", icon: I.classes },
-          { href: `${base}/certificates`, label: "Certificates", icon: I.certificates },
+          ...(roleKey !== "class_representative"
+            ? [
+                { href: `${base}/classes`, label: "Classes", icon: I.classes },
+                { href: `${base}/certificates`, label: "Certificates", icon: I.certificates },
+              ]
+            : []),
         ],
       },
       {
@@ -198,7 +202,9 @@ export function navGroupsForRole(
         items: [
           { href: `${base}/students`, label: "Student Directory", icon: I.students },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
-          { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
+          ...(roleKey !== "class_representative"
+            ? [{ href: `${base}/leadership`, label: "Leadership", icon: I.leadership }]
+            : []),
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
             href: `${base}/announcements`,

@@ -34,9 +34,21 @@ export default function ProfilePage({
   const router = useRouter();
   const { store, updateProfile, deleteUser } = useStore();
   const { session } = useCurrentUser();
+
+  const cleanId = (id || "").trim();
   const profile = store.profiles.find(
-    (p) => p.id === id || (p.email && p.email.toLowerCase() === id.toLowerCase())
+    (p) =>
+      (p.elevatesId && p.elevatesId.toLowerCase() === cleanId.toLowerCase()) ||
+      p.id === cleanId ||
+      (p.email && p.email.toLowerCase() === cleanId.toLowerCase()),
   );
+
+  // Canonical redirect: If accessed via long UUID, redirect to clean human-readable /profile/ELV-XXXXXX
+  useEffect(() => {
+    if (profile?.elevatesId && cleanId !== profile.elevatesId && cleanId.length > 15) {
+      router.replace(`/profile/${profile.elevatesId}`);
+    }
+  }, [profile?.elevatesId, cleanId, router]);
 
   const communityTiers = store.doctrine?.communityTiers ?? [];
   const journeyStages = store.doctrine?.journeyStages ?? [];
@@ -60,7 +72,10 @@ export default function ProfilePage({
   const [editLinkedin, setEditLinkedin] = useState("");
   const [editPortfolio, setEditPortfolio] = useState("");
 
-  const isOwn = Boolean(session.userId && session.userId === id);
+  const isOwn = Boolean(
+    (profile && session.userId && profile.id === session.userId) ||
+      (session.userId && session.userId === cleanId),
+  );
   const canEdit = isOwn || isHqRole(session.roleKey);
 
   const chapterCohorts = useMemo(() => {

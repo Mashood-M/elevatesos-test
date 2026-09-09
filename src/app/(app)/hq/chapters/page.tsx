@@ -12,15 +12,17 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
 import { calculateChapterActivityScore } from "@/lib/analytics";
-import { healthLabel } from "@/lib/permissions";
+import { activityLabel } from "@/lib/permissions";
 import { formatDate } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { deriveChapterShortCode } from "@/lib/chapters";
 import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
 import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
 
 type DraftChapter = {
   name: string;
   slug: string;
+  shortCode: string;
   city: string;
   district?: string;
   state?: string;
@@ -36,6 +38,7 @@ type StatusFilter = "all" | DraftChapter["status"];
 const emptyDraft = (): DraftChapter => ({
   name: "",
   slug: "",
+  shortCode: "",
   city: "",
   district: "",
   state: "Kerala",
@@ -55,6 +58,7 @@ export default function HqChaptersPage() {
   const { store, createChapter, deleteChapter } = useStore();
   const [draft, setDraft] = useState<DraftChapter>(emptyDraft);
   const [slugTouched, setSlugTouched] = useState(false);
+  const [shortCodeTouched, setShortCodeTouched] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any>(null);
   const [flash, setFlash] = useState("");
@@ -90,6 +94,7 @@ export default function HqChaptersPage() {
   function openCreate() {
     setDraft(emptyDraft());
     setSlugTouched(false);
+    setShortCodeTouched(false);
     setFlash("");
     setCreateOpen(true);
   }
@@ -120,9 +125,11 @@ export default function HqChaptersPage() {
       setFlash("That slug is already taken.");
       return;
     }
+    const shortCode = (draft.shortCode.trim() || deriveChapterShortCode(name)).toUpperCase().slice(0, 4);
     const chapter = createChapter({
       name,
       slug,
+      shortCode,
       college: name, // Chapter name and college name are the same
       city,
       district: draft.district,
@@ -224,12 +231,17 @@ export default function HqChaptersPage() {
                       className="border-b border-border/60 hover:bg-bg-hover"
                     >
                       <td className="py-3 pr-4">
-                        <Link
-                          href={`/chapter/${c.slug}/settings`}
-                          className="font-bold text-[var(--accent)] hover:underline"
-                        >
-                          {c.name}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/chapter/${c.slug}/settings`}
+                            className="font-bold text-[var(--accent)] hover:underline"
+                          >
+                            {c.name}
+                          </Link>
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-white border border-white/10">
+                            {c.shortCode || deriveChapterShortCode(c.name)}
+                          </span>
+                        </div>
                         <p className="text-[10px] text-text-mute">/{c.slug}</p>
                       </td>
                       <td className="py-3 pr-4 text-text-dim">
@@ -275,7 +287,7 @@ export default function HqChaptersPage() {
                         </Badge>
                       </td>
                       <td className="py-3 pr-4">
-                        {score}% · {healthLabel(score)}
+                        {score}% · {activityLabel(score)}
                       </td>
                       <td className="py-3 pr-4">{members}</td>
                       <td className="py-3 pr-4">{formatDate(c.foundedAt)}</td>
@@ -329,26 +341,48 @@ export default function HqChaptersPage() {
                   ...d,
                   name,
                   slug: slugTouched ? d.slug : slugify(name),
+                  shortCode: shortCodeTouched ? d.shortCode : deriveChapterShortCode(name),
                 }));
               }}
               placeholder="NIT Calicut Chapter"
               autoFocus
             />
           </div>
-          <div>
-            <FieldLabel>Slug</FieldLabel>
-            <Input
-              value={draft.slug}
-              onChange={(e) => {
-                const sanitized = formatSlugInput(e.target.value);
-                setSlugTouched(sanitized.length > 0);
-                setDraft((d) => ({ ...d, slug: sanitized }));
-              }}
-              onBlur={() => {
-                setDraft((d) => ({ ...d, slug: finalizeSlug(d.slug) }));
-              }}
-              placeholder="nit-calicut"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>
+                <span>Short code (3 letters)</span>
+                <span className="ml-1 text-[11px] font-normal text-text-mute">
+                  e.g. SOS, NIT, EKC
+                </span>
+              </FieldLabel>
+              <Input
+                value={draft.shortCode}
+                maxLength={4}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
+                  setShortCodeTouched(val.length > 0);
+                  setDraft((d) => ({ ...d, shortCode: val }));
+                }}
+                placeholder="e.g. SOS"
+                className="font-mono font-bold uppercase tracking-wider"
+              />
+            </div>
+            <div>
+              <FieldLabel>Slug</FieldLabel>
+              <Input
+                value={draft.slug}
+                onChange={(e) => {
+                  const sanitized = formatSlugInput(e.target.value);
+                  setSlugTouched(sanitized.length > 0);
+                  setDraft((d) => ({ ...d, slug: sanitized }));
+                }}
+                onBlur={() => {
+                  setDraft((d) => ({ ...d, slug: finalizeSlug(d.slug) }));
+                }}
+                placeholder="nit-calicut"
+              />
+            </div>
           </div>
           <ChapterCitySelect
             city={draft.city}

@@ -16,7 +16,8 @@ import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "
 import { isEventVisibleToUser } from "@/lib/events";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
-import { formatDate } from "@/lib/utils";
+import { formatDate, initials } from "@/lib/utils";
+import { generateElevatesId } from "@/lib/forms/helpers";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
 const STUDENT_START = [
@@ -168,11 +169,17 @@ export default function ChapterDashboardPage({
             hint={chapter.status.replaceAll("_", " ")}
             accent="orange"
           />
-          <Stat label="Members" value={members.length} />
+          <Stat label="Members" value={members.length} accent="cyan" />
           <Stat label="Events" value={events.length} />
           <Stat label="Clusters" value={clusters.length} />
         </SectionGrid>
-      ) : null}
+      ) : (
+        <SectionGrid className="mb-6">
+          <Stat label="Members" value={members.length} accent="cyan" hint="Registered in chapter" />
+          <Stat label="Events" value={events.length} accent="orange" hint="Active & upcoming" />
+          <Stat label="Clusters" value={clusters.length} accent="magenta" hint="Domain tracks" />
+        </SectionGrid>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
         <div className="space-y-5">
@@ -338,6 +345,90 @@ export default function ChapterDashboardPage({
                   </li>
                 ))}
               </ul>
+            )}
+          </TerminalPanel>
+
+          <TerminalPanel
+            title="Chapter Members"
+            meta={`${members.length} registered`}
+            action={
+              <Link
+                href={`/chapter/${slug}/students`}
+                className="text-[12px] font-medium text-[var(--accent)] hover:underline"
+              >
+                View all ({members.length}) →
+              </Link>
+            }
+          >
+            {members.length === 0 ? (
+              <p className="text-[13px] text-text-dim">
+                No members registered yet.{" "}
+                <Link
+                  href={`/chapter/${slug}/students`}
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Onboard members
+                </Link>
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                <ul className="divide-y divide-border/60">
+                  {members.slice(0, 5).map((m) => {
+                    const uId = m.elevatesId || generateElevatesId(m.id);
+                    const isLead =
+                      chapter.campusLeadId === m.id ||
+                      chapter.customSettings?.campus_lead_id === m.id ||
+                      chapter.customSettings?.campusLeadId === m.id;
+                    const isFaculty = chapter.facultyId === m.id;
+                    const roleLabel = isLead
+                      ? "Campus Lead"
+                      : isFaculty
+                        ? "Faculty"
+                        : m.department || "Student Member";
+
+                    return (
+                      <li
+                        key={m.id}
+                        className="py-2 flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
+                            {initials(m.fullName)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[12px] font-semibold text-text truncate">
+                                {m.fullName}
+                              </span>
+                              <span className="font-mono text-[9px] font-semibold px-1.5 py-0.2 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20">
+                                {uId}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-text-dim truncate">
+                              {m.department ? `${m.department} · ` : ""}
+                              {m.year || "Student"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          tone={isLead ? "orange" : isFaculty ? "magenta" : "mute"}
+                          className="text-[10px] shrink-0"
+                        >
+                          {roleLabel}
+                        </Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {members.length > 5 && (
+                  <Link
+                    href={`/chapter/${slug}/students`}
+                    className="block text-center text-[11px] font-medium text-[var(--accent)] hover:underline pt-1"
+                  >
+                    + {members.length - 5} more chapter members →
+                  </Link>
+                )}
+              </div>
             )}
           </TerminalPanel>
         </div>

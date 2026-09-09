@@ -306,7 +306,7 @@ export default function ChapterIndexPage() {
               </Link>
 
               <Link
-                href={`/profile/${session.userId}`}
+                href={`/profile/${store.profiles.find((p) => p.id === session.userId)?.elevatesId || session.userId}`}
                 className="flex items-center justify-between rounded-[12px] border border-border/80 bg-bg p-3.5 hover:border-[var(--accent)] transition-colors"
               >
                 <div className="flex items-center gap-3">

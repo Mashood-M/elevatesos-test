@@ -253,6 +253,13 @@ export async function POST(req: Request) {
         member_count: chapter.memberCount ?? 0,
         event_count: chapter.eventCount ?? 0,
         project_count: chapter.projectCount ?? 0,
+        ...(chapter.shortCode ? { short_code: chapter.shortCode.trim().toUpperCase() } : {}),
+        ...(chapter.facultyId !== undefined
+          ? { faculty_id: isUuid(chapter.facultyId) ? chapter.facultyId : null }
+          : {}),
+        ...(chapter.campusLeadId !== undefined && isUuid(chapter.campusLeadId)
+          ? { campus_lead_id: chapter.campusLeadId }
+          : {}),
       };
 
       const geoData: Record<string, any> = {};
@@ -281,12 +288,20 @@ export async function POST(req: Request) {
 
       // Fallback if dedicated columns are not in remote schema cache yet
       if (error && (error.message.includes("column") || error.message.includes("schema cache"))) {
+        const payloadWithoutShort = { ...basePayload };
+        delete payloadWithoutShort.short_code;
         // Attempt 2: Try custom_settings JSONB if migration 009 is present
         const res2 = await admin.from("chapters").upsert({
-          ...basePayload,
+          ...payloadWithoutShort,
           notes: notesWithGeo,
           custom_settings: {
             ...(chapter.customSettings || {}),
+            ...(chapter.shortCode
+              ? { short_code: chapter.shortCode.trim().toUpperCase(), shortCode: chapter.shortCode.trim().toUpperCase() }
+              : {}),
+            ...(chapter.campusLeadId
+              ? { campus_lead_id: chapter.campusLeadId, campusLeadId: chapter.campusLeadId }
+              : {}),
             ...geoData,
           },
         });
@@ -1026,6 +1041,28 @@ export async function POST(req: Request) {
         tokenRow = foundByToken;
       }
 
+      // Enforce: Reject if invite token is revoked, expired, or already used
+      if (tokenRow) {
+        if (!tokenRow.is_active) {
+          return NextResponse.json(
+            { ok: false, error: "This invite code has been revoked and can no longer be used." },
+            { status: 400 },
+          );
+        }
+        if (tokenRow.expires_at && new Date(tokenRow.expires_at) < new Date()) {
+          return NextResponse.json(
+            { ok: false, error: "This invite code has expired and can no longer be used." },
+            { status: 400 },
+          );
+        }
+        if (tokenRow.used_by && !tokenRow.chapter_id) {
+          return NextResponse.json(
+            { ok: false, error: "This single-use invite link has already been used." },
+            { status: 400 },
+          );
+        }
+      }
+
       // 2. Synchronize user profile if valid user UUID
       let validProfileId: string | null = null;
       if (isUuid(userId)) {
@@ -1163,6 +1200,23 @@ export async function POST(req: Request) {
           joinedAt: new Date().toISOString(),
         }),
       });
+
+      // 5. If chapter_invite_uses table exists in Supabase, also record relational join row
+      if (isUuid(validProfileId) && isUuid(chapterId)) {
+        try {
+          await admin.from("chapter_invite_uses").insert({
+            invite_token_id: effectiveTokenId && isUuid(effectiveTokenId) ? effectiveTokenId : null,
+            code: cleanCode || tokenRow?.token || "UNKNOWN",
+            chapter_id: chapterId,
+            user_id: validProfileId,
+            department: department ? String(department).trim() : null,
+            year: year ? String(year).trim() : null,
+            joined_at: new Date().toISOString(),
+          });
+        } catch {
+          // Gracefully ignore if table does not exist or duplicate record
+        }
+      }
 
       return NextResponse.json({ ok: true });
     }

@@ -703,7 +703,7 @@ export default function ChapterLeadershipPage({
                                   <span className="font-medium text-text">{a.title}</span>
                                   {" · "}
                                   <Link
-                                    href={`/profile/${a.userId}`}
+                                    href={`/profile/${user?.elevatesId || a.userId}`}
                                     className="text-[var(--accent)] hover:underline"
                                   >
                                     {user?.fullName ?? "Unknown"}

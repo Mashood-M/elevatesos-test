@@ -12,16 +12,12 @@ import {
 } from "react";
 
 import { X } from "lucide-react";
-import { loadDemoStore, saveDemoStore } from "@/lib/demo/persist";
-import {
-  FallbackWarningBanner,
-  type DataSource,
-} from "@/components/ui/fallback-warning-banner";
 import { createClient } from "@/lib/supabase/client";
 import {
   insertChapterRemote,
   loadStoreFromSupabase,
 } from "@/lib/data/supabase-bootstrap";
+import { deriveChapterShortCode } from "@/lib/chapters";
 import { isUuid, genUuid } from "@/lib/uuid";
 import {
   persistOrganization,
@@ -231,6 +227,7 @@ type StoreContextValue = {
       Partial<
         Pick<
           Chapter,
+          | "shortCode"
           | "district"
           | "state"
           | "coordinates"
@@ -238,6 +235,7 @@ type StoreContextValue = {
           | "longitude"
           | "location"
           | "mapUrl"
+          | "campusLeadId"
           | "customSettings"
         >
       >,
@@ -249,12 +247,14 @@ type StoreContextValue = {
         Chapter,
         | "name"
         | "slug"
+        | "shortCode"
         | "college"
         | "city"
         | "district"
         | "state"
         | "status"
         | "facultyId"
+        | "campusLeadId"
         | "notes"
         | "healthScore"
         | "coordinates"
@@ -339,6 +339,12 @@ type StoreContextValue = {
     chapterId?: string;
     roleKey: RoleKey;
     organizationId?: string;
+    department?: string;
+    year?: string;
+    section?: string;
+    phone?: string;
+    skills?: string[];
+    interests?: string[];
   }) => Profile | null;
   updateUser: (
     id: string,
@@ -1008,40 +1014,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
   );
   const [hydrated, setHydrated] = useState(false);
-  const [dataSource, setDataSource] = useState<DataSource>("database");
 
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
-      if (isDemoMode()) {
-        console.warn("⚠️ FALLBACK DATA SERVED — Store Hydration — demo mode is active");
-        setDataSource("demo");
-        const saved = loadDemoStore();
-        if (!cancelled && saved) {
-          setStore(sanitizeStore(saved));
-        }
-      } else {
-        const result = await loadStoreFromSupabase();
-        if (!cancelled) {
-          setStore(sanitizeStore(result.store));
-          setDataSource(result._dataSource as DataSource);
-          if (result._dataSource !== "database") {
-            console.warn(`⚠️ FALLBACK DATA SERVED — Store Hydration — source: ${result._dataSource}`);
-          }
-        }
+      const result = await loadStoreFromSupabase();
+      if (!cancelled) {
+        setStore(sanitizeStore(result.store));
+        setHydrated(true);
       }
-      if (!cancelled) setHydrated(true);
     }
     void hydrate();
     return () => {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!hydrated || !isDemoMode()) return;
-    saveDemoStore(store);
-  }, [store, hydrated]);
 
   const value = useMemo<StoreContextValue>(
     () => ({
@@ -2251,9 +2238,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           location: input.location?.trim() || undefined,
           mapUrl: input.mapUrl?.trim() || undefined,
         };
+        const shortCode = (
+          input.shortCode?.trim() || deriveChapterShortCode(trimmed.name)
+        ).toUpperCase().slice(0, 4);
+
         const chapterId = genUuid();
         const chapter: Chapter = {
           id: chapterId,
+          elevatesId: undefined,
+          shortCode,
           organizationId: store.organization.id,
           name: trimmed.name,
           slug: trimmed.slug,
@@ -2274,6 +2267,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           mapUrl: trimmed.mapUrl,
           customSettings: {
             ...(input.customSettings || {}),
+            short_code: shortCode,
             coordinates: trimmed.coordinates,
             latitude: trimmed.latitude,
             longitude: trimmed.longitude,
@@ -2320,13 +2314,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateChapter: (id, patch) => {
         const prevChapter = store.chapters.find((c) => c.id === id);
         if (!prevChapter) return;
+        const effectiveShort =
+          patch.shortCode !== undefined
+            ? patch.shortCode.trim().toUpperCase().slice(0, 4)
+            : prevChapter.shortCode;
+
         const updated: Chapter = {
           ...prevChapter,
           ...patch,
+          shortCode: effectiveShort,
           id: prevChapter.id,
           customSettings: {
             ...(prevChapter.customSettings || {}),
             ...(patch.customSettings || {}),
+            ...(patch.shortCode !== undefined
+              ? { short_code: effectiveShort, shortCode: effectiveShort }
+              : {}),
+            ...(patch.campusLeadId !== undefined
+              ? { campus_lead_id: patch.campusLeadId, campusLeadId: patch.campusLeadId }
+              : {}),
             ...(patch.coordinates !== undefined
               ? { coordinates: patch.coordinates }
               : {}),
@@ -2342,14 +2348,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...(patch.mapUrl !== undefined ? { map_url: patch.mapUrl } : {}),
           },
         };
-        setStore((s) => ({
-          ...s,
-          chapters: s.chapters.map((c) => (c.id === id ? updated : c)),
-          activityLogs: [
-            log(s.session.userId, "chapter_updated", "chapter", id),
-            ...s.activityLogs,
-          ],
-        }));
+        setStore((s) => {
+          let updatedUserRoles = s.userRoles;
+          let updatedProfiles = s.profiles;
+          if (patch.campusLeadId) {
+            const leadId = patch.campusLeadId;
+            updatedProfiles = s.profiles.map((p) =>
+              p.id === leadId ? { ...p, chapterId: id } : p,
+            );
+            const hasRole = updatedUserRoles.some(
+              (ur) => ur.userId === leadId && ur.chapterId === id && ur.roleKey === "campus_lead",
+            );
+            if (!hasRole) {
+              const leadRole = s.roles.find((r) => r.key === "campus_lead");
+              updatedUserRoles = [
+                ...updatedUserRoles.filter(
+                  (ur) => !(ur.chapterId === id && ur.roleKey === "campus_lead"),
+                ),
+                {
+                  id: genUuid(),
+                  userId: leadId,
+                  roleId: leadRole?.id || "role-campus_lead",
+                  roleKey: "campus_lead",
+                  chapterId: id,
+                },
+              ];
+            }
+          }
+          if (patch.facultyId) {
+            const facId = patch.facultyId;
+            const hasRole = updatedUserRoles.some(
+              (ur) => ur.userId === facId && ur.roleKey === "faculty_coordinator",
+            );
+            if (!hasRole) {
+              const facRole = s.roles.find((r) => r.key === "faculty_coordinator");
+              updatedUserRoles = [
+                ...updatedUserRoles,
+                {
+                  id: genUuid(),
+                  userId: facId,
+                  roleId: facRole?.id || "role-faculty_coordinator",
+                  roleKey: "faculty_coordinator",
+                  chapterId: id,
+                },
+              ];
+            }
+          }
+          return {
+            ...s,
+            profiles: updatedProfiles,
+            userRoles: updatedUserRoles,
+            chapters: s.chapters.map((c) => (c.id === id ? updated : c)),
+            activityLogs: [
+              log(s.session.userId, "chapter_updated", "chapter", id),
+              ...s.activityLogs,
+            ],
+          };
+        });
         void runPersist(persistChapter(updated), {
           errorMessage: `Failed to update chapter "${updated.name}"`,
           rollback: () => {
@@ -2533,25 +2588,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       generateChapterInviteCode: (chapterId, customCode) => {
         const now = new Date();
         const expires = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); // Strictly 3 days validity
-        const chap = store.chapters.find((c) => c.id === chapterId);
+        const chap = store.chapters.find((c) => c.id === chapterId || c.slug === chapterId);
 
-        // Derive college short code prefix
-        let prefix = "ELEV";
-        if (chap) {
-          const rawName = (chap.college || chap.name || "").trim();
-          const words = rawName
-            .replace(/[^a-zA-Z0-9\s]/g, "")
-            .split(/\s+/)
-            .filter((w) => !["of", "and", "the", "for", "in", "at", "campus", "chapter"].includes(w.toLowerCase()));
-
-          if (words.length >= 2) {
-            const initials = words.map((w) => w[0].toUpperCase()).join("").slice(0, 5);
-            if (initials.length >= 2) prefix = initials;
-          } else if (words.length === 1 && words[0].length >= 3) {
-            prefix = words[0].slice(0, 4).toUpperCase();
-          } else {
-            prefix = chap.slug.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "ELEV";
-          }
+        // Derive college short code prefix (e.g. SOS, NIT, EKC, MCC)
+        let prefix = "ELV";
+        if (chap?.shortCode) {
+          prefix = chap.shortCode.trim().toUpperCase().slice(0, 4);
+        } else if (chap) {
+          prefix = deriveChapterShortCode(chap.name || chap.college || "");
         }
 
         // Collect existing codes to enforce strict uniqueness across all generated codes
@@ -2587,6 +2631,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           expiresAt: expires.toISOString(),
           isRevoked: false,
           usesCount: 0,
+          joinedUsers: [],
         };
 
         const supabase = createClient();
@@ -2768,11 +2813,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           const updatedSession = { ...s.session, chapterId: targetChapter.id };
 
+          const userProf = s.profiles.find((p) => p.id === targetUserId);
+          const joinedUserEntry: import("@/types").ChapterInviteJoinedUser = {
+            id: targetUserId,
+            elevatesId: userProf?.elevatesId,
+            fullName: userProf?.fullName || "Student",
+            email: userProf?.email || "",
+            department: department?.trim() || userProf?.department,
+            year: year?.trim() || userProf?.year,
+            joinedAt: new Date().toISOString(),
+          };
+
           const updatedCodes = (s.chapterInviteCodes ?? []).map((c) => {
             const isMatch =
               c.code.toUpperCase() === cleanCode ||
               (matchingCode && c.id === matchingCode.id);
-            return isMatch ? { ...c, usesCount: (c.usesCount || 0) + 1 } : c;
+            if (!isMatch) return c;
+            const existing = c.joinedUsers ?? [];
+            const alreadyIn = existing.some((u) => u.id === targetUserId);
+            return {
+              ...c,
+              usesCount: (c.usesCount || 0) + 1,
+              joinedUsers: alreadyIn ? existing : [...existing, joinedUserEntry],
+            };
           });
 
           const codeAlreadyPresent = (s.chapterInviteCodes ?? []).some(
@@ -2781,7 +2844,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const finalCodes = codeAlreadyPresent
             ? updatedCodes
             : matchingCode
-            ? [{ ...matchingCode, usesCount: 1 }, ...updatedCodes]
+            ? [{ ...matchingCode, usesCount: 1, joinedUsers: [joinedUserEntry] }, ...updatedCodes]
             : updatedCodes;
 
           const joinLog: import("@/types").ActivityLog = {
@@ -3170,9 +3233,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           email,
           fullName,
           chapterId: isHq ? undefined : input.chapterId,
+          department: input.department?.trim() || undefined,
+          year: input.year?.trim() || undefined,
+          section: input.section?.trim() || undefined,
+          phone: input.phone?.trim() || undefined,
+          skills: input.skills ?? [],
+          interests: input.interests ?? [],
           status: "active",
-          skills: [],
-          interests: [],
           points: 0,
           badges: [],
         };
@@ -3207,6 +3274,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               id,
               fullName,
               email,
+              phone: input.phone,
+              department: input.department,
+              year: input.year,
+              section: input.section,
+              skills: input.skills,
+              interests: input.interests,
               chapterId: input.chapterId || store.chapters[0]?.id || "c1000000-0000-4000-8000-000000000001",
               roleKey: input.roleKey,
             },
@@ -5050,7 +5123,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       resetDemoStore: () => {
         void loadStoreFromSupabase().then((result) => {
           setStore(sanitizeStore(result.store));
-          setDataSource(result._dataSource as DataSource);
         });
       },
     }),
@@ -5059,7 +5131,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   return (
     <StoreContext.Provider value={value}>
-      <FallbackWarningBanner source={dataSource} context="Store Hydration" />
       {children}
     </StoreContext.Provider>
   );

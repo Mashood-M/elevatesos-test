@@ -95,3 +95,62 @@ export function filterAndSortChapters(
     totalCount: (testMatches ? 1 : 0) + matchedOther.length,
   };
 }
+
+/**
+ * Derives a clean, uppercase 3-letter shortform / shortcode from a chapter or college name.
+ * Examples:
+ *  - "School of Science" -> "SOS"
+ *  - "National Institute of Technology" -> "NIT"
+ *  - "Eranad Knowledge City" -> "EKC"
+ *  - "Malabar Christian College" -> "MCC"
+ *  - "Elevates Test Chapter" -> "ETC"
+ *  - "nit" -> "NIT"
+ */
+export function deriveChapterShortCode(name: string): string {
+  if (!name || !name.trim()) return "ELV";
+  const cleaned = name.trim();
+
+  // If already a short acronym (2 to 4 chars with no spaces, e.g. "NIT", "MCC", "EKC")
+  const singleWord = cleaned.replace(/[^a-zA-Z0-9]/g, "");
+  if (singleWord.length <= 4 && singleWord.length >= 2 && !cleaned.includes(" ")) {
+    return singleWord.toUpperCase().padEnd(3, "X").slice(0, 3);
+  }
+
+  const rawWords = cleaned
+    .replace(/[^a-zA-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (rawWords.length === 0) return "ELV";
+
+  const stopWords = new Set(["of", "and", "the", "for", "in", "at", "campus", "chapter"]);
+  const significantWords = rawWords.filter((w) => !stopWords.has(w.toLowerCase()));
+
+  // 1. If 3 or more significant words, take initials of first 3 significant words (e.g. "National Institute of Technology" -> NIT)
+  if (significantWords.length >= 3) {
+    return (significantWords[0][0] + significantWords[1][0] + significantWords[2][0]).toUpperCase();
+  }
+
+  // 2. If 3 or more raw words (e.g. "School of Science" -> S + O + S = SOS)
+  if (rawWords.length >= 3) {
+    return (rawWords[0][0] + rawWords[1][0] + rawWords[2][0]).toUpperCase();
+  }
+
+  // 3. If 2 significant words, take first 2 chars of 1st word + first char of 2nd word
+  if (significantWords.length === 2) {
+    const w1 = significantWords[0];
+    const w2 = significantWords[1];
+    return (w1.slice(0, 2) + w2.slice(0, 1)).toUpperCase().padEnd(3, "X").slice(0, 3);
+  }
+
+  // 4. If 2 raw words
+  if (rawWords.length === 2) {
+    const w1 = rawWords[0];
+    const w2 = rawWords[1];
+    return (w1.slice(0, 2) + w2.slice(0, 1)).toUpperCase().padEnd(3, "X").slice(0, 3);
+  }
+
+  // 5. Single long word (e.g. "Elevates" -> "ELV")
+  return rawWords[0].slice(0, 3).toUpperCase().padEnd(3, "X").slice(0, 3);
+}
+

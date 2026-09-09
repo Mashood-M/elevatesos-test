@@ -70,7 +70,7 @@ export function buildSearchIndex(
       category: "student",
       title: p.fullName,
       subtitle: [p.elevatesId, p.department, p.year, chapter?.name].filter(Boolean).join(" · "),
-      href: `/profile/${p.id}`,
+      href: `/profile/${p.elevatesId || p.id}`,
       keywords: `${p.fullName} ${p.email} ${p.elevatesId ?? ""} ${p.skills.join(" ")} ${p.department ?? ""}`.toLowerCase(),
     });
   }

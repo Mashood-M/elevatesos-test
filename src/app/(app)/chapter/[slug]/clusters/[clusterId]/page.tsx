@@ -352,7 +352,7 @@ export default function ClusterDetailPage({
                     className="flex items-center justify-between gap-2 text-[13px]"
                   >
                     <Link
-                      href={`/profile/${id}`}
+                      href={`/profile/${m.elevatesId || id}`}
                       className="font-medium hover:text-[var(--accent)]"
                     >
                       {m.fullName}

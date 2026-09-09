@@ -236,7 +236,7 @@ export default function ChapterClustersPage({
                   return m ? (
                     <Link
                       key={id}
-                      href={`/profile/${id}`}
+                      href={`/profile/${m.elevatesId || id}`}
                       className="text-[10px] text-[var(--accent)] hover:underline"
                     >
                       {m.fullName.split(" ")[0]}

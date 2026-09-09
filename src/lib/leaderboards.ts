@@ -44,7 +44,7 @@ export function buildStudentLeaders(store: ElevatesStore, limit = 5): LeaderEntr
       id: p.id,
       name: p.fullName,
       value: p.points,
-      href: `/profile/${p.id}`,
+      href: `/profile/${p.elevatesId || p.id}`,
       meta: p.department,
     }));
   return withRanks(rows);
@@ -67,7 +67,7 @@ export function buildRepLeaders(store: ElevatesStore, limit = 5): LeaderEntry[] 
       id: r.profile.id,
       name: r.profile.fullName,
       value: r.reviewed,
-      href: `/profile/${r.profile.id}`,
+      href: `/profile/${r.profile.elevatesId || r.profile.id}`,
       meta: "reviews",
     }));
   return withRanks(rows);
@@ -95,7 +95,7 @@ export function buildCoordinatorLeaders(
       id: c.profile.id,
       name: c.profile.fullName,
       value: c.clusters,
-      href: `/profile/${c.profile.id}`,
+      href: `/profile/${c.profile.elevatesId || c.profile.id}`,
       meta: "clusters",
     }));
   return withRanks(rows);
@@ -178,7 +178,7 @@ export function buildExecutiveLeaders(
   limit = 5,
 ): LeaderEntry[] {
   const seen = new Set<string>();
-  const candidates: { id: string; name: string; score: number; role: string }[] =
+  const candidates: { id: string; name: string; score: number; role: string; elevatesId?: string }[] =
     [];
 
   for (const ur of store.userRoles) {
@@ -193,6 +193,7 @@ export function buildExecutiveLeaders(
       name: profile.fullName,
       score: executiveScore(store, profile.id),
       role: role.name,
+      elevatesId: profile.elevatesId,
     });
   }
 
@@ -203,7 +204,7 @@ export function buildExecutiveLeaders(
       id: c.id,
       name: c.name,
       value: c.score,
-      href: `/profile/${c.id}`,
+      href: `/profile/${c.elevatesId || c.id}`,
       meta: c.role,
     }));
   return withRanks(rows);

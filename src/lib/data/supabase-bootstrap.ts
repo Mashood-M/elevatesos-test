@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { ensureTestChapter } from "@/lib/chapters";
+import { ensureTestChapter, deriveChapterShortCode } from "@/lib/chapters";
 import { deduplicateEvents } from "@/lib/events";
 import { extractLocationFromNotes } from "@/lib/slug";
 import type {
@@ -247,6 +247,16 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       ? (orgSettings.developer_scopes as DeveloperScope[])
       : [];
 
+    const chapterMemberCounts = new Map<string, number>();
+    for (const p of profileRows ?? []) {
+      if (p.chapter_id) {
+        chapterMemberCounts.set(
+          p.chapter_id,
+          (chapterMemberCounts.get(p.chapter_id) ?? 0) + 1,
+        );
+      }
+    }
+
     const chapters: Chapter[] = ensureTestChapter(
       (chapterRows ?? []).map((c: Record<string, any>) => {
         const cs = (c.custom_settings as Record<string, any>) || {};
@@ -283,9 +293,21 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           notes = extracted.userNotes || undefined;
         }
 
+        const countedMembers = chapterMemberCounts.get(c.id) ?? 0;
+        const memberCount =
+          countedMembers > 0 ? countedMembers : Number(c.member_count ?? 0);
+
+        const rawShort =
+          c.short_code ??
+          cs.short_code ??
+          cs.shortCode ??
+          deriveChapterShortCode(c.name || c.college || "");
+        const shortCode = String(rawShort).toUpperCase().slice(0, 4);
+
         return {
           id: c.id,
           elevatesId: c.elevates_id ?? undefined,
+          shortCode,
           organizationId: c.organization_id,
           name: c.name,
           slug: c.slug,
@@ -293,11 +315,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           city: c.city ?? "",
           status: c.status,
           healthScore: Number(c.health_score ?? 0),
-          memberCount: Number(c.member_count ?? 0),
+          memberCount,
           eventCount: Number(c.event_count ?? 0),
           projectCount: Number(c.project_count ?? 0),
           foundedAt: c.founded_at ?? new Date().toISOString(),
           facultyId: c.faculty_id ?? undefined,
+          campusLeadId: c.campus_lead_id ?? cs.campus_lead_id ?? cs.campusLeadId ?? undefined,
           notes,
           published: Boolean(c.published),
           logoUrl: c.logo_url ?? undefined,
@@ -381,7 +404,11 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     const profiles: Profile[] =
       profileRows?.map((p: Record<string, any>) => ({
         id: p.id,
-        elevatesId: p.elevates_id ?? undefined,
+        elevatesId:
+          p.elevates_id ||
+          (p.id
+            ? `ELV-${String(p.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`
+            : undefined),
         email: p.email,
         fullName: p.full_name,
         avatarUrl: p.avatar_url ?? undefined,
@@ -485,7 +512,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         allowed: Boolean(rp.allowed),
       })) ?? [];
 
-    const userRoles =
+    const userRolesRaw =
       urRows?.map((ur: Record<string, any>) => ({
         id: ur.id,
         userId: ur.user_id,
@@ -494,6 +521,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         chapterId: ur.chapter_id ?? undefined,
         organizationId: ur.organization_id ?? undefined,
       })) ?? [];
+
+    const seenUserRoles = new Set<string>();
+    const userRoles = userRolesRaw.filter((ur: Record<string, any>) => {
+      const key = `${ur.userId}-${ur.roleKey || ur.roleId}-${ur.chapterId || "global"}`;
+      if (seenUserRoles.has(key)) return false;
+      seenUserRoles.add(key);
+      return true;
+    });
 
     const leadershipTerms =
       ltRows?.map((lt: Record<string, any>) => ({
@@ -821,12 +856,56 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         })),
         chapterInviteCodes: (inviteRows ?? []).map((t: Record<string, any>) => {
           const tokenStr = (t.token ?? "").toUpperCase();
-          const logCount = (activityRows ?? []).filter(
+          const matchingLogs = (activityRows ?? []).filter(
             (al: any) =>
               al.action === "chapter_invite_used" &&
               (al.entity_id?.toUpperCase() === tokenStr ||
                 (typeof al.meta === "string" && al.meta.toUpperCase().includes(tokenStr)))
-          ).length;
+          );
+
+          const joinedUsersMap = new Map<string, import("@/types").ChapterInviteJoinedUser>();
+
+          for (const log of matchingLogs) {
+            let metaObj: any = {};
+            if (typeof log.meta === "string") {
+              try {
+                metaObj = JSON.parse(log.meta);
+              } catch {}
+            } else if (log.meta && typeof log.meta === "object") {
+              metaObj = log.meta;
+            }
+            const userId = log.actor_id || metaObj.userId;
+            if (userId && !joinedUsersMap.has(userId)) {
+              const prof = profiles.find((p) => p.id === userId);
+              joinedUsersMap.set(userId, {
+                id: userId,
+                elevatesId: prof?.elevatesId,
+                fullName: prof?.fullName || metaObj.fullName || "Student",
+                email: prof?.email || metaObj.email || "",
+                department: prof?.department || metaObj.department,
+                year: prof?.year || metaObj.year,
+                joinedAt: log.created_at || metaObj.joinedAt || t.used_at || t.created_at,
+              });
+            }
+          }
+
+          if (t.used_by && !joinedUsersMap.has(t.used_by)) {
+            const prof = profiles.find((p) => p.id === t.used_by);
+            if (prof) {
+              joinedUsersMap.set(t.used_by, {
+                id: t.used_by,
+                elevatesId: prof.elevatesId,
+                fullName: prof.fullName || "Student",
+                email: prof.email || "",
+                department: prof.department,
+                year: prof.year,
+                joinedAt: t.used_at || t.created_at,
+              });
+            }
+          }
+
+          const joinedUsers = Array.from(joinedUsersMap.values());
+          const logCount = matchingLogs.length;
           const dbUses = Number(t.uses_count ?? 0);
           return {
             id: t.id,
@@ -836,7 +915,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             createdAt: t.created_at ?? new Date().toISOString(),
             expiresAt: t.expires_at ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
             isRevoked: !(t.is_active ?? true),
-            usesCount: Math.max(dbUses, logCount, t.used_by ? 1 : 0),
+            usesCount: Math.max(dbUses, logCount, joinedUsers.length),
+            joinedUsers,
           };
         }),
         session,
@@ -990,6 +1070,22 @@ export async function markInviteTokenUsed(tokenId: string, newUserId: string): P
 
 /** Revoke an invite token — sets is_active=false so the link can no longer be used. */
 export async function revokeInviteToken(tokenId: string): Promise<boolean> {
+  try {
+    if (typeof window !== "undefined") {
+      const res = await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "revoke_chapter_invite_code",
+          data: { id: tokenId },
+        }),
+      });
+      if (res.ok) return true;
+    }
+  } catch (err) {
+    console.warn("revokeInviteToken API mutation error, falling back to direct client:", err);
+  }
+
   const supabase = createClient();
   if (!supabase) return false;
   const { error } = await supabase
@@ -997,7 +1093,7 @@ export async function revokeInviteToken(tokenId: string): Promise<boolean> {
     .update({ is_active: false })
     .eq("id", tokenId);
   if (error) {
-    console.error("revokeInviteToken error:", error);
+    console.error("revokeInviteToken direct client error:", error);
     return false;
   }
   return true;

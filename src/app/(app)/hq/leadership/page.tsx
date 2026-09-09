@@ -227,7 +227,7 @@ export default function HqLeadershipPage() {
                                       </span>
                                       {" · "}
                                       <Link
-                                        href={`/profile/${a.userId}`}
+                                        href={`/profile/${user?.elevatesId || a.userId}`}
                                         className="text-cyan hover:text-green"
                                       >
                                         {user?.fullName ?? "Unknown"}

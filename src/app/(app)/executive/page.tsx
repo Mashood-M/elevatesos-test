@@ -502,7 +502,7 @@ export default function ExecutivePage() {
                           <span className="text-text-dim">
                             Score: <strong className="text-orange">{userScore}</strong>
                           </span>
-                          <Link href={`/profile/${a.userId}`}>
+                          <Link href={`/profile/${u?.elevatesId || a.userId}`}>
                             <Button variant="ghost" className="text-[11px] py-1 px-2.5">
                               Inspect Profile
                             </Button>

@@ -3,10 +3,11 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  Check,
   CheckCircle,
   Clock,
+  Copy,
   Download,
-  Edit,
   FileSpreadsheet,
   Mail,
   Phone,
@@ -14,13 +15,13 @@ import {
   Search,
   Sparkles,
   Trash2,
-  Upload,
   UserCheck,
   Users,
   X,
+  Shield,
+  GraduationCap,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
-import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
@@ -29,22 +30,77 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isSuperAdmin } from "@/lib/permissions";
 import { initials } from "@/lib/utils";
+import { generateElevatesId } from "@/lib/forms/helpers";
+import { roleKeyLabel } from "@/lib/leadership";
+import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
+import type { Chapter, LeadershipAssignment, LeadershipTerm, Profile, RoleKey, UserRole } from "@/types";
 
-interface PreCollectedStudent {
+interface ChapterMemberItem {
   id: string;
+  elevatesId: string;
   fullName: string;
   email: string;
   phone: string;
   department: string;
   year: string;
-  section?: string;
+  section: string;
   skills: string[];
   interests: string[];
-  status: "unclaimed" | "claimed";
+  status: "claimed" | "unclaimed" | "pending";
+  roleInfo: {
+    label: string;
+    tone: "orange" | "cyan" | "green" | "magenta" | "mute";
+  };
   collectedAt: string;
 }
 
-const DEFAULT_PRE_COLLECTED: PreCollectedStudent[] = [];
+function resolveMemberRole(
+  profileId: string,
+  chapter: Chapter,
+  userRoles: UserRole[],
+  leadershipAssignments: LeadershipAssignment[],
+  leadershipTerms: LeadershipTerm[],
+): { label: string; tone: "orange" | "cyan" | "green" | "magenta" | "mute" } {
+  if (
+    chapter.campusLeadId === profileId ||
+    chapter.customSettings?.campus_lead_id === profileId ||
+    chapter.customSettings?.campusLeadId === profileId
+  ) {
+    return { label: "Campus Lead", tone: "orange" };
+  }
+  if (chapter.facultyId === profileId) {
+    return { label: "Faculty Coordinator", tone: "magenta" };
+  }
+  const termIds = new Set(
+    leadershipTerms.filter((t) => t.chapterId === chapter.id).map((t) => t.id),
+  );
+  const leadAssign = leadershipAssignments.find(
+    (la) => termIds.has(la.termId) && la.userId === profileId,
+  );
+  if (leadAssign) {
+    return {
+      label: leadAssign.title || roleKeyLabel(leadAssign.roleKey),
+      tone: "cyan",
+    };
+  }
+  const uRole = userRoles.find(
+    (ur) => ur.chapterId === chapter.id && ur.userId === profileId,
+  );
+  if (uRole?.roleKey) {
+    const rk = uRole.roleKey as RoleKey;
+    if (rk === "campus_lead" || rk === "chairman") {
+      return { label: "Campus Lead", tone: "orange" };
+    }
+    if (rk === "faculty_coordinator") {
+      return { label: "Faculty Coordinator", tone: "magenta" };
+    }
+    if (rk === "class_representative") {
+      return { label: "Class Rep", tone: "cyan" };
+    }
+    return { label: roleKeyLabel(rk), tone: "mute" };
+  }
+  return { label: "Student Member", tone: "mute" };
+}
 
 export default function ChapterStudentsPage({
   params,
@@ -52,20 +108,21 @@ export default function ChapterStudentsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const { store, createUser } = useStore();
+  const { store, createUser, approveJoinRequests, rejectJoinRequests } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
+  const targetChapter = chapter || store.chapters.find((c) => c.slug === slug);
 
   const isCampusLead = session.roleKey === "campus_lead";
   const canDelete = !isCampusLead && isSuperAdmin(session.roleKey);
 
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
-  const { approveJoinRequests, rejectJoinRequests } = useStore();
-
-  const [studentList, setStudentList] = useState<PreCollectedStudent[]>(DEFAULT_PRE_COLLECTED);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"all" | "unclaimed" | "claimed">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | "claimed" | "unclaimed">("all");
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState("all");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState("all");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const [isAdding, setIsAdding] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState("");
@@ -87,19 +144,30 @@ export default function ChapterStudentsPage({
     interests: "",
   });
 
-  const activeChapter = chapter ?? store.chapters?.[0] ?? {
-    id: "",
-    slug: slug,
-    name: "Chapter",
-  };
+  // Strictly filter profiles that belong ONLY to this chapter
+  const chapterMembers: ChapterMemberItem[] = useMemo(() => {
+    if (!targetChapter) return [];
+    const rawProfiles = (store.profiles ?? []).filter(
+      (p) => p.chapterId === targetChapter.id,
+    );
 
-  useEffect(() => {
-    if (store.profiles && store.profiles.length > 0) {
-      const chapterProfiles = store.profiles.filter(
-        (p) => !activeChapter.id || p.chapterId === activeChapter.id
+    return rawProfiles.map((p) => {
+      const elevatesId = p.elevatesId || generateElevatesId(p.id);
+      const roleInfo = resolveMemberRole(
+        p.id,
+        targetChapter,
+        store.userRoles ?? [],
+        store.leadershipAssignments ?? [],
+        store.leadershipTerms ?? [],
       );
-      const mapped: PreCollectedStudent[] = chapterProfiles.map((p) => ({
+
+      let status: "claimed" | "unclaimed" | "pending" = "claimed";
+      if ((p.status as unknown as string) === "disabled") status = "unclaimed";
+      else if ((p.status as unknown as string) === "pending") status = "pending";
+
+      return {
         id: p.id,
+        elevatesId,
         fullName: p.fullName,
         email: p.email || "",
         phone: p.phone || "",
@@ -108,43 +176,128 @@ export default function ChapterStudentsPage({
         section: p.section || "A",
         skills: p.skills || [],
         interests: p.interests || [],
-        status: p.status === "disabled" ? "unclaimed" : "claimed",
+        status,
+        roleInfo,
         collectedAt: new Date().toISOString().split("T")[0],
-      }));
-      setStudentList(mapped);
-    }
-  }, [store.profiles, activeChapter.id]);
+      };
+    });
+  }, [
+    store.profiles,
+    store.userRoles,
+    store.leadershipAssignments,
+    store.leadershipTerms,
+    targetChapter,
+  ]);
 
   const chapterDepartments = useMemo(() => {
+    if (!targetChapter) return [];
     const deptsFromStore = (store.departments ?? [])
-      .filter((d) => !activeChapter.id || d.chapterId === activeChapter.id)
+      .filter((d) => d.chapterId === targetChapter.id)
       .map((d) => d.name);
-    return [...new Set(deptsFromStore)].sort();
-  }, [store.departments, activeChapter.id]);
+    const deptsFromMembers = chapterMembers
+      .map((m) => m.department)
+      .filter((d) => d && d !== "Unassigned");
+    return [...new Set([...deptsFromStore, ...deptsFromMembers])].sort();
+  }, [store.departments, targetChapter, chapterMembers]);
 
-  const filteredStudents = studentList.filter((s) => {
-    const matchesSearch =
-      s.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
-      s.phone.includes(search) ||
-      s.department.toLowerCase().includes(search.toLowerCase()) ||
-      s.skills.some((sk) => sk.toLowerCase().includes(search.toLowerCase()));
-    const matchesFilter = filterStatus === "all" || s.status === filterStatus;
-    const matchesDepartment =
-      selectedDepartmentFilter === "all" ||
-      s.department.toLowerCase() === selectedDepartmentFilter.toLowerCase() ||
-      (selectedDepartmentFilter.toLowerCase() === "unassigned" &&
-        (!s.department || s.department.toLowerCase() === "unassigned"));
-    return matchesSearch && matchesFilter && matchesDepartment;
-  });
+  const filteredStudents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return chapterMembers.filter((s) => {
+      const matchesSearch =
+        !q ||
+        s.elevatesId.toLowerCase().includes(q) ||
+        s.fullName.toLowerCase().includes(q) ||
+        s.email.toLowerCase().includes(q) ||
+        s.phone.includes(q) ||
+        s.department.toLowerCase().includes(q) ||
+        s.roleInfo.label.toLowerCase().includes(q) ||
+        s.skills.some((sk) => sk.toLowerCase().includes(q));
+
+      const matchesStatus =
+        filterStatus === "all" ||
+        (filterStatus === "claimed" && s.status === "claimed") ||
+        (filterStatus === "unclaimed" && (s.status === "unclaimed" || s.status === "pending"));
+
+      const matchesDept =
+        selectedDepartmentFilter === "all" ||
+        s.department.toLowerCase() === selectedDepartmentFilter.toLowerCase() ||
+        (selectedDepartmentFilter.toLowerCase() === "unassigned" &&
+          (!s.department || s.department.toLowerCase() === "unassigned"));
+
+      const matchesRole =
+        selectedRoleFilter === "all" ||
+        s.roleInfo.label.toLowerCase().includes(selectedRoleFilter.toLowerCase());
+
+      return matchesSearch && matchesStatus && matchesDept && matchesRole;
+    });
+  }, [
+    chapterMembers,
+    search,
+    filterStatus,
+    selectedDepartmentFilter,
+    selectedRoleFilter,
+  ]);
+
+  if (!targetChapter) {
+    return <ChapterNotFound />;
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(text);
+    setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const exportRosterToCsv = () => {
+    const headers = [
+      "Member Number (Elevates ID)",
+      "Full Name",
+      "Chapter Role",
+      "Department",
+      "Year",
+      "Section",
+      "Email",
+      "Phone",
+      "Skills",
+      "Account Status",
+    ];
+
+    const rows = filteredStudents.map((m) => [
+      `"${m.elevatesId}"`,
+      `"${m.fullName.replace(/"/g, '""')}"`,
+      `"${m.roleInfo.label}"`,
+      `"${(m.department || "").replace(/"/g, '""')}"`,
+      `"${m.year || ""}"`,
+      `"${m.section || ""}"`,
+      `"${m.email}"`,
+      `"${m.phone || ""}"`,
+      `"${m.skills.join("; ")}"`,
+      `"${m.status}"`,
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${targetChapter.slug}-member-roster.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleAddStudent = (e: React.FormEvent) => {
     e.preventDefault();
-    const skillsArr = formData.skills.split(",").map((s) => s.trim()).filter(Boolean);
-    const interestsArr = formData.interests.split(",").map((i) => i.trim()).filter(Boolean);
+    const skillsArr = formData.skills
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const interestsArr = formData.interests
+      .split(",")
+      .map((i) => i.trim())
+      .filter(Boolean);
 
-    const newStudent: PreCollectedStudent = {
-      id: `stu-${Date.now()}`,
+    createUser({
       fullName: formData.fullName,
       email: formData.email,
       phone: formData.phone,
@@ -153,11 +306,10 @@ export default function ChapterStudentsPage({
       section: formData.section,
       skills: skillsArr,
       interests: interestsArr,
-      status: "unclaimed",
-      collectedAt: new Date().toISOString().split("T")[0],
-    };
+      chapterId: targetChapter.id,
+      roleKey: "student",
+    });
 
-    setStudentList((prev) => [newStudent, ...prev]);
     setIsAdding(false);
     setFormData({
       fullName: "",
@@ -169,6 +321,9 @@ export default function ChapterStudentsPage({
       skills: "",
       interests: "",
     });
+
+    setSyncSuccessMsg(`✓ Successfully added member to ${targetChapter.name}!`);
+    setTimeout(() => setSyncSuccessMsg(""), 4000);
   };
 
   const handleBulkImport = async (e: React.FormEvent) => {
@@ -183,7 +338,7 @@ export default function ChapterStudentsPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           actingUserId: store.session.userId,
-          chapterId: activeChapter.id,
+          chapterId: targetChapter.id,
           csvContent: bulkText,
         }),
       });
@@ -194,34 +349,16 @@ export default function ChapterStudentsPage({
           results: data.results,
         });
 
-        // Add successful rows locally
-        const imported: PreCollectedStudent[] = [];
         data.results.forEach((r: any) => {
           if (r.status === "success") {
-            imported.push({
-              id: `bulk-${Date.now()}-${r.row}`,
-              fullName: r.name,
-              email: r.email,
-              phone: "+91 90000 00000",
-              department: "Unassigned",
-              year: "1st Year",
-              section: "A",
-              skills: ["Tech"],
-              interests: ["Community"],
-              status: "claimed",
-              collectedAt: new Date().toISOString().split("T")[0],
-            });
             createUser({
               fullName: r.name,
               email: r.email,
-              chapterId: activeChapter.id,
+              chapterId: targetChapter.id,
               roleKey: "student",
             });
           }
         });
-        if (imported.length > 0) {
-          setStudentList((prev) => [...imported, ...prev]);
-        }
       } else {
         alert(`Bulk import error: ${data.error}`);
       }
@@ -232,29 +369,38 @@ export default function ChapterStudentsPage({
     }
   };
 
-  const handleSyncToProfile = (stu: PreCollectedStudent) => {
-    // Sync pre-collected skills directly into active accounts
+  const handleSyncToProfile = (stu: ChapterMemberItem) => {
     createUser({
       fullName: stu.fullName,
       email: stu.email,
-      chapterId: activeChapter.id,
+      phone: stu.phone,
+      department: stu.department,
+      year: stu.year,
+      section: stu.section,
+      skills: stu.skills,
+      chapterId: targetChapter.id,
       roleKey: "student",
     });
 
-    setStudentList((prev) =>
-      prev.map((s) => (s.id === stu.id ? { ...s, status: "claimed" } : s)),
-    );
-
     setSyncSuccessMsg(
-      `✓ Successfully synced skills & department for ${stu.fullName}! Their Elevates OS profile is now active.`,
+      `✓ Successfully synced profile for ${stu.fullName}! Their Elevates account is now active.`,
     );
     setTimeout(() => setSyncSuccessMsg(""), 4000);
   };
 
   const handleDelete = (id: string) => {
     if (!canDelete) return;
-    if (confirm("Remove student from database?")) {
-      setStudentList((prev) => prev.filter((s) => s.id !== id));
+    if (confirm("Remove member from this chapter?")) {
+      fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update",
+          table: "profiles",
+          id,
+          payload: { chapter_id: null },
+        }),
+      }).catch(console.error);
     }
   };
 
@@ -274,8 +420,8 @@ export default function ChapterStudentsPage({
 
   const handleBatchApprove = async () => {
     if (!selectedStudentIds.length) return;
-    await approveJoinRequests(selectedStudentIds, "student", activeChapter.id);
-    setSyncSuccessMsg(`✓ Approved ${selectedStudentIds.length} join requests into ${activeChapter.name}!`);
+    await approveJoinRequests(selectedStudentIds, "student", targetChapter.id);
+    setSyncSuccessMsg(`✓ Approved ${selectedStudentIds.length} join requests into ${targetChapter.name}!`);
     setSelectedStudentIds([]);
     setTimeout(() => setSyncSuccessMsg(""), 4000);
   };
@@ -288,16 +434,25 @@ export default function ChapterStudentsPage({
     setTimeout(() => setSyncSuccessMsg(""), 4000);
   };
 
-
+  const activeSyncedCount = chapterMembers.filter((m) => m.status === "claimed").length;
+  const pendingCount = chapterMembers.filter((m) => m.status !== "claimed").length;
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow={chapterEyebrow(store.session.roleKey, "people")}
-        title="Student Database & Join Requests"
-        description="Manage campus students, pre-collect details via CSV, and review pending Class Rep and Student join requests."
+        title={`${targetChapter.name} Members Roster`}
+        description={`Showing all official Supabase user profiles and verified student members registered in ${targetChapter.name} (${targetChapter.college}).`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={exportRosterToCsv}
+              className="flex items-center gap-1.5 text-xs"
+              title="Download full member roster as CSV spreadsheet"
+            >
+              <Download size={14} /> Export CSV
+            </Button>
             <Link href="/referrals">
               <Button
                 variant="secondary"
@@ -318,55 +473,74 @@ export default function ChapterStudentsPage({
               onClick={() => setIsAdding(true)}
               className="flex items-center gap-1.5 text-xs"
             >
-              <Plus size={14} /> Add Student
+              <Plus size={14} /> Add Member
             </Button>
           </div>
         }
       />
 
-      {/* Stats */}
+      {syncSuccessMsg && (
+        <div className="rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-400 animate-fade-in">
+          {syncSuccessMsg}
+        </div>
+      )}
+
+      {/* Stats Cards */}
       <div className="grid gap-3 sm:grid-cols-4">
-        <Stat label="Total In Database" value={studentList.length} accent="cyan" />
         <Stat
-          label="Unclaimed (Pre-Registered)"
-          value={studentList.filter((s) => s.status === "unclaimed").length}
-          accent="orange"
+          label="Chapter Members"
+          value={chapterMembers.length}
+          hint="Strictly this chapter"
+          accent="cyan"
         />
         <Stat
-          label="Claimed & Synced Profiles"
-          value={studentList.filter((s) => s.status === "claimed").length}
+          label="Synced Supabase Profiles"
+          value={activeSyncedCount}
+          hint="Active accounts"
           accent="green"
         />
         <Stat
-          label="Active Chapter"
-          value={activeChapter.name || "Active Chapter"}
+          label="Pending / Unclaimed"
+          value={pendingCount}
+          hint="Pre-registered"
+          accent="orange"
+        />
+        <Stat
+          label="Campus Departments"
+          value={chapterDepartments.length}
+          hint={targetChapter.city || targetChapter.college}
           accent="magenta"
         />
       </div>
 
-      {/* Search & Filter */}
+      {/* Search & Status Filter */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full max-w-sm">
+        <div className="relative w-full max-w-md">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by student name, phone, email, or skill..."
-            className="pl-9"
+            placeholder="Search by Elevates ID (ELV-...), name, email, role, or phone..."
+            className="pl-9 text-xs"
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          {(["all", "unclaimed", "claimed"] as const).map((st) => (
+        <div className="flex flex-wrap items-center gap-2">
+          {(["all", "claimed", "unclaimed"] as const).map((st) => (
             <button
               key={st}
               onClick={() => setFilterStatus(st)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${filterStatus === st
+              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
+                filterStatus === st
                   ? "bg-text text-bg-page shadow-sm"
-                  : "bg-bg-panel text-text-dim hover:text-text"
-                }`}
+                  : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
+              }`}
             >
-              {st === "all" ? "All Students" : st === "unclaimed" ? "Unclaimed (Pending)" : "Synced Accounts"}
+              {st === "all"
+                ? `All Members (${chapterMembers.length})`
+                : st === "claimed"
+                  ? `Active Synced (${activeSyncedCount})`
+                  : `Unclaimed (${pendingCount})`}
             </button>
           ))}
         </div>
@@ -385,10 +559,10 @@ export default function ChapterStudentsPage({
                 : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
             }`}
           >
-            All Departments ({studentList.length})
+            All Departments ({chapterMembers.length})
           </button>
           {chapterDepartments.map((dept: string) => {
-            const count = studentList.filter(
+            const count = chapterMembers.filter(
               (s) => s.department.toLowerCase() === dept.toLowerCase(),
             ).length;
             const isSelected =
@@ -408,7 +582,7 @@ export default function ChapterStudentsPage({
               </button>
             );
           })}
-          {studentList.some(
+          {chapterMembers.some(
             (s) => !s.department || s.department.toLowerCase() === "unassigned",
           ) && (
             <button
@@ -422,7 +596,7 @@ export default function ChapterStudentsPage({
             >
               Unassigned (
               {
-                studentList.filter(
+                chapterMembers.filter(
                   (s) => !s.department || s.department.toLowerCase() === "unassigned",
                 ).length
               }
@@ -431,6 +605,29 @@ export default function ChapterStudentsPage({
           )}
         </div>
       )}
+
+      {/* Role Filter Pills */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+        <span className="text-xs text-text-dim mr-1">Role:</span>
+        {(["all", "Campus Lead", "Faculty", "Class Rep", "Student"] as const).map((r) => {
+          const isSelected =
+            selectedRoleFilter === (r === "all" ? "all" : r.toLowerCase());
+          return (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setSelectedRoleFilter(r === "all" ? "all" : r.toLowerCase())}
+              className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
+                isSelected
+                  ? "bg-text text-bg-page shadow-sm"
+                  : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
+              }`}
+            >
+              {r}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Multi-Select Action Bar */}
       {selectedStudentIds.length > 0 && (
@@ -449,106 +646,199 @@ export default function ChapterStudentsPage({
         </div>
       )}
 
-      {/* Student List Table */}
+      {/* Student & Member List Table */}
       <div className="rounded-[var(--radius-lg)] bg-bg-panel p-5 shadow-[var(--shadow)]">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-border text-text-dim">
-                <th className="pb-3 font-semibold">Student Name</th>
+                <th className="pb-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={
+                      filteredStudents.length > 0 &&
+                      selectedStudentIds.length === filteredStudents.length
+                    }
+                    onChange={toggleSelectAll}
+                    className="rounded border-border"
+                  />
+                </th>
+                <th className="pb-3 font-semibold">Member Number</th>
+                <th className="pb-3 font-semibold">Member Name & Role</th>
                 <th className="pb-3 font-semibold">Contact & Phone</th>
                 <th className="pb-3 font-semibold">Department & Year</th>
-                <th className="pb-3 font-semibold">Pre-Collected Skills</th>
-                <th className="pb-3 font-semibold">Sync Status</th>
+                <th className="pb-3 font-semibold">Skills / Tags</th>
+                <th className="pb-3 font-semibold">Status</th>
                 <th className="pb-3 font-semibold text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filteredStudents.map((stu) => (
-                <tr key={stu.id} className="group hover:bg-bg-page/50">
-                  <td className="py-3">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
-                        {initials(stu.fullName)}
-                      </span>
-                      <div>
-                        <p className="font-semibold text-text">{stu.fullName}</p>
-                        <p className="text-[11px] text-text-dim">Added: {stu.collectedAt}</p>
-                      </div>
-                    </div>
-                  </td>
+              {filteredStudents.length > 0 ? (
+                filteredStudents.map((stu) => {
+                  const isSelected = selectedStudentIds.includes(stu.id);
+                  const isCopied = copiedId === stu.elevatesId;
 
-                  <td className="py-3 text-text-dim">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="flex items-center gap-1 text-text">
-                        <Phone size={11} className="text-text-dim" /> {stu.phone}
-                      </span>
-                      <span className="flex items-center gap-1 text-[11px]">
-                        <Mail size={11} className="text-text-dim" /> {stu.email}
-                      </span>
-                    </div>
-                  </td>
+                  return (
+                    <tr
+                      key={stu.id}
+                      className={`group hover:bg-bg-page/50 transition-colors ${
+                        isSelected ? "bg-[var(--accent)]/5" : ""
+                      }`}
+                    >
+                      <td className="py-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelectStudent(stu.id)}
+                          className="rounded border-border"
+                        />
+                      </td>
 
-                  <td className="py-3 text-text">
-                    <div>
-                      <p className="font-medium">{stu.department}</p>
-                      <p className="text-[11px] text-text-dim">
-                        {stu.year} {stu.section ? `· Sec ${stu.section}` : ""}
-                      </p>
-                    </div>
-                  </td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/25">
+                            {stu.elevatesId}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(stu.elevatesId)}
+                            className="text-text-mute hover:text-text transition-colors p-1"
+                            title="Copy Member Number"
+                          >
+                            {isCopied ? (
+                              <Check size={12} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                          </button>
+                        </div>
+                      </td>
 
-                  <td className="py-3">
-                    <div className="flex flex-wrap gap-1 max-w-xs">
-                      {stu.skills.map((sk) => (
-                        <span
-                          key={sk}
-                          className="rounded bg-[var(--neutral-100)] px-1.5 py-0.5 text-[10px] font-medium text-text"
-                        >
-                          {sk}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="flex h-8 w-8 items-center justify-center shrink-0 overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
+                            {initials(stu.fullName)}
+                          </span>
+                          <div>
+                            <Link
+                              href={`/profile/${stu.elevatesId || stu.id}`}
+                              className="font-semibold text-text hover:text-[var(--accent)] hover:underline transition-colors"
+                            >
+                              {stu.fullName}
+                            </Link>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <Badge tone={stu.roleInfo.tone}>
+                                {stu.roleInfo.label}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
 
-                  <td className="py-3">
-                    {stu.status === "claimed" ? (
-                      <Badge tone="green">
-                        <UserCheck size={11} className="mr-1" /> Profile Synced
-                      </Badge>
-                    ) : (
-                      <Badge tone="orange">
-                        <Clock size={11} className="mr-1" /> Unclaimed
-                      </Badge>
-                    )}
-                  </td>
+                      <td className="py-3 text-text-dim">
+                        <div className="flex flex-col gap-0.5">
+                          {stu.phone ? (
+                            <a
+                              href={`tel:${stu.phone}`}
+                              className="flex items-center gap-1 text-text hover:underline"
+                            >
+                              <Phone size={11} className="text-text-dim" /> {stu.phone}
+                            </a>
+                          ) : (
+                            <span className="text-[11px] text-text-mute">—</span>
+                          )}
+                          <a
+                            href={`mailto:${stu.email}`}
+                            className="flex items-center gap-1 text-[11px] hover:text-[var(--accent)]"
+                          >
+                            <Mail size={11} className="text-text-dim" /> {stu.email}
+                          </a>
+                        </div>
+                      </td>
 
-                  <td className="py-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {stu.status === "unclaimed" && (
-                        <Button
-                          variant="orange"
-                          size="sm"
-                          onClick={() => handleSyncToProfile(stu)}
-                          className="h-7 px-2.5 text-[11px]"
-                        >
-                          <Sparkles size={12} className="mr-1" /> Sync to Account
-                        </Button>
-                      )}
-                      {canDelete && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(stu.id)}
-                          className="h-7 px-2 text-red-500 hover:bg-red-50"
-                        >
-                          <Trash2 size={13} />
-                        </Button>
-                      )}
-                    </div>
+                      <td className="py-3 text-text">
+                        <div>
+                          <p className="font-medium">{stu.department}</p>
+                          <p className="text-[11px] text-text-dim">
+                            {stu.year} {stu.section ? `· Sec ${stu.section}` : ""}
+                          </p>
+                        </div>
+                      </td>
+
+                      <td className="py-3">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {stu.skills.length > 0 ? (
+                            stu.skills.map((sk) => (
+                              <span
+                                key={sk}
+                                className="rounded bg-[var(--neutral-100)] px-1.5 py-0.5 text-[10px] font-medium text-text"
+                              >
+                                {sk}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[11px] text-text-mute">—</span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td className="py-3">
+                        {stu.status === "claimed" ? (
+                          <Badge tone="green">
+                            <UserCheck size={11} className="mr-1" /> Active Profile
+                          </Badge>
+                        ) : stu.status === "pending" ? (
+                          <Badge tone="orange">
+                            <Clock size={11} className="mr-1" /> Pending Approval
+                          </Badge>
+                        ) : (
+                          <Badge tone="orange">
+                            <Clock size={11} className="mr-1" /> Unclaimed
+                          </Badge>
+                        )}
+                      </td>
+
+                      <td className="py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {stu.status === "unclaimed" && (
+                            <Button
+                              variant="orange"
+                              size="sm"
+                              onClick={() => handleSyncToProfile(stu)}
+                              className="h-7 px-2.5 text-[11px]"
+                            >
+                              <Sparkles size={12} className="mr-1" /> Sync
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete(stu.id)}
+                              className="h-7 px-2 text-red-500 hover:bg-red-50"
+                              title="Remove member from chapter"
+                            >
+                              <Trash2 size={13} />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-12 text-center text-text-dim">
+                    <Users size={32} className="mx-auto mb-2 text-text-mute opacity-50" />
+                    <p className="font-medium">No members found</p>
+                    <p className="text-[11px] text-text-mute mt-1">
+                      {search
+                        ? `No members match search query "${search}"`
+                        : "No members registered in this chapter yet."}
+                    </p>
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

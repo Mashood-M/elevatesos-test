@@ -10,7 +10,13 @@ export function resolveChapter(
   if (!store.chapters?.length) return undefined;
   let chapter: Chapter | undefined;
   if (slug) {
-    chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
+    const s = slug.toLowerCase();
+    chapter = store.chapters.find(
+      (c) =>
+        c.slug.toLowerCase() === s ||
+        c.id.toLowerCase() === s ||
+        (c.elevatesId && c.elevatesId.toLowerCase() === s),
+    );
   } else if (userChapterId) {
     chapter = store.chapters.find((c) => c.id === userChapterId);
   } else if (roleKey && isHqRole(roleKey)) {
@@ -27,7 +33,12 @@ export function resolveChapter(
   if (roleKey && !isHqRole(roleKey) && !isAuthHq) {
     if (userChapterId) {
       const assignedChapter = store.chapters.find((c) => c.id === userChapterId);
-      if (assignedChapter && chapter.id !== assignedChapter.id && chapter.slug !== assignedChapter.slug) {
+      if (
+        assignedChapter &&
+        chapter.id !== assignedChapter.id &&
+        chapter.slug !== assignedChapter.slug &&
+        (!chapter.elevatesId || chapter.elevatesId !== assignedChapter.elevatesId)
+      ) {
         return undefined;
       }
     }

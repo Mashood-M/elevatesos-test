@@ -414,7 +414,7 @@ export default function UnifiedReferralsPage() {
                           {invited ? (
                             <div>
                               <Link
-                                href={`/profile/${invited.id}`}
+                                href={`/profile/${invited.elevatesId || invited.id}`}
                                 className="font-semibold text-[13px] text-text hover:text-cyan block truncate"
                               >
                                 {invited.fullName}
@@ -507,7 +507,7 @@ export default function UnifiedReferralsPage() {
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <Link
-                                href={`/profile/${p!.id}`}
+                                href={`/profile/${p!.elevatesId || p!.id}`}
                                 className="font-semibold text-sm hover:text-cyan truncate"
                               >
                                 {p!.fullName}
@@ -624,7 +624,7 @@ export default function UnifiedReferralsPage() {
                           {/* Referrer → Invited */}
                           <div className="flex flex-wrap items-center gap-2 text-[13px]">
                             <Link
-                              href={referrer ? `/profile/${referrer.id}` : "#"}
+                              href={referrer ? `/profile/${referrer.elevatesId || referrer.id}` : "#"}
                               className="font-semibold text-cyan hover:underline"
                             >
                               {referrer?.fullName ?? "Unknown"}
@@ -632,7 +632,7 @@ export default function UnifiedReferralsPage() {
                             <span className="text-text-mute">→</span>
                             {invited ? (
                               <Link
-                                href={`/profile/${invited.id}`}
+                                href={`/profile/${invited.elevatesId || invited.id}`}
                                 className="font-semibold text-text hover:text-cyan"
                               >
                                 {invited.fullName}

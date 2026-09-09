@@ -169,8 +169,10 @@ export interface Organization {
 
 export interface Chapter {
   id: string;
-  /** Human-readable unique identifier (Format: CHP-XXXXXX) with letters and numbers */
+  /** Human-readable unique sequential identifier (Format: CHP-0001, CHP-A000, etc.) */
   elevatesId?: string;
+  /** 3-letter chapter shortform used as prefix for student invites (e.g. SOS, NIT, EKC) */
+  shortCode?: string;
   organizationId: string;
   name: string;
   slug: string;
@@ -184,6 +186,8 @@ export interface Chapter {
   foundedAt: string;
   /** Faculty coordinator profile id */
   facultyId?: string;
+  /** Campus Lead profile id */
+  campusLeadId?: string;
   notes?: string;
   published?: boolean;
   logoUrl?: string;
@@ -199,7 +203,7 @@ export interface Chapter {
 
 export interface Profile {
   id: string;
-  /** Human-readable unique identifier shown in nav & used for fast search. Format: ELV-XXXXXX */
+  /** Human-readable unique sequential identifier shown in nav & used for fast search / URLs. Format: ELV-0001, ELV-A000, etc. */
   elevatesId?: string;
   email: string;
   fullName: string;
@@ -925,6 +929,16 @@ export interface EosDoctrine {
   playbookSections?: { id: string; title: string }[];
 }
 
+export interface ChapterInviteJoinedUser {
+  id: string;
+  elevatesId?: string;
+  fullName: string;
+  email: string;
+  department?: string;
+  year?: string;
+  joinedAt: string;
+}
+
 export interface ChapterInviteCode {
   id: string;
   chapterId: string;
@@ -934,4 +948,5 @@ export interface ChapterInviteCode {
   expiresAt: string; // 3 days validity from creation
   isRevoked: boolean;
   usesCount: number;
+  joinedUsers?: ChapterInviteJoinedUser[];
 }

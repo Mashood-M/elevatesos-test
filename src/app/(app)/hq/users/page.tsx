@@ -171,9 +171,14 @@ export default function HqUsersPage() {
     return store.profiles
       .map((p) => {
         const urs = store.userRoles.filter((ur) => ur.userId === p.id);
+        const seenKeys = new Set<string>();
         const roles = urs
-          .map((ur) => store.roles.find((r) => r.id === ur.roleId))
-          .filter(Boolean);
+          .map((ur) => store.roles.find((r) => r.id === ur.roleId || r.key === ur.roleKey))
+          .filter((r): r is NonNullable<typeof r> => {
+            if (!r || seenKeys.has(r.key)) return false;
+            seenKeys.add(r.key);
+            return true;
+          });
         const status = p.status ?? "active";
         const chapter = store.chapters.find((c) => c.id === p.chapterId);
         return { profile: p, roles, status, chapter, urs };
@@ -845,7 +850,7 @@ export default function HqUsersPage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
-                      href={`/profile/${profile.id}`}
+                      href={`/profile/${profile.elevatesId || profile.id}`}
                       className="font-semibold text-cyan hover:text-green"
                     >
                       {profile.fullName}
@@ -865,9 +870,9 @@ export default function HqUsersPage() {
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {roles.length ? (
-                      roles.map((r) =>
+                      roles.map((r, idx) =>
                         r ? (
-                          <Badge key={`${profile.id}-${r.id}`} tone="cyan">
+                          <Badge key={`${profile.id}-${r.id}-${r.key}-${idx}`} tone="cyan">
                             {roleKeyLabel(r.key)}
                           </Badge>
                         ) : null,

@@ -11,6 +11,7 @@ import {
   markInviteTokenUsed,
   validateInviteToken,
 } from "@/lib/data/supabase-bootstrap";
+import NotFound from "@/app/not-found";
 
 type TokenInfo = {
   id: string;
@@ -137,6 +138,27 @@ export default function InviteSignUpPage({
 
     setLoading(true);
 
+    // Re-verify token against Supabase immediately before sign up
+    const liveToken = await validateInviteToken(token);
+    if (!liveToken || !liveToken.isActive) {
+      setError("This invite link has expired or been revoked. You cannot use it to register.");
+      setTokenStatus("expired");
+      setLoading(false);
+      return;
+    }
+    if (liveToken.expiresAt && new Date(liveToken.expiresAt) < new Date()) {
+      setError("This invite link has expired. You cannot use it to register.");
+      setTokenStatus("expired");
+      setLoading(false);
+      return;
+    }
+    if (liveToken.usedBy) {
+      setError("This single-use invite link has already been used.");
+      setTokenStatus("invalid");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     if (!supabase) {
       setError("Authentication service unavailable.");
@@ -227,53 +249,9 @@ export default function InviteSignUpPage({
     }
   }
 
-  // ── Token expired state ─────────────────────────────────────────────────────
-  if (tokenStatus === "expired") {
-    return (
-      <div className="grid min-h-dvh place-items-center bg-[var(--charcoal-900)] px-6">
-        <div className="w-full max-w-md text-center">
-          <Clock className="mx-auto mb-4 h-14 w-14 text-amber-400" />
-          <h1 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-white">
-            Invite link expired
-          </h1>
-          <p className="mt-3 text-sm text-white/50">
-            This invite link has passed its 7-day expiry window. Ask the person
-            who shared it to generate a fresh link from their{" "}
-            <span className="font-semibold text-white/70">Invite Friends</span> page.
-          </p>
-          <Link
-            href="/login"
-            className="mt-8 inline-block text-sm font-medium text-[var(--accent)] hover:underline"
-          >
-            Already have an account? Sign in →
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Token invalid state ─────────────────────────────────────────────────────
-  if (tokenStatus === "invalid") {
-    const msg = invalidReason === "used"
-      ? "This invite link has already been used to create an account."
-      : "This invite link is not valid. Ask someone in the network to send you a new one.";
-    return (
-      <div className="grid min-h-dvh place-items-center bg-[var(--charcoal-900)] px-6">
-        <div className="w-full max-w-md text-center">
-          <XCircle className="mx-auto mb-4 h-14 w-14 text-red-400" />
-          <h1 className="font-[family-name:var(--font-display)] text-2xl font-extrabold text-white">
-            {invalidReason === "used" ? "Already used" : "Invalid invite"}
-          </h1>
-          <p className="mt-3 text-sm text-white/50">{msg}</p>
-          <Link
-            href="/login"
-            className="mt-8 inline-block text-sm font-medium text-[var(--accent)] hover:underline"
-          >
-            Already have an account? Sign in →
-          </Link>
-        </div>
-      </div>
-    );
+  // ── Token expired or invalid (revoked / used / expired / not found) -> Show 404 ──
+  if (tokenStatus === "expired" || tokenStatus === "invalid") {
+    return <NotFound />;
   }
 
   // ── Loading ─────────────────────────────────────────────────────────────────

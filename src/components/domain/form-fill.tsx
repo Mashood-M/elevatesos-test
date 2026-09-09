@@ -447,7 +447,7 @@ export function FormFill({
                 be assigned.
               </p>
               {profile ? (
-                <Link href={`/profile/${profile.id}`} className="mt-3 inline-block">
+                <Link href={`/profile/${profile.elevatesId || profile.id}`} className="mt-3 inline-block">
                   <Button variant="orange">Go to profile</Button>
                 </Link>
               ) : null}

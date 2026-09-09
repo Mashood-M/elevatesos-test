@@ -141,7 +141,7 @@ export default function FacultyPage() {
                 className="flex items-center justify-between py-2.5"
               >
                 <Link
-                  href={`/profile/${s.id}`}
+                  href={`/profile/${s.elevatesId || s.id}`}
                   className="hover:text-[var(--accent)]"
                 >
                   {s.fullName}

@@ -21,7 +21,6 @@ import {
   Award,
   Globe,
   Sliders,
-  RefreshCw,
   Building,
   Layers,
   Inbox,
@@ -77,7 +76,7 @@ const OPS_LINKS = [
 ] as const;
 
 export default function HqSettingsPage() {
-  const { store, updateBrandKit, resetDemoStore } = useStore();
+  const { store, updateBrandKit } = useStore();
   const { session } = useCurrentUser();
   const { confirm } = useAppDialogs();
   const canManage = hasPermission(store, session.roleKey, "org.manage");
@@ -162,19 +161,6 @@ export default function HqSettingsPage() {
       setTestFeedback(`SMTP Handshake Verified: Test email successfully sent to ${testRecipient}.`);
       setTimeout(() => setTestStatus("idle"), 4000);
     }, 1000);
-  }
-
-  async function resetDemo() {
-    const ok = await confirm({
-      title: "Reset demo data",
-      description:
-        "This replaces the local demo store with the seed dataset. Unsaved edits will be lost.",
-      confirmLabel: "Reset demo",
-      danger: true,
-    });
-    if (!ok) return;
-    resetDemoStore();
-    flashMsg("Demo data reset");
   }
 
   const tabs: { id: SettingsTab; label: string; icon: typeof Building }[] = [
@@ -275,27 +261,6 @@ export default function HqSettingsPage() {
                   View only — org.manage permission is required to modify.
                 </p>
               )}
-            </div>
-          </TerminalPanel>
-
-          <TerminalPanel title="Demo Store Controls" meta="Local environment">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <p className="text-xs font-semibold text-text">Reset to Factory Seed Dataset</p>
-                <p className="text-xs text-text-dim mt-0.5">
-                  Restores default chapters, events, user permissions, and verified directories in this browser.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                onClick={() => void resetDemo()}
-                className="shrink-0"
-              >
-                <RefreshCw size={13} className="mr-1.5" />
-                Reset demo data
-              </Button>
             </div>
           </TerminalPanel>
         </div>

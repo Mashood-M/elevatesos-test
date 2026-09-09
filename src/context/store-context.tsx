@@ -301,7 +301,7 @@ type StoreContextValue = {
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
   generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
   revokeChapterInviteCode: (codeId: string) => boolean;
-  joinChapterWithCode: (code: string, userId: string, department?: string, year?: string) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
+  joinChapterWithCode: (code: string, userId: string, department?: string, year?: string, skills?: string[], interests?: string[]) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -2495,6 +2495,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           },
         });
+
+        const supabase = createClient();
+        if (supabase) {
+          const updatePayload: Record<string, any> = {};
+          if (patch.fullName) updatePayload.full_name = patch.fullName;
+          if (patch.bio !== undefined) updatePayload.bio = patch.bio;
+          if (patch.phone !== undefined) updatePayload.phone = patch.phone;
+          if (patch.department !== undefined) updatePayload.department = patch.department;
+          if (patch.year !== undefined) updatePayload.year = patch.year;
+          if (patch.section !== undefined) updatePayload.section = patch.section;
+          if (patch.skills !== undefined) updatePayload.skills = patch.skills;
+          if (patch.interests !== undefined) updatePayload.interests = patch.interests;
+          if (patch.githubUrl !== undefined) updatePayload.github_url = patch.githubUrl;
+          if (patch.linkedinUrl !== undefined) updatePayload.linkedin_url = patch.linkedinUrl;
+          if (patch.portfolioUrl !== undefined) updatePayload.portfolio_url = patch.portfolioUrl;
+
+          if (Object.keys(updatePayload).length > 0) {
+            supabase
+              .from("profiles")
+              .update(updatePayload)
+              .eq("id", id)
+              .then((res: any) => {
+                if (res?.error) console.error("Error updating profile in Supabase direct:", res.error?.message);
+              });
+          }
+        }
       },
       joinChapterCommunity: (input) => {
         const fullName = input.fullName.trim();
@@ -2763,7 +2789,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }));
         return true;
       },
-      joinChapterWithCode: (inputCode, userId, department, year) => {
+      joinChapterWithCode: (inputCode, userId, department, year, skills, interests) => {
         const cleanCode = inputCode.trim().toUpperCase();
         if (!cleanCode) {
           return { success: false, message: "Please enter an invite code." };
@@ -2836,6 +2862,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 chapterId: targetChapter.id,
                 department: department?.trim() || p.department,
                 year: year?.trim() || p.year,
+                skills: skills && skills.length > 0 ? skills : p.skills,
+                interests: interests && interests.length > 0 ? interests : p.interests,
                 status: "active" as const,
               }
               : p
@@ -2930,22 +2958,46 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               chapterId: targetChapter.id,
               department: department?.trim(),
               year: year?.trim(),
+              skills: skills && skills.length > 0 ? skills : undefined,
+              interests: interests && interests.length > 0 ? interests : undefined,
             },
           }),
         }).catch((err) => {
           console.warn("Could not post chapter_invite_join mutation:", err);
         });
 
+        // Also persist profile directly via server mutation
+        const existingProfToUpdate = store.profiles.find((p) => p.id === targetUserId);
+        if (existingProfToUpdate) {
+          void runPersist(
+            persistProfile({
+              ...existingProfToUpdate,
+              chapterId: targetChapter.id,
+              department: department?.trim() || existingProfToUpdate.department,
+              year: year?.trim() || existingProfToUpdate.year,
+              skills: skills && skills.length > 0 ? skills : existingProfToUpdate.skills,
+              interests: interests && interests.length > 0 ? interests : existingProfToUpdate.interests,
+            }),
+            {
+              errorMessage: `Failed to update profile for "${existingProfToUpdate.fullName}"`,
+            },
+          );
+        }
+
         const supabase = createClient();
         if (supabase && targetUserId) {
+          const profileUpdate: Record<string, any> = {
+            chapter_id: targetChapter.id,
+            department: department?.trim() || null,
+            year: year?.trim() || null,
+            status: "active",
+          };
+          if (skills && skills.length > 0) profileUpdate.skills = skills;
+          if (interests && interests.length > 0) profileUpdate.interests = interests;
+
           supabase
             .from("profiles")
-            .update({
-              chapter_id: targetChapter.id,
-              department: department?.trim() || null,
-              year: year?.trim() || null,
-              status: "active",
-            })
+            .update(profileUpdate)
             .eq("id", targetUserId)
             .then((res: any) => {
               if (res?.error) console.error("Error updating user profile in Supabase:", res.error?.message);

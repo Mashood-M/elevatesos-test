@@ -11,6 +11,7 @@ import {
   GitBranch,
   Link2,
   MessageCircle,
+  Phone,
   Search,
   Sparkles,
   Trash2,
@@ -419,11 +420,19 @@ export default function UnifiedReferralsPage() {
                               >
                                 {invited.fullName}
                               </Link>
-                              {invited.elevatesId && (
-                                <span className="font-mono text-[10px] text-[var(--accent)] font-semibold">
-                                  {invited.elevatesId}
-                                </span>
-                              )}
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                {invited.elevatesId && (
+                                  <span className="font-mono text-[10px] text-[var(--accent)] font-semibold">
+                                    {invited.elevatesId}
+                                  </span>
+                                )}
+                                {invited.phone && (
+                                  <span className="text-[11px] text-text-dim flex items-center gap-1 font-mono">
+                                    <Phone size={10} className="text-text-mute" />
+                                    {invited.phone}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ) : (
                             <p className={`text-[12px] italic ${

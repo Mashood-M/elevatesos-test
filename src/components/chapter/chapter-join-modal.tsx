@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, CheckCircle2, ArrowRight, X, Clock, ShieldAlert, Building2, GraduationCap } from "lucide-react";
+import { KeyRound, CheckCircle2, ArrowRight, X, Clock, ShieldAlert, Building2, GraduationCap, Code, Sparkles } from "lucide-react";
 
 interface Props {
   isOpen: boolean;
@@ -18,12 +18,26 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   const router = useRouter();
   const { joinChapterWithCode, store } = useStore();
   const { session } = useCurrentUser();
+  const userProfile = store.profiles.find((p) => p.id === session.userId);
 
   const [inviteCode, setInviteCode] = useState(initialCode);
   const [department, setDepartment] = useState("");
   const [year, setYear] = useState("1st Year");
+  const [skills, setSkills] = useState(userProfile?.skills?.join(", ") || "");
+  const [interests, setInterests] = useState(userProfile?.interests?.join(", ") || "");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
+
+  useEffect(() => {
+    if (userProfile) {
+      if (userProfile.skills?.length && !skills) {
+        setSkills(userProfile.skills.join(", "));
+      }
+      if (userProfile.interests?.length && !interests) {
+        setInterests(userProfile.interests.join(", "));
+      }
+    }
+  }, [userProfile]);
 
   // Dynamically resolve target chapter from typed code to fetch Campus Lead configured departments
   const cleanCode = inviteCode.trim().toUpperCase();
@@ -90,7 +104,16 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
       return;
     }
 
-    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim());
+    const skillsArr = skills
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const interestsArr = interests
+      .split(",")
+      .map((i) => i.trim())
+      .filter(Boolean);
+
+    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -240,6 +263,34 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
                 <option value="3rd Year">3rd Year</option>
                 <option value="4th Year">4th Year</option>
               </Select>
+            </div>
+
+            {/* Skills */}
+            <div>
+              <FieldLabel className="flex items-center gap-1.5">
+                <Code size={13} />
+                <span>4. Skills (Optional)</span>
+              </FieldLabel>
+              <Input
+                value={skills}
+                onChange={(e) => setSkills(e.target.value)}
+                placeholder="e.g. React, Python, UI/UX, Figma (comma separated)"
+                className="text-xs"
+              />
+            </div>
+
+            {/* Interests / Focus Areas */}
+            <div>
+              <FieldLabel className="flex items-center gap-1.5">
+                <Sparkles size={13} />
+                <span>5. Interests / Focus Areas (Optional)</span>
+              </FieldLabel>
+              <Input
+                value={interests}
+                onChange={(e) => setInterests(e.target.value)}
+                placeholder="e.g. AI/ML, Hackathons, Web3, Cloud (comma separated)"
+                className="text-xs"
+              />
             </div>
 
             <Button

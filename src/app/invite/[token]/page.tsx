@@ -3,7 +3,7 @@
 import { use, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Clock, Lock, Mail, ShieldCheck, User, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, Lock, Mail, Phone, ShieldCheck, User, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
@@ -54,6 +54,7 @@ export default function InviteSignUpPage({
   // Form state
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -123,9 +124,16 @@ export default function InviteSignUpPage({
 
     const name = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
+    const cleanPhone = phone.trim();
+    const phoneDigits = cleanPhone.replace(/\D/g, "");
 
     if (!name) { setError("Full name is required."); return; }
     if (!cleanEmail) { setError("Email is required."); return; }
+    if (!cleanPhone) { setError("Phone number is required."); return; }
+    if (phoneDigits.length < 10) {
+      setError("Please enter a valid phone number (at least 10 digits).");
+      return;
+    }
     if (!password || password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
@@ -172,7 +180,7 @@ export default function InviteSignUpPage({
         email: cleanEmail,
         password,
         options: {
-          data: { full_name: name },
+          data: { full_name: name, phone: cleanPhone },
         },
       });
 
@@ -196,6 +204,7 @@ export default function InviteSignUpPage({
           id: authUser.id,
           email: cleanEmail,
           full_name: name,
+          phone: cleanPhone,
           status: "active",
           chapter_id: null,
         })
@@ -203,11 +212,21 @@ export default function InviteSignUpPage({
         .single();
 
       if (profileError) {
-        // If profile already exists (e.g. upsert on auth trigger), keep going
+        // If profile already exists (e.g. upsert on auth trigger), update phone and name
         console.warn("Profile insert error (may be a trigger duplicate):", profileError.message);
+        await supabase
+          .from("profiles")
+          .update({ phone: cleanPhone, full_name: name })
+          .eq("id", authUser.id);
       }
 
       const profileId = profileData?.id ?? authUser.id;
+
+      // Ensure phone is saved in profiles
+      await supabase
+        .from("profiles")
+        .update({ phone: cleanPhone })
+        .eq("id", profileId);
 
       // 3. Assign student role (without chapter assignment until invite code entered)
       // Fetch the student role id first
@@ -402,6 +421,26 @@ export default function InviteSignUpPage({
                   placeholder="you@college.edu"
                   required
                   autoComplete="email"
+                  className="bg-white pl-9"
+                />
+              </div>
+            </div>
+
+            {/* Phone Number */}
+            <div>
+              <FieldLabel>Phone number</FieldLabel>
+              <div className="relative mt-1">
+                <Phone
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <Input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="10-digit mobile number"
+                  required
+                  autoComplete="tel"
                   className="bg-white pl-9"
                 />
               </div>

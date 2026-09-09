@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2, GraduationCap } from "lucide-react";
+import { KeyRound, ShieldAlert, Clock, CheckCircle2, Building2, GraduationCap, Code, Sparkles } from "lucide-react";
 
 function JoinChapterContent() {
   const { joinChapterWithCode, store } = useStore();
   const { session } = useCurrentUser();
+  const userProfile = store.profiles.find((p) => p.id === session.userId);
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlCode = searchParams.get("code") || searchParams.get("chapter") || "";
@@ -18,8 +19,21 @@ function JoinChapterContent() {
   const [inputCode, setInputCode] = useState(urlCode);
   const [department, setDepartment] = useState("");
   const [year, setYear] = useState("1st Year");
+  const [skills, setSkills] = useState(userProfile?.skills?.join(", ") || "");
+  const [interests, setInterests] = useState(userProfile?.interests?.join(", ") || "");
   const [errorMsg, setErrorMsg] = useState("");
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
+
+  useEffect(() => {
+    if (userProfile) {
+      if (userProfile.skills?.length && !skills) {
+        setSkills(userProfile.skills.join(", "));
+      }
+      if (userProfile.interests?.length && !interests) {
+        setInterests(userProfile.interests.join(", "));
+      }
+    }
+  }, [userProfile]);
 
   // Dynamically resolve target chapter from typed code to fetch Campus Lead configured departments
   const cleanCode = inputCode.trim().toUpperCase();
@@ -76,7 +90,16 @@ function JoinChapterContent() {
       return;
     }
 
-    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim());
+    const skillsArr = skills
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const interestsArr = interests
+      .split(",")
+      .map((i) => i.trim())
+      .filter(Boolean);
+
+    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
     if (!result.success) {
       setErrorMsg(result.message);
       return;
@@ -226,6 +249,32 @@ function JoinChapterContent() {
                   <option value="3rd Year" className="bg-[var(--charcoal-900)] text-white">3rd Year</option>
                   <option value="4th Year" className="bg-[var(--charcoal-900)] text-white">4th Year</option>
                 </Select>
+              </div>
+
+              <div>
+                <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                  <Code size={14} />
+                  <span>4. Skills (Optional)</span>
+                </FieldLabel>
+                <Input
+                  value={skills}
+                  onChange={(e) => setSkills(e.target.value)}
+                  placeholder="e.g. React, Python, UI/UX, Figma (comma separated)"
+                  className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <FieldLabel className="flex items-center gap-1.5 text-white/80">
+                  <Sparkles size={14} />
+                  <span>5. Interests / Focus Areas (Optional)</span>
+                </FieldLabel>
+                <Input
+                  value={interests}
+                  onChange={(e) => setInterests(e.target.value)}
+                  placeholder="e.g. AI/ML, Hackathons, Web3, Cloud (comma separated)"
+                  className="border-white/15 bg-black/40 text-white text-xs focus:border-orange-500"
+                />
               </div>
 
               <Button

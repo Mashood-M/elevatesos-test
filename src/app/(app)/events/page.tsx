@@ -209,6 +209,12 @@ export default function OpenEventsPage() {
               const eventHref = chapter
                 ? `/chapter/${chapter.slug}/events/${ev.id}`
                 : `/chapter`;
+              const myReg = store.registrations.find(
+                (r) =>
+                  r.eventId === ev.id &&
+                  (r.userId === session.userId || (session.authUserId && r.userId === session.authUserId)) &&
+                  r.status !== "rejected",
+              );
 
               return (
                 <TicketCard
@@ -226,7 +232,20 @@ export default function OpenEventsPage() {
                             View Details
                           </Button>
                         </Link>
-                      ) : eligibility.ok ? (
+                      ) : myReg ? (
+                        <Link href={eventHref}>
+                          <Button
+                            variant={myReg.status === "approved" ? "green" : "secondary"}
+                            className="h-9 px-4"
+                          >
+                            {myReg.status === "approved"
+                              ? "Pass Confirmed"
+                              : myReg.status === "waitlisted"
+                                ? "Waitlisted Pass"
+                                : "Registered"}
+                          </Button>
+                        </Link>
+                      ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
                         <Button
                           variant="orange"
                           className="h-9 px-4"

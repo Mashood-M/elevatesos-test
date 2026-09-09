@@ -1,4 +1,4 @@
-import { getEventForm } from "@/lib/forms/helpers";
+import { getEventForm, defaultFormsForEvent } from "@/lib/forms/helpers";
 import type { ElevatesStore, EventItem } from "@/types";
 
 export type RegisterEligibility =
@@ -16,38 +16,69 @@ export function canRegisterNow(
   userId: string | undefined,
   nowMs: number = Date.now(),
 ): RegisterEligibility {
-  // 1. Event must be published (registration_open)
-  if (event.status !== "registration_open") {
-    return { ok: false, reason: "Registration is not open for this event." };
-  }
+  // 1. Event status check
+  // Open statuses: "registration_open", "approved", or case-insensitive "upcoming" / "ongoing"
+  const st = (event.status || "").toLowerCase();
+  const isExplicitlyClosed =
+    st === "draft" ||
+    st === "completed" ||
+    st === "cancelled" ||
+    st === "registration_closed";
 
-  // 2. Must have an open registration form
-  const form = getEventForm(store, event.id, "registration");
-  if (!form || form.status !== "open") {
+  if (isExplicitlyClosed) {
     return {
       ok: false,
-      reason: "No open registration form yet — check back soon.",
+      reason:
+        st === "draft"
+          ? "This event is currently in draft mode and not published."
+          : st === "completed"
+            ? "This event has already ended."
+            : "Registration is not open for this event.",
+    };
+  }
+
+  // 2. Registration form availability
+  // If a custom form exists, check its status; otherwise fallback to default event form
+  const customForm = getEventForm(store, event.id, "registration");
+  const form =
+    customForm ??
+    defaultFormsForEvent(event.id, event.chapterId, event.title).find(
+      (f) => f.purpose === "registration",
+    );
+
+  if (customForm && customForm.status && customForm.status !== "open") {
+    return {
+      ok: false,
+      reason: "Registration form is currently closed.",
     };
   }
 
   // 3. Registration window
-  const start = new Date(event.registrationStart).getTime();
-  const end = new Date(event.registrationEnd).getTime();
-  if (Number.isFinite(start) && nowMs < start) {
-    return { ok: false, reason: "Registration has not opened yet." };
+  if (event.registrationStart) {
+    const start = new Date(event.registrationStart).getTime();
+    if (Number.isFinite(start) && nowMs < start) {
+      return { ok: false, reason: "Registration has not opened yet." };
+    }
   }
-  if (Number.isFinite(end) && nowMs > end) {
-    return { ok: false, reason: "Registration has closed for this event." };
+  if (event.registrationEnd) {
+    const end = new Date(event.registrationEnd).getTime();
+    if (Number.isFinite(end) && nowMs > end) {
+      return { ok: false, reason: "Registration has closed for this event." };
+    }
   }
 
   // 4. Platform account required — only registered platform users can join
-  if (!userId) {
+  const effectiveUserId =
+    userId || store.session?.userId || store.session?.authUserId;
+  if (!effectiveUserId) {
     return {
       ok: false,
       reason: "You need a platform account to register for this event.",
     };
   }
-  const hasAccount = store.profiles.some((p) => p.id === userId);
+  const hasAccount =
+    store.profiles.some((p) => p.id === effectiveUserId) ||
+    Boolean(store.session?.userId && store.session.userId === effectiveUserId);
   if (!hasAccount) {
     return {
       ok: false,
@@ -57,9 +88,19 @@ export function canRegisterNow(
 
   // 5. Chapter closed visibility — only members of the same chapter can join.
   // Open-to-all events never require chapter membership.
-  if (!isOpenToAllEvent(event)) {
-    const userProfile = store.profiles.find((p) => p.id === userId);
-    if (!userProfile?.chapterId || userProfile.chapterId !== event.chapterId) {
+  // HQ users (founder, hq_admin, campus_lead) are allowed to test/register across chapters.
+  const isPrivilegedUser =
+    store.session?.roleKey === "founder" ||
+    store.session?.roleKey === "hq_admin" ||
+    store.session?.roleKey === "campus_lead";
+
+  if (!isOpenToAllEvent(event) && !isPrivilegedUser) {
+    const userProfile = store.profiles.find((p) => p.id === effectiveUserId);
+    if (
+      userProfile?.chapterId &&
+      event.chapterId &&
+      userProfile.chapterId !== event.chapterId
+    ) {
       return {
         ok: false,
         reason: "This event is only open to members of this chapter.",
@@ -68,17 +109,17 @@ export function canRegisterNow(
   }
 
   // 6. Duplicate registration check
-  const duplicate = store.registrations.some(
+  const duplicate = store.registrations?.some(
     (r) =>
       r.eventId === event.id &&
-      r.userId === userId &&
+      (r.userId === effectiveUserId || r.userId === userId) &&
       r.status !== "rejected",
   );
   if (duplicate) {
     return { ok: false, reason: "You are already registered for this event." };
   }
 
-  return { ok: true, formId: form.id };
+  return { ok: true, formId: form?.id || `form-reg-${event.id}` };
 }
 
 /** Check if an event is open to all students across colleges and chapters. */

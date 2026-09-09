@@ -55,7 +55,7 @@ function expiryTone(iso?: string): "green" | "orange" | "mute" {
 }
 
 export default function UnifiedReferralsPage() {
-  const { store } = useStore();
+  const { store, revokeChapterInviteCode } = useStore();
   const { session, profile } = useCurrentUser();
 
   // Tab control: "my-links" | "leaderboard" | "network-tree"
@@ -151,6 +151,8 @@ export default function UnifiedReferralsPage() {
 
   async function handleRevoke(tokenId: string) {
     setRevokingId(tokenId);
+    const tok = allTokens.find((t) => t.id === tokenId);
+    revokeChapterInviteCode(tokenId, tok?.token);
     const ok = await revokeInviteToken(tokenId);
     if (ok) {
       setRevokedIds((prev) => new Set([...prev, tokenId]));

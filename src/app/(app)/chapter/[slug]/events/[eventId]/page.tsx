@@ -170,6 +170,8 @@ export default function EventDetailPage({
     "attendance.verify",
   );
   const isOps = canEdit || canReview || canApprove;
+  const canPublish =
+    session.roleKey === "founder" || session.roleKey === "campus_lead" || canEdit;
   const isFacultyMonitor = isFaculty && !isOps;
   const isStudentView = !isOps && !isFacultyMonitor && !isFaculty;
 
@@ -610,7 +612,23 @@ export default function EventDetailPage({
               >
                 ← Events
               </Link>
-              {eligibility.ok ? (
+              {myReg && myReg.status !== "rejected" ? (
+                <Badge tone={regStatusTone(myReg.status)}>
+                  {myReg.status === "approved" ? "Confirmed Pass" : myReg.status.replaceAll("_", " ")}
+                </Badge>
+              ) : event.status === "completed" ? (
+                <Badge tone="mute">Event Completed</Badge>
+              ) : event.status === "cancelled" ? (
+                <Badge tone="magenta">Event Cancelled</Badge>
+              ) : event.status === "draft" && canPublish ? (
+                <Button
+                  variant="orange"
+                  className="h-8 px-3 text-[12px]"
+                  onClick={() => publishEvent()}
+                >
+                  Publish → Open Registration
+                </Button>
+              ) : (
                 <Button
                   variant="orange"
                   className="h-8 px-3 text-[12px]"
@@ -618,7 +636,7 @@ export default function EventDetailPage({
                 >
                   Register
                 </Button>
-              ) : null}
+              )}
             </div>
           }
         />
@@ -675,7 +693,7 @@ export default function EventDetailPage({
                       ? "You are not registered yet — register now with your student profile."
                       : eligibility.reason}
                 </p>
-                {eligibility.ok ? (
+                {event.status !== "completed" && event.status !== "cancelled" ? (
                   <Button
                     variant="orange"
                     className="h-8 px-3 text-[12px]"

@@ -816,6 +816,19 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       session = { userId: "", roleKey: "student" as RoleKey };
     }
 
+    let finalInviteRows = inviteRows;
+    if ((!finalInviteRows || finalInviteRows.length === 0) && typeof window !== "undefined") {
+      try {
+        const fallbackRes = await fetch("/api/mutations?type=invite_tokens");
+        const fallbackJson = await fallbackRes.json();
+        if (fallbackJson?.ok && Array.isArray(fallbackJson.data)) {
+          finalInviteRows = fallbackJson.data;
+        }
+      } catch (err) {
+        console.warn("Notice: invite_tokens service-role fetch fallback notice:", err);
+      }
+    }
+
     return {
       store: {
         ...emptyStore(),
@@ -867,7 +880,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           note: sc.note ?? undefined,
           updatedAt: sc.updated_at ?? new Date().toISOString(),
         })),
-        inviteTokens: (inviteRows ?? []).map((t: Record<string, any>) => ({
+        inviteTokens: (finalInviteRows ?? []).map((t: Record<string, any>) => ({
           id: t.id,
           token: t.token,
           createdBy: t.created_by,
@@ -878,7 +891,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           expiresAt: t.expires_at ?? undefined,
           isActive: t.is_active ?? true,
         })),
-        chapterInviteCodes: (inviteRows ?? []).map((t: Record<string, any>) => {
+        chapterInviteCodes: (finalInviteRows ?? []).map((t: Record<string, any>) => {
           const tokenStr = (t.token ?? "").toUpperCase();
           const matchingLogs = (activityRows ?? []).filter(
             (al: any) =>
@@ -1038,7 +1051,32 @@ export async function createInviteToken(createdById: string): Promise<{
     .select("id, token, expires_at, created_at")
     .single();
   if (error || !data) {
-    console.error("createInviteToken error:", error);
+    console.error("createInviteToken client error, attempting /api/mutations fallback:", error);
+    try {
+      const res = await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "chapter_invite_code",
+          data: {
+            code: randomToken,
+            createdBy: createdById,
+            expiresAt,
+          },
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (json?.ok && json.id) {
+        return {
+          id: json.id,
+          token: randomToken,
+          expiresAt,
+          createdAt: new Date().toISOString(),
+        };
+      }
+    } catch (fallbackErr) {
+      console.error("createInviteToken fallback error:", fallbackErr);
+    }
     return null;
   }
   return {

@@ -8,6 +8,30 @@ import { embedLocationInNotes } from "@/lib/slug";
 // Default Root Organization UUID seeded in database migration 001/002
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
+export async function GET(req: Request) {
+  try {
+    const admin = createServiceClient();
+    if (!admin) {
+      return NextResponse.json({ ok: false, error: "Supabase service client not configured" }, { status: 500 });
+    }
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get("type");
+    if (type === "invite_tokens") {
+      const { data, error } = await admin
+        .from("invite_tokens")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, data: data ?? [] });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json({ ok: false, error: err?.message }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const admin = createServiceClient();
@@ -1017,26 +1041,68 @@ export async function POST(req: Request) {
     if (type === "profile") {
       const p = data;
       if (isUuid(p.id)) {
-        await admin.from("profiles").upsert({
-          id: p.id,
-          full_name: p.fullName,
-          email: p.email,
-          avatar_url: p.avatarUrl,
-          phone: p.phone,
-          department: p.department,
-          year: p.year,
-          section: p.section,
-          chapter_id: isUuid(p.chapterId) ? p.chapterId : null,
-          status: p.status ?? "active",
-          is_public: Boolean(p.isPublic),
-          bio: p.bio,
-          skills: p.skills ?? [],
-          interests: p.interests ?? [],
-          github_url: p.githubUrl || null,
-          linkedin_url: p.linkedinUrl || null,
-          portfolio_url: p.portfolioUrl || null,
-          resume_url: p.resumeUrl || null,
-        });
+        // Collect defined fields for safe partial updating
+        const updatePayload: Record<string, any> = {};
+        if (p.fullName !== undefined) updatePayload.full_name = p.fullName;
+        if (p.email !== undefined) updatePayload.email = p.email;
+        if (p.avatarUrl !== undefined) updatePayload.avatar_url = p.avatarUrl;
+        if (p.phone !== undefined) updatePayload.phone = p.phone;
+        if (p.department !== undefined) updatePayload.department = p.department;
+        if (p.year !== undefined) updatePayload.year = p.year;
+        if (p.section !== undefined) updatePayload.section = p.section;
+        if (p.chapterId !== undefined) updatePayload.chapter_id = isUuid(p.chapterId) ? p.chapterId : null;
+        if (p.status !== undefined) updatePayload.status = p.status;
+        if (p.isPublic !== undefined) updatePayload.is_public = Boolean(p.isPublic);
+        if (p.bio !== undefined) updatePayload.bio = p.bio;
+        if (p.skills !== undefined) updatePayload.skills = p.skills;
+        if (p.interests !== undefined) updatePayload.interests = p.interests;
+        if (p.githubUrl !== undefined) updatePayload.github_url = p.githubUrl || null;
+        if (p.linkedinUrl !== undefined) updatePayload.linkedin_url = p.linkedinUrl || null;
+        if (p.portfolioUrl !== undefined) updatePayload.portfolio_url = p.portfolioUrl || null;
+        if (p.resumeUrl !== undefined) updatePayload.resume_url = p.resumeUrl || null;
+        updatePayload.updated_at = new Date().toISOString();
+
+        // Check if profile exists
+        const { data: existingProf } = await admin.from("profiles").select("id").eq("id", p.id).maybeSingle();
+        if (existingProf) {
+          const { error: updErr } = await admin.from("profiles").update(updatePayload).eq("id", p.id);
+          if (updErr) {
+            console.error("Mutation error (update profile):", updErr);
+            return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
+          }
+        } else {
+          // If inserting a fresh profile, supply default values
+          const insertPayload = {
+            id: p.id,
+            full_name: p.fullName || "User",
+            email: p.email || "",
+            status: p.status ?? "active",
+            is_public: Boolean(p.isPublic),
+            skills: p.skills ?? [],
+            interests: p.interests ?? [],
+            ...updatePayload,
+          };
+          const { error: insErr } = await admin.from("profiles").insert(insertPayload);
+          if (insErr) {
+            console.error("Mutation error (insert profile):", insErr);
+            return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
+          }
+        }
+
+        // Sync status with Supabase Auth ban if status changed
+        if (p.status === "disabled") {
+          try {
+            await admin.auth.admin.updateUserById(p.id, { ban_duration: "876000h" });
+          } catch (banErr) {
+            console.warn("Auth ban notice (non-fatal):", banErr);
+          }
+        } else if (p.status === "active") {
+          try {
+            await admin.auth.admin.updateUserById(p.id, { ban_duration: "none" });
+          } catch (unbanErr) {
+            console.warn("Auth unban notice (non-fatal):", unbanErr);
+          }
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1403,11 +1469,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, id: insRow?.id || id });
     }
 
-    if (type === "revoke_chapter_invite_code") {
-      const { id } = data;
-      if (id) {
-        const query = isUuid(id) ? { id } : { token: id.trim().toUpperCase() };
-        await admin.from("invite_tokens").update({ is_active: false }).match(query);
+    if (type === "revoke_chapter_invite_code" || type === "revoke_invite_token") {
+      const { id, code, token } = data || {};
+      const targets = [id, code, token].filter(Boolean) as string[];
+      for (const target of targets) {
+        if (isUuid(target)) {
+          await admin.from("invite_tokens").update({ is_active: false }).eq("id", target);
+        }
+        // Also match against token column (case-insensitively or exact)
+        const cleanStr = String(target).trim();
+        await admin
+          .from("invite_tokens")
+          .update({ is_active: false })
+          .or(`token.eq.${cleanStr},token.eq.${cleanStr.toUpperCase()},token.eq.${cleanStr.toLowerCase()}`);
       }
       return NextResponse.json({ ok: true });
     }

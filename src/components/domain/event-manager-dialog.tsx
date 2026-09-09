@@ -942,7 +942,12 @@ export function EventManagerCreateDialog({
           : "in_person",
       registrationStart: new Date().toISOString(),
       registrationEnd: endsAt,
-      status: "draft",
+      status:
+        saved.status === "Completed"
+          ? "completed"
+          : saved.status === "Cancelled"
+          ? "cancelled"
+          : "registration_open",
       certificateEnabled: true,
       ticketNo: `NO. ${String(chapterEvents.length + 10).padStart(2, "0")}`,
       category: saved.category?.toUpperCase() || "WORKSHOP",

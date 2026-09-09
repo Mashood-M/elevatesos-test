@@ -346,6 +346,12 @@ export default function ChapterEventsPage({
                 (r) => r.eventId === ev.id && r.status === "approved",
               ).length;
               const eligibility = canRegisterNow(store, ev, session.userId);
+              const myReg = store.registrations.find(
+                (r) =>
+                  r.eventId === ev.id &&
+                  (r.userId === session.userId || (session.authUserId && r.userId === session.authUserId)) &&
+                  r.status !== "rejected",
+              );
 
               let secondary: { href: string; label: string } | null = null;
               if (canManage && regForm) {
@@ -380,6 +386,19 @@ export default function ChapterEventsPage({
                             View details
                           </Button>
                         </Link>
+                      ) : myReg ? (
+                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                          <Button
+                            variant={myReg.status === "approved" ? "green" : "secondary"}
+                            className="h-9 px-4"
+                          >
+                            {myReg.status === "approved"
+                              ? "Pass Confirmed"
+                              : myReg.status === "waitlisted"
+                                ? "Waitlisted Pass"
+                                : "Registered"}
+                          </Button>
+                        </Link>
                       ) : ev.status === "draft" && canPublish ? (
                         <Button
                           variant="orange"
@@ -396,7 +415,7 @@ export default function ChapterEventsPage({
                         >
                           Draft (pending publish)
                         </Button>
-                      ) : eligibility.ok ? (
+                      ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
                         <Button
                           variant="orange"
                           className="h-9 px-4"

@@ -366,7 +366,7 @@ export function ChapterInviteCodeManager({
         actionLabel="Revoke Code"
         onConfirm={() => {
           if (revokeTarget) {
-            revokeChapterInviteCode(revokeTarget.id);
+            revokeChapterInviteCode(revokeTarget.id, revokeTarget.code);
             setMsg({ text: `Revoked invite code "${revokeTarget.code}".`, type: "error" });
           }
         }}

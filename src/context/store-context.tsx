@@ -300,7 +300,7 @@ type StoreContextValue = {
   approveJoinRequests: (profileIds: string[], roleKey: RoleKey, chapterId: string) => Promise<boolean>;
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
   generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
-  revokeChapterInviteCode: (codeId: string) => boolean;
+  revokeChapterInviteCode: (codeId: string, codeString?: string) => boolean;
   joinChapterWithCode: (code: string, userId: string, department?: string, year?: string, skills?: string[], interests?: string[]) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
@@ -1727,29 +1727,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Event not found." };
             return s;
           }
-          if (event.status !== "registration_open") {
+          const st = (event.status || "").toLowerCase();
+          const isExplicitlyClosed =
+            st === "draft" ||
+            st === "completed" ||
+            st === "cancelled" ||
+            st === "registration_closed";
+          if (isExplicitlyClosed) {
             result = {
               ok: false,
-              message: "Registration is not open for this event.",
+              message:
+                st === "draft"
+                  ? "This event is currently in draft mode and not published."
+                  : st === "completed"
+                    ? "This event has already ended."
+                    : "Registration is not open for this event.",
             };
             return s;
           }
           const now = Date.now();
-          const start = new Date(event.registrationStart).getTime();
-          const end = new Date(event.registrationEnd).getTime();
-          if (Number.isFinite(start) && now < start) {
-            result = {
-              ok: false,
-              message: "Registration has not opened yet.",
-            };
-            return s;
+          if (event.registrationStart) {
+            const start = new Date(event.registrationStart).getTime();
+            if (Number.isFinite(start) && now < start) {
+              result = {
+                ok: false,
+                message: "Registration has not opened yet.",
+              };
+              return s;
+            }
           }
-          if (Number.isFinite(end) && now > end) {
-            result = {
-              ok: false,
-              message: "Registration has closed for this event.",
-            };
-            return s;
+          if (event.registrationEnd) {
+            const end = new Date(event.registrationEnd).getTime();
+            if (Number.isFinite(end) && now > end) {
+              result = {
+                ok: false,
+                message: "Registration has closed for this event.",
+              };
+              return s;
+            }
           }
           const duplicate = s.registrations.some(
             (r) =>
@@ -2752,6 +2767,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                   chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
                     c.id === newCode.id ? { ...c, id: serverId } : c
                   ),
+                  inviteTokens: (s.inviteTokens ?? []).map((t) =>
+                    t.id === newCode.id ? { ...t, id: serverId } : t
+                  ),
                 }));
               }
             });
@@ -2779,44 +2797,75 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
                 c.id === newCode.id ? { ...c, id: json.id } : c
               ),
+              inviteTokens: (s.inviteTokens ?? []).map((t) =>
+                t.id === newCode.id ? { ...t, id: json.id } : t
+              ),
             }));
           }
         }).catch((err) => console.warn("Notice: chapter_invite_code server sync:", err));
 
+        const newToken: import("@/types").InviteToken = {
+          id: uuidId,
+          token: newCode.code,
+          createdBy: newCode.createdBy,
+          chapterId: newCode.chapterId,
+          createdAt: newCode.createdAt,
+          expiresAt: newCode.expiresAt,
+          isActive: true,
+        };
+
         setStore((s) => ({
           ...s,
           chapterInviteCodes: [newCode, ...(s.chapterInviteCodes ?? [])],
+          inviteTokens: [newToken, ...(s.inviteTokens ?? [])],
         }));
 
         return newCode;
       },
-      revokeChapterInviteCode: (codeId) => {
-        const supabase = createClient();
-        if (supabase) {
-          supabase
-            .from("invite_tokens")
-            .update({ is_active: false })
-            .eq("id", codeId)
-            .then((res: any) => {
-              if (res?.error) console.error("Error revoking invite token in Supabase:", res.error?.message);
-            });
-        }
+      revokeChapterInviteCode: (codeId, codeString) => {
+        const targetId = codeId || codeString;
+        const targetCode = (codeString || codeId || "").toUpperCase();
+
+        setStore((s) => ({
+          ...s,
+          chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
+            c.id === targetId || (targetCode && c.code.toUpperCase() === targetCode)
+              ? { ...c, isRevoked: true }
+              : c
+          ),
+          inviteTokens: (s.inviteTokens ?? []).map((t) =>
+            t.id === targetId || (targetCode && t.token?.toUpperCase() === targetCode)
+              ? { ...t, isActive: false }
+              : t
+          ),
+        }));
 
         fetch("/api/mutations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "revoke_chapter_invite_code",
-            data: { id: codeId },
+            data: { id: targetId, code: targetCode },
           }),
-        }).catch(() => {});
+        }).catch((err) => console.warn("Notice: chapter_invite_code revoke:", err));
 
-        setStore((s) => ({
-          ...s,
-          chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
-            c.id === codeId ? { ...c, isRevoked: true } : c
-          ),
-        }));
+        const supabase = createClient();
+        if (supabase) {
+          if (isUuid(targetId)) {
+            supabase
+              .from("invite_tokens")
+              .update({ is_active: false })
+              .eq("id", targetId)
+              .then(() => {});
+          }
+          if (targetCode) {
+            supabase
+              .from("invite_tokens")
+              .update({ is_active: false })
+              .eq("token", targetCode)
+              .then(() => {});
+          }
+        }
         return true;
       },
       joinChapterWithCode: (inputCode, userId, department, year, skills, interests) => {
@@ -3482,8 +3531,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
 
+        const updatedProfile = {
+          ...existing,
+          ...patch,
+          id,
+        };
+
         void runPersist(
-          persistProfile({ id, ...patch }),
+          persistProfile(updatedProfile),
           { errorMessage: `Failed to persist user update for ${id}` }
         );
 

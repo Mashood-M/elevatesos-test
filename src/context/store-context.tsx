@@ -236,6 +236,7 @@ type StoreContextValue = {
           | "location"
           | "mapUrl"
           | "campusLeadId"
+          | "published"
           | "customSettings"
         >
       >,
@@ -262,6 +263,7 @@ type StoreContextValue = {
         | "longitude"
         | "location"
         | "mapUrl"
+        | "published"
         | "customSettings"
       >
     >,

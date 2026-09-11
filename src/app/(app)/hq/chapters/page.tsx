@@ -15,9 +15,12 @@ import { calculateChapterActivityScore } from "@/lib/analytics";
 import { activityLabel } from "@/lib/permissions";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
-import { deriveChapterShortCode } from "@/lib/chapters";
 import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
 import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
+import { persistSystemUiState } from "@/lib/data/mutations";
+import { deriveChapterShortCode } from "@/lib/chapters";
+import type { Chapter } from "@/types";
+import { X } from "lucide-react";
 
 type DraftChapter = {
   name: string;
@@ -33,7 +36,7 @@ type DraftChapter = {
   location?: string;
 };
 
-type StatusFilter = "all" | DraftChapter["status"];
+type StatusFilter = "all" | "active" | "inactive" | "onboarding" | "disabled";
 
 const emptyDraft = (): DraftChapter => ({
   name: "",
@@ -55,12 +58,12 @@ function slugify(name: string) {
 
 export default function HqChaptersPage() {
   const router = useRouter();
-  const { store, createChapter, deleteChapter } = useStore();
+  const { store, createChapter, updateChapter, deleteChapter } = useStore();
   const [draft, setDraft] = useState<DraftChapter>(emptyDraft);
   const [slugTouched, setSlugTouched] = useState(false);
   const [shortCodeTouched, setShortCodeTouched] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Chapter | null>(null);
   const [flash, setFlash] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -75,10 +78,39 @@ export default function HqChaptersPage() {
     (c) => c.status === "onboarding",
   ).length;
 
+  function toggleChapterStatus(c: Chapter) {
+    const isCurrentlyActive = c.status === "active";
+    const nextStatus: Chapter["status"] = isCurrentlyActive ? "inactive" : "active";
+    const nextPublished = !isCurrentlyActive;
+    updateChapter(c.id, {
+      status: nextStatus,
+      published: nextPublished,
+    });
+    persistSystemUiState({
+      key: `chapter_btn_disable_${c.id}`,
+      section: "chapters",
+      componentId: c.id,
+      stateType: "toggle",
+      isEnabled: !isCurrentlyActive,
+      label: nextStatus,
+    }).catch(() => {});
+    setFlash(
+      isCurrentlyActive
+        ? `Chapter "${c.name}" has been disabled.`
+        : `Chapter "${c.name}" has been enabled.`
+    );
+  }
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return store.chapters.filter((c) => {
-      if (statusFilter !== "all" && c.status !== statusFilter) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "inactive" || statusFilter === "disabled") {
+          if (c.status !== "inactive" && (c.status as string) !== "disabled") return false;
+        } else if (c.status !== statusFilter) {
+          return false;
+        }
+      }
       if (!q) return true;
       return (
         c.name.toLowerCase().includes(q) ||
@@ -167,6 +199,15 @@ export default function HqChaptersPage() {
         <Stat label="Onboarding" value={onboardingCount} />
       </div>
 
+      {flash && (
+        <div className="mt-4 flex items-center justify-between rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/30 px-3.5 py-2 text-xs text-[var(--accent)]">
+          <span>{flash}</span>
+          <button type="button" onClick={() => setFlash("")} className="p-0.5 hover:text-text cursor-pointer">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       <TerminalPanel
         title="Registry"
         meta={`${filtered.length} of ${store.chapters.length} chapters`}
@@ -190,7 +231,7 @@ export default function HqChaptersPage() {
               <option value="all">All statuses</option>
               <option value="active">Active</option>
               <option value="onboarding">Onboarding</option>
-              <option value="inactive">Inactive</option>
+              <option value="inactive">Disabled / Inactive</option>
             </Select>
           </label>
         </div>
@@ -283,7 +324,9 @@ export default function HqChaptersPage() {
                                 : "mute"
                           }
                         >
-                          {c.status}
+                          {c.status === "inactive" || (c.status as string) === "disabled"
+                            ? "disabled"
+                            : c.status}
                         </Badge>
                       </td>
                       <td className="py-3 pr-4">
@@ -299,7 +342,19 @@ export default function HqChaptersPage() {
                         )}
                       </td>
                       <td className="py-3">
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <button
+                            type="button"
+                            onClick={() => toggleChapterStatus(c)}
+                            className={`font-medium cursor-pointer transition-colors ${
+                              c.status === "active"
+                                ? "text-amber-400 hover:text-amber-300 hover:underline"
+                                : "text-emerald-400 hover:text-emerald-300 hover:underline"
+                            }`}
+                            title={c.status === "active" ? "Disable this chapter" : "Enable this chapter"}
+                          >
+                            {c.status === "active" ? "Disable" : "Enable"}
+                          </button>
                           <Link
                             href={`/chapter/${c.slug}/settings`}
                             className="font-medium text-[var(--accent)] hover:underline"
@@ -315,7 +370,7 @@ export default function HqChaptersPage() {
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(c)}
-                            className="font-medium text-red-400 hover:underline"
+                            className="font-medium text-red-400 hover:underline cursor-pointer"
                           >
                             Delete
                           </button>

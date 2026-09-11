@@ -261,7 +261,21 @@ export async function POST(req: Request) {
     // 4. CHAPTER MUTATIONS
     if (type === "chapter") {
       const chapter = data;
-      const chapterId = isUuid(chapter.id) ? chapter.id : genUuid();
+      let chapterId = isUuid(chapter.id) ? chapter.id : null;
+      if (!chapterId && chapter.slug) {
+        const { data: existingBySlug } = await admin
+          .from("chapters")
+          .select("id")
+          .eq("slug", chapter.slug)
+          .maybeSingle();
+        if (existingBySlug?.id) {
+          chapterId = existingBySlug.id;
+        }
+      }
+      if (!chapterId) {
+        chapterId = genUuid();
+      }
+
       const basePayload: Record<string, any> = {
         id: chapterId,
         organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : DEFAULT_ORG_ID,
@@ -271,7 +285,7 @@ export async function POST(req: Request) {
         city: chapter.city,
         status: chapter.status,
         health_score: chapter.healthScore ?? 0,
-        published: chapter.published !== undefined ? Boolean(chapter.published) : true,
+        published: chapter.published !== undefined ? Boolean(chapter.published) : (chapter.status === "active"),
         district: chapter.district,
         logo_url: chapter.logoUrl,
         member_count: chapter.memberCount ?? 0,
@@ -350,6 +364,27 @@ export async function POST(req: Request) {
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      // Persist UI button & toggle state to system_ui_states
+      try {
+        await admin.from("system_ui_states").upsert(
+          {
+            key: `chapter_status_${chapterId}`,
+            section: "chapters",
+            component_id: chapterId,
+            state_type: "toggle",
+            is_enabled: chapter.status === "active",
+            is_visible: Boolean(chapter.published),
+            label: chapter.status,
+            metadata: { status: chapter.status, slug: chapter.slug, name: chapter.name },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "key" },
+        );
+      } catch (uiErr) {
+        console.warn("Could not record chapter system_ui_state:", uiErr);
+      }
+
       await revalidateWeb(["chapters", `chapter:${chapter.slug}`]);
       return NextResponse.json({ ok: true, id: chapterId });
     }
@@ -1040,7 +1075,19 @@ export async function POST(req: Request) {
     // 21. PROFILE & USER ROLES MUTATIONS
     if (type === "profile") {
       const p = data;
-      if (isUuid(p.id)) {
+      let targetId = isUuid(p.id) ? p.id : null;
+      if (!targetId && p.email) {
+        const { data: profByEmail } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("email", p.email.trim().toLowerCase())
+          .maybeSingle();
+        if (profByEmail?.id) {
+          targetId = profByEmail.id;
+        }
+      }
+
+      if (targetId) {
         // Collect defined fields for safe partial updating
         const updatePayload: Record<string, any> = {};
         if (p.fullName !== undefined) updatePayload.full_name = p.fullName;
@@ -1060,12 +1107,17 @@ export async function POST(req: Request) {
         if (p.linkedinUrl !== undefined) updatePayload.linkedin_url = p.linkedinUrl || null;
         if (p.portfolioUrl !== undefined) updatePayload.portfolio_url = p.portfolioUrl || null;
         if (p.resumeUrl !== undefined) updatePayload.resume_url = p.resumeUrl || null;
-        updatePayload.updated_at = new Date().toISOString();
 
         // Check if profile exists
-        const { data: existingProf } = await admin.from("profiles").select("id").eq("id", p.id).maybeSingle();
+        const { data: existingProf } = await admin.from("profiles").select("id").eq("id", targetId).maybeSingle();
         if (existingProf) {
-          const { error: updErr } = await admin.from("profiles").update(updatePayload).eq("id", p.id);
+          let { error: updErr } = await admin.from("profiles").update(updatePayload).eq("id", targetId);
+          // If update failed because of updated_at or missing column, retry without it
+          if (updErr && (updErr.message.includes("updated_at") || updErr.message.includes("column"))) {
+            delete updatePayload.updated_at;
+            const retry = await admin.from("profiles").update(updatePayload).eq("id", targetId);
+            updErr = retry.error;
+          }
           if (updErr) {
             console.error("Mutation error (update profile):", updErr);
             return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
@@ -1073,7 +1125,7 @@ export async function POST(req: Request) {
         } else {
           // If inserting a fresh profile, supply default values
           const insertPayload = {
-            id: p.id,
+            id: targetId,
             full_name: p.fullName || "User",
             email: p.email || "",
             status: p.status ?? "active",
@@ -1082,6 +1134,7 @@ export async function POST(req: Request) {
             interests: p.interests ?? [],
             ...updatePayload,
           };
+          delete (insertPayload as Record<string, unknown>).updated_at;
           const { error: insErr } = await admin.from("profiles").insert(insertPayload);
           if (insErr) {
             console.error("Mutation error (insert profile):", insErr);
@@ -1092,16 +1145,36 @@ export async function POST(req: Request) {
         // Sync status with Supabase Auth ban if status changed
         if (p.status === "disabled") {
           try {
-            await admin.auth.admin.updateUserById(p.id, { ban_duration: "876000h" });
+            await admin.auth.admin.updateUserById(targetId, { ban_duration: "876000h" });
           } catch (banErr) {
             console.warn("Auth ban notice (non-fatal):", banErr);
           }
         } else if (p.status === "active") {
           try {
-            await admin.auth.admin.updateUserById(p.id, { ban_duration: "none" });
+            await admin.auth.admin.updateUserById(targetId, { ban_duration: "none" });
           } catch (unbanErr) {
             console.warn("Auth unban notice (non-fatal):", unbanErr);
           }
+        }
+
+        // Also record user disable/enable state in system_ui_states
+        try {
+          await admin.from("system_ui_states").upsert(
+            {
+              key: `user_status_${targetId}`,
+              section: "users",
+              component_id: targetId,
+              state_type: "toggle",
+              is_enabled: p.status === "active",
+              is_visible: true,
+              label: p.status,
+              metadata: { status: p.status, email: p.email },
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "key" },
+          );
+        } catch (uiErr) {
+          console.warn("Could not record user system_ui_state:", uiErr);
         }
       }
       return NextResponse.json({ ok: true });

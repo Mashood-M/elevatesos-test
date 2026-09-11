@@ -458,7 +458,7 @@ export default function ChapterSettingsPage({
                 >
                   <option value="onboarding">Onboarding</option>
                   <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="inactive">Disabled / Inactive</option>
                 </Select>
               </div>
 

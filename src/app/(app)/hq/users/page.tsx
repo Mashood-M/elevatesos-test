@@ -14,6 +14,7 @@ import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { CheckSquare, Square, ShieldCheck, Mail } from "lucide-react";
+import { persistSystemUiState } from "@/lib/data/mutations";
 
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
 
@@ -404,6 +405,14 @@ export default function HqUsersPage() {
       flashMsg("Could not update status");
       return;
     }
+    persistSystemUiState({
+      key: `user_btn_disable_${profile.id}`,
+      section: "users",
+      componentId: profile.id,
+      stateType: "toggle",
+      isEnabled: next === "active",
+      label: next,
+    }).catch(() => {});
     if (editingId === profile.id && editDraft) {
       setEditDraft({ ...editDraft, status: next });
     }
@@ -960,6 +969,12 @@ export default function HqUsersPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => toggleStatus(profile)}
+                    className={`font-medium cursor-pointer transition-colors ${
+                      status === "active"
+                        ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                        : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                    }`}
+                    title={status === "active" ? "Disable user access" : "Enable user access"}
                   >
                     {status === "active" ? "Disable" : "Enable"}
                   </Button>

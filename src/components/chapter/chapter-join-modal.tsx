@@ -26,6 +26,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   const [skills, setSkills] = useState(userProfile?.skills?.join(", ") || "");
   const [interests, setInterests] = useState(userProfile?.interests?.join(", ") || "");
   const [errorMsg, setErrorMsg] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
 
   useEffect(() => {
@@ -73,7 +74,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
     onClose();
   };
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
@@ -113,14 +114,23 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
       .map((i) => i.trim())
       .filter(Boolean);
 
-    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
-    if (!result.success) {
-      setErrorMsg(result.message);
-      return;
-    }
+    setSubmitting(true);
+    try {
+      const result = await joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
+      if (!result.success) {
+        setErrorMsg(result.message);
+        setSubmitting(false);
+        return;
+      }
 
-    if (result.chapter) {
-      setSuccessChapter(result.chapter);
+      if (result.chapter) {
+        setSuccessChapter(result.chapter);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to verify invite code";
+      setErrorMsg(msg);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -296,9 +306,11 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
             <Button
               type="submit"
               variant="orange"
+              disabled={submitting}
               className="w-full flex items-center justify-center gap-2 font-bold py-3"
             >
-              Join Chapter Instantly <ArrowRight size={16} />
+              {submitting ? "Verifying & Joining Chapter…" : "Join Chapter Instantly"}{" "}
+              <ArrowRight size={16} />
             </Button>
           </form>
         ) : (

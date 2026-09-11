@@ -364,9 +364,9 @@ export function ChapterInviteCodeManager({
         description={`Are you sure you want to revoke invite code "${revokeTarget?.code}"? Students will no longer be able to use this code to join.`}
         confirmWord="REVOKE"
         actionLabel="Revoke Code"
-        onConfirm={() => {
+        onConfirm={async () => {
           if (revokeTarget) {
-            revokeChapterInviteCode(revokeTarget.id, revokeTarget.code);
+            await revokeChapterInviteCode(revokeTarget.id, revokeTarget.code);
             setMsg({ text: `Revoked invite code "${revokeTarget.code}".`, type: "error" });
           }
         }}

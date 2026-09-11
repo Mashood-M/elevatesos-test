@@ -22,6 +22,7 @@ function JoinChapterContent() {
   const [skills, setSkills] = useState(userProfile?.skills?.join(", ") || "");
   const [interests, setInterests] = useState(userProfile?.interests?.join(", ") || "");
   const [errorMsg, setErrorMsg] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [successChapter, setSuccessChapter] = useState<import("@/types").Chapter | null>(null);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ function JoinChapterContent() {
     ? store.chapters.find((c) => c.id === existingChapterId)
     : null;
 
-  function handleJoin(e: React.FormEvent) {
+  async function handleJoin(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg("");
 
@@ -99,14 +100,23 @@ function JoinChapterContent() {
       .map((i) => i.trim())
       .filter(Boolean);
 
-    const result = joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
-    if (!result.success) {
-      setErrorMsg(result.message);
-      return;
-    }
+    setSubmitting(true);
+    try {
+      const result = await joinChapterWithCode(codeToUse, session.userId, finalDept, year.trim(), skillsArr, interestsArr);
+      if (!result.success) {
+        setErrorMsg(result.message);
+        setSubmitting(false);
+        return;
+      }
 
-    if (result.chapter) {
-      setSuccessChapter(result.chapter);
+      if (result.chapter) {
+        setSuccessChapter(result.chapter);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to verify invite code";
+      setErrorMsg(msg);
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -280,10 +290,11 @@ function JoinChapterContent() {
               <Button
                 type="submit"
                 variant="orange"
+                disabled={submitting}
                 className="w-full py-3 text-sm font-bold flex items-center justify-center gap-2"
               >
                 <KeyRound size={16} />
-                Join Chapter Instantly
+                {submitting ? "Verifying & Joining Chapter…" : "Join Chapter Instantly"}
               </Button>
             </form>
           ) : (

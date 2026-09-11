@@ -26,9 +26,45 @@ export async function GET(req: Request) {
       }
       return NextResponse.json({ ok: true, data: data ?? [] });
     }
+    if (type === "validate_invite") {
+      const token = searchParams.get("token")?.trim();
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "token required" }, { status: 400 });
+      }
+
+      // Check system_ui_states for explicit revocation
+      const { data: uiRevoked } = await admin
+        .from("system_ui_states")
+        .select("is_enabled")
+        .eq("key", `revoked_invite_${token.toUpperCase()}`)
+        .maybeSingle();
+
+      if (uiRevoked && !uiRevoked.is_enabled) {
+        return NextResponse.json({
+          ok: true,
+          data: { token, is_active: false, isRevoked: true },
+        });
+      }
+
+      // Query invite_tokens case-insensitively
+      const { data, error } = await admin
+        .from("invite_tokens")
+        .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
+        .ilike("token", token)
+        .maybeSingle();
+
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+      if (!data) {
+        return NextResponse.json({ ok: false, error: "Invite token not found" }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true, data });
+    }
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err?.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 
@@ -1279,6 +1315,21 @@ export async function POST(req: Request) {
         tokenRow = foundByToken;
       }
 
+      // Check system_ui_states for explicit revocation
+      if (cleanCode) {
+        const { data: uiRevoked } = await admin
+          .from("system_ui_states")
+          .select("is_enabled")
+          .eq("key", `revoked_invite_${cleanCode}`)
+          .maybeSingle();
+        if (uiRevoked && !uiRevoked.is_enabled) {
+          return NextResponse.json(
+            { ok: false, error: "This invite code has been revoked and can no longer be used." },
+            { status: 400 },
+          );
+        }
+      }
+
       // Enforce: Reject if invite token is revoked, expired, or already used
       if (tokenRow) {
         if (!tokenRow.is_active) {
@@ -1545,16 +1596,49 @@ export async function POST(req: Request) {
     if (type === "revoke_chapter_invite_code" || type === "revoke_invite_token") {
       const { id, code, token } = data || {};
       const targets = [id, code, token].filter(Boolean) as string[];
+
       for (const target of targets) {
-        if (isUuid(target)) {
-          await admin.from("invite_tokens").update({ is_active: false }).eq("id", target);
+        const clean = String(target).trim();
+        if (!clean) continue;
+
+        // Try security definer RPC function from migration 019 if available
+        try {
+          await admin.rpc("revoke_invite_code", { target_val: clean });
+        } catch {
+          // Fallback to direct table updates
         }
-        // Also match against token column (case-insensitively or exact)
-        const cleanStr = String(target).trim();
+
+        // 1. If clean is a UUID, update primary key id
+        if (isUuid(clean)) {
+          await admin.from("invite_tokens").update({ is_active: false }).eq("id", clean);
+        }
+
+        // 2. Deactivate by token case-insensitively using ilike (handles hyphens cleanly)
+        await admin.from("invite_tokens").update({ is_active: false }).ilike("token", clean);
+
+        // 3. Match exact uppercase and lowercase variants
         await admin
           .from("invite_tokens")
           .update({ is_active: false })
-          .or(`token.eq.${cleanStr},token.eq.${cleanStr.toUpperCase()},token.eq.${cleanStr.toLowerCase()}`);
+          .in("token", [clean, clean.toUpperCase(), clean.toLowerCase()]);
+
+        // 4. Record revocation in system_ui_states for instantaneous cross-tab/cross-client lookup
+        try {
+          await admin.from("system_ui_states").upsert(
+            {
+              key: `revoked_invite_${clean.toUpperCase()}`,
+              section: "invites",
+              component_id: clean,
+              state_type: "status",
+              is_enabled: false,
+              is_visible: false,
+              label: "revoked",
+              metadata: { revoked_at: new Date().toISOString(), target: clean },
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "key" },
+          );
+        } catch {}
       }
       return NextResponse.json({ ok: true });
     }

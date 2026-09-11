@@ -302,8 +302,15 @@ type StoreContextValue = {
   approveJoinRequests: (profileIds: string[], roleKey: RoleKey, chapterId: string) => Promise<boolean>;
   rejectJoinRequests: (profileIds: string[]) => Promise<boolean>;
   generateChapterInviteCode: (chapterId: string, customCode?: string) => import("@/types").ChapterInviteCode;
-  revokeChapterInviteCode: (codeId: string, codeString?: string) => boolean;
-  joinChapterWithCode: (code: string, userId: string, department?: string, year?: string, skills?: string[], interests?: string[]) => { success: boolean; message: string; chapter?: import("@/types").Chapter };
+  revokeChapterInviteCode: (codeId: string, codeString?: string) => Promise<boolean>;
+  joinChapterWithCode: (
+    code: string,
+    userId: string,
+    department?: string,
+    year?: string,
+    skills?: string[],
+    interests?: string[],
+  ) => Promise<{ success: boolean; message: string; chapter?: import("@/types").Chapter }>;
   batchUpdateRegistrationStatus: (registrationIds: string[], status: RegistrationStatus, actorId: string) => boolean;
   inviteToCluster: (input: {
     clusterId: string;
@@ -2824,32 +2831,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         return newCode;
       },
-      revokeChapterInviteCode: (codeId, codeString) => {
+      revokeChapterInviteCode: async (codeId, codeString) => {
         const targetId = codeId || codeString;
-        const targetCode = (codeString || codeId || "").toUpperCase();
+        const targetCode = (codeString || codeId || "").trim();
 
         setStore((s) => ({
           ...s,
           chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
-            c.id === targetId || (targetCode && c.code.toUpperCase() === targetCode)
+            c.id === targetId || (targetCode && c.code.toUpperCase() === targetCode.toUpperCase())
               ? { ...c, isRevoked: true }
               : c
           ),
           inviteTokens: (s.inviteTokens ?? []).map((t) =>
-            t.id === targetId || (targetCode && t.token?.toUpperCase() === targetCode)
+            t.id === targetId || (targetCode && t.token?.toUpperCase() === targetCode.toUpperCase())
               ? { ...t, isActive: false }
               : t
           ),
         }));
 
-        fetch("/api/mutations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "revoke_chapter_invite_code",
-            data: { id: targetId, code: targetCode },
-          }),
-        }).catch((err) => console.warn("Notice: chapter_invite_code revoke:", err));
+        try {
+          await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "revoke_chapter_invite_code",
+              data: { id: targetId, code: targetCode, token: targetCode },
+            }),
+          });
+        } catch (err) {
+          console.warn("Notice: chapter_invite_code revoke:", err);
+        }
 
         const supabase = createClient();
         if (supabase) {
@@ -2864,13 +2875,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             supabase
               .from("invite_tokens")
               .update({ is_active: false })
-              .eq("token", targetCode)
+              .ilike("token", targetCode)
               .then(() => {});
           }
         }
         return true;
       },
-      joinChapterWithCode: (inputCode, userId, department, year, skills, interests) => {
+      joinChapterWithCode: async (inputCode, userId, department, year, skills, interests) => {
         const cleanCode = inputCode.trim().toUpperCase();
         if (!cleanCode) {
           return { success: false, message: "Please enter an invite code." };
@@ -2907,6 +2918,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           targetChapter = store.chapters.find((c) => c.id === matchingCode.chapterId);
         }
 
+        // 1. Fast local rejection if already marked revoked or expired
         if (matchingCode) {
           if (matchingCode.isRevoked) {
             return {
@@ -2932,9 +2944,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         }
 
-        // Direct join execution! Update user's profile chapterId, department, and userRoles
         const targetUserId = userId || store.session.userId || store.session.authUserId || "";
 
+        // 2. LIVE SERVER CHECK & JOIN EXECUTION via /api/mutations
+        // This guarantees instantaneous rejection if revoked on the server/Supabase
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "chapter_invite_join",
+              data: {
+                code: cleanCode,
+                codeId: matchingCode?.id,
+                userId: targetUserId,
+                chapterId: targetChapter.id,
+                department: department?.trim(),
+                year: year?.trim(),
+                skills: skills && skills.length > 0 ? skills : undefined,
+                interests: interests && interests.length > 0 ? interests : undefined,
+              },
+            }),
+          });
+          const resJson = await res.json().catch(() => null);
+
+          if (!res.ok || !resJson?.ok) {
+            const errMsg = resJson?.error || "This invite code is invalid or has been revoked.";
+            if (
+              errMsg.toLowerCase().includes("revoked") ||
+              errMsg.toLowerCase().includes("no longer be used") ||
+              errMsg.toLowerCase().includes("expired")
+            ) {
+              setStore((s) => ({
+                ...s,
+                chapterInviteCodes: (s.chapterInviteCodes ?? []).map((c) =>
+                  c.code.toUpperCase() === cleanCode || (matchingCode && c.id === matchingCode.id)
+                    ? { ...c, isRevoked: true }
+                    : c
+                ),
+                inviteTokens: (s.inviteTokens ?? []).map((t) =>
+                  t.token?.toUpperCase() === cleanCode || (matchingCode && t.id === matchingCode.id)
+                    ? { ...t, isActive: false }
+                    : t
+                ),
+              }));
+            }
+            return {
+              success: false,
+              message: errMsg,
+            };
+          }
+        } catch (netErr) {
+          console.warn("Could not post chapter_invite_join mutation:", netErr);
+          if (matchingCode?.isRevoked) {
+            return {
+              success: false,
+              message: "This invite code has been revoked by the Campus Lead.",
+            };
+          }
+        }
+
+        // 3. Server confirmed valid & active! Update local store
         setStore((s) => {
           const updatedProfiles = s.profiles.map((p) =>
             p.id === targetUserId || (s.session.authUserId && p.id === s.session.authUserId)
@@ -3026,28 +3096,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
 
-        // Supabase DB Persistence & Server Mutation (bypasses RLS)
-        fetch("/api/mutations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "chapter_invite_join",
-            data: {
-              code: cleanCode,
-              codeId: matchingCode?.id,
-              userId: targetUserId,
-              chapterId: targetChapter.id,
-              department: department?.trim(),
-              year: year?.trim(),
-              skills: skills && skills.length > 0 ? skills : undefined,
-              interests: interests && interests.length > 0 ? interests : undefined,
-            },
-          }),
-        }).catch((err) => {
-          console.warn("Could not post chapter_invite_join mutation:", err);
-        });
-
-        // Also persist profile directly via server mutation
+        // 4. Also update profile directly via server mutation
         const existingProfToUpdate = store.profiles.find((p) => p.id === targetUserId);
         if (existingProfToUpdate) {
           void runPersist(
@@ -3067,7 +3116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         const supabase = createClient();
         if (supabase && targetUserId) {
-          const profileUpdate: Record<string, any> = {
+          const profileUpdate: Record<string, unknown> = {
             chapter_id: targetChapter.id,
             department: department?.trim() || null,
             year: year?.trim() || null,
@@ -3080,7 +3129,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .from("profiles")
             .update(profileUpdate)
             .eq("id", targetUserId)
-            .then((res: any) => {
+            .then((res: { error?: { message?: string } }) => {
               if (res?.error) console.error("Error updating user profile in Supabase:", res.error?.message);
             });
 
@@ -3091,42 +3140,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               role_key: "student",
               chapter_id: targetChapter.id,
             })
-            .then((res: any) => {
+            .then((res: { error?: { message?: string; details?: string } }) => {
               if (res?.error && !res.error?.message?.includes("duplicate") && !res.error?.details?.includes("already exists")) {
                 console.warn("Supabase user_roles insert notice:", res.error?.message);
               }
             });
-
-          if (matchingCode) {
-            // First try calling stored function increment_invite_token_usage
-            supabase.rpc("increment_invite_token_usage", {
-              p_token: cleanCode,
-              p_user_id: targetUserId && targetUserId.includes("-") ? targetUserId : null,
-            }).then((res: any) => {
-              if (res?.error) {
-                // Fallback to direct update
-                supabase
-                  .from("invite_tokens")
-                  .update({
-                    used_by: targetUserId && targetUserId.includes("-") ? targetUserId : null,
-                    used_at: new Date().toISOString(),
-                    uses_count: (matchingCode?.usesCount ?? 0) + 1,
-                  })
-                  .eq("id", matchingCode.id)
-                  .then((fallbackRes: any) => {
-                    if (fallbackRes?.error) {
-                      supabase
-                        .from("invite_tokens")
-                        .update({
-                          used_by: targetUserId && targetUserId.includes("-") ? targetUserId : null,
-                          used_at: new Date().toISOString(),
-                        })
-                        .eq("id", matchingCode.id);
-                    }
-                  });
-              }
-            });
-          }
         }
 
         return {

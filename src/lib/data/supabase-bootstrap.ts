@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ensureTestChapter, deriveChapterShortCode } from "@/lib/chapters";
 import { deduplicateEvents } from "@/lib/events";
 import { extractLocationFromNotes } from "@/lib/slug";
+import { isUuid } from "@/lib/uuid";
 import type {
   BrandKit,
   Chapter,
@@ -1097,12 +1098,42 @@ export async function validateInviteToken(token: string): Promise<{
   usedBy?: string;
   expiresAt?: string;
 } | null> {
+  const clean = (token || "").trim();
+  if (!clean) return null;
+
+  // 1. Try authoritative service-role API validation first (bypasses RLS)
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch(`/api/mutations?type=validate_invite&token=${encodeURIComponent(clean)}`);
+      const json = await res.json().catch(() => null);
+      if (json?.ok && json.data) {
+        const d = json.data;
+        if (!d.is_active || d.isRevoked || d.used_by) return null;
+        if (d.expires_at && new Date(d.expires_at) < new Date()) return null;
+        return {
+          id: d.id,
+          token: d.token,
+          createdBy: d.created_by,
+          chapterId: d.chapter_id ?? undefined,
+          isActive: d.is_active,
+          usedBy: d.used_by ?? undefined,
+          expiresAt: d.expires_at ?? undefined,
+        };
+      } else if (json?.ok === false && json?.error?.includes("not found")) {
+        return null;
+      }
+    } catch (err) {
+      console.warn("validateInviteToken API check notice:", err);
+    }
+  }
+
+  // 2. Direct client fallback with case-insensitive token match
   const supabase = createClient();
   if (!supabase) return null;
   const { data, error } = await supabase
     .from("invite_tokens")
     .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
-    .eq("token", token)
+    .ilike("token", clean)
     .maybeSingle();
   if (error || !data) return null;
   if (!data.is_active || data.used_by) return null; // already used or deactivated
@@ -1131,7 +1162,8 @@ export async function markInviteTokenUsed(tokenId: string, newUserId: string): P
 }
 
 /** Revoke an invite token — sets is_active=false so the link can no longer be used. */
-export async function revokeInviteToken(tokenId: string): Promise<boolean> {
+export async function revokeInviteToken(tokenId: string, tokenString?: string): Promise<boolean> {
+  const cleanToken = tokenString?.trim();
   try {
     if (typeof window !== "undefined") {
       const res = await fetch("/api/mutations", {
@@ -1139,10 +1171,13 @@ export async function revokeInviteToken(tokenId: string): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "revoke_chapter_invite_code",
-          data: { id: tokenId },
+          data: { id: tokenId, token: cleanToken, code: cleanToken },
         }),
       });
-      if (res.ok) return true;
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json?.ok) return true;
+      }
     }
   } catch (err) {
     console.warn("revokeInviteToken API mutation error, falling back to direct client:", err);
@@ -1150,13 +1185,20 @@ export async function revokeInviteToken(tokenId: string): Promise<boolean> {
 
   const supabase = createClient();
   if (!supabase) return false;
-  const { error } = await supabase
-    .from("invite_tokens")
-    .update({ is_active: false })
-    .eq("id", tokenId);
-  if (error) {
-    console.error("revokeInviteToken direct client error:", error);
-    return false;
+  let ok = false;
+  if (isUuid(tokenId)) {
+    const { error } = await supabase
+      .from("invite_tokens")
+      .update({ is_active: false })
+      .eq("id", tokenId);
+    if (!error) ok = true;
   }
-  return true;
+  if (cleanToken) {
+    const { error } = await supabase
+      .from("invite_tokens")
+      .update({ is_active: false })
+      .ilike("token", cleanToken);
+    if (!error) ok = true;
+  }
+  return ok;
 }

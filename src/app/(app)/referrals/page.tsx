@@ -152,12 +152,15 @@ export default function UnifiedReferralsPage() {
   async function handleRevoke(tokenId: string) {
     setRevokingId(tokenId);
     const tok = allTokens.find((t) => t.id === tokenId);
-    revokeChapterInviteCode(tokenId, tok?.token);
-    const ok = await revokeInviteToken(tokenId);
+    const tokenStr = tok?.token;
+    await revokeChapterInviteCode(tokenId, tokenStr);
+    const ok = await revokeInviteToken(tokenId, tokenStr);
     if (ok) {
-      setRevokedIds((prev) => new Set([...prev, tokenId]));
+      setRevokedIds((prev) => new Set([...prev, tokenId, ...(tokenStr ? [tokenStr] : [])]));
       setLocalTokens((prev) =>
-        prev.map((t) => (t.id === tokenId ? { ...t, isActive: false } : t))
+        prev.map((t) =>
+          t.id === tokenId || (tokenStr && t.token === tokenStr) ? { ...t, isActive: false } : t,
+        ),
       );
     }
     setRevokingId(null);

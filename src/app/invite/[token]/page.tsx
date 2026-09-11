@@ -64,13 +64,43 @@ export default function InviteSignUpPage({
   // Validate token on mount
   useEffect(() => {
     async function checkToken() {
-      // First do a raw DB check to distinguish used vs expired vs bad
+      // First check via service-role endpoint to guarantee RLS bypass & instant revocation awareness
+      try {
+        const res = await fetch(`/api/mutations?type=validate_invite&token=${encodeURIComponent(token.trim())}`);
+        const json = await res.json().catch(() => null);
+        if (json?.ok && json.data) {
+          const raw = json.data;
+          if (raw.used_by) {
+            setInvalidReason("used");
+            setTokenStatus("invalid");
+            return;
+          }
+          if (raw.expires_at && new Date(raw.expires_at) < new Date()) {
+            setInvalidReason("expired");
+            setTokenStatus("expired");
+            return;
+          }
+          if (!raw.is_active || raw.isRevoked) {
+            setInvalidReason("bad");
+            setTokenStatus("invalid");
+            return;
+          }
+        } else if (json?.ok === false && json?.error?.includes("not found")) {
+          setInvalidReason("bad");
+          setTokenStatus("invalid");
+          return;
+        }
+      } catch (err) {
+        console.warn("API validate_invite notice:", err);
+      }
+
+      // Direct DB check fallback
       const supabaseRaw = createClient();
       if (supabaseRaw) {
         const { data: raw } = await supabaseRaw
           .from("invite_tokens")
           .select("is_active, used_by, expires_at")
-          .eq("token", token)
+          .ilike("token", token.trim())
           .maybeSingle();
         if (raw) {
           if (raw.used_by) {
@@ -88,10 +118,6 @@ export default function InviteSignUpPage({
             setTokenStatus("invalid");
             return;
           }
-        } else {
-          setInvalidReason("bad");
-          setTokenStatus("invalid");
-          return;
         }
       }
 

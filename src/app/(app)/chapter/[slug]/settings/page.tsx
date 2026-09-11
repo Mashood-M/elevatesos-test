@@ -415,6 +415,7 @@ export default function ChapterSettingsPage({
               </div>
               <div className="md:col-span-2">
                 <ChapterLocationPicker
+                  contextQuery={chapter.name || chapter.city}
                   value={{
                     coordinates: chapter.coordinates,
                     latitude: chapter.latitude,

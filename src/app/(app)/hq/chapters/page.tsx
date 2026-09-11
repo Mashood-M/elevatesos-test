@@ -427,6 +427,7 @@ export default function HqChaptersPage() {
           />
 
           <ChapterLocationPicker
+            contextQuery={draft.name || draft.city}
             value={{
               coordinates: draft.coordinates,
               latitude: draft.latitude,

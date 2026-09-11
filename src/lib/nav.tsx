@@ -158,7 +158,6 @@ export function navGroupsForRole(
           { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
           { href: `${base}/reports`, label: "Reports", icon: I.reports },
           { href: `${base}/forms`, label: "Forms", icon: I.forms },
-          { href: `${base}/classes`, label: "Classes", icon: I.classes },
         ],
       },
       {
@@ -185,7 +184,9 @@ export function navGroupsForRole(
         items: [
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
-          { href: `${base}/forms`, label: "Forms", icon: I.forms },
+          ...(roleKey !== "class_representative"
+            ? [{ href: `${base}/forms`, label: "Forms", icon: I.forms }]
+            : []),
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
           { href: `${base}/projects`, label: "Projects", icon: I.projects },
@@ -234,7 +235,6 @@ export function navGroupsForRole(
       label: "Explore",
       items: [
         { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
-        { href: "/join", label: "🔑 Join Chapter / Code", icon: I.forms },
         { href: eventsHref, label: "Events", icon: I.events },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },

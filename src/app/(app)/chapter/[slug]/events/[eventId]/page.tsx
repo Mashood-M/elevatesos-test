@@ -154,9 +154,11 @@ export default function EventDetailPage({
   const event = store.events.find(
     (e) =>
       e.id === eventId ||
+      e.id.toLowerCase() === eventId.toLowerCase() ||
       e.slug === eventId ||
+      (e.slug && e.slug.toLowerCase() === eventId.toLowerCase()) ||
       e.id === `evt-${eventId}` ||
-      (e.slug && e.slug.toLowerCase() === eventId.toLowerCase()),
+      eventId === `evt-${e.id}`,
   );
 
 
@@ -246,16 +248,50 @@ export default function EventDetailPage({
     });
   }, [registeredStudents, studentSearch, studentStatusFilter, studentDeptFilter]);
 
-  if (!chapter || !event || !isEventVisibleToUser(event, session.chapterId, session.roleKey)) {
+  if (!chapter || !event) {
     return (
       <div className="py-16 text-center">
         <p className="font-semibold text-text">Event not found</p>
         <p className="mt-1 text-xs text-text-dim">
-          This event is closed or exclusive to members of this campus chapter.
+          The event you are looking for does not exist or has been removed.
         </p>
         <Link
           href={session.chapterId ? `/chapter/${slug}/events` : `/events`}
           className="mt-3 inline-block text-[var(--accent)] text-sm"
+        >
+          Back to events
+        </Link>
+      </div>
+    );
+  }
+
+  const isVisible = isEventVisibleToUser(
+    event,
+    chapter.id,
+    session.roleKey,
+    session.userId,
+    store.chapters,
+  );
+
+  if (!isVisible) {
+    return (
+      <div className="py-16 text-center max-w-md mx-auto">
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/10 text-amber-500">
+          <span className="text-xl">🔒</span>
+        </div>
+        <p className="font-semibold text-text">
+          {event.status === "draft" || event.status === "pending_approval"
+            ? "Event is in Draft"
+            : "Access Restricted"}
+        </p>
+        <p className="mt-1.5 text-xs text-text-dim leading-relaxed">
+          {event.status === "draft" || event.status === "pending_approval"
+            ? "This event has been saved as a draft and is awaiting publication by the Campus Lead before students can view it."
+            : "This event is exclusive to verified members of this campus chapter."}
+        </p>
+        <Link
+          href={`/chapter/${slug}/events`}
+          className="mt-4 inline-block rounded-md bg-bg-panel px-4 py-2 text-[var(--accent)] text-xs font-semibold border border-border hover:bg-bg-hover"
         >
           Back to events
         </Link>
@@ -865,6 +901,37 @@ export default function EventDetailPage({
           {queueFlash || publishFlash}
         </p>
       ) : null}
+
+      {event.status === "draft" && (
+        <div className="mb-5 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20 text-amber-500 text-sm font-bold">
+                📝
+              </span>
+              <div>
+                <p className="text-[13px] font-semibold text-text">
+                  Draft Event — Unpublished
+                </p>
+                <p className="text-[11px] text-text-dim">
+                  {canPublish
+                    ? "This event is currently saved in draft mode and is hidden from students. Click publish when you are ready to open registrations."
+                    : "This event is saved as a draft. It will be visible to students once published by the Campus Lead."}
+                </p>
+              </div>
+            </div>
+            {canPublish && (
+              <Button
+                variant="orange"
+                className="h-8 px-4 text-[12px] font-semibold shadow-sm"
+                onClick={publishEvent}
+              >
+                Publish Event → Open Registration
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Registered" value={regs.length} hint={`${approved} confirmed · ${waitlisted} waitlist`} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,20 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
-import { CheckSquare, Square, ShieldCheck, Mail } from "lucide-react";
+import { CheckSquare, Square, ShieldCheck, Mail, ArrowUpDown, ChevronDown, Check } from "lucide-react";
 import { persistSystemUiState } from "@/lib/data/mutations";
 
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
+
+type UserSortOption = "recent" | "name_asc" | "oldest" | "elevates_id" | "name_desc";
+
+const SORT_OPTIONS: { key: UserSortOption; label: string }[] = [
+  { key: "recent", label: "Recently added" },
+  { key: "name_asc", label: "A – Z (Alphabetical)" },
+  { key: "oldest", label: "Oldest" },
+  { key: "elevates_id", label: "Elevates ID" },
+  { key: "name_desc", label: "Z – A" },
+];
 
 // The canonical role order used everywhere on this page
 const ROLE_ORDER: RoleKey[] = [
@@ -140,6 +150,23 @@ export default function HqUsersPage() {
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "disabled">(
     "all",
   );
+  const [sortBy, setSortBy] = useState<UserSortOption>("recent");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
+        setSortOpen(false);
+      }
+    }
+    if (sortOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [sortOpen]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreate);
@@ -162,7 +189,7 @@ export default function HqUsersPage() {
   const hqRoles = store.roles.filter((r) => r.scope === "hq" && allowedRoleKeys.includes(r.key as RoleKey)).sort(sortByOrder);
   const chapterRoles = store.roles.filter((r) => r.scope === "chapter" && allowedRoleKeys.includes(r.key as RoleKey)).sort(sortByOrder);
   const filtersActive = Boolean(
-    q.trim() || filterChapter || filterRole || filterStatus !== "all",
+    q.trim() || filterChapter || filterRole || filterStatus !== "all" || sortBy !== "recent",
   );
 
   const canAssign = useMemo(() => assignableRoles(session.roleKey), [session.roleKey]);
@@ -202,7 +229,33 @@ export default function HqUsersPage() {
           (row.profile.elevatesId ?? "").toLowerCase().includes(needle)
         );
       })
-      .sort((a, b) => a.profile.fullName.localeCompare(b.profile.fullName));
+      .sort((a, b) => {
+        if (sortBy === "recent") {
+          const timeA = new Date(a.profile.createdAt || a.profile.joinedAt || 0).getTime();
+          const timeB = new Date(b.profile.createdAt || b.profile.joinedAt || 0).getTime();
+          if (timeB !== timeA) return timeB - timeA;
+          return a.profile.fullName.localeCompare(b.profile.fullName);
+        }
+        if (sortBy === "oldest") {
+          const timeA = new Date(a.profile.createdAt || a.profile.joinedAt || 0).getTime();
+          const timeB = new Date(b.profile.createdAt || b.profile.joinedAt || 0).getTime();
+          if (timeA !== timeB) return timeA - timeB;
+          return a.profile.fullName.localeCompare(b.profile.fullName);
+        }
+        if (sortBy === "name_desc") {
+          return b.profile.fullName.localeCompare(a.profile.fullName);
+        }
+        if (sortBy === "elevates_id") {
+          const idA = a.profile.elevatesId || "";
+          const idB = b.profile.elevatesId || "";
+          if (idA && idB) return idA.localeCompare(idB, undefined, { numeric: true });
+          if (idA) return -1;
+          if (idB) return 1;
+          return a.profile.fullName.localeCompare(b.profile.fullName);
+        }
+        // Default "name_asc"
+        return a.profile.fullName.localeCompare(b.profile.fullName);
+      });
   }, [
     store.profiles,
     store.userRoles,
@@ -212,6 +265,7 @@ export default function HqUsersPage() {
     filterChapter,
     filterRole,
     filterStatus,
+    sortBy,
   ]);
 
   function flashMsg(msg: string) {
@@ -243,6 +297,7 @@ export default function HqUsersPage() {
     setFilterChapter("");
     setFilterRole("");
     setFilterStatus("all");
+    setSortBy("recent");
   }
 
   function submitCreate(e: FormEvent) {
@@ -535,7 +590,7 @@ export default function HqUsersPage() {
           <div>
             <FieldLabel>Search</FieldLabel>
             <Input
-              placeholder="Name or email…"
+              placeholder="Name, email, or ID…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -832,7 +887,67 @@ export default function HqUsersPage() {
         </TerminalPanel>
       ) : null}
 
-      <TerminalPanel title="user.directory" meta={`${rows.length} users`}>
+      <TerminalPanel
+        title="user.directory"
+        meta={`${rows.length} users`}
+        action={
+          <div className="relative" ref={sortRef}>
+            <button
+              type="button"
+              onClick={() => setSortOpen((prev) => !prev)}
+              className="flex items-center gap-2 rounded-[10px] border border-border bg-bg px-3 py-1.5 text-xs font-medium text-text shadow-[var(--shadow-sm)] transition-all hover:border-[var(--accent)] hover:bg-bg-panel focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              aria-expanded={sortOpen}
+              aria-haspopup="listbox"
+            >
+              <ArrowUpDown size={13} className="text-[var(--accent)] shrink-0" />
+              <span className="text-text-dim">Sort:</span>
+              <span className="font-semibold text-text">
+                {SORT_OPTIONS.find((o) => o.key === sortBy)?.label ?? "Recently added"}
+              </span>
+              <ChevronDown
+                size={13}
+                className={`text-text-mute transition-transform duration-150 ${sortOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {sortOpen && (
+              <div className="absolute right-0 top-full z-30 mt-1.5 min-w-[210px] rounded-[12px] border border-border bg-bg-panel p-1.5 shadow-[var(--shadow)] ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-mute">
+                  Sort Users By
+                </div>
+                <div className="space-y-0.5" role="listbox">
+                  {SORT_OPTIONS.map((opt) => {
+                    const isSelected = sortBy === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          setSortBy(opt.key);
+                          setSortOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs transition-colors ${
+                          isSelected
+                            ? "bg-[var(--accent)]/10 font-semibold text-[var(--accent)]"
+                            : "text-text hover:bg-bg"
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        {isSelected ? (
+                          <Check size={14} className="text-[var(--accent)] shrink-0" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        }
+      >
+
         {!rows.length ? (
           <div className="py-6 text-center">
             <p className="text-sm text-text-dim">

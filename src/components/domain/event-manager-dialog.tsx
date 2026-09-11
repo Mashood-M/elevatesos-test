@@ -28,9 +28,10 @@ import {
   getDefaultUpcomingEventTimes,
 } from "@/components/domain/date-time-pickers";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { isUuid, genUuid } from "@/lib/uuid";
 import type { EventItem as StoreEventItem } from "@/types";
 
-export type EventStatus = "Completed" | "Upcoming" | "Ongoing" | "Cancelled";
+export type EventStatus = "Draft" | "Upcoming" | "Ongoing" | "Completed" | "Cancelled";
 export type EventFormat = "Campus Exclusive" | "Open" | "Online" | "Multi-Campus";
 export type EventCategory =
   | "Workshop"
@@ -310,7 +311,7 @@ export function createBlankCmsEvent(
   const isoEndDate = times.isoEndDate;
 
   return {
-    id: `evt-${Date.now()}`,
+    id: genUuid(),
     slug: "",
     title: "",
     tagline: "",
@@ -318,7 +319,7 @@ export function createBlankCmsEvent(
     fullDescription: "",
     format: "Campus Exclusive",
     category: "Workshop",
-    status: "Upcoming",
+    status: "Draft",
     startDate,
     endDate,
     startTime,
@@ -647,9 +648,9 @@ export function EventEditor({
                   u({ status: e.target.value as EventStatus })
                 }
               >
-                {["Upcoming", "Ongoing", "Completed", "Cancelled"].map((s) => (
+                {["Draft", "Upcoming", "Ongoing", "Completed", "Cancelled"].map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {s === "Draft" ? "Draft (Unpublished — Hidden from students)" : s}
                   </option>
                 ))}
               </select>
@@ -810,20 +811,25 @@ export function EventEditor({
           </Field>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-border p-5">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="orange"
-            size="sm"
-            onClick={() => {
-              onSave(d);
-              onClose();
-            }}
-          >
-            Save Event
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
+          <p className="text-[11px] text-text-dim max-w-sm">
+            Saved events default to <strong className="text-text">Draft</strong> and will not be visible to students until published by the Campus Lead.
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="orange"
+              size="sm"
+              onClick={() => {
+                onSave(d);
+                onClose();
+              }}
+            >
+              Save Event
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -883,7 +889,7 @@ export function EventManagerCreateDialog({
       resolvedChapter ||
       store.chapters[0];
 
-    const eventId = saved.id || `evt-${Date.now()}`;
+    const eventId = isUuid(saved.id) ? saved.id : genUuid();
     const slug = finalizeSlug(saved.slug || saved.title || "event");
 
     // Resolve ISO startsAt and endsAt
@@ -947,7 +953,9 @@ export function EventManagerCreateDialog({
           ? "completed"
           : saved.status === "Cancelled"
           ? "cancelled"
-          : "registration_open",
+          : saved.status === "Ongoing"
+          ? "registration_open"
+          : "draft",
       certificateEnabled: true,
       ticketNo: `NO. ${String(chapterEvents.length + 10).padStart(2, "0")}`,
       category: saved.category?.toUpperCase() || "WORKSHOP",
@@ -980,13 +988,15 @@ export function EventManagerCreateDialog({
         : undefined,
     };
 
-    createEvent(storeEvent);
+    const createdEvent = createEvent(storeEvent);
+    const finalEventId = createdEvent?.id || eventId;
+    const finalSlug = targetChapter?.slug || "main";
 
-    onCreated?.(eventId, targetChapter?.slug || "main");
+    onCreated?.(finalEventId, finalSlug);
     onClose();
 
-    if (redirectToEvent && targetChapter?.slug) {
-      router.push(`/chapter/${targetChapter.slug}/events/${eventId}`);
+    if (redirectToEvent && finalSlug) {
+      router.push(`/chapter/${finalSlug}/events/${finalEventId}`);
     }
   }
 

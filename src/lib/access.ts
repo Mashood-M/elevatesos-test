@@ -320,8 +320,12 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
         roleKey === "class_representative" &&
         (item.href.endsWith("/certificates") ||
           item.href.endsWith("/leadership") ||
-          item.href.endsWith("/classes"))
+          item.href.endsWith("/classes") ||
+          item.href.endsWith("/forms"))
       ) {
+        return false;
+      }
+      if (isFacultyRole(roleKey) && item.href.endsWith("/classes")) {
         return false;
       }
       return (

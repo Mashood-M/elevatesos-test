@@ -171,6 +171,15 @@ type StoreContextValue = {
     session?: AttendanceSession,
     sessionName?: string,
   ) => CheckInResult;
+  quickRegisterAndCheckIn: (
+    eventId: string,
+    studentUserId: string,
+    status: AttendanceStatus,
+    method: "qr" | "manual" | "bulk" | "representative",
+    actorId: string,
+    session?: AttendanceSession,
+    sessionName?: string,
+  ) => CheckInResult;
 
 
   createTask: (input: {
@@ -191,7 +200,7 @@ type StoreContextValue = {
     comment: string,
     actorId: string,
   ) => boolean;
-  createEvent: (event: EventItem) => void;
+  createEvent: (event: EventItem) => EventItem;
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
   deleteEvent: (id: string) => void;
   /** Add a new global event category. Category is uppercased and de-duplicated. Returns true if added, false if duplicate. */
@@ -1243,14 +1252,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Registration not found." };
             return s;
           }
+          let activeReg = reg;
+          let nextRegistrations = s.registrations;
           if (reg.status !== "approved") {
-            result = {
-              ok: false,
-              message: "Only approved registrations can check in.",
-            };
-            return s;
+            const actorRole = s.userRoles.find((ur) => ur.userId === actorId)?.roleKey;
+            const canActorApprove =
+              actorRole === "campus_lead" ||
+              actorRole === "chairman" ||
+              actorRole === "founder" ||
+              actorRole === "hq_admin";
+
+            if (canActorApprove) {
+              const approvedReg = {
+                ...reg,
+                status: "approved" as const,
+                approvedBy: actorId,
+                qrCode: reg.qrCode || mintQrCode(reg.eventId, reg.userId),
+              };
+              activeReg = approvedReg;
+              nextRegistrations = s.registrations.map((r) =>
+                r.id === reg.id ? approvedReg : r,
+              );
+              void runPersist(persistRegistration(approvedReg), {
+                errorMessage: `Auto-approval failed for registration ${registrationId}`,
+              });
+            } else {
+              result = {
+                ok: false,
+                message: "Only approved registrations can check in.",
+              };
+              return s;
+            }
           }
-          if (expectedEventId && reg.eventId !== expectedEventId) {
+          if (expectedEventId && activeReg.eventId !== expectedEventId) {
             result = {
               ok: false,
               message: "QR does not belong to the selected event.",
@@ -1270,9 +1304,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const sName = sessionName || (session === "single" ? "Event Check-In" : session);
           const record = {
             id: existing?.id && isUuid(existing.id) ? existing.id : genUuid(),
-            eventId: reg.eventId,
+            eventId: activeReg.eventId,
             registrationId,
-            userId: reg.userId,
+            userId: activeReg.userId,
             status,
             method,
             sessionId: session,
@@ -1286,7 +1320,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               a.id === existing.id ? record : a,
             )
             : [record, ...s.attendance];
-          const newCerts = maybeIssueCert(s, reg.eventId, reg.userId, status);
+          const newCerts = maybeIssueCert(s, activeReg.eventId, activeReg.userId, status);
           void runPersist(persistAttendance(record), {
             errorMessage: `Attendance check-in failed for registration ${registrationId}`,
             rollback: () => {
@@ -1308,10 +1342,135 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           });
           return {
             ...s,
+            registrations: nextRegistrations,
             attendance,
             certificates: newCerts,
             activityLogs: [
               log(actorId, "check_in", "attendance", registrationId),
+              ...s.activityLogs,
+            ],
+          };
+        });
+        return result;
+      },
+      quickRegisterAndCheckIn: (
+        eventId: string,
+        studentUserId: string,
+        status: AttendanceStatus,
+        method: "qr" | "manual" | "bulk" | "representative",
+        actorId: string,
+        session = "single",
+        sessionName,
+      ) => {
+        let result: CheckInResult = { ok: true };
+        setStore((s) => {
+          const event = s.events.find((e) => e.id === eventId);
+          if (!event) {
+            result = { ok: false, message: "Event not found." };
+            return s;
+          }
+          const userProf = s.profiles.find((p) => p.id === studentUserId);
+          if (!userProf) {
+            result = { ok: false, message: "Student profile not found." };
+            return s;
+          }
+
+          let existingReg = s.registrations.find(
+            (r) => r.eventId === eventId && r.userId === studentUserId,
+          );
+          let regId = existingReg?.id;
+          let nextRegistrations = s.registrations;
+
+          if (!existingReg) {
+            regId = genUuid();
+            const qrCode = mintQrCode(eventId, studentUserId);
+            const newReg: EventRegistration = {
+              id: regId,
+              eventId,
+              userId: studentUserId,
+              status: "approved",
+              qrCode,
+              createdAt: new Date().toISOString(),
+              approvedBy: actorId,
+              answers: {},
+            };
+            nextRegistrations = [newReg, ...s.registrations];
+            existingReg = newReg;
+            void runPersist(persistRegistration(newReg), {
+              errorMessage: `On-spot registration failed for student ${userProf.fullName}`,
+            });
+          } else if (existingReg.status !== "approved") {
+            const approvedReg = {
+              ...existingReg,
+              status: "approved" as const,
+              approvedBy: actorId,
+              qrCode: existingReg.qrCode || mintQrCode(eventId, studentUserId),
+            };
+            nextRegistrations = s.registrations.map((r) =>
+              r.id === existingReg!.id ? approvedReg : r,
+            );
+            existingReg = approvedReg;
+            void runPersist(persistRegistration(approvedReg), {
+              errorMessage: `Auto-approval failed for registration ${existingReg.id}`,
+            });
+          }
+
+          const existingAtt = s.attendance.find(
+            (a) =>
+              a.registrationId === regId &&
+              (a.sessionId === session || a.session === session),
+          );
+
+          if (existingAtt && existingAtt.status === "present") {
+            result = {
+              ok: false,
+              message: `${userProf.fullName} is already checked in for session "${sessionName || session}".`,
+            };
+            return {
+              ...s,
+              registrations: nextRegistrations,
+            };
+          }
+
+          const sName = sessionName || (session === "single" ? "Event Check-In" : session);
+          const record = {
+            id: existingAtt?.id && isUuid(existingAtt.id) ? existingAtt.id : genUuid(),
+            eventId,
+            registrationId: regId!,
+            userId: studentUserId,
+            status,
+            method,
+            sessionId: session,
+            session,
+            sessionName: sName,
+            checkedInAt: new Date().toISOString(),
+            checkedInBy: actorId,
+          };
+
+          const attendance = existingAtt
+            ? s.attendance.map((a) => (a.id === existingAtt.id ? record : a))
+            : [record, ...s.attendance];
+          const newCerts = maybeIssueCert(s, eventId, studentUserId, status);
+
+          void runPersist(persistAttendance(record), {
+            errorMessage: `Attendance check-in failed for student ${userProf.fullName}`,
+          }).then((ok) => {
+            if (ok) {
+              newCerts.forEach((c) =>
+                void runPersist(persistCertificate(c), {
+                  errorMessage: `Failed to issue certificate for user ${c.userId}`,
+                }),
+              );
+            }
+          });
+
+          return {
+            ...s,
+            registrations: nextRegistrations,
+            attendance,
+            certificates: newCerts,
+            activityLogs: [
+              log(actorId, "check_in", "attendance", regId!),
               ...s.activityLogs,
             ],
           };
@@ -1561,7 +1720,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const status =
           event.status === "pending_approval"
             ? ("registration_open" as const)
-            : event.status;
+            : (event.status || "draft");
 
         const normalized: EventItem = {
           ...existing,
@@ -1635,6 +1794,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
           }
         });
+
+        return normalized;
       },
       updateEvent: (id, patch) => {
         const prev = store.events.find((e) => e.id === id);

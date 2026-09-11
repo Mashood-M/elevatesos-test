@@ -25,6 +25,25 @@ export function canManageClasses(roleKey: RoleKey): boolean {
   );
 }
 
+export function canVerifyAttendance(roleKey: RoleKey): boolean {
+  return (
+    isSuperAdmin(roleKey) ||
+    roleKey === "campus_lead" ||
+    roleKey === "chairman" ||
+    roleKey === "vice_chairman" ||
+    roleKey === "secretary" ||
+    roleKey === "joint_secretary" ||
+    roleKey === "elevates_coordinator" ||
+    roleKey === "class_representative" ||
+    roleKey === "technical_lead" ||
+    roleKey === "technical_team" ||
+    roleKey === "media_lead" ||
+    roleKey === "media_team" ||
+    roleKey === "innovation_lead" ||
+    roleKey === "innovation_team"
+  );
+}
+
 export function hasPermission(
   store: ElevatesStore,
   roleKey: RoleKey,
@@ -40,6 +59,9 @@ export function hasPermission(
   }
   if (permission === "registration.approve") {
     return roleKey === "campus_lead" || roleKey === "chairman" || isSuperAdmin(roleKey);
+  }
+  if (permission === "attendance.verify") {
+    return canVerifyAttendance(roleKey);
   }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {
@@ -59,10 +81,21 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
   const role = getRoleByKey(store, roleKey);
   if (!role) return [];
   return store.permissions.map((p) => {
-    const allowed =
+    let allowed =
       store.rolePermissions.find(
         (rp) => rp.roleId === role.id && rp.permissionId === p.id,
       )?.allowed ?? false;
+    if (isSuperAdmin(roleKey)) {
+      allowed = true;
+    } else if (p.key === "attendance.verify" && canVerifyAttendance(roleKey)) {
+      allowed = true;
+    } else if (p.key === "registration.approve" && (roleKey === "campus_lead" || roleKey === "chairman")) {
+      allowed = true;
+    } else if (p.key === "event.create" && canCreateEvent(roleKey)) {
+      allowed = true;
+    } else if (p.key === "class.manage" && canManageClasses(roleKey)) {
+      allowed = true;
+    }
     return { ...p, allowed };
   });
 }

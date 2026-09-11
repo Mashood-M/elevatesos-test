@@ -91,7 +91,15 @@ export default function ChapterEventsPage({
 
   const events = store.events
     .filter((e) => e.chapterId === chapter.id)
-    .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
+    .filter((e) =>
+      isEventVisibleToUser(
+        e,
+        chapter.id,
+        session.roleKey,
+        session.userId,
+        store.chapters,
+      ),
+    );
   const mainEvents = events.filter((e) => e.eventType === "main" || !e.parentEventId);
   const q = search.trim().toLowerCase();
   const filteredEvents = events
@@ -148,9 +156,11 @@ export default function ChapterEventsPage({
         description="Publish opens registration directly — faculty approval never required. Link Forms, then check in."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href={`/chapter/${slug}/forms`}>
-              <Button variant="ghost">Forms hub</Button>
-            </Link>
+            {session.roleKey !== "class_representative" && (
+              <Link href={`/chapter/${slug}/forms`}>
+                <Button variant="ghost">Forms hub</Button>
+              </Link>
+            )}
             {canCreate ? (
               <Button variant="primary" onClick={() => setShowForm(true)}>
                 Create event

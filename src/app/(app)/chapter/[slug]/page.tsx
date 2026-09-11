@@ -88,7 +88,15 @@ export default function ChapterDashboardPage({
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
   const events = store.events
     .filter((e) => e.chapterId === chapter.id)
-    .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
+    .filter((e) =>
+      isEventVisibleToUser(
+        e,
+        chapter.id,
+        session.roleKey,
+        session.userId,
+        store.chapters,
+      ),
+    );
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
   const tasks = store.tasks.filter((t) => t.chapterId === chapter.id);
   const openTasks = tasks.filter((t) => t.status !== "completed");

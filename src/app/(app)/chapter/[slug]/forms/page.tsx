@@ -78,6 +78,23 @@ export default function ChapterFormsPage({
     return <p className="text-orange">Chapter not found</p>;
   }
 
+  if (session.roleKey === "class_representative") {
+    return (
+      <div className="py-16 text-center">
+        <p className="font-semibold text-text">Forms restricted</p>
+        <p className="mt-1 text-xs text-text-dim">
+          Class Representatives manage class attendance and records, but do not manage chapter forms.
+        </p>
+        <Link
+          href={`/chapter/${slug}`}
+          className="mt-3 inline-block text-[var(--accent)] text-sm"
+        >
+          Back to Chapter
+        </Link>
+      </div>
+    );
+  }
+
   function openPicker() {
     setSelectedTemplate("event_registration");
     setAttachEventId("");

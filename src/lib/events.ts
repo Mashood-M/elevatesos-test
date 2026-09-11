@@ -182,30 +182,59 @@ export function isEventVisibleToUser(
   event: EventItem,
   userChapterId?: string,
   userRoleKey?: string,
+  sessionUserId?: string,
+  allChapters?: { id: string; slug?: string }[],
 ): boolean {
   // 1. HQ roles can see all events
   if (userRoleKey === "founder" || userRoleKey === "hq_admin") {
     return true;
   }
 
-  const isSameChapter = Boolean(userChapterId && userChapterId === event.chapterId);
+  // 2. The event organizer can always see their own event
+  if (sessionUserId && event.organizerId && sessionUserId === event.organizerId) {
+    return true;
+  }
+
+  // 3. Robust chapter matching (supports UUID matching, slug matching, and cross-lookup)
+  const isSameChapter = (() => {
+    if (!userChapterId || !event.chapterId) return false;
+    if (userChapterId === event.chapterId) return true;
+    if (userChapterId.toLowerCase() === event.chapterId.toLowerCase()) return true;
+    if (allChapters && allChapters.length > 0) {
+      const uCh = allChapters.find(
+        (c) => c.id === userChapterId || c.slug === userChapterId,
+      );
+      const eCh = allChapters.find(
+        (c) => c.id === event.chapterId || c.slug === event.chapterId,
+      );
+      if (uCh && eCh && uCh.id === eCh.id) return true;
+    }
+    return false;
+  })();
+
   const isChapterManager =
     isSameChapter &&
     (userRoleKey === "campus_lead" ||
       userRoleKey === "chairman" ||
       userRoleKey === "vice_chairman" ||
-      userRoleKey === "secretary");
+      userRoleKey === "secretary" ||
+      userRoleKey === "joint_secretary" ||
+      userRoleKey === "elevates_coordinator" ||
+      userRoleKey === "technical_lead" ||
+      userRoleKey === "media_lead" ||
+      userRoleKey === "innovation_lead");
 
-  // 2. Draft / un-published events: ONLY visible to HQ or managers of that specific chapter
+  // 4. Draft / un-published events: ONLY visible to HQ, Chapter Managers, or the Organizer
   if (event.status === "draft" || event.status === "pending_approval") {
     return isChapterManager;
   }
 
-  // 3. Open to all events: visible across all chapters and to non-chapter members
+  // 5. Open to all events: visible across all chapters and to non-chapter members
   if (isOpenToAllEvent(event)) {
     return true;
   }
 
-  // 4. Closed / chapter-only events: ONLY visible to users who belong to this chapter
+  // 6. Closed / chapter-only events: ONLY visible to users who belong to this chapter
   return isSameChapter;
 }
+

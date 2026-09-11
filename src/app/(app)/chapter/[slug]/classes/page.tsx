@@ -9,7 +9,7 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
+import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
 import type { ClassCohort, Department } from "@/types";
@@ -552,17 +552,19 @@ export default function ChapterClassesPage({
     setActiveTab("students");
   }
 
-  if (session.roleKey === "class_representative") {
+  if (session.roleKey === "class_representative" || isFacultyRole(session.roleKey)) {
     return (
       <div className="space-y-6">
         <PageHeader
           eyebrow={chapterEyebrow(session.roleKey, "programs")}
           title="Classes & Departments"
-          description="Class cohort and department management is restricted to Campus Leads and Faculty."
+          description="Class cohort and department management is restricted to Campus Leads."
         />
         <TerminalPanel title="access.restricted" accent="orange">
           <p className="text-sm text-text-dim">
-            Class Representatives do not have permission to view or manage classes and departments.
+            {isFacultyRole(session.roleKey)
+              ? "Faculty members do not manage class sections or cohorts."
+              : "Class Representatives do not have permission to view or manage classes and departments."}
           </p>
           <Link
             href={`/chapter/${slug}`}

@@ -42,8 +42,16 @@ export default function ChapterCalendarPage({
     if (!chapter) return [];
     return store.events
       .filter((e) => e.chapterId === chapter.id)
-      .filter((e) => isEventVisibleToUser(e, session.chapterId, session.roleKey));
-  }, [store.events, chapter, session.chapterId, session.roleKey]);
+      .filter((e) =>
+        isEventVisibleToUser(
+          e,
+          chapter.id,
+          session.roleKey,
+          session.userId,
+          store.chapters,
+        ),
+      );
+  }, [store.events, chapter, session.roleKey, session.userId, store.chapters]);
 
   const monthPrefix = `${month.year}-${String(month.month).padStart(2, "0")}`;
   const monthList = useMemo(() => {

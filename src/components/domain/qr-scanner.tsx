@@ -48,8 +48,11 @@ export function QrScanner({
   const [scannedSuccess, setScannedSuccess] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
-  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
   const [camRes, setCamRes] = useState<string>("");
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [supportsZoom, setSupportsZoom] = useState(false);
 
   const lastRef = useRef("");
   const cooldownUntilRef = useRef(0);
@@ -57,17 +60,21 @@ export function QrScanner({
 
   onScanRef.current = onScan;
 
-  // Check available video devices
-  useEffect(() => {
+  // Refresh list of available cameras
+  const updateDeviceList = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
-    navigator.mediaDevices
-      .enumerateDevices()
-      .then((devices) => {
-        const videoDevices = devices.filter((d) => d.kind === "videoinput");
-        setHasMultipleCameras(videoDevices.length > 1);
-      })
-      .catch(() => {});
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter((d) => d.kind === "videoinput");
+      setVideoDevices(cameras);
+    } catch {
+      /* Device enumeration optional */
+    }
   }, []);
+
+  useEffect(() => {
+    void updateDeviceList();
+  }, [updateDeviceList]);
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
@@ -78,8 +85,29 @@ export function QrScanner({
       videoRef.current.srcObject = null;
     }
     setCamRes("");
+    setSupportsZoom(false);
   }, []);
 
+  // Zoom toggler (e.g. 1x -> 2x for scanning from a distance)
+  const toggleZoom = useCallback(async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const capabilities = (track.getCapabilities ? track.getCapabilities() : {}) as any;
+      if (capabilities.zoom) {
+        const nextZoom = zoomLevel === 1 ? Math.min(2, capabilities.zoom.max || 2) : 1;
+        await (track as any).applyConstraints({
+          advanced: [{ zoom: nextZoom }],
+        });
+        setZoomLevel(nextZoom);
+      }
+    } catch {
+      /* Zoom constraint optional */
+    }
+  }, [zoomLevel]);
+
+  // Main camera start & scanning loop
   useEffect(() => {
     if (!active || !running || disabled) {
       stopStream();
@@ -101,21 +129,25 @@ export function QrScanner({
 
       let stream: MediaStream | null = null;
 
-      try {
-        // Try requested facingMode with crisp resolution & continuous autofocus
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
+      // Build video constraint: prefer selectedDeviceId if user switched, else ideal facingMode
+      const videoConstraint: MediaTrackConstraints = selectedDeviceId
+        ? { deviceId: { exact: selectedDeviceId } }
+        : {
             facingMode: { ideal: facingMode },
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-          },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraint,
           audio: false,
         });
       } catch (errFirst) {
         try {
-          // Fallback to generic video if ideal constraints failed
+          // Fallback: relax resolution & deviceId, keep facingMode ideal (always prefer rear camera)
           stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
+            video: { facingMode: { ideal: facingMode } },
             audio: false,
           });
         } catch {
@@ -135,37 +167,44 @@ export function QrScanner({
         return;
       }
 
-      // Try enabling continuous autofocus on supported mobile lenses
+      // After permission is granted, refresh device list to get real camera labels
+      void updateDeviceList();
+
+      // Configure video track (autofocus & zoom capability)
       try {
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-          const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as {
-            focusMode?: string[];
-          };
+          const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as any;
           if (capabilities.focusMode && capabilities.focusMode.includes("continuous")) {
             await videoTrack.applyConstraints({
               advanced: [{ focusMode: "continuous" } as any],
             });
           }
+          if (capabilities.zoom && capabilities.zoom.max > 1) {
+            setSupportsZoom(true);
+            setZoomLevel(1);
+          }
         }
       } catch {
-        /* Focus constraint optional */
+        /* Track constraints optional */
       }
 
       streamRef.current = stream;
       const video = videoRef.current;
 
-      // Ensure explicit DOM properties for mobile browser autoplay
+      // Configure video element for mobile browser autoplay
       video.muted = true;
       video.playsInline = true;
       video.setAttribute("playsinline", "true");
       video.setAttribute("muted", "true");
       video.setAttribute("autoplay", "true");
+
       video.onloadedmetadata = () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           setCamRes(`${video.videoWidth}×${video.videoHeight}`);
         }
       };
+
       video.srcObject = stream;
 
       try {
@@ -174,7 +213,7 @@ export function QrScanner({
         /* Autoplay handled */
       }
 
-      // Check for native BarcodeDetector support (hardware accelerated on Android/iOS 17+)
+      // Initialize native BarcodeDetector if available
       let nativeDetector: any = null;
       if (typeof window !== "undefined" && "BarcodeDetector" in window) {
         try {
@@ -187,12 +226,20 @@ export function QrScanner({
         }
       }
 
-      // Offscreen canvas for scanning center reticle square
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return;
+      // Pre-allocated static canvases:
+      // 1. Center reticle canvas (480x480) - high-resolution zoom into the viewfinder square
+      const centerCanvas = document.createElement("canvas");
+      centerCanvas.width = 480;
+      centerCanvas.height = 480;
+      const centerCtx = centerCanvas.getContext("2d", { willReadFrequently: true });
+
+      // 2. Full frame canvas (scaled to max 480px width) - catches QR codes held anywhere in frame
+      const fullCanvas = document.createElement("canvas");
+      let fullConfigured = false;
+      const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
 
       let isScanning = false;
+      let frameCounter = 0;
 
       const scanFrame = async () => {
         if (cancelled || !videoRef.current) return;
@@ -203,71 +250,76 @@ export function QrScanner({
             isScanning = true;
             try {
               let detectedCode: string | null = null;
+              const vw = video.videoWidth;
+              const vh = video.videoHeight;
 
-              // 1. Try Hardware-Accelerated Native BarcodeDetector first
-              if (nativeDetector) {
-                try {
-                  const barcodes = await nativeDetector.detect(video);
-                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                    detectedCode = barcodes[0].rawValue.trim();
-                  }
-                } catch {
-                  /* fallback to jsQR */
-                }
+              // Ensure fullCanvas dimensions are established once
+              if (!fullConfigured && fullCtx) {
+                const targetW = 480;
+                const targetH = Math.round((vh * 480) / vw);
+                fullCanvas.width = targetW;
+                fullCanvas.height = targetH;
+                fullConfigured = true;
               }
 
-              // 2. High-Resolution 1:1 Center-Square Sampling with jsQR
-              if (!detectedCode && ctx) {
-                try {
-                  const vw = video.videoWidth;
-                  const vh = video.videoHeight;
-                  // Calculate square area matching the visible viewfinder
-                  const cropSize = Math.min(vw, vh);
-                  const cropX = Math.floor((vw - cropSize) / 2);
-                  const cropY = Math.floor((vh - cropSize) / 2);
+              // Scan Phase A: Center Viewfinder Reticle (exact square user sees)
+              if (centerCtx) {
+                const cropSize = Math.min(vw, vh);
+                const cropX = Math.floor((vw - cropSize) / 2);
+                const cropY = Math.floor((vh - cropSize) / 2);
+                centerCtx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, 480, 480);
 
-                  // Sample square at sharp resolution (capped at 720px for optimal speed & module separation)
-                  const targetSize = Math.min(cropSize, 720);
-                  canvas.width = targetSize;
-                  canvas.height = targetSize;
+                // Check with native BarcodeDetector on canvas first if available
+                if (nativeDetector) {
+                  try {
+                    const barcodes = await nativeDetector.detect(centerCanvas);
+                    if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                      detectedCode = barcodes[0].rawValue.trim();
+                    }
+                  } catch {
+                    /* fallback to jsQR */
+                  }
+                }
 
-                  // Draw center square crop
-                  ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, targetSize, targetSize);
-
-                  const imgData = ctx.getImageData(0, 0, targetSize, targetSize);
-                  const qrRes = jsQR(imgData.data, targetSize, targetSize, {
+                // High-performance jsQR check
+                if (!detectedCode) {
+                  const imgData = centerCtx.getImageData(0, 0, 480, 480);
+                  const qrRes = jsQR(imgData.data, 480, 480, {
                     inversionAttempts: "attemptBoth",
                   });
-
                   if (qrRes && qrRes.data) {
                     detectedCode = qrRes.data.trim();
-                  } else if (cropSize > 600) {
-                    // Fallback: Full frame scan if student held QR slightly outside center square
-                    const fullMax = 640;
-                    let fw = vw;
-                    let fh = vh;
-                    if (fw > fullMax || fh > fullMax) {
-                      if (fw > fh) {
-                        fh = Math.round((fh * fullMax) / fw);
-                        fw = fullMax;
-                      } else {
-                        fw = Math.round((fw * fullMax) / fh);
-                        fh = fullMax;
-                      }
-                    }
-                    canvas.width = fw;
-                    canvas.height = fh;
-                    ctx.drawImage(video, 0, 0, fw, fh);
-                    const fullImg = ctx.getImageData(0, 0, fw, fh);
-                    const fullRes = jsQR(fullImg.data, fw, fh, { inversionAttempts: "dontInvert" });
-                    if (fullRes && fullRes.data) {
-                      detectedCode = fullRes.data.trim();
-                    }
                   }
-                } catch {
-                  /* Per-frame catch */
                 }
               }
+
+              // Scan Phase B: Full Camera Frame (every 2nd frame if center did not detect)
+              if (!detectedCode && fullCtx && fullCanvas.width > 0 && frameCounter % 2 === 0) {
+                fullCtx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
+
+                if (nativeDetector) {
+                  try {
+                    const barcodes = await nativeDetector.detect(fullCanvas);
+                    if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                      detectedCode = barcodes[0].rawValue.trim();
+                    }
+                  } catch {
+                    /* fallback to jsQR */
+                  }
+                }
+
+                if (!detectedCode) {
+                  const fullImg = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
+                  const fullRes = jsQR(fullImg.data, fullCanvas.width, fullCanvas.height, {
+                    inversionAttempts: "dontInvert",
+                  });
+                  if (fullRes && fullRes.data) {
+                    detectedCode = fullRes.data.trim();
+                  }
+                }
+              }
+
+              frameCounter++;
 
               // Handle successful code recognition
               if (detectedCode && detectedCode !== lastRef.current) {
@@ -317,7 +369,7 @@ export function QrScanner({
       cancelAnimationFrame(rafId);
       stopStream();
     };
-  }, [active, running, disabled, facingMode, stopStream]);
+  }, [active, running, disabled, facingMode, selectedDeviceId, stopStream, updateDeviceList]);
 
   useEffect(() => {
     if (!active || disabled) {
@@ -330,6 +382,20 @@ export function QrScanner({
   }, [active, disabled, stopStream]);
 
   if (!active) return null;
+
+  // Cycle through available cameras if multiple exist
+  const cycleCamera = () => {
+    if (videoDevices.length <= 1) {
+      setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
+      return;
+    }
+    const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedDeviceId);
+    const nextIndex = (currentIndex + 1) % videoDevices.length;
+    const nextDevice = videoDevices[nextIndex];
+    if (nextDevice) {
+      setSelectedDeviceId(nextDevice.deviceId);
+    }
+  };
 
   return (
     <div className="space-y-3">
@@ -354,18 +420,34 @@ export function QrScanner({
           )}
         </div>
 
-        {running && hasMultipleCameras && (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 px-2.5 text-[11px] border border-border/70 text-text-dim hover:text-text"
-            onClick={() =>
-              setFacingMode((prev) => (prev === "environment" ? "user" : "environment"))
-            }
-            title="Switch front/back camera"
-          >
-            ⇄ Flip Camera
-          </Button>
+        {running && (
+          <div className="flex items-center gap-1.5">
+            {/* Zoom Button (if supported by phone lens) */}
+            {supportsZoom && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 px-2.5 text-[11px] font-mono border border-border/70 text-text hover:text-[var(--accent)]"
+                onClick={toggleZoom}
+                title="Toggle 1x / 2x Zoom"
+              >
+                {zoomLevel === 1 ? "1x" : "2x"} Zoom
+              </Button>
+            )}
+
+            {/* Switch Camera / Lens */}
+            {videoDevices.length > 1 && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 px-2.5 text-[11px] border border-border/70 text-text-dim hover:text-text"
+                onClick={cycleCamera}
+                title="Switch camera lens"
+              >
+                ⇄ Switch Lens
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -433,7 +515,7 @@ export function QrScanner({
           {/* Bottom Guidance Pill */}
           <div className="pointer-events-none absolute bottom-3 inset-x-0 flex justify-center">
             <span className="rounded-full bg-black/75 px-3 py-1 text-[10px] font-medium text-white/90 backdrop-blur-md shadow-sm border border-white/10">
-              Align QR code inside square
+              Center QR code • Hold 15-25cm away
             </span>
           </div>
         </div>

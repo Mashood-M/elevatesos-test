@@ -353,8 +353,10 @@ export function registrationFields(
 }
 
 export function mintQrCode(eventId: string, userId: string) {
-  const short = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `QR-${eventId.toUpperCase()}-${userId.toUpperCase()}-${short}`;
+  const eClean = (eventId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4) || "EVT").toUpperCase();
+  const uClean = (userId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4) || "USR").toUpperCase();
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `ELV-${eClean}-${uClean}-${rand}`;
 }
 
 const DEFAULT_REG_QUESTIONS: FormQuestion[] = [

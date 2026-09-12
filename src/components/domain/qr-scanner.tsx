@@ -49,6 +49,7 @@ export function QrScanner({
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  const [camRes, setCamRes] = useState<string>("");
 
   const lastRef = useRef("");
   const cooldownUntilRef = useRef(0);
@@ -76,6 +77,7 @@ export function QrScanner({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setCamRes("");
   }, []);
 
   useEffect(() => {
@@ -100,12 +102,12 @@ export function QrScanner({
       let stream: MediaStream | null = null;
 
       try {
-        // Try requested facingMode
+        // Try requested facingMode with crisp resolution & continuous autofocus
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: facingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
           },
           audio: false,
         });
@@ -133,8 +135,32 @@ export function QrScanner({
         return;
       }
 
+      // Try enabling continuous autofocus on supported mobile lenses
+      try {
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as {
+            focusMode?: string[];
+          };
+          if (capabilities.focusMode && capabilities.focusMode.includes("continuous")) {
+            await videoTrack.applyConstraints({
+              advanced: [{ focusMode: "continuous" } as any],
+            });
+          }
+        }
+      } catch {
+        /* Focus constraint optional */
+      }
+
       streamRef.current = stream;
       const video = videoRef.current;
+
+      // Ensure explicit DOM properties for mobile browser autoplay
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("muted", "true");
+      video.setAttribute("autoplay", "true");
       video.srcObject = stream;
 
       try {
@@ -143,73 +169,134 @@ export function QrScanner({
         /* Autoplay handled */
       }
 
-      // Offscreen canvas for scanning
+      // Check for native BarcodeDetector support (hardware accelerated on Android/iOS 17+)
+      let nativeDetector: any = null;
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          const formats = await (window as any).BarcodeDetector.getSupportedFormats();
+          if (formats && formats.includes("qr_code")) {
+            nativeDetector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+          }
+        } catch {
+          nativeDetector = null;
+        }
+      }
+
+      // Offscreen canvas for scanning center reticle square
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
 
-      const scanFrame = () => {
+      const scanFrame = async () => {
         if (cancelled || !videoRef.current) return;
 
         if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+          if (!camRes) {
+            setCamRes(`${video.videoWidth}×${video.videoHeight}`);
+          }
+
           const now = Date.now();
           if (now >= cooldownUntilRef.current) {
-            try {
-              // Scale down slightly for ultra-fast jsQR analysis without sacrificing accuracy
-              const maxDim = 640;
-              let w = video.videoWidth;
-              let h = video.videoHeight;
-              if (w > maxDim || h > maxDim) {
-                if (w > h) {
-                  h = Math.round((h * maxDim) / w);
-                  w = maxDim;
-                } else {
-                  w = Math.round((w * maxDim) / h);
-                  h = maxDim;
+            let detectedCode: string | null = null;
+
+            // 1. Try Hardware-Accelerated Native BarcodeDetector first
+            if (nativeDetector) {
+              try {
+                const barcodes = await nativeDetector.detect(video);
+                if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                  detectedCode = barcodes[0].rawValue.trim();
                 }
+              } catch {
+                /* fallback to jsQR */
               }
+            }
 
-              canvas.width = w;
-              canvas.height = h;
-              ctx.drawImage(video, 0, 0, w, h);
+            // 2. High-Resolution 1:1 Center-Square Sampling with jsQR
+            if (!detectedCode && ctx) {
+              try {
+                const vw = video.videoWidth;
+                const vh = video.videoHeight;
+                // Calculate square area matching the visible viewfinder
+                const cropSize = Math.min(vw, vh);
+                const cropX = Math.floor((vw - cropSize) / 2);
+                const cropY = Math.floor((vh - cropSize) / 2);
 
-              const imageData = ctx.getImageData(0, 0, w, h);
-              const qrResult = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: "dontInvert",
-              }) || jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: "attemptBoth",
-              });
+                // Sample square at sharp resolution (capped at 720px for optimal speed & module separation)
+                const targetSize = Math.min(cropSize, 720);
+                canvas.width = targetSize;
+                canvas.height = targetSize;
 
-              if (qrResult && qrResult.data) {
-                const value = qrResult.data.trim();
-                if (value && value !== lastRef.current) {
-                  lastRef.current = value;
-                  cooldownUntilRef.current = now + COOLDOWN_MS;
+                // Draw center square crop
+                ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, targetSize, targetSize);
 
-                  setLastScannedCode(value);
-                  setScannedSuccess(true);
-                  playSuccessBeep();
+                const imgData = ctx.getImageData(0, 0, targetSize, targetSize);
+                const qrRes = jsQR(imgData.data, targetSize, targetSize, {
+                  inversionAttempts: "attemptBoth",
+                });
 
-                  onScanRef.current(value);
-
-                  window.setTimeout(() => {
-                    setScannedSuccess(false);
-                  }, 800);
-
-                  window.setTimeout(() => {
-                    if (lastRef.current === value) {
-                      lastRef.current = "";
+                if (qrRes && qrRes.data) {
+                  detectedCode = qrRes.data.trim();
+                } else if (cropSize > 600) {
+                  // Fallback: Full frame scan if student held QR slightly outside center square
+                  const fullMax = 640;
+                  let fw = vw;
+                  let fh = vh;
+                  if (fw > fullMax || fh > fullMax) {
+                    if (fw > fh) {
+                      fh = Math.round((fh * fullMax) / fw);
+                      fw = fullMax;
+                    } else {
+                      fw = Math.round((fw * fullMax) / fh);
+                      fh = fullMax;
                     }
-                  }, COOLDOWN_MS);
+                  }
+                  canvas.width = fw;
+                  canvas.height = fh;
+                  ctx.drawImage(video, 0, 0, fw, fh);
+                  const fullImg = ctx.getImageData(0, 0, fw, fh);
+                  const fullRes = jsQR(fullImg.data, fw, fh, { inversionAttempts: "dontInvert" });
+                  if (fullRes && fullRes.data) {
+                    detectedCode = fullRes.data.trim();
+                  }
                 }
+              } catch {
+                /* Per-frame catch */
               }
-            } catch {
-              /* Ignore per-frame processing hiccups */
+            }
+
+            // Handle successful code recognition
+            if (detectedCode && detectedCode !== lastRef.current) {
+              lastRef.current = detectedCode;
+              cooldownUntilRef.current = now + COOLDOWN_MS;
+
+              setLastScannedCode(detectedCode);
+              setScannedSuccess(true);
+              playSuccessBeep();
+
+              try {
+                navigator.vibrate?.([60, 40, 60]);
+              } catch {
+                /* Vibration optional */
+              }
+
+              onScanRef.current(detectedCode);
+
+              window.setTimeout(() => {
+                setScannedSuccess(false);
+              }, 800);
+
+              window.setTimeout(() => {
+                if (lastRef.current === detectedCode) {
+                  lastRef.current = "";
+                }
+              }, COOLDOWN_MS);
             }
           }
         }
 
-        rafId = requestAnimationFrame(scanFrame);
+        if (!cancelled) {
+          rafId = requestAnimationFrame(scanFrame);
+        }
       };
 
       rafId = requestAnimationFrame(scanFrame);
@@ -222,7 +309,7 @@ export function QrScanner({
       cancelAnimationFrame(rafId);
       stopStream();
     };
-  }, [active, running, disabled, facingMode, stopStream]);
+  }, [active, running, disabled, facingMode, stopStream, camRes]);
 
   useEffect(() => {
     if (!active || disabled) {
@@ -240,15 +327,24 @@ export function QrScanner({
     <div className="space-y-3">
       {/* Scanner Controls Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Button
-          type="button"
-          variant={running ? "ghost" : "orange"}
-          disabled={disabled}
-          onClick={() => setRunning((v) => !v)}
-          className="h-9 px-4 text-xs font-semibold"
-        >
-          {running ? "■ Stop Camera" : "📷 Start Camera Scan"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant={running ? "ghost" : "orange"}
+            disabled={disabled}
+            onClick={() => setRunning((v) => !v)}
+            className="h-9 px-4 text-xs font-semibold"
+          >
+            {running ? "■ Stop Camera" : "📷 Start Camera Scan"}
+          </Button>
+
+          {running && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <span>Live {camRes ? `(${camRes})` : ""}</span>
+            </span>
+          )}
+        </div>
 
         {running && hasMultipleCameras && (
           <Button
@@ -267,7 +363,7 @@ export function QrScanner({
 
       {/* Square Camera Viewfinder */}
       {running && !disabled ? (
-        <div className="relative mx-auto w-full max-w-[300px] aspect-square overflow-hidden rounded-2xl border-2 border-border bg-neutral-950 shadow-lg">
+        <div className="relative mx-auto w-full max-w-[320px] aspect-square overflow-hidden rounded-2xl border-2 border-border bg-neutral-950 shadow-lg">
           <video
             ref={videoRef}
             className="h-full w-full object-cover"
@@ -314,11 +410,11 @@ export function QrScanner({
 
               {/* Success Badge */}
               {scannedSuccess && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-emerald-950/60 backdrop-blur-xs">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white font-bold text-lg shadow-md animate-bounce">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-xl bg-emerald-950/70 backdrop-blur-xs">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-white font-bold text-xl shadow-md animate-bounce">
                     ✓
                   </div>
-                  <span className="text-[11px] font-bold text-emerald-300">
+                  <span className="text-xs font-bold text-emerald-300">
                     QR Verified
                   </span>
                 </div>
@@ -337,7 +433,7 @@ export function QrScanner({
 
       {/* Last Scanned Preview */}
       {lastScannedCode && (
-        <div className="rounded-lg border border-border/80 bg-surface/50 px-3 py-1.5 text-center">
+        <div className="rounded-lg border border-border/80 bg-bg-panel px-3 py-1.5 text-center">
           <p className="text-[10px] text-text-dim">Last detected QR:</p>
           <p className="font-mono text-xs font-semibold text-text truncate">
             {lastScannedCode}

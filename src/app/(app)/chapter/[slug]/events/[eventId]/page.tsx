@@ -754,11 +754,12 @@ export default function EventDetailPage({
                     <p className="text-center text-[11px] font-medium uppercase tracking-wider text-text-mute">
                       Your check-in QR
                     </p>
-                    <div className="mx-auto mt-3 w-fit rounded-[12px] border border-border bg-white p-3">
+                    <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
                       <QRCode
                         value={myReg.qrCode}
-                        size={160}
-                        style={{ height: "auto", width: 160 }}
+                        size={190}
+                        level="M"
+                        style={{ height: "auto", maxWidth: "100%", width: 190 }}
                       />
                     </div>
                     <p className="mt-3 break-all text-center font-[family-name:var(--font-mono)] text-[12px] font-semibold tracking-wide text-text">

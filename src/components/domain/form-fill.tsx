@@ -493,14 +493,15 @@ export function FormFill({
               <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute font-mono">
                 Your Check-In QR
               </p>
-              <div className="mx-auto mt-2.5 w-fit rounded-[12px] border border-border bg-white p-3 shadow-sm">
+              <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
                 <QRCode
                   value={registeredReg?.qrCode || alreadyRegistered?.qrCode || ""}
-                  size={140}
-                  style={{ height: "auto", width: 140 }}
+                  size={190}
+                  level="M"
+                  style={{ height: "auto", maxWidth: "100%", width: 190 }}
                 />
               </div>
-              <p className="mt-2.5 font-mono text-[11px] font-semibold text-text">
+              <p className="mt-3 font-mono text-[12px] font-bold text-text tracking-wider">
                 {registeredReg?.qrCode || alreadyRegistered?.qrCode}
               </p>
               <p className="mt-1 text-[11px] text-text-dim">
@@ -565,14 +566,15 @@ export function FormFill({
                 <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute font-mono">
                   Your Check-In QR
                 </p>
-                <div className="mx-auto mt-2.5 w-fit rounded-[12px] border border-border bg-white p-3 shadow-sm">
+                <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
                   <QRCode
                     value={alreadyRegistered.qrCode}
-                    size={140}
-                    style={{ height: "auto", width: 140 }}
+                    size={190}
+                    level="M"
+                    style={{ height: "auto", maxWidth: "100%", width: 190 }}
                   />
                 </div>
-                <p className="mt-2 font-mono text-[11px] font-semibold text-text">
+                <p className="mt-3 font-mono text-[12px] font-bold text-text tracking-wider">
                   {alreadyRegistered.qrCode}
                 </p>
                 <p className="mt-1 text-[11px] text-text-dim">

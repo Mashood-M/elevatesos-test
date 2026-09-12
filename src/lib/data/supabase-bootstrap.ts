@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/lib/supabase/client";
 import { ensureTestChapter, deriveChapterShortCode } from "@/lib/chapters";
 import { deduplicateEvents } from "@/lib/events";
@@ -780,17 +781,25 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
           const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
 
+          const roleRank = (k: RoleKey) => ROLE_PRIORITY.indexOf(k);
           const knownTopRole = localStorage.getItem("elevates_known_top_role") as RoleKey | null;
 
-          // If a new promotion was granted or top role changed, immediately activate top role
-          if (!knownTopRole || knownTopRole !== topRoleKey) {
+          // A genuine new promotion happens ONLY when user's top assigned role is strictly higher than previously known top role
+          const hasNewPromotion = Boolean(
+            knownTopRole && roleRank(topRoleKey) > roleRank(knownTopRole)
+          );
+
+          if (hasNewPromotion) {
             activeRoleKey = topRoleKey;
             localStorage.setItem("elevates_known_top_role", topRoleKey);
             localStorage.setItem("elevates_active_role_key", topRoleKey);
+            localStorage.removeItem("elevates_user_selected_role");
           } else if (savedRoleKey && (isHqUser || assignedKeys.includes(savedRoleKey))) {
             activeRoleKey = savedRoleKey;
+            localStorage.setItem("elevates_known_top_role", topRoleKey);
           } else {
             activeRoleKey = topRoleKey;
+            localStorage.setItem("elevates_known_top_role", topRoleKey);
             localStorage.setItem("elevates_active_role_key", topRoleKey);
           }
 

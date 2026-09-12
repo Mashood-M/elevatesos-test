@@ -6,6 +6,7 @@ import { deduplicateEvents } from "@/lib/events";
 import { deriveChapterShortCode, ensureTestChapter } from "@/lib/chapters";
 import { extractLocationFromNotes } from "@/lib/slug";
 import { roleKeyLabel } from "@/lib/leadership";
+import { isHqRole } from "@/lib/permissions";
 import type {
   ActivityLog,
   Announcement,
@@ -536,21 +537,46 @@ export function recalculateUserSession(
     topRoleKey === "founder" ||
     topRoleKey === "hq_admin" ||
     assignedKeys.includes("founder") ||
-    assignedKeys.includes("hq_admin");
+    assignedKeys.includes("hq_admin") ||
+    Boolean(session.authRoleKey && isHqRole(session.authRoleKey));
 
-  const currentRole = options?.forceRoleKey || session.roleKey;
+  let knownTopRole: RoleKey | null = null;
+  let savedRoleKey: RoleKey | null = null;
+  if (typeof window !== "undefined") {
+    knownTopRole = localStorage.getItem("elevates_known_top_role") as RoleKey | null;
+    const rawSaved = localStorage.getItem("elevates_active_role_key");
+    if (rawSaved && rawSaved !== "guest") {
+      savedRoleKey = rawSaved as RoleKey;
+    }
+  }
+
+  // Active role precedence: explicit option override -> current session role -> saved localStorage role -> top role
+  const currentRole = options?.forceRoleKey || session.roleKey || savedRoleKey || topRoleKey;
   let nextRole: RoleKey = currentRole;
 
-  // 1. If user was granted a higher role than their current role (e.g. promoted from student to campus lead)
-  if (roleRank(topRoleKey) > roleRank(currentRole)) {
+  // A genuine new promotion happens ONLY when the user's top assigned role is strictly higher than their previous known top role
+  const hasNewPromotion = Boolean(
+    knownTopRole && roleRank(topRoleKey) > roleRank(knownTopRole)
+  );
+
+  if (hasNewPromotion) {
+    // 1. If user was granted a brand new higher role (e.g. newly promoted from student to campus lead)
     nextRole = topRoleKey;
     if (options?.onPromoted) {
       options.onPromoted(topRoleKey);
     }
-  }
-  // 2. If current role is no longer valid (e.g. role revoked by admin)
-  else if (!isHqUser && !assignedKeys.includes(currentRole)) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("elevates_user_selected_role");
+    }
+  } else if (currentRole && (isHqUser || assignedKeys.includes(currentRole))) {
+    // 2. Current active role is valid for this user (they switched to it, or had it active) — PRESERVE IT!
+    nextRole = currentRole;
+  } else {
+    // 3. Current role is no longer valid (e.g. role revoked by admin) — fall back to top assigned role
     nextRole = topRoleKey;
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("elevates_user_selected_role");
+    }
   }
 
   // Active chapter resolution
@@ -1370,15 +1396,31 @@ export function setupRealtimeSync(options: {
             true // fromBroadcast = true so we don't re-broadcast
           );
         } else if (data.type === "SESSION_UPDATE") {
-          options.onStoreChange((prev) => ({
-            ...prev,
-            session: {
-              ...prev.session,
-              userId: data.userId || prev.session.userId,
-              roleKey: data.roleKey || prev.session.roleKey,
-              chapterId: data.chapterId ?? prev.session.chapterId,
-            },
-          }));
+          options.onStoreChange((prev) => {
+            const currentUid = prev.session.userId;
+            const authUid = prev.session.authUserId;
+            if (data.userId && data.userId !== currentUid && data.userId !== authUid) {
+              return prev;
+            }
+            if (typeof window !== "undefined") {
+              if (data.roleKey) {
+                localStorage.setItem("elevates_active_role_key", data.roleKey);
+                localStorage.setItem("elevates_user_selected_role", "true");
+              }
+              if (data.chapterId) {
+                localStorage.setItem("elevates_active_chapter_id", data.chapterId);
+              }
+            }
+            return {
+              ...prev,
+              session: {
+                ...prev.session,
+                userId: data.userId || prev.session.userId,
+                roleKey: data.roleKey || prev.session.roleKey,
+                chapterId: data.chapterId ?? prev.session.chapterId,
+              },
+            };
+          });
         } else if (data.type === "REVALIDATE_TRIGGER") {
           void options.onRevalidate();
         }

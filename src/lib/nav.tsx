@@ -154,6 +154,7 @@ export function navGroupsForRole(
           { href: base, label: "Chapter Overview", icon: I.home },
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
+          { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/students`, label: "Students", icon: I.students },
           { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
           { href: `${base}/reports`, label: "Reports", icon: I.reports },

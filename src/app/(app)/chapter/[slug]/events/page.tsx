@@ -391,11 +391,18 @@ export default function ChapterEventsPage({
                   footer={
                     <>
                       {isFacultyRole(session.roleKey) ? (
-                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                          <Button variant="primary" className="h-9 px-4">
-                            View details
-                          </Button>
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                            <Button variant="primary" className="h-9 px-3 text-xs">
+                              View details
+                            </Button>
+                          </Link>
+                          <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
+                            <Button variant="ghost" className="h-9 px-3 text-xs border border-border/70 hover:border-border hover:bg-bg-panel">
+                              View Attendance
+                            </Button>
+                          </Link>
+                        </div>
                       ) : myReg ? (
                         <Link href={`/chapter/${slug}/events/${ev.id}`}>
                           <Button

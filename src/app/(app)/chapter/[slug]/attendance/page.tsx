@@ -10,7 +10,7 @@ import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
+import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import {
   clearOfflineQueue,
   enqueueOfflineCheckIn,
@@ -78,10 +78,21 @@ export default function ChapterAttendancePage({
   const [offlineDesk, setOfflineDesk] = useState(false);
   const [offlineQueue, setOfflineQueue] = useState<OfflineCheckInItem[]>([]);
   const [rosterQuery, setRosterQuery] = useState("");
+  const [attendanceSort, setAttendanceSort] = useState<
+    | "registered_recent"
+    | "registered_oldest"
+    | "present_first"
+    | "not_present_first"
+    | "name_asc"
+    | "name_desc"
+    | "elevates_id"
+  >("registered_recent");
   const [online, setOnline] = useState(true);
   const [rosterTab, setRosterTab] = useState<"approved" | "waitlist" | "chapter">("approved");
   const [isOnSpotOpen, setIsOnSpotOpen] = useState(false);
   const [onSpotSearch, setOnSpotSearch] = useState("");
+
+  const isFaculty = isFacultyRole(session.roleKey);
 
   const canVerify =
     isCampusLead ||
@@ -90,6 +101,8 @@ export default function ChapterAttendancePage({
       session.roleKey,
       "attendance.verify",
     );
+
+  const isReadOnly = isFaculty || (!canVerify && !isCampusLead);
 
   const queryEventId = searchParams.get("eventId");
 
@@ -181,7 +194,7 @@ export default function ChapterAttendancePage({
           !myClassCohort.section ||
           !user.section ||
           user.section.trim().toLowerCase() ===
-            myClassCohort.section.trim().toLowerCase();
+          myClassCohort.section.trim().toLowerCase();
         return matchDept && matchYear && matchSec;
       });
     }
@@ -195,18 +208,107 @@ export default function ChapterAttendancePage({
   }, [eventRegistrations]);
 
   const filteredRoster = useMemo(() => {
+    let list = approvedRegs;
+
+    // 1. Filter by search query
     const q = rosterQuery.trim().toLowerCase();
-    if (!q) return approvedRegs;
-    return approvedRegs.filter((reg) => {
-      const user = store.profiles.find((p) => p.id === reg.userId);
+    if (q) {
+      list = list.filter((reg) => {
+        const user = store.profiles.find((p) => p.id === reg.userId);
+        return (
+          user?.fullName.toLowerCase().includes(q) ||
+          user?.email.toLowerCase().includes(q) ||
+          user?.elevatesId?.toLowerCase().includes(q) ||
+          reg.qrCode.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    // 2. Sort students
+    list = [...list].sort((a, b) => {
+      const userA = store.profiles.find((p) => p.id === a.userId);
+      const userB = store.profiles.find((p) => p.id === b.userId);
+
+      const recordsA = store.attendance.filter((att) => att.registrationId === a.id);
+      const recordsB = store.attendance.filter((att) => att.registrationId === b.id);
+
+      const attA = isMultiSession
+        ? recordsA.find(
+            (r) =>
+              r.sessionId === activeSessionObj?.id ||
+              r.session === activeSessionObj?.id ||
+              r.sessionName === activeSessionObj?.name,
+          )
+        : recordsA[0];
+      const attB = isMultiSession
+        ? recordsB.find(
+            (r) =>
+              r.sessionId === activeSessionObj?.id ||
+              r.session === activeSessionObj?.id ||
+              r.sessionName === activeSessionObj?.name,
+          )
+        : recordsB[0];
+
+      const isPresentA =
+        attA &&
+        (attA.status === "present" ||
+          attA.status === "volunteer" ||
+          attA.status === "speaker");
+      const isPresentB =
+        attB &&
+        (attB.status === "present" ||
+          attB.status === "volunteer" ||
+          attB.status === "speaker");
+
+      const isNotPresentA = !attA || attA.status === "absent";
+      const isNotPresentB = !attB || attB.status === "absent";
+
+      if (attendanceSort === "present_first") {
+        if (isPresentA && !isPresentB) return -1;
+        if (!isPresentA && isPresentB) return 1;
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "not_present_first") {
+        if (isNotPresentA && !isNotPresentB) return -1;
+        if (!isNotPresentA && isNotPresentB) return 1;
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "name_asc") {
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "name_desc") {
+        return (userB?.fullName || "").localeCompare(userA?.fullName || "");
+      }
+
+      if (attendanceSort === "elevates_id") {
+        return (userA?.elevatesId || "").localeCompare(userB?.elevatesId || "");
+      }
+
+      if (attendanceSort === "registered_oldest") {
+        return (
+          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+        );
+      }
+
+      // Default: registered_recent (newest registrations first)
       return (
-        user?.fullName.toLowerCase().includes(q) ||
-        user?.email.toLowerCase().includes(q) ||
-        user?.elevatesId?.toLowerCase().includes(q) ||
-        reg.qrCode.toLowerCase().includes(q)
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       );
     });
-  }, [approvedRegs, rosterQuery, store.profiles]);
+
+    return list;
+  }, [
+    approvedRegs,
+    rosterQuery,
+    attendanceSort,
+    store.profiles,
+    store.attendance,
+    isMultiSession,
+    activeSessionObj,
+  ]);
 
   const filteredWaitlist = useMemo(() => {
     const q = rosterQuery.trim().toLowerCase();
@@ -538,9 +640,9 @@ export default function ChapterAttendancePage({
           r.status === "approved" &&
           (r.qrCode.toLowerCase() === line.toLowerCase() ||
             store.profiles.find((p) => p.id === r.userId)?.email.toLowerCase() ===
-              line.toLowerCase() ||
+            line.toLowerCase() ||
             store.profiles.find((p) => p.id === r.userId)?.elevatesId?.toLowerCase() ===
-              line.toLowerCase()),
+            line.toLowerCase()),
       );
       if (!reg && isCampusLead) {
         reg = store.registrations.find(
@@ -548,9 +650,9 @@ export default function ChapterAttendancePage({
             r.eventId === eventId &&
             (r.qrCode.toLowerCase() === line.toLowerCase() ||
               store.profiles.find((p) => p.id === r.userId)?.email.toLowerCase() ===
-                line.toLowerCase() ||
+              line.toLowerCase() ||
               store.profiles.find((p) => p.id === r.userId)?.elevatesId?.toLowerCase() ===
-                line.toLowerCase()),
+              line.toLowerCase()),
         );
       }
       if (reg) {
@@ -643,16 +745,16 @@ export default function ChapterAttendancePage({
     return <p className="text-[var(--accent)]">Chapter not found</p>;
   }
 
-  if (!canVerify && !isCampusLead) {
+  if (!canVerify && !isCampusLead && !isFaculty) {
     return (
       <div>
         <PageHeader
           eyebrow={chapterEyebrow(session.roleKey, "programs")}
           title="Attendance"
-          description="You need attendance.verify permission to operate check-in."
+          description="You need attendance.verify permission or faculty status to view attendance."
         />
         <p className="text-[13px] text-text-dim">
-          Switch to Campus Lead, Class Rep, Secretary, or Coordinator.
+          Switch to Faculty Coordinator, Campus Lead, Class Rep, Secretary, or Coordinator.
         </p>
       </div>
     );
@@ -662,29 +764,31 @@ export default function ChapterAttendancePage({
     <div>
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Attendance Desk"
-        description="Verify arrivals & checkpoints via QR scanner, directory matrix, bulk input, or class representative."
+        title={isReadOnly ? "Attendance Overview" : "Attendance Desk"}
+
         actions={
-          <div className="flex items-center gap-2">
-            {isCampusLead && hasEvent && (
-              <Button
-                variant="orange"
-                className="text-xs"
-                onClick={() => setIsOnSpotOpen(true)}
-              >
-                + On-Spot Check-in
-              </Button>
-            )}
-            {hasEvent && isMultiSession && (
-              <Button
-                variant="ghost"
-                className="text-xs border border-border"
-                onClick={handleAddCustomCheckpoint}
-              >
-                + Add Checkpoint Session
-              </Button>
-            )}
-          </div>
+          !isReadOnly ? (
+            <div className="flex items-center gap-2">
+              {isCampusLead && hasEvent && (
+                <Button
+                  variant="orange"
+                  className="text-xs"
+                  onClick={() => setIsOnSpotOpen(true)}
+                >
+                  + On-Spot Check-in
+                </Button>
+              )}
+              {hasEvent && isMultiSession && (
+                <Button
+                  variant="ghost"
+                  className="text-xs border border-border"
+                  onClick={handleAddCustomCheckpoint}
+                >
+                  + Add Checkpoint Session
+                </Button>
+              )}
+            </div>
+          ) : null
         }
       />
 
@@ -708,7 +812,9 @@ export default function ChapterAttendancePage({
         )}
       </div>
 
-      {isCampusLead && (
+
+
+      {isCampusLead && !isFaculty && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-xs text-orange-400">
           <div className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
@@ -744,275 +850,371 @@ export default function ChapterAttendancePage({
         </div>
       )}
 
-      <TerminalPanel
-        title="Check-in desk"
-        meta={
-          [
-            currentEvent?.title,
-            isMultiSession ? `Session: ${activeSessionObj?.name}` : undefined,
-            offlineDesk || !online ? "queue" : "live",
-          ]
-            .filter(Boolean)
-            .join(" · ") || undefined
-        }
-      >
-        {/* Dynamic Multi-Session / Checkpoint Switcher */}
-        {isMultiSession ? (
-          <div className="mb-4 rounded-[var(--radius)] border border-border/80 bg-bg-panel p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-text-dim">
-                Active Check-In Checkpoint:
-              </span>
-              <span className="text-[11px] font-mono text-text-mute">
-                {attendanceSessions.findIndex((s) => s.id === activeSessionId) + 1} of {attendanceSessions.length} terms
-              </span>
+      {isReadOnly ? (
+        <TerminalPanel
+          title="Event Attendance Overview"
+          meta={
+            [
+              currentEvent?.title,
+              isMultiSession ? `Checkpoint: ${activeSessionObj?.name}` : undefined,
+              "Read-only oversight",
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
+        >
+          {/* Dynamic Multi-Session / Checkpoint Switcher */}
+          {isMultiSession ? (
+            <div className="mb-4 rounded-[var(--radius)] border border-border/80 bg-bg-panel p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-dim">
+                  Filter by Checkpoint Session:
+                </span>
+                <span className="text-[11px] font-mono text-text-mute">
+                  {attendanceSessions.findIndex((s) => s.id === activeSessionId) + 1} of {attendanceSessions.length} checkpoints
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {attendanceSessions.map((sess, idx) => {
+                  const isActive = sess.id === activeSessionId;
+                  return (
+                    <Button
+                      key={sess.id || idx}
+                      type="button"
+                      variant={isActive ? "orange" : "ghost"}
+                      className={cn(
+                        "h-7 text-[11px] font-medium px-2.5",
+                        !isActive && "border border-border/60 hover:border-border",
+                      )}
+                      onClick={() => {
+                        setActiveSessionId(sess.id);
+                        setFlash(null);
+                      }}
+                    >
+                      #{idx + 1} {sess.name} {sess.time ? `(${sess.time})` : ""}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {attendanceSessions.map((sess, idx) => {
-                const isActive = sess.id === activeSessionId;
-                return (
-                  <Button
-                    key={sess.id || idx}
-                    type="button"
-                    variant={isActive ? "orange" : "ghost"}
-                    className={cn(
-                      "h-7 text-[11px] font-medium px-2.5",
-                      !isActive && "border border-border/60 hover:border-border",
-                    )}
-                    onClick={() => {
-                      setActiveSessionId(sess.id);
-                      setFlash(null);
-                    }}
-                  >
-                    #{idx + 1} {sess.name} {sess.time ? `(${sess.time})` : ""}
-                  </Button>
-                );
-              })}
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-7 text-[11px] text-text-dim border border-dashed border-border px-2"
-                onClick={handleAddCustomCheckpoint}
-              >
-                + Add Checkpoint
-              </Button>
-            </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <div className="grid max-w-3xl gap-3 md:grid-cols-3">
-          <div>
-            <FieldLabel>Event</FieldLabel>
-            <Select
-              value={eventId}
-              onChange={(e) => {
-                setSelectedEvent(e.target.value);
-                setFlash(null);
-                setSelectedRegs([]);
-                setRosterQuery("");
-              }}
-            >
-              {events.length === 0 ? (
-                <option value="">No events</option>
-              ) : (
-                events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.title} · {ev.status.replaceAll("_", " ")}
-                  </option>
-                ))
-              )}
-            </Select>
+          <div className="grid max-w-3xl gap-4 md:grid-cols-2">
+            <div>
+              <FieldLabel>Select Event to Inspect</FieldLabel>
+              <Select
+                value={eventId}
+                onChange={(e) => {
+                  setSelectedEvent(e.target.value);
+                  setFlash(null);
+                  setSelectedRegs([]);
+                  setRosterQuery("");
+                  setAttendanceSort("registered_recent");
+                }}
+              >
+                {events.length === 0 ? (
+                  <option value="">No events in this chapter</option>
+                ) : (
+                  events.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.title} · {ev.status.replaceAll("_", " ")}
+                    </option>
+                  ))
+                )}
+              </Select>
+            </div>
+            {currentEvent ? (
+              <div className="rounded-[var(--radius)] border border-border/70 bg-bg/70 p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-text">{currentEvent.title}</span>
+                  <Badge tone={currentEvent.status === "completed" ? "green" : "orange"}>
+                    {currentEvent.status.replace("_", " ")}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-[11px] text-text-dim">
+                  {formatDateTime(currentEvent.startsAt)} &bull; {currentEvent.venue || "Campus / Online"}
+                </p>
+                <p className="mt-0.5 text-[11px] text-text-mute">
+                  Capacity: {currentEvent.capacity} &bull; Registered: {eventRegistrations.length} students
+                </p>
+              </div>
+            ) : null}
           </div>
-          <div>
-            <FieldLabel>Method</FieldLabel>
-            <Select
-              value={method}
-              onChange={(e) =>
-                setMethod(
-                  e.target.value as
+
+
+        </TerminalPanel>
+      ) : (
+        <TerminalPanel
+          title="Check-in desk"
+          meta={
+            [
+              currentEvent?.title,
+              isMultiSession ? `Session: ${activeSessionObj?.name}` : undefined,
+              offlineDesk || !online ? "queue" : "live",
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
+        >
+          {/* Dynamic Multi-Session / Checkpoint Switcher */}
+          {isMultiSession ? (
+            <div className="mb-4 rounded-[var(--radius)] border border-border/80 bg-bg-panel p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-dim">
+                  Active Check-In Checkpoint:
+                </span>
+                <span className="text-[11px] font-mono text-text-mute">
+                  {attendanceSessions.findIndex((s) => s.id === activeSessionId) + 1} of {attendanceSessions.length} terms
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {attendanceSessions.map((sess, idx) => {
+                  const isActive = sess.id === activeSessionId;
+                  return (
+                    <Button
+                      key={sess.id || idx}
+                      type="button"
+                      variant={isActive ? "orange" : "ghost"}
+                      className={cn(
+                        "h-7 text-[11px] font-medium px-2.5",
+                        !isActive && "border border-border/60 hover:border-border",
+                      )}
+                      onClick={() => {
+                        setActiveSessionId(sess.id);
+                        setFlash(null);
+                      }}
+                    >
+                      #{idx + 1} {sess.name} {sess.time ? `(${sess.time})` : ""}
+                    </Button>
+                  );
+                })}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-7 text-[11px] text-text-dim border border-dashed border-border px-2"
+                  onClick={handleAddCustomCheckpoint}
+                >
+                  + Add Checkpoint
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid max-w-3xl gap-3 md:grid-cols-3">
+            <div>
+              <FieldLabel>Event</FieldLabel>
+              <Select
+                value={eventId}
+                onChange={(e) => {
+                  setSelectedEvent(e.target.value);
+                  setFlash(null);
+                  setSelectedRegs([]);
+                  setRosterQuery("");
+                  setAttendanceSort("registered_recent");
+                }}
+              >
+                {events.length === 0 ? (
+                  <option value="">No events</option>
+                ) : (
+                  events.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.title} · {ev.status.replaceAll("_", " ")}
+                    </option>
+                  ))
+                )}
+              </Select>
+            </div>
+            <div>
+              <FieldLabel>Method</FieldLabel>
+              <Select
+                value={method}
+                onChange={(e) =>
+                  setMethod(
+                    e.target.value as
                     | "qr"
                     | "manual"
                     | "bulk"
                     | "representative",
-                )
-              }
-            >
-              <option value="qr">QR scan</option>
-              <option value="manual">Manual (directory table)</option>
-              <option value="representative">Class representative</option>
-              <option value="bulk">Bulk list</option>
-            </Select>
-          </div>
-          <div>
-            <FieldLabel>Status</FieldLabel>
-            <Select
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as AttendanceStatus)
-              }
-            >
-              <option value="present">Present</option>
-              <option value="late">Late</option>
-              <option value="absent">Absent</option>
-              <option value="volunteer">Volunteer</option>
-              <option value="speaker">Speaker</option>
-            </Select>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 pt-3">
-          <label className="flex items-center gap-2 text-[12px] text-text-dim">
-            <input
-              type="checkbox"
-              checked={offlineDesk}
-              disabled={!hasEvent}
-              onChange={(e) => setOfflineDesk(e.target.checked)}
-              className="accent-[var(--accent)]"
-            />
-            Queue scans locally
-          </label>
-          <Badge tone={online && !offlineDesk ? "green" : "orange"}>
-            {offlineDesk || !online ? "queue" : "live"}
-          </Badge>
-          {offlineQueue.length ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] text-text-dim">
-                {offlineQueue.length} queued
-              </span>
-              <Button
-                variant="ghost"
-                className="h-7 text-[11px]"
-                disabled={!online}
-                onClick={syncOffline}
+                  )
+                }
               >
-                Sync to cloud
-              </Button>
+                <option value="qr">QR scan</option>
+                <option value="manual">Manual (directory table)</option>
+                <option value="representative">Class representative</option>
+                <option value="bulk">Bulk list</option>
+              </Select>
             </div>
-          ) : null}
-        </div>
+            <div>
+              <FieldLabel>Status</FieldLabel>
+              <Select
+                value={status}
+                onChange={(e) =>
+                  setStatus(e.target.value as AttendanceStatus)
+                }
+              >
+                <option value="present">Present</option>
+                <option value="late">Late</option>
+                <option value="absent">Absent</option>
+                <option value="volunteer">Volunteer</option>
+                <option value="speaker">Speaker</option>
+              </Select>
+            </div>
+          </div>
 
-        {flash ? (
-          <p
-            className={cn(
-              "mt-3 text-[12px] rounded-[var(--radius)] border px-3 py-2",
-              flash.tone === "ok"
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-red-500/30 bg-red-500/10 text-red-300",
-            )}
-          >
-            {flash.text}
-          </p>
-        ) : null}
-
-        {/* QR Scanner Mode */}
-        {method === "qr" ? (
-          <div className="mt-4 border-t border-border/70 pt-4">
-            {isMultiSession ? (
-              <div className="mb-3 flex items-center justify-between rounded-[var(--radius)] border border-border/80 bg-bg-panel px-3 py-2 text-[12px]">
-                <span className="text-text">
-                  Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
-                  {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 pt-3">
+            <label className="flex items-center gap-2 text-[12px] text-text-dim">
+              <input
+                type="checkbox"
+                checked={offlineDesk}
+                disabled={!hasEvent}
+                onChange={(e) => setOfflineDesk(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+              Queue scans locally
+            </label>
+            <Badge tone={online && !offlineDesk ? "green" : "orange"}>
+              {offlineDesk || !online ? "queue" : "live"}
+            </Badge>
+            {offlineQueue.length ? (
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-text-dim">
+                  {offlineQueue.length} queued
                 </span>
-                <Badge tone="green">Ready</Badge>
+                <Button
+                  variant="ghost"
+                  className="h-7 text-[11px]"
+                  disabled={!online}
+                  onClick={syncOffline}
+                >
+                  Sync to cloud
+                </Button>
               </div>
             ) : null}
+          </div>
 
-            <QrScanner onScan={onCameraScan} active={method === "qr"} disabled={!hasEvent} />
+          {flash ? (
+            <p
+              className={cn(
+                "mt-3 text-[12px] rounded-[var(--radius)] border px-3 py-2",
+                flash.tone === "ok"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : "border-red-500/30 bg-red-500/10 text-red-300",
+              )}
+            >
+              {flash.text}
+            </p>
+          ) : null}
 
-            <div className="mt-4 flex max-w-md gap-2">
-              <Input
-                placeholder="Or paste / type QR code..."
-                value={qrInput}
+          {/* QR Scanner Mode */}
+          {method === "qr" ? (
+            <div className="mt-4 border-t border-border/70 pt-4">
+              {isMultiSession ? (
+                <div className="mb-3 flex items-center justify-between rounded-[var(--radius)] border border-border/80 bg-bg-panel px-3 py-2 text-[12px]">
+                  <span className="text-text">
+                    Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
+                    {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
+                  </span>
+                  <Badge tone="green">Ready</Badge>
+                </div>
+              ) : null}
+
+              <QrScanner onScan={onCameraScan} active={method === "qr"} disabled={!hasEvent} />
+
+              <div className="mt-4 flex max-w-md gap-2">
+                <Input
+                  placeholder="Or paste / type QR code..."
+                  value={qrInput}
+                  disabled={!hasEvent}
+                  onChange={(e) => setQrInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
+                  aria-label="QR Code input"
+                />
+                <Button
+                  variant="orange"
+                  disabled={!hasEvent || !qrInput.trim()}
+                  onClick={() => handleQrScan()}
+                >
+                  Verify
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {method === "manual" ? (
+            <p className="mt-4 border-t border-border/70 pt-4 text-[13px] text-text-dim">
+              Use the directory below — click Check in or toggle status per student.
+            </p>
+          ) : null}
+
+          {method === "bulk" ? (
+            <div className="mt-4 max-w-xl space-y-2 border-t border-border/70 pt-4">
+              <FieldLabel>
+                One QR code or email per line {isMultiSession ? `(${activeSessionObj.name})` : ""}
+              </FieldLabel>
+              <TextArea
+                rows={4}
+                value={bulkText}
                 disabled={!hasEvent}
-                onChange={(e) => setQrInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
-                aria-label="QR Code input"
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"QR-ELV-DECODE-001\nuser@elevates.live\n..."}
               />
               <Button
                 variant="orange"
-                disabled={!hasEvent || !qrInput.trim()}
-                onClick={() => handleQrScan()}
+                disabled={!hasEvent}
+                onClick={handleBulk}
               >
-                Verify
+                Process bulk {isMultiSession ? `(${activeSessionObj.name})` : ""}
               </Button>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {method === "manual" ? (
-          <p className="mt-4 border-t border-border/70 pt-4 text-[13px] text-text-dim">
-            Use the directory below — click Check in or toggle status per student.
-          </p>
-        ) : null}
-
-        {method === "bulk" ? (
-          <div className="mt-4 max-w-xl space-y-2 border-t border-border/70 pt-4">
-            <FieldLabel>
-              One QR code or email per line {isMultiSession ? `(${activeSessionObj.name})` : ""}
-            </FieldLabel>
-            <TextArea
-              rows={4}
-              value={bulkText}
-              disabled={!hasEvent}
-              onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"QR-ELV-DECODE-001\nuser@elevates.live\n..."}
-            />
-            <Button
-              variant="orange"
-              disabled={!hasEvent}
-              onClick={handleBulk}
-            >
-              Process bulk {isMultiSession ? `(${activeSessionObj.name})` : ""}
-            </Button>
-          </div>
-        ) : null}
-
-        {method === "representative" ? (
-          <div className="mt-4 max-w-xl border-t border-border/70 pt-4">
-            <p className="mb-2 text-[12px] text-text-dim">
-              Select students to check in together {isMultiSession ? `for ${activeSessionObj.name}` : ""}:
-            </p>
-            <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto rounded-[var(--radius)] border border-border/80 bg-bg-panel p-2">
-              {approvedRegs.map((reg) => {
-                const user = store.profiles.find((p) => p.id === reg.userId);
-                const att = store.attendance.find(
-                  (a) =>
-                    a.registrationId === reg.id &&
-                    (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
-                );
-                return (
-                  <li key={reg.id} className="flex items-center justify-between text-[12px] border-b border-border/40 pb-1.5 last:border-0">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        disabled={Boolean(att) || !hasEvent}
-                        checked={selectedRegs.includes(reg.id)}
-                        onChange={(e) => {
-                          setSelectedRegs((ids) =>
-                            e.target.checked
-                              ? [...ids, reg.id]
-                              : ids.filter((id) => id !== reg.id),
-                          );
-                        }}
-                      />
-                      <span className="font-medium text-text">{user?.fullName}</span>
-                      <span className="text-text-mute">({user?.year} · {user?.department?.split(" ")[0]})</span>
-                    </label>
-                    {att ? <Badge tone="green">{att.status}</Badge> : <Badge tone="mute">unmarked</Badge>}
-                  </li>
-                );
-              })}
-            </ul>
-            <Button
-              variant="orange"
-              disabled={!hasEvent || selectedRegs.length === 0}
-              onClick={handleRepresentative}
-            >
-              Check in selected ({selectedRegs.length})
-            </Button>
-          </div>
-        ) : null}
-      </TerminalPanel>
+          {method === "representative" ? (
+            <div className="mt-4 max-w-xl border-t border-border/70 pt-4">
+              <p className="mb-2 text-[12px] text-text-dim">
+                Select students to check in together {isMultiSession ? `for ${activeSessionObj.name}` : ""}:
+              </p>
+              <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto rounded-[var(--radius)] border border-border/80 bg-bg-panel p-2">
+                {approvedRegs.map((reg) => {
+                  const user = store.profiles.find((p) => p.id === reg.userId);
+                  const att = store.attendance.find(
+                    (a) =>
+                      a.registrationId === reg.id &&
+                      (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
+                  );
+                  return (
+                    <li key={reg.id} className="flex items-center justify-between text-[12px] border-b border-border/40 pb-1.5 last:border-0">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          disabled={Boolean(att) || !hasEvent}
+                          checked={selectedRegs.includes(reg.id)}
+                          onChange={(e) => {
+                            setSelectedRegs((ids) =>
+                              e.target.checked
+                                ? [...ids, reg.id]
+                                : ids.filter((id) => id !== reg.id),
+                            );
+                          }}
+                        />
+                        <span className="font-medium text-text">{user?.fullName}</span>
+                        <span className="text-text-mute">({user?.year} · {user?.department?.split(" ")[0]})</span>
+                      </label>
+                      {att ? <Badge tone="green">{att.status}</Badge> : <Badge tone="mute">unmarked</Badge>}
+                    </li>
+                  );
+                })}
+              </ul>
+              <Button
+                variant="orange"
+                disabled={!hasEvent || selectedRegs.length === 0}
+                onClick={handleRepresentative}
+              >
+                Check in selected ({selectedRegs.length})
+              </Button>
+            </div>
+          ) : null}
+        </TerminalPanel>
+      )}
 
       {/* Directory Table Matrix */}
       <TerminalPanel
@@ -1021,12 +1223,12 @@ export default function ChapterAttendancePage({
           rosterTab === "approved"
             ? `${filteredRoster.length}${rosterQuery ? ` / ${approvedRegs.length}` : ""} approved`
             : rosterTab === "waitlist"
-            ? `${filteredWaitlist.length}${rosterQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
-            : `${filteredChapterStudents.length}${rosterQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
+              ? `${filteredWaitlist.length}${rosterQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
+              : `${filteredChapterStudents.length}${rosterQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
         }
         className="mt-4"
       >
-        {isCampusLead && (
+        {(isCampusLead || isFaculty) && (
           <div className="mb-3 flex flex-wrap items-center gap-1.5 border-b border-border/70 pb-3">
             <Button
               type="button"
@@ -1064,8 +1266,10 @@ export default function ChapterAttendancePage({
           </div>
         )}
 
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 max-w-xl">
-          <div className="w-full max-w-sm">
+
+
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px] max-w-md">
             <Input
               value={rosterQuery}
               onChange={(e) => setRosterQuery(e.target.value)}
@@ -1073,23 +1277,51 @@ export default function ChapterAttendancePage({
                 rosterTab === "approved"
                   ? "Search name, email, or QR..."
                   : rosterTab === "waitlist"
-                  ? "Search waitlisted student..."
-                  : "Search any student in chapter..."
+                    ? "Search waitlisted student..."
+                    : "Search any student in chapter..."
               }
               disabled={!hasEvent}
               aria-label="Filter directory"
             />
           </div>
-          {isCampusLead && (
-            <Button
-              variant="ghost"
-              className="h-9 text-xs border border-dashed border-border hover:border-orange-500/50"
-              onClick={() => setIsOnSpotOpen(true)}
-              disabled={!hasEvent}
-            >
-              + On-Spot Check-in
-            </Button>
-          )}
+
+          <div className="flex flex-wrap items-center gap-2">
+            {rosterTab === "approved" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-text-dim">Sort:</span>
+                <Select
+                  className="h-9 text-xs w-auto min-w-[170px]"
+                  value={attendanceSort}
+                  onChange={(e) =>
+                    setAttendanceSort(
+                      e.target.value as typeof attendanceSort,
+                    )
+                  }
+                  disabled={!hasEvent}
+                  aria-label="Sort attendance directory"
+                >
+                  <option value="registered_recent">Recently Registered</option>
+                  <option value="registered_oldest">Oldest Registered</option>
+                  <option value="present_first">✓ Present First</option>
+                  <option value="not_present_first">✕ Not Present First</option>
+                  <option value="name_asc">Name (A → Z)</option>
+                  <option value="name_desc">Name (Z → A)</option>
+                  <option value="elevates_id">Elevates ID</option>
+                </Select>
+              </div>
+            )}
+
+            {!isReadOnly && isCampusLead && (
+              <Button
+                variant="ghost"
+                className="h-9 text-xs border border-dashed border-border hover:border-orange-500/50"
+                onClick={() => setIsOnSpotOpen(true)}
+                disabled={!hasEvent}
+              >
+                + On-Spot Check-in
+              </Button>
+            )}
+          </div>
         </div>
 
         {rosterTab === "approved" && (
@@ -1111,7 +1343,7 @@ export default function ChapterAttendancePage({
                   ) : (
                     <>
                       <th className="pb-2">Attendance</th>
-                      <th className="pb-2">Action</th>
+                      <th className="pb-2">{isReadOnly ? "Method" : "Action"}</th>
                     </>
                   )}
                   {session.roleKey !== "class_representative" && (
@@ -1120,6 +1352,37 @@ export default function ChapterAttendancePage({
                 </tr>
               </thead>
               <tbody>
+                {filteredRoster.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={
+                        (isMultiSession ? attendanceSessions.length + 3 : 4) +
+                        (session.roleKey !== "class_representative" ? 1 : 0)
+                      }
+                      className="py-10 text-center text-text-mute"
+                    >
+                      {rosterQuery ? (
+                        <div>
+                          <p className="font-medium text-text text-sm">
+                            No students found matching &ldquo;{rosterQuery}&rdquo;
+                          </p>
+                          <p className="text-[11px] text-text-dim mt-1">
+                            Try checking for typos or clearing your search.
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="font-medium text-text text-sm">
+                            No approved attendees found
+                          </p>
+                          <p className="text-[11px] text-text-dim mt-1">
+                            Registered and approved students will appear here.
+                          </p>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
                 {filteredRoster.map((reg) => {
                   const user = store.profiles.find((p) => p.id === reg.userId);
                   const userAttRecords = store.attendance.filter(
@@ -1165,23 +1428,25 @@ export default function ChapterAttendancePage({
                                     <Badge tone={sessRecord.status === "present" ? "green" : "orange"}>
                                       {sessRecord.status}
                                     </Badge>
-                                    <Button
-                                      variant="ghost"
-                                      className="h-6 px-1 text-[10px]"
-                                      onClick={() => {
-                                        updateAttendance(
-                                          reg.id,
-                                          sessRecord.status === "present" ? "absent" : "present",
-                                          session.userId,
-                                          sess.id,
-                                          sess.name,
-                                        );
-                                      }}
-                                    >
-                                      ⇄
-                                    </Button>
+                                    {!isReadOnly && (
+                                      <Button
+                                        variant="ghost"
+                                        className="h-6 px-1 text-[10px]"
+                                        onClick={() => {
+                                          updateAttendance(
+                                            reg.id,
+                                            sessRecord.status === "present" ? "absent" : "present",
+                                            session.userId,
+                                            sess.id,
+                                            sess.name,
+                                          );
+                                        }}
+                                      >
+                                        ⇄
+                                      </Button>
+                                    )}
                                   </div>
-                                ) : (
+                                ) : !isReadOnly ? (
                                   <Button
                                     variant="ghost"
                                     className="h-6 px-2 text-[10px] border border-border"
@@ -1189,6 +1454,8 @@ export default function ChapterAttendancePage({
                                   >
                                     + Mark
                                   </Button>
+                                ) : (
+                                  <span className="text-[11px] text-text-mute">—</span>
                                 )}
                               </td>
                             );
@@ -1213,38 +1480,44 @@ export default function ChapterAttendancePage({
                           <td className="py-3">
                             {singleAtt ? (
                               <div className="flex flex-wrap items-center gap-2">
-                                <Badge tone="green">
+                                <Badge tone={singleAtt.status === "present" ? "green" : "orange"}>
                                   {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
                                 </Badge>
-                                <Select
-                                  className="h-8 w-auto text-[11px]"
-                                  value={singleAtt.status}
-                                  onChange={(e) => {
-                                    const result = updateAttendance(
-                                      reg.id,
-                                      e.target.value as AttendanceStatus,
-                                      session.userId,
-                                    );
-                                    setFlash(
-                                      result.ok
-                                        ? { tone: "ok", text: `Updated ${user?.fullName}` }
-                                        : { tone: "err", text: result.message },
-                                    );
-                                  }}
-                                >
-                                  <option value="present">Present</option>
-                                  <option value="late">Late</option>
-                                  <option value="absent">Absent</option>
-                                  <option value="volunteer">Volunteer</option>
-                                  <option value="speaker">Speaker</option>
-                                </Select>
+                                {!isReadOnly && (
+                                  <Select
+                                    className="h-8 w-auto text-[11px]"
+                                    value={singleAtt.status}
+                                    onChange={(e) => {
+                                      const result = updateAttendance(
+                                        reg.id,
+                                        e.target.value as AttendanceStatus,
+                                        session.userId,
+                                      );
+                                      setFlash(
+                                        result.ok
+                                          ? { tone: "ok", text: `Updated ${user?.fullName}` }
+                                          : { tone: "err", text: result.message },
+                                      );
+                                    }}
+                                  >
+                                    <option value="present">Present</option>
+                                    <option value="late">Late</option>
+                                    <option value="absent">Absent</option>
+                                    <option value="volunteer">Volunteer</option>
+                                    <option value="speaker">Speaker</option>
+                                  </Select>
+                                )}
                               </div>
                             ) : (
                               <Badge tone="orange">not checked in</Badge>
                             )}
                           </td>
                           <td className="py-3">
-                            {!singleAtt ? (
+                            {isReadOnly ? (
+                              <span className="font-mono text-[11px] text-text-dim">
+                                {singleAtt ? (singleAtt.method || "verified") : "—"}
+                              </span>
+                            ) : !singleAtt ? (
                               <div className="flex flex-wrap gap-2">
                                 <Button
                                   variant="ghost"
@@ -1288,7 +1561,7 @@ export default function ChapterAttendancePage({
                         <td className="py-3">
                           {cert ? (
                             <Badge tone="green">Issued · {cert.certificateId}</Badge>
-                          ) : (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
+                          ) : !isReadOnly && (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
                             <Button
                               variant="orange"
                               className="h-7 text-[11px]"
@@ -1305,7 +1578,13 @@ export default function ChapterAttendancePage({
                             </Button>
                           ) : (
                             <span className="text-[11px] text-text-mute">
-                              {isMultiSession ? `Requires ${attendanceSessions.length} terms` : "Requires check-in"}
+                              {isMultiSession
+                                ? isFullyComplete
+                                  ? "Eligible (Completed)"
+                                  : `Requires ${attendanceSessions.length} terms`
+                                : singleAtt && singleAtt.status === "present"
+                                  ? "Eligible"
+                                  : "Requires check-in"}
                             </span>
                           )}
                         </td>
@@ -1356,26 +1635,30 @@ export default function ChapterAttendancePage({
                           <Badge tone="orange">{reg.status.replace("_", " ")}</Badge>
                         </td>
                         <td className="py-3 text-right">
-                          <Button
-                            variant="orange"
-                            className="h-7 text-[11px]"
-                            onClick={() => {
-                              const res = runCheckIn(
-                                reg.id,
-                                "manual",
-                                activeSessionObj.id,
-                                activeSessionObj.name,
-                              );
-                              if (res) {
-                                setFlash({
-                                  tone: "ok",
-                                  text: `Approved & checked in ${user?.fullName || "student"} [${activeSessionObj.name}]!`,
-                                });
-                              }
-                            }}
-                          >
-                            ✓ Approve & Check In
-                          </Button>
+                          {!isReadOnly ? (
+                            <Button
+                              variant="orange"
+                              className="h-7 text-[11px]"
+                              onClick={() => {
+                                const res = runCheckIn(
+                                  reg.id,
+                                  "manual",
+                                  activeSessionObj.id,
+                                  activeSessionObj.name,
+                                );
+                                if (res) {
+                                  setFlash({
+                                    tone: "ok",
+                                    text: `Approved & checked in ${user?.fullName || "student"} [${activeSessionObj.name}]!`,
+                                  });
+                                }
+                              }}
+                            >
+                              ✓ Approve & Check In
+                            </Button>
+                          ) : (
+                            <Badge tone="mute">Read-only</Badge>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1410,10 +1693,10 @@ export default function ChapterAttendancePage({
                     const studentReg = eventRegistrations.find((r) => r.userId === student.id);
                     const attRecord = studentReg
                       ? store.attendance.find(
-                          (a) =>
-                            a.registrationId === studentReg.id &&
-                            (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
-                        )
+                        (a) =>
+                          a.registrationId === studentReg.id &&
+                          (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
+                      )
                       : null;
 
                     return (
@@ -1442,7 +1725,7 @@ export default function ChapterAttendancePage({
                             <Badge tone={attRecord.status === "present" ? "green" : "orange"}>
                               ✓ {attRecord.status} ({activeSessionObj.name})
                             </Badge>
-                          ) : (
+                          ) : !isReadOnly ? (
                             <Button
                               variant="orange"
                               className="h-7 text-[11px]"
@@ -1468,6 +1751,8 @@ export default function ChapterAttendancePage({
                             >
                               + Check In
                             </Button>
+                          ) : (
+                            <Badge tone="mute">Unmarked</Badge>
                           )}
                         </td>
                       </tr>
@@ -1481,7 +1766,7 @@ export default function ChapterAttendancePage({
       </TerminalPanel>
 
       {/* On-Spot Chapter Student Check-in Dialog */}
-      {isOnSpotOpen && (
+      {isOnSpotOpen && !isReadOnly && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-[var(--radius)] border border-border bg-bg-panel p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
@@ -1524,11 +1809,11 @@ export default function ChapterAttendancePage({
                   const studReg = eventRegistrations.find((r) => r.userId === stud.id);
                   const isChecked = studReg
                     ? store.attendance.some(
-                        (a) =>
-                          a.registrationId === studReg.id &&
-                          (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id) &&
-                          (a.status === "present" || a.status === "late"),
-                      )
+                      (a) =>
+                        a.registrationId === studReg.id &&
+                        (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id) &&
+                        (a.status === "present" || a.status === "late"),
+                    )
                     : false;
 
                   return (

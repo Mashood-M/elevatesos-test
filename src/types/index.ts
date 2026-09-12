@@ -36,6 +36,7 @@ export type PermissionKey =
   | "registration.review"
   | "registration.approve"
   | "attendance.verify"
+  | "attendance.view"
   | "certificate.issue"
   | "report.submit"
   | "report.approve"

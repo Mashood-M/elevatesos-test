@@ -44,6 +44,13 @@ export function canVerifyAttendance(roleKey: RoleKey): boolean {
   );
 }
 
+export function canViewAttendance(roleKey: RoleKey): boolean {
+  return (
+    canVerifyAttendance(roleKey) ||
+    roleKey === "faculty_coordinator"
+  );
+}
+
 export function hasPermission(
   store: ElevatesStore,
   roleKey: RoleKey,
@@ -62,6 +69,9 @@ export function hasPermission(
   }
   if (permission === "attendance.verify") {
     return canVerifyAttendance(roleKey);
+  }
+  if (permission === "attendance.view") {
+    return canViewAttendance(roleKey);
   }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {
@@ -88,6 +98,8 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
     if (isSuperAdmin(roleKey)) {
       allowed = true;
     } else if (p.key === "attendance.verify" && canVerifyAttendance(roleKey)) {
+      allowed = true;
+    } else if (p.key === "attendance.view" && canViewAttendance(roleKey)) {
       allowed = true;
     } else if (p.key === "registration.approve" && (roleKey === "campus_lead" || roleKey === "chairman")) {
       allowed = true;

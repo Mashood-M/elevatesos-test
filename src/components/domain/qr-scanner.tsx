@@ -161,6 +161,11 @@ export function QrScanner({
       video.setAttribute("playsinline", "true");
       video.setAttribute("muted", "true");
       video.setAttribute("autoplay", "true");
+      video.onloadedmetadata = () => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setCamRes(`${video.videoWidth}×${video.videoHeight}`);
+        }
+      };
       video.srcObject = stream;
 
       try {
@@ -187,109 +192,112 @@ export function QrScanner({
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
       if (!ctx) return;
 
+      let isScanning = false;
+
       const scanFrame = async () => {
         if (cancelled || !videoRef.current) return;
 
-        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
-          if (!camRes) {
-            setCamRes(`${video.videoWidth}×${video.videoHeight}`);
-          }
-
+        if (!isScanning && video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
           const now = Date.now();
           if (now >= cooldownUntilRef.current) {
-            let detectedCode: string | null = null;
+            isScanning = true;
+            try {
+              let detectedCode: string | null = null;
 
-            // 1. Try Hardware-Accelerated Native BarcodeDetector first
-            if (nativeDetector) {
-              try {
-                const barcodes = await nativeDetector.detect(video);
-                if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                  detectedCode = barcodes[0].rawValue.trim();
+              // 1. Try Hardware-Accelerated Native BarcodeDetector first
+              if (nativeDetector) {
+                try {
+                  const barcodes = await nativeDetector.detect(video);
+                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                    detectedCode = barcodes[0].rawValue.trim();
+                  }
+                } catch {
+                  /* fallback to jsQR */
                 }
-              } catch {
-                /* fallback to jsQR */
               }
-            }
 
-            // 2. High-Resolution 1:1 Center-Square Sampling with jsQR
-            if (!detectedCode && ctx) {
-              try {
-                const vw = video.videoWidth;
-                const vh = video.videoHeight;
-                // Calculate square area matching the visible viewfinder
-                const cropSize = Math.min(vw, vh);
-                const cropX = Math.floor((vw - cropSize) / 2);
-                const cropY = Math.floor((vh - cropSize) / 2);
+              // 2. High-Resolution 1:1 Center-Square Sampling with jsQR
+              if (!detectedCode && ctx) {
+                try {
+                  const vw = video.videoWidth;
+                  const vh = video.videoHeight;
+                  // Calculate square area matching the visible viewfinder
+                  const cropSize = Math.min(vw, vh);
+                  const cropX = Math.floor((vw - cropSize) / 2);
+                  const cropY = Math.floor((vh - cropSize) / 2);
 
-                // Sample square at sharp resolution (capped at 720px for optimal speed & module separation)
-                const targetSize = Math.min(cropSize, 720);
-                canvas.width = targetSize;
-                canvas.height = targetSize;
+                  // Sample square at sharp resolution (capped at 720px for optimal speed & module separation)
+                  const targetSize = Math.min(cropSize, 720);
+                  canvas.width = targetSize;
+                  canvas.height = targetSize;
 
-                // Draw center square crop
-                ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, targetSize, targetSize);
+                  // Draw center square crop
+                  ctx.drawImage(video, cropX, cropY, cropSize, cropSize, 0, 0, targetSize, targetSize);
 
-                const imgData = ctx.getImageData(0, 0, targetSize, targetSize);
-                const qrRes = jsQR(imgData.data, targetSize, targetSize, {
-                  inversionAttempts: "attemptBoth",
-                });
+                  const imgData = ctx.getImageData(0, 0, targetSize, targetSize);
+                  const qrRes = jsQR(imgData.data, targetSize, targetSize, {
+                    inversionAttempts: "attemptBoth",
+                  });
 
-                if (qrRes && qrRes.data) {
-                  detectedCode = qrRes.data.trim();
-                } else if (cropSize > 600) {
-                  // Fallback: Full frame scan if student held QR slightly outside center square
-                  const fullMax = 640;
-                  let fw = vw;
-                  let fh = vh;
-                  if (fw > fullMax || fh > fullMax) {
-                    if (fw > fh) {
-                      fh = Math.round((fh * fullMax) / fw);
-                      fw = fullMax;
-                    } else {
-                      fw = Math.round((fw * fullMax) / fh);
-                      fh = fullMax;
+                  if (qrRes && qrRes.data) {
+                    detectedCode = qrRes.data.trim();
+                  } else if (cropSize > 600) {
+                    // Fallback: Full frame scan if student held QR slightly outside center square
+                    const fullMax = 640;
+                    let fw = vw;
+                    let fh = vh;
+                    if (fw > fullMax || fh > fullMax) {
+                      if (fw > fh) {
+                        fh = Math.round((fh * fullMax) / fw);
+                        fw = fullMax;
+                      } else {
+                        fw = Math.round((fw * fullMax) / fh);
+                        fh = fullMax;
+                      }
+                    }
+                    canvas.width = fw;
+                    canvas.height = fh;
+                    ctx.drawImage(video, 0, 0, fw, fh);
+                    const fullImg = ctx.getImageData(0, 0, fw, fh);
+                    const fullRes = jsQR(fullImg.data, fw, fh, { inversionAttempts: "dontInvert" });
+                    if (fullRes && fullRes.data) {
+                      detectedCode = fullRes.data.trim();
                     }
                   }
-                  canvas.width = fw;
-                  canvas.height = fh;
-                  ctx.drawImage(video, 0, 0, fw, fh);
-                  const fullImg = ctx.getImageData(0, 0, fw, fh);
-                  const fullRes = jsQR(fullImg.data, fw, fh, { inversionAttempts: "dontInvert" });
-                  if (fullRes && fullRes.data) {
-                    detectedCode = fullRes.data.trim();
+                } catch {
+                  /* Per-frame catch */
+                }
+              }
+
+              // Handle successful code recognition
+              if (detectedCode && detectedCode !== lastRef.current) {
+                lastRef.current = detectedCode;
+                cooldownUntilRef.current = now + COOLDOWN_MS;
+
+                setLastScannedCode(detectedCode);
+                setScannedSuccess(true);
+                playSuccessBeep();
+
+                try {
+                  navigator.vibrate?.([60, 40, 60]);
+                } catch {
+                  /* Vibration optional */
+                }
+
+                onScanRef.current(detectedCode);
+
+                window.setTimeout(() => {
+                  setScannedSuccess(false);
+                }, 800);
+
+                window.setTimeout(() => {
+                  if (lastRef.current === detectedCode) {
+                    lastRef.current = "";
                   }
-                }
-              } catch {
-                /* Per-frame catch */
+                }, COOLDOWN_MS);
               }
-            }
-
-            // Handle successful code recognition
-            if (detectedCode && detectedCode !== lastRef.current) {
-              lastRef.current = detectedCode;
-              cooldownUntilRef.current = now + COOLDOWN_MS;
-
-              setLastScannedCode(detectedCode);
-              setScannedSuccess(true);
-              playSuccessBeep();
-
-              try {
-                navigator.vibrate?.([60, 40, 60]);
-              } catch {
-                /* Vibration optional */
-              }
-
-              onScanRef.current(detectedCode);
-
-              window.setTimeout(() => {
-                setScannedSuccess(false);
-              }, 800);
-
-              window.setTimeout(() => {
-                if (lastRef.current === detectedCode) {
-                  lastRef.current = "";
-                }
-              }, COOLDOWN_MS);
+            } finally {
+              isScanning = false;
             }
           }
         }
@@ -309,7 +317,7 @@ export function QrScanner({
       cancelAnimationFrame(rafId);
       stopStream();
     };
-  }, [active, running, disabled, facingMode, stopStream, camRes]);
+  }, [active, running, disabled, facingMode, stopStream]);
 
   useEffect(() => {
     if (!active || disabled) {

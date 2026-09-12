@@ -139,6 +139,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     if (typeof window !== "undefined") {
       localStorage.removeItem("elevates_active_role_key");
+      localStorage.removeItem("elevates_known_top_role");
+      localStorage.removeItem("elevates_user_selected_role");
       localStorage.removeItem("elevates_active_chapter_id");
       localStorage.removeItem("elevates_locked_chapter_id");
       localStorage.removeItem("elevates_demo_store");

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
   AttendanceRecord,
   Certificate,
@@ -20,9 +21,9 @@ import type {
   Report,
   Resource,
   Task,
-  UserRole,
 } from "@/types";
 import { isDemoMode } from "@/lib/mode";
+import { broadcastChange } from "@/lib/data/realtime-sync";
 
 export type MutationResult<T = any> = {
   ok: boolean;
@@ -30,8 +31,142 @@ export type MutationResult<T = any> = {
   error?: string;
 };
 
+function broadcastMutation(type: string, data: any, resultData?: any) {
+  if (typeof window === "undefined") return;
+  const payload =
+    resultData && typeof resultData === "object" && Object.keys(resultData).length > 0
+      ? resultData
+      : data;
+
+  switch (type) {
+    case "event":
+      broadcastChange("events", "UPDATE", payload);
+      break;
+    case "delete_event":
+      broadcastChange("events", "DELETE", undefined, data);
+      break;
+    case "registration":
+      broadcastChange("event_registrations", "UPDATE", payload);
+      break;
+    case "delete_registration":
+      broadcastChange("event_registrations", "DELETE", undefined, data);
+      break;
+    case "attendance":
+      broadcastChange("attendance", "UPDATE", payload);
+      break;
+    case "bulk_attendance":
+      broadcastChange("attendance", "UPDATE", data?.records || payload);
+      break;
+    case "task":
+      broadcastChange("tasks", "UPDATE", payload);
+      break;
+    case "delete_task":
+      broadcastChange("tasks", "DELETE", undefined, data);
+      break;
+    case "report":
+      broadcastChange("reports", "UPDATE", payload);
+      break;
+    case "delete_report":
+      broadcastChange("reports", "DELETE", undefined, data);
+      break;
+    case "chapter":
+      broadcastChange("chapters", "UPDATE", payload);
+      break;
+    case "delete_chapter":
+      broadcastChange("chapters", "DELETE", undefined, data);
+      break;
+    case "project":
+      broadcastChange("projects", "UPDATE", payload);
+      break;
+    case "delete_project":
+      broadcastChange("projects", "DELETE", undefined, data);
+      break;
+    case "cluster":
+      broadcastChange("clusters", "UPDATE", payload);
+      break;
+    case "delete_cluster":
+      broadcastChange("clusters", "DELETE", undefined, data);
+      break;
+    case "profile":
+      broadcastChange("profiles", "UPDATE", payload);
+      break;
+    case "user_roles":
+      broadcastChange("user_roles", "UPDATE", data?.assignments || payload);
+      break;
+    case "department":
+      broadcastChange("departments", "UPDATE", payload);
+      break;
+    case "delete_department":
+      broadcastChange("departments", "DELETE", undefined, data);
+      break;
+    case "class_cohort":
+      broadcastChange("class_cohorts", "UPDATE", payload);
+      break;
+    case "delete_class_cohort":
+      broadcastChange("class_cohorts", "DELETE", undefined, data);
+      break;
+    case "leadership_term":
+      broadcastChange("leadership_terms", "UPDATE", payload);
+      break;
+    case "leadership_assignment":
+      broadcastChange("leadership_assignments", "UPDATE", payload);
+      break;
+    case "delete_leadership_assignment":
+      broadcastChange("leadership_assignments", "DELETE", undefined, data);
+      break;
+    case "leadership_application":
+    case "leadership_application_status":
+      broadcastChange("leadership_applications", "UPDATE", payload);
+      break;
+    case "certificate":
+      broadcastChange("certificates", "UPDATE", payload);
+      break;
+    case "revoke_certificate":
+      broadcastChange("certificates", "UPDATE", { id: data?.id, is_revoked: data?.isRevoked });
+      break;
+    case "form":
+      broadcastChange("forms", "UPDATE", payload);
+      break;
+    case "delete_form":
+      broadcastChange("forms", "DELETE", undefined, data);
+      break;
+    case "form_response":
+      broadcastChange("form_responses", "INSERT", payload);
+      break;
+    case "delete_form_response":
+      broadcastChange("form_responses", "DELETE", undefined, data);
+      break;
+    case "notification":
+      broadcastChange("notifications", "INSERT", payload);
+      break;
+    case "mark_notification_read":
+      broadcastChange("notifications", "UPDATE", { id: data?.id, read: true });
+      break;
+    case "announcement":
+      broadcastChange("announcements", "INSERT", payload);
+      break;
+    case "event_permission":
+      broadcastChange("event_permissions", "UPDATE", payload);
+      break;
+    case "delete_event_permission":
+      broadcastChange("event_permissions", "DELETE", undefined, data);
+      break;
+    case "chapter_standard_check":
+      broadcastChange("chapter_standard_checks", "UPDATE", payload);
+      break;
+    case "activity_log":
+      broadcastChange("activity_logs", "INSERT", payload);
+      break;
+    default:
+      break;
+  }
+}
+
 export async function sendMutation<T = any>(type: string, data: any): Promise<MutationResult<T>> {
-  if (isDemoMode()) return { ok: true, data };
+  if (isDemoMode()) {
+    broadcastMutation(type, data);
+    return { ok: true, data };
+  }
   try {
     if (typeof window !== "undefined") {
       const res = await fetch("/api/mutations", {
@@ -45,7 +180,9 @@ export async function sendMutation<T = any>(type: string, data: any): Promise<Mu
         console.error(`❌ Mutation (${type}) failed:`, errorMsg, { payload: data });
         return { ok: false, error: errorMsg };
       }
-      return { ok: true, data: json.data || json };
+      const returnData = json.data || json;
+      broadcastMutation(type, data, returnData);
+      return { ok: true, data: returnData };
     }
   } catch (err: any) {
     const errorMsg = err?.message || "Network request failed";

@@ -111,24 +111,42 @@ function LoginForm() {
           const { data: userRoleRows } = await supabase
             .from("user_roles")
             .select("role_id, role_key, chapter_id")
-            .eq("user_id", userId)
-            .limit(1);
+            .eq("user_id", userId);
 
           if (userRoleRows && userRoleRows.length > 0) {
-            const firstRow = userRoleRows[0];
-            chapterId = firstRow.chapter_id ?? chapterId;
+            const ROLE_PRIORITY: RoleKey[] = [
+              "alumni",
+              "student",
+              "faculty_coordinator",
+              "class_representative",
+              "campus_lead",
+              "hq_admin",
+              "founder",
+            ];
 
-            if (firstRow.role_id) {
-              const { data: roleRow } = await supabase
-                .from("roles")
-                .select("key")
-                .eq("id", firstRow.role_id)
-                .maybeSingle();
-              if (roleRow?.key) {
-                roleKey = roleRow.key as RoleKey;
+            const foundRoleKeys: RoleKey[] = [];
+            for (const ur of userRoleRows) {
+              if (ur.chapter_id && !chapterId) {
+                chapterId = ur.chapter_id;
               }
-            } else if (firstRow.role_key) {
-              roleKey = firstRow.role_key as RoleKey;
+              if (ur.role_key) {
+                foundRoleKeys.push(ur.role_key as RoleKey);
+              } else if (ur.role_id) {
+                const { data: roleRow } = await supabase
+                  .from("roles")
+                  .select("key")
+                  .eq("id", ur.role_id)
+                  .maybeSingle();
+                if (roleRow?.key) {
+                  foundRoleKeys.push(roleRow.key as RoleKey);
+                }
+              }
+            }
+
+            if (foundRoleKeys.length > 0) {
+              roleKey = foundRoleKeys.reduce<RoleKey>((best, cur) => {
+                return ROLE_PRIORITY.indexOf(cur) > ROLE_PRIORITY.indexOf(best) ? cur : best;
+              }, foundRoleKeys[0]);
             }
           }
 
@@ -168,7 +186,10 @@ function LoginForm() {
       }
 
       if (typeof window !== "undefined") {
-        if (roleKey) localStorage.setItem("elevates_active_role_key", roleKey);
+        if (roleKey) {
+          localStorage.setItem("elevates_active_role_key", roleKey);
+          localStorage.setItem("elevates_known_top_role", roleKey);
+        }
         if (chapterId) localStorage.setItem("elevates_active_chapter_id", chapterId);
       }
 

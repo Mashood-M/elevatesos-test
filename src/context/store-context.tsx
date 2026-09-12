@@ -2,9 +2,11 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type Dispatch,
   type ReactNode,
@@ -17,6 +19,13 @@ import {
   insertChapterRemote,
   loadStoreFromSupabase,
 } from "@/lib/data/supabase-bootstrap";
+import {
+  setupRealtimeSync,
+  mergeStoreData,
+  broadcastChange,
+  broadcastSessionUpdate,
+  recalculateUserSession,
+} from "@/lib/data/realtime-sync";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import { isUuid, genUuid } from "@/lib/uuid";
 import {
@@ -149,6 +158,7 @@ type CheckInResult = { ok: true } | { ok: false; message: string };
 type StoreContextValue = {
   store: ElevatesStore;
   hydrated: boolean;
+  refreshStore: () => Promise<void>;
   setSession: (userId: string, roleKey: RoleKey, chapterId?: string) => void;
   updateRegistrationStatus: (
     id: string,
@@ -1046,6 +1056,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
   const [hydrated, setHydrated] = useState(false);
 
+  const sessionRef = useRef(store.session);
+  sessionRef.current = store.session;
+
+  const refreshStore = useCallback(async () => {
+    try {
+      const result = await loadStoreFromSupabase();
+      if (result?.store) {
+        setStore((prev) => {
+          return sanitizeStore(
+            mergeStoreData(prev, result.store, (newRole) => {
+              showToast(`Role updated! You now have ${newRole} access.`, "info");
+            })
+          );
+        });
+      }
+    } catch (err) {
+      console.warn("[Elevates Store] Background revalidate error:", err);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
@@ -1061,13 +1091,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const cleanup = setupRealtimeSync({
+      onStoreChange: (updater) => {
+        setStore((prev) => sanitizeStore(updater(prev)));
+      },
+      onRevalidate: refreshStore,
+      onToast: showToast,
+      getCurrentSession: () => sessionRef.current,
+    });
+
+    return () => {
+      cleanup();
+    };
+  }, [hydrated, refreshStore]);
+
   const value = useMemo<StoreContextValue>(
     () => ({
       store,
       hydrated,
+      refreshStore,
       setSession: (userId, roleKey, chapterId) => {
         if (typeof window !== "undefined") {
           localStorage.setItem("elevates_active_role_key", roleKey);
+          localStorage.setItem("elevates_user_selected_role", "true");
           if (chapterId) {
             localStorage.setItem("elevates_active_chapter_id", chapterId);
             localStorage.setItem("elevates_locked_chapter_id", chapterId);
@@ -1110,6 +1159,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             },
           };
         });
+        broadcastSessionUpdate(userId, roleKey, chapterId);
       },
       updateRegistrationStatus: (id, status, actorId) => {
         let result: {
@@ -2816,12 +2866,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             )
             .concat(newRoles);
 
+          let nextSession = s.session;
+          if (profileIds.includes(s.session.userId) || profileIds.includes(s.session.authUserId || "")) {
+            nextSession = recalculateUserSession(
+              s.session,
+              updatedUserRoles,
+              s.roles,
+              profiles,
+              s.session.userId
+            );
+          }
+
           return {
             ...s,
             profiles,
             userRoles: updatedUserRoles,
+            session: nextSession,
           };
         });
+
+        broadcastChange("profiles", "UPDATE", { profileIds, chapterId, roleKey });
+        broadcastChange("user_roles", "UPDATE", { profileIds, chapterId, roleKey });
 
         for (const pid of profileIds) {
           const prof = store.profiles.find((p) => p.id === pid);
@@ -3795,14 +3860,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const leadershipLinked = s.userRoles.filter(
             (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
           );
+          const nextUserRoles = [...others, ...built, ...leadershipLinked];
           const updatedProfiles = assignedChapId
             ? s.profiles.map((p) => (p.id === userId ? { ...p, chapterId: assignedChapId } : p))
             : s.profiles;
           const roleSummary = assignments.map((a) => a.roleKey).join(", ") || "none";
+
+          let nextSession = s.session;
+          if (userId === s.session.userId || userId === s.session.authUserId) {
+            nextSession = recalculateUserSession(
+              s.session,
+              nextUserRoles,
+              s.roles,
+              updatedProfiles,
+              userId
+            );
+          }
+
           return {
             ...s,
             profiles: updatedProfiles,
-            userRoles: [...others, ...built, ...leadershipLinked],
+            userRoles: nextUserRoles,
+            session: nextSession,
             activityLogs: [
               log(
                 s.session.userId,
@@ -3815,6 +3894,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+
+        broadcastChange("user_roles", "UPDATE", built);
 
         void runPersist(
           persistUserRoles(userId, assignments, store.organization.id),
@@ -4399,10 +4480,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (term.status === "active") {
             userRoles = upsertUserRoleForAssignment(s, term, assignment);
           }
+          let nextSession = s.session;
+          if (input.userId === s.session.userId || input.userId === s.session.authUserId) {
+            nextSession = recalculateUserSession(
+              s.session,
+              userRoles,
+              s.roles,
+              s.profiles,
+              input.userId
+            );
+          }
           return {
             ...s,
             leadershipAssignments: [...s.leadershipAssignments, assignment],
             userRoles,
+            session: nextSession,
             activityLogs: [
               log(
                 s.session.userId,
@@ -4415,6 +4507,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        broadcastChange("leadership_assignments", "INSERT", assignment);
+        broadcastChange("user_roles", "UPDATE", assignment);
         void runPersist(persistLeadershipAssignment(assignment), {
           errorMessage: `Failed to add leadership assignment "${assignment.title}"`,
           rollback: () => {
@@ -4463,12 +4557,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               next,
             );
           }
+          let nextSession = s.session;
+          if (
+            existing.userId === s.session.userId ||
+            next.userId === s.session.userId ||
+            existing.userId === s.session.authUserId ||
+            next.userId === s.session.authUserId
+          ) {
+            nextSession = recalculateUserSession(
+              s.session,
+              userRoles,
+              s.roles,
+              s.profiles,
+              s.session.userId
+            );
+          }
           return {
             ...s,
             leadershipAssignments: s.leadershipAssignments.map((a) =>
               a.id === id ? next : a,
             ),
             userRoles,
+            session: nextSession,
             activityLogs: [
               log(
                 s.session.userId,
@@ -4481,6 +4591,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        broadcastChange("leadership_assignments", "UPDATE", next);
+        broadcastChange("user_roles", "UPDATE", next);
         void runPersist(persistLeadershipAssignment(next), {
           errorMessage: `Failed to update leadership assignment "${next.title}"`,
           rollback: () => {
@@ -4501,12 +4613,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (term?.status === "active") {
             userRoles = removeUserRoleForAssignment(s, existing);
           }
+          let nextSession = s.session;
+          if (existing.userId === s.session.userId || existing.userId === s.session.authUserId) {
+            nextSession = recalculateUserSession(
+              s.session,
+              userRoles,
+              s.roles,
+              s.profiles,
+              s.session.userId
+            );
+          }
           return {
             ...s,
             leadershipAssignments: s.leadershipAssignments.filter(
               (a) => a.id !== id,
             ),
             userRoles,
+            session: nextSession,
             activityLogs: [
               log(
                 s.session.userId,
@@ -4519,6 +4642,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        broadcastChange("leadership_assignments", "DELETE", existing);
+        broadcastChange("user_roles", "UPDATE", existing);
         void runPersist(deleteLeadershipAssignmentRemote(id), {
           errorMessage: `Failed to remove leadership assignment "${existing.title}"`,
           rollback: () => {
@@ -5573,7 +5698,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
     }),
-    [store, hydrated],
+    [store, hydrated, refreshStore],
   );
 
   return (

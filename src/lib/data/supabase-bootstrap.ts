@@ -731,6 +731,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         );
 
         const ROLE_PRIORITY: RoleKey[] = [
+          "alumni",
           "student",
           "faculty_coordinator",
           "class_representative",
@@ -779,9 +780,20 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
           const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
 
-          if (savedRoleKey && (isHqUser || assignedKeys.includes(savedRoleKey))) {
+          const knownTopRole = localStorage.getItem("elevates_known_top_role") as RoleKey | null;
+
+          // If a new promotion was granted or top role changed, immediately activate top role
+          if (!knownTopRole || knownTopRole !== topRoleKey) {
+            activeRoleKey = topRoleKey;
+            localStorage.setItem("elevates_known_top_role", topRoleKey);
+            localStorage.setItem("elevates_active_role_key", topRoleKey);
+          } else if (savedRoleKey && (isHqUser || assignedKeys.includes(savedRoleKey))) {
             activeRoleKey = savedRoleKey;
+          } else {
+            activeRoleKey = topRoleKey;
+            localStorage.setItem("elevates_active_role_key", topRoleKey);
           }
+
           if (savedChapterId) {
             activeChapterId = savedChapterId;
           }

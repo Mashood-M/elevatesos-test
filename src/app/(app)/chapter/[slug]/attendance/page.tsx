@@ -471,8 +471,36 @@ export default function ChapterAttendancePage({
 
   const handleQrScan = useCallback(
     (codeOverride?: string) => {
-      const code = (codeOverride ?? qrInput).trim();
-      if (!code) return;
+      let rawCode = (codeOverride ?? qrInput).trim();
+      if (!rawCode) return;
+
+      // Clean potential wrapping quotes or whitespace
+      rawCode = rawCode.replace(/^["']|["']$/g, "").trim();
+
+      // If scanned data is a URL, extract qr/code/id param or last pathname segment
+      if (rawCode.startsWith("http://") || rawCode.startsWith("https://")) {
+        try {
+          const parsedUrl = new URL(rawCode);
+          const q =
+            parsedUrl.searchParams.get("qr") ||
+            parsedUrl.searchParams.get("code") ||
+            parsedUrl.searchParams.get("id");
+          if (q) {
+            rawCode = q.trim();
+          } else {
+            const segments = parsedUrl.pathname.split("/").filter(Boolean);
+            if (segments.length > 0) rawCode = segments[segments.length - 1].trim();
+          }
+        } catch {}
+      } else if (rawCode.startsWith("{") && rawCode.endsWith("}")) {
+        try {
+          const parsed = JSON.parse(rawCode);
+          const q = parsed.qrCode || parsed.code || parsed.id;
+          if (q) rawCode = String(q).trim();
+        } catch {}
+      }
+
+      const code = rawCode;
 
       const { eventId: eid, status: st, offlineDesk: off, online: on, activeSessionId: sessId, activeSessionName: sessName } =
         deskRef.current;
@@ -495,7 +523,8 @@ export default function ChapterAttendancePage({
 
       let reg = store.registrations.find(
         (r) =>
-          r.qrCode === code &&
+          (r.qrCode?.trim().toLowerCase() === code.toLowerCase() ||
+            r.id?.trim().toLowerCase() === code.toLowerCase()) &&
           r.eventId === eid &&
           r.status === "approved",
       );
@@ -503,10 +532,32 @@ export default function ChapterAttendancePage({
       // If not approved, check if waitlisted or pending (Campus Lead can auto-approve)
       if (!reg && isCampusLead) {
         const pendingReg = store.registrations.find(
-          (r) => r.qrCode === code && r.eventId === eid,
+          (r) =>
+            (r.qrCode?.trim().toLowerCase() === code.toLowerCase() ||
+              r.id?.trim().toLowerCase() === code.toLowerCase()) &&
+            r.eventId === eid,
         );
         if (pendingReg) {
           reg = pendingReg;
+        }
+      }
+
+      // If not found by registration QR directly, check if it matches an approved attendee's Elevates ID, email, or profile ID
+      if (!reg) {
+        const matchedProfile = store.profiles.find(
+          (p) =>
+            p.elevatesId?.trim().toLowerCase() === code.toLowerCase() ||
+            p.email?.trim().toLowerCase() === code.toLowerCase() ||
+            p.id === code,
+        );
+        if (matchedProfile) {
+          reg = store.registrations.find(
+            (r) =>
+              r.eventId === eid &&
+              r.userId === matchedProfile.id &&
+              (r.status === "approved" ||
+                (isCampusLead && (r.status === "waitlisted" || r.status === "pending"))),
+          );
         }
       }
 

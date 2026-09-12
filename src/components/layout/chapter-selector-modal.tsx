@@ -93,7 +93,7 @@ export function ChapterSelectorModal({
   const modalTitle = title || `Select Chapter for ${roleName} View`;
 
   return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 md:p-10 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2.5 sm:p-6 md:p-10 animate-in fade-in duration-200">
       {/* Backdrop covering whole website */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-md transition-opacity"
@@ -106,10 +106,10 @@ export function ChapterSelectorModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="chapter-selector-title"
-        className="relative z-10 flex max-h-[88vh] w-full max-w-2xl sm:max-w-3xl flex-col overflow-hidden rounded-[24px] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text)] shadow-2xl ring-1 ring-black/10 animate-in zoom-in-95 duration-150"
+        className="relative z-10 flex max-h-[92dvh] sm:max-h-[88vh] w-full max-w-2xl sm:max-w-3xl flex-col overflow-hidden rounded-[20px] sm:rounded-[24px] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text)] shadow-2xl ring-1 ring-black/10 animate-in zoom-in-95 duration-150"
       >
         {/* Header */}
-        <div className="relative border-b border-[var(--border)] bg-[var(--bg)] px-6 py-5 sm:px-8 sm:py-6">
+        <div className="relative border-b border-[var(--border)] bg-[var(--bg)] px-4 py-4 sm:px-8 sm:py-6">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex items-center gap-2">
@@ -169,7 +169,7 @@ export function ChapterSelectorModal({
         </div>
 
         {/* Chapters List */}
-        <div className="scrollbar-thin flex-1 space-y-5 overflow-y-auto p-6 sm:p-8">
+        <div className="scrollbar-thin flex-1 space-y-4 sm:space-y-5 overflow-y-auto p-3.5 sm:p-8">
           {/* Pinned Test Chapter */}
           {testChapter && (
             <div className="space-y-2">

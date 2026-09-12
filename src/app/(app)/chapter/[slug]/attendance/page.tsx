@@ -844,7 +844,7 @@ export default function ChapterAttendancePage({
       />
 
       {/* Top Stats Bar in clean ERP styling */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Approved Students" value={stats.approved} />
         {isMultiSession ? (
           <>
@@ -1319,8 +1319,8 @@ export default function ChapterAttendancePage({
 
 
 
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px] max-w-md">
+        <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:max-w-md">
             <Input
               value={rosterQuery}
               onChange={(e) => setRosterQuery(e.target.value)}
@@ -1333,6 +1333,7 @@ export default function ChapterAttendancePage({
               }
               disabled={!hasEvent}
               aria-label="Filter directory"
+              className="w-full"
             />
           </div>
 
@@ -1818,19 +1819,19 @@ export default function ChapterAttendancePage({
 
       {/* On-Spot Chapter Student Check-in Dialog */}
       {isOnSpotOpen && !isReadOnly && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-[var(--radius)] border border-border bg-bg-panel p-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-2.5 sm:p-4 backdrop-blur-sm">
+          <div className="flex flex-col w-full max-w-xl max-h-[92dvh] rounded-[var(--radius)] border border-border bg-bg-panel p-4 sm:p-5 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
+              <div className="min-w-0 flex-1 pr-2">
                 <h3 className="text-sm font-semibold text-text">On-Spot Chapter Student Check-in</h3>
-                <p className="text-[12px] text-text-dim">
+                <p className="text-[12px] text-text-dim truncate sm:whitespace-normal">
                   Mark attendance for any student enrolled in {chapter?.name || "this chapter"} [
                   <span className="text-[var(--accent)]">{activeSessionObj.name}</span>].
                 </p>
               </div>
               <Button
                 variant="ghost"
-                className="h-8 w-8 p-0 text-text-dim hover:text-text"
+                className="h-8 w-8 p-0 text-text-dim hover:text-text shrink-0"
                 onClick={() => {
                   setIsOnSpotOpen(false);
                   setOnSpotSearch("");
@@ -1840,7 +1841,7 @@ export default function ChapterAttendancePage({
               </Button>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-3 shrink-0">
               <Input
                 autoFocus
                 value={onSpotSearch}
@@ -1850,7 +1851,7 @@ export default function ChapterAttendancePage({
               />
             </div>
 
-            <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+            <div className="mt-3 flex-1 min-h-0 max-h-[55dvh] sm:max-h-72 space-y-2 overflow-y-auto">
               {filteredOnSpotStudents.length === 0 ? (
                 <p className="py-6 text-center text-[12px] text-text-dim">
                   No students found matching &quot;{onSpotSearch}&quot;.

@@ -25,7 +25,7 @@ export function TerminalPanel({
   return (
     <section
       className={cn(
-        "rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] md:p-6",
+        "rounded-[var(--radius)] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] md:p-6",
         className,
       )}
     >

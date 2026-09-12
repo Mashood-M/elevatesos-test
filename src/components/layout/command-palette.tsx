@@ -61,7 +61,7 @@ export function CommandPalette({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-start justify-center bg-[var(--charcoal-900)]/45 px-4 pt-[14vh]">
+    <div className="fixed inset-0 z-[80] flex items-start justify-center bg-[var(--charcoal-900)]/45 px-3 pt-[8vh] sm:px-4 sm:pt-[14vh]">
       <button
         className="absolute inset-0"
         aria-label="Close"

@@ -551,7 +551,7 @@ export default function ChapterStudentsPage({
       )}
 
       {/* Stats Cards */}
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label={session.roleKey === "class_representative" ? "Class Members" : "Chapter Members"}
           value={chapterMembers.length}
@@ -727,9 +727,9 @@ export default function ChapterStudentsPage({
       )}
 
       {/* Student & Member List Table */}
-      <div className="rounded-[var(--radius-lg)] bg-bg-panel p-5 shadow-[var(--shadow)]">
+      <div className="rounded-[var(--radius-lg)] bg-bg-panel p-3.5 sm:p-5 shadow-[var(--shadow)]">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+          <table className="w-full min-w-[700px] text-left text-xs">
             <thead>
               <tr className="border-b border-border text-text-dim">
                 <th className="pb-3 w-8">
@@ -935,8 +935,8 @@ export default function ChapterStudentsPage({
 
       {/* Add Single Student Modal */}
       {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-4 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
                 <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
@@ -1055,8 +1055,8 @@ export default function ChapterStudentsPage({
 
       {/* Bulk CSV Modal */}
       {isBulkOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm">
+          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-4 sm:p-6 shadow-2xl">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
                 <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">

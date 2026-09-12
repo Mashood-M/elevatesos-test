@@ -335,16 +335,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
-                className="ml-auto flex h-10 w-full max-w-md items-center gap-2 rounded-full bg-bg px-4 text-left text-[13px] text-text-mute shadow-[var(--shadow-sm)]"
+                className="ml-auto flex h-10 items-center gap-2 rounded-full bg-bg px-3 text-left text-[13px] text-text-mute shadow-[var(--shadow-sm)] transition hover:text-text sm:w-full sm:max-w-md sm:px-4"
               >
-                <Search size={15} className="opacity-50" />
-                <span className="flex-1 truncate">Search anything…</span>
+                <Search size={15} className="opacity-50 shrink-0" />
+                <span className="hidden sm:inline flex-1 truncate">Search anything…</span>
+                <span className="inline sm:hidden text-xs">Search…</span>
                 <kbd className="hidden font-[family-name:var(--font-mono)] text-[10px] sm:inline">
                   ⌘K
                 </kbd>
               </button>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Link
                 href={alertsHref}
                 className="relative flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-dim hover:text-text shadow-[var(--shadow-sm)]"
@@ -357,7 +358,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
               <Link
                 href={profile ? `/profile/${profile.elevatesId || profile.id}` : "/login"}
-                className="flex h-10 items-center gap-2 rounded-full bg-bg py-1 pl-1 pr-3 shadow-[var(--shadow-sm)]"
+                className="flex h-10 items-center gap-2 rounded-full bg-bg py-1 pl-1 pr-1 sm:pr-3 shadow-[var(--shadow-sm)]"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--charcoal-900)] text-[10px] font-bold text-white">
                   {profile ? initials(profile.fullName) : "?"}

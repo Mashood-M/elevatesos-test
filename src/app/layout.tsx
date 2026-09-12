@@ -1,8 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { StoreProvider } from "@/context/store-context";
 import { InactivityTimer } from "@/components/auth/inactivity-timer";
 import { OfflineIndicator } from "@/components/ui/offline-indicator";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
 
 export const metadata: Metadata = {
   title: "Elevates OS",

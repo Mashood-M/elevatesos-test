@@ -958,7 +958,7 @@ export default function EventDetailPage({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="md:col-span-2 rounded-[10px] border border-border/80 bg-bg p-3 shadow-[var(--shadow-sm)]">
                 <FieldLabel>Event Scope / Hierarchy</FieldLabel>
-                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     className={`rounded-[8px] border px-2.5 py-1.5 text-left text-[11px] transition-colors ${

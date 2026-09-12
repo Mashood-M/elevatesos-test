@@ -91,13 +91,13 @@ export default function ChapterAnalyticsPage({
         description={`Playbook metrics — reach, conversion, and build outcomes for ${chapter.name}.`}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Activity Score" value={`${activityScore}%`} accent="green" hint={healthLabel(activityScore)} />
         <Stat label="Students reached" value={members.length} accent="cyan" />
         <Stat label="Active+ members" value={activePlus} accent="magenta" />
         <Stat label="Cluster members" value={clusterMembers} accent="orange" />
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Events" value={events.length} accent="cyan" />
         <Stat label="Registrations" value={registrations.length} accent="magenta" />
         <Stat label="Check-ins" value={attendance.length} accent="orange" />
@@ -112,7 +112,7 @@ export default function ChapterAnalyticsPage({
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <TerminalPanel title="activity.score">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="h-[200px]">
+            <div className="h-[200px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={activityData} startAngle={90} endAngle={-270}>
                   <RadialBar dataKey="value" cornerRadius={4} />
@@ -131,7 +131,7 @@ export default function ChapterAnalyticsPage({
         </TerminalPanel>
 
         <TerminalPanel title="engagement.trend" accent="magenta">
-          <div className="h-[240px]">
+          <div className="h-[240px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthlyEngagement}>
                 <CartesianGrid stroke="#222" strokeDasharray="3 3" />
@@ -146,7 +146,7 @@ export default function ChapterAnalyticsPage({
         </TerminalPanel>
 
         <TerminalPanel title="event.breakdown" accent="cyan" className="xl:col-span-2">
-          <div className="h-[280px]">
+          <div className="h-[280px] min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={eventStats}>
                 <CartesianGrid stroke="#222" strokeDasharray="3 3" />

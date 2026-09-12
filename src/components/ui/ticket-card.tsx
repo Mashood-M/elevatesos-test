@@ -47,7 +47,7 @@ export function TicketCard({
           </h3>
           <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-1.5 shrink-0 max-w-[50%] sm:max-w-none">
           {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") ? (
             <Badge tone="cyan">Open to All</Badge>
           ) : (

@@ -16,7 +16,7 @@ export function Stat({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius)] p-5 shadow-[var(--shadow)]",
+        "rounded-[var(--radius)] p-4 sm:p-5 shadow-[var(--shadow)]",
         highlight
           ? "bg-[var(--accent)] text-white"
           : "bg-bg-panel text-text",
@@ -24,7 +24,7 @@ export function Stat({
     >
       <p
         className={cn(
-          "text-[12px] font-medium",
+          "text-[11px] sm:text-[12px] font-medium truncate",
           highlight ? "text-white/80" : "text-text-mute",
         )}
       >
@@ -32,7 +32,7 @@ export function Stat({
       </p>
       <p
         className={cn(
-          "mt-2 font-[family-name:var(--font-display)] text-[1.875rem] font-extrabold tracking-[-0.04em] tabular-nums",
+          "mt-1.5 sm:mt-2 font-[family-name:var(--font-display)] text-[1.5rem] sm:text-[1.875rem] font-extrabold tracking-[-0.04em] tabular-nums",
           highlight ? "text-white" : "text-text",
         )}
       >

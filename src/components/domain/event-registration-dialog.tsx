@@ -10,6 +10,7 @@ import { FieldLabel, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { formatDateTime } from "@/lib/utils";
 import { mintQrCode } from "@/lib/forms/helpers";
+import { getEventRegistrationState } from "@/lib/events";
 import { genUuid } from "@/lib/uuid";
 import type { EventItem, EventRegistration } from "@/types";
 import {
@@ -68,6 +69,11 @@ export function EventRegistrationDialog({
       ) ?? null
     );
   }, [event, session.userId, store.registrations]);
+
+  const regState = useMemo(() => {
+    if (!event) return null;
+    return getEventRegistrationState(store, event, session.userId);
+  }, [event, store, session.userId]);
 
   // Find user's cohort & auto-select rep
   const { autoRep, availableReps } = useMemo(() => {
@@ -189,11 +195,19 @@ export function EventRegistrationDialog({
     <Dialog
       open={open}
       onClose={handleModalClose}
-      title={activeReg ? "Event Registration" : "Confirm Event Registration"}
+      title={
+        activeReg
+          ? "Event Registration"
+          : regState?.isWaitlist
+            ? "Join Event Waiting List"
+            : "Confirm Direct Registration"
+      }
       description={
         activeReg
           ? "You are registered for this event."
-          : "Your verified student details in Elevates OS will be automatically submitted."
+          : regState?.isWaitlist
+            ? "All direct seats are full. Join the waiting list in first-registered priority order."
+            : "Direct registration with instant seat confirmation — no approval request needed."
       }
       className="max-w-lg"
     >
@@ -260,8 +274,8 @@ export function EventRegistrationDialog({
                   {activeReg.status}
                 </span>
                 {activeReg.status === "waitlisted"
-                  ? " — Event seats are full. The Campus Lead will review and approve seats if spots open."
-                  : " — Your registration is approved and your check-in QR code is ready below."}
+                  ? " — Event seats are full. You are on the waiting list in first-registered priority order. If registered members do not attend, the event coordinator will approve seats."
+                  : " — Your registration is approved directly and your check-in QR code is ready below."}
               </p>
             </div>
 
@@ -299,6 +313,41 @@ export function EventRegistrationDialog({
         ) : (
           /* REGISTRATION CONFIRMATION FORM */
           <div className="space-y-4">
+            {/* CAPACITY / WAITLIST STATUS BANNER */}
+            {regState?.isClosed ? (
+              <div className="rounded-[10px] border border-red-500/30 bg-red-500/10 p-3 text-[12px] text-red-400 flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Registration Closed</p>
+                  <p className="mt-0.5 text-text-dim leading-relaxed">
+                    {regState.reason || "Registration has closed for this event."}
+                  </p>
+                </div>
+              </div>
+            ) : regState?.isWaitlist ? (
+              <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-500 flex items-start gap-2">
+                <Clock size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Seats Full — Waiting List Available</p>
+                  <p className="mt-0.5 text-text-dim leading-relaxed">
+                    Event seats have reached capacity. You are joining position{" "}
+                    <strong>#{regState.waitlistedCount + 1}</strong> on the waiting list.
+                    First to register receives first priority. If registered attendees do not come, the event coordinator will approve seats from the waiting list.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-[12px] text-emerald-500 flex items-start gap-2">
+                <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Instant Direct Registration</p>
+                  <p className="mt-0.5 text-text-dim leading-relaxed">
+                    No approval request needed. Seats are allocated directly on a first-come, first-served basis with instant QR pass issuance.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* AUTO-FETCHED VERIFIED PROFILE CARD */}
             <div className="rounded-[14px] border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-3">
               <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2.5">
@@ -352,10 +401,10 @@ export function EventRegistrationDialog({
               </div>
             </div>
 
-            {/* CLASS REP ASSIGNMENT */}
+            {/* CLASS REP ASSIGNMENT (FOR CLASS CONTACT) */}
             {availableReps.length > 1 ? (
               <div>
-                <FieldLabel>Class Representative (for approval review)</FieldLabel>
+                <FieldLabel>Class Representative</FieldLabel>
                 <Select
                   value={effectiveRepId}
                   onChange={(e) => setSelectedRepId(e.target.value)}
@@ -372,10 +421,10 @@ export function EventRegistrationDialog({
               <div className="flex items-center justify-between rounded-[10px] border border-border/60 bg-bg p-2.5 text-[12px]">
                 <div className="flex items-center gap-2">
                   <GraduationCap size={15} className="text-cyan shrink-0" />
-                  <span className="text-text-dim">Assigned Class Rep:</span>
+                  <span className="text-text-dim">Class Representative:</span>
                   <span className="font-semibold text-text">{autoRep.fullName}</span>
                 </div>
-                <Badge tone="cyan">Assigned</Badge>
+                <Badge tone="cyan">Contact</Badge>
               </div>
             ) : null}
 
@@ -397,15 +446,30 @@ export function EventRegistrationDialog({
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                variant="orange"
-                className="h-10 px-5 font-semibold text-sm"
-                onClick={handleConfirm}
-                disabled={loading}
-              >
-                {loading ? "Registering..." : "Confirm & Register"}
-              </Button>
+              {regState?.isClosed ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 px-5 font-semibold text-sm cursor-not-allowed opacity-60"
+                  disabled
+                >
+                  Registration Closed
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="orange"
+                  className="h-10 px-5 font-semibold text-sm"
+                  onClick={handleConfirm}
+                  disabled={loading}
+                >
+                  {loading
+                    ? "Submitting..."
+                    : regState?.isWaitlist
+                      ? "Confirm & Join Waitlist"
+                      : "Confirm & Register"}
+                </Button>
+              )}
             </div>
           </div>
         )}

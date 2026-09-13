@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
@@ -29,18 +29,12 @@ import {
 } from "@/components/domain/date-time-pickers";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { isUuid, genUuid } from "@/lib/uuid";
+import { DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
 import type { EventItem as StoreEventItem } from "@/types";
 
 export type EventStatus = "Draft" | "Upcoming" | "Ongoing" | "Completed" | "Cancelled";
 export type EventFormat = "Campus Exclusive" | "Open" | "Online" | "Multi-Campus";
-export type EventCategory =
-  | "Workshop"
-  | "Meetup"
-  | "Hackathon"
-  | "Challenge"
-  | "Showcase"
-  | "Lecture"
-  | "Lab";
+export type EventCategory = string;
 
 export interface Host {
   name: string;
@@ -84,6 +78,7 @@ export interface CmsEventItem {
   hosts: Host[];
   topics: string[];
   attendeesCount: number;
+  waitlistCapacity?: number;
   coverImage: string;
   featured: boolean;
   platform?: PlatformCaseStudyRef;
@@ -318,7 +313,7 @@ export function createBlankCmsEvent(
     description: "",
     fullDescription: "",
     format: "Campus Exclusive",
-    category: "Workshop",
+    category: "WORKSHOP",
     status: "Draft",
     startDate,
     endDate,
@@ -332,6 +327,7 @@ export function createBlankCmsEvent(
     hosts: [{ name: "", role: "" }],
     topics: [],
     attendeesCount: 0,
+    waitlistCapacity: 0,
     coverImage: "",
     featured: false,
     platform: {
@@ -360,10 +356,35 @@ export function EventEditor({
   /** The display name of the locked chapter (for non-HQ users). */
   lockedChapterName?: string;
 }) {
-  const { store } = useStore();
-  const [d, setD] = useState<CmsEventItem>(event);
+  const { store, addEventCategory } = useStore();
+  const [d, setD] = useState<CmsEventItem>(() => ({
+    ...event,
+    category: (event.category || "WORKSHOP").toUpperCase(),
+  }));
   const u = (patch: Partial<CmsEventItem>) =>
     setD((prev) => ({ ...prev, ...patch }));
+
+  const [isAddingTopic, setIsAddingTopic] = useState(false);
+  const [newTopicInput, setNewTopicInput] = useState("");
+  const topicInputRef = useRef<HTMLInputElement>(null);
+
+  const allCategories = useMemo(() => {
+    const list = getAllEventCategories(store.eventCategories);
+    const cur = d.category ? d.category.trim().toUpperCase() : "";
+    if (cur && !list.includes(cur)) {
+      return [...list, cur];
+    }
+    return list;
+  }, [store.eventCategories, d.category]);
+
+  const handleAddNewTopic = () => {
+    const normalized = newTopicInput.trim().toUpperCase();
+    if (!normalized) return;
+    addEventCategory(normalized);
+    u({ category: normalized });
+    setNewTopicInput("");
+    setIsAddingTopic(false);
+  };
 
   const currentPlatform = d.platform ?? {
     enabled: false,
@@ -599,7 +620,7 @@ export function EventEditor({
           </div>
 
           {/* Meta Controls */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Format">
               <select
                 className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text"
@@ -617,52 +638,117 @@ export function EventEditor({
                 )}
               </select>
             </Field>
-            <Field label="Category">
-              <select
-                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text"
-                value={d.category}
-                onChange={(e) =>
-                  u({ category: e.target.value as EventCategory })
-                }
-              >
-                {[
-                  "Workshop",
-                  "Meetup",
-                  "Hackathon",
-                  "Challenge",
-                  "Showcase",
-                  "Lecture",
-                  "Lab",
-                ].map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-semibold text-text-dim">
+                  Category / Topic
+                </label>
+                {!isAddingTopic ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingTopic(true);
+                      setTimeout(() => topicInputRef.current?.focus(), 50);
+                    }}
+                    className="text-[10px] font-bold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={11} /> Add New Topic
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingTopic(false);
+                      setNewTopicInput("");
+                    }}
+                    className="text-[10px] text-text-dim hover:underline cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              {isAddingTopic ? (
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    ref={topicInputRef}
+                    type="text"
+                    className="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--accent)] bg-bg px-2.5 text-xs font-bold uppercase tracking-wider text-text placeholder:text-text-mute placeholder:normal-case outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                    placeholder="e.g. CYBERSECURITY"
+                    value={newTopicInput}
+                    onChange={(e) => setNewTopicInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddNewTopic();
+                      } else if (e.key === "Escape") {
+                        setIsAddingTopic(false);
+                        setNewTopicInput("");
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewTopic}
+                    disabled={!newTopicInput.trim()}
+                    className="h-9 px-3 rounded-[var(--radius-md)] bg-[var(--accent)] text-white text-xs font-bold uppercase tracking-wider hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <select
+                  className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs font-semibold uppercase text-text"
+                  value={d.category ? d.category.toUpperCase() : "WORKSHOP"}
+                  onChange={(e) => {
+                    if (e.target.value === "__NEW_TOPIC__") {
+                      setIsAddingTopic(true);
+                      setTimeout(() => topicInputRef.current?.focus(), 50);
+                    } else {
+                      u({ category: e.target.value.toUpperCase() });
+                    }
+                  }}
+                >
+                  {allCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                  <option value="__NEW_TOPIC__" className="text-[var(--accent)] font-bold">
+                    + Add New Topic...
                   </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Status">
-              <select
-                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text"
-                value={d.status}
-                onChange={(e) =>
-                  u({ status: e.target.value as EventStatus })
-                }
-              >
-                {["Draft", "Upcoming", "Ongoing", "Completed", "Cancelled"].map((s) => (
-                  <option key={s} value={s}>
-                    {s === "Draft" ? "Draft (Unpublished — Hidden from students)" : s}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Attendees Count">
+                </select>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Seat Capacity">
               <input
                 type="number"
+                min={1}
                 className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
-                value={d.attendeesCount}
+                placeholder="60"
+                value={d.attendeesCount || ""}
                 onChange={(e) =>
                   u({ attendeesCount: parseInt(e.target.value) || 0 })
                 }
+              />
+            </Field>
+            <Field label="Waitlist Capacity (0 = no waitlist)">
+              <input
+                type="number"
+                min={0}
+                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+                placeholder="0"
+                value={d.waitlistCapacity === undefined ? "" : d.waitlistCapacity}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  u({
+                    waitlistCapacity:
+                      val === "" ? 0 : Math.max(0, parseInt(val, 10) || 0),
+                  });
+                }}
               />
             </Field>
           </div>
@@ -857,7 +943,7 @@ export function EventManagerCreateDialog({
   redirectToEvent?: boolean;
 }) {
   const router = useRouter();
-  const { store, createEvent } = useStore();
+  const { store, createEvent, addEventCategory } = useStore();
   const { session } = useCurrentUser();
 
   // Determine if the current user is an HQ-level role
@@ -884,6 +970,9 @@ export function EventManagerCreateDialog({
   if (!open) return null;
 
   async function handleSave(saved: CmsEventItem) {
+    const finalCategory = saved.category ? saved.category.trim().toUpperCase() : "WORKSHOP";
+    addEventCategory(finalCategory);
+
     const targetChapter =
       store.chapters.find((c) => c.slug === saved.chapterSlug) ||
       resolvedChapter ||
@@ -938,7 +1027,10 @@ export function EventManagerCreateDialog({
       endsAt,
       organizerId: session.userId,
       capacity: saved.attendeesCount || 60,
-      waitlistCapacity: 15,
+      waitlistCapacity:
+        typeof saved.waitlistCapacity === "number"
+          ? Math.max(0, saved.waitlistCapacity)
+          : 0,
       visibility,
       mode:
         saved.format === "Online"
@@ -958,7 +1050,7 @@ export function EventManagerCreateDialog({
           : "draft",
       certificateEnabled: true,
       ticketNo: `NO. ${String(chapterEvents.length + 10).padStart(2, "0")}`,
-      category: saved.category?.toUpperCase() || "WORKSHOP",
+      category: finalCategory,
       topics: saved.topics || [],
       bannerUrl: saved.coverImage || undefined,
       platform: saved.platform?.enabled

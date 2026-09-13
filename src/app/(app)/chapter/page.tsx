@@ -9,7 +9,7 @@ import { TicketCard } from "@/components/ui/ticket-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
 import { isFacultyRole } from "@/lib/access";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
@@ -222,8 +222,14 @@ export default function ChapterIndexPage() {
               <div className="space-y-4">
                 <div className="grid gap-3">
                   {openEvents.slice(0, 2).map((ev) => {
-                    const eligibility = canRegisterNow(store, ev, session.userId);
+                    const regState = getEventRegistrationState(store, ev, session.userId);
                     const chapter = store.chapters.find((c) => c.id === ev.chapterId);
+                    const myReg = store.registrations.find(
+                      (r) =>
+                        r.eventId === ev.id &&
+                        (r.userId === session.userId || (session.authUserId && r.userId === session.authUserId)) &&
+                        r.status !== "rejected",
+                    );
                     return (
                       <TicketCard
                         key={ev.id}
@@ -240,7 +246,43 @@ export default function ChapterIndexPage() {
                                   View Details
                                 </Button>
                               </Link>
-                            ) : eligibility.ok ? (
+                            ) : myReg ? (
+                              <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
+                                <Button
+                                  variant={myReg.status === "approved" ? "green" : "secondary"}
+                                  className="h-8 px-3 text-xs"
+                                >
+                                  {myReg.status === "approved"
+                                    ? "Pass Confirmed"
+                                    : myReg.status === "waitlisted"
+                                      ? "Waitlisted Pass"
+                                      : "Registered"}
+                                </Button>
+                              </Link>
+                            ) : regState.status === "ended" ? (
+                              <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
+                                <Button variant="primary" className="h-8 px-3 text-xs">
+                                  Open Event
+                                </Button>
+                              </Link>
+                            ) : regState.isClosed ? (
+                              <Button
+                                variant="ghost"
+                                className="h-8 px-3 text-xs text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                                disabled
+                                title={regState.reason || "Registration is closed"}
+                              >
+                                Registration Closed
+                              </Button>
+                            ) : regState.isWaitlist ? (
+                              <Button
+                                variant="secondary"
+                                className="h-8 px-3 text-xs border-amber-500/40 text-amber-500 hover:bg-amber-500/10 font-semibold"
+                                onClick={() => setSelectedEventForReg(ev)}
+                              >
+                                Join Waiting List
+                              </Button>
+                            ) : (
                               <Button
                                 variant="orange"
                                 className="h-8 px-3 text-xs"
@@ -248,12 +290,6 @@ export default function ChapterIndexPage() {
                               >
                                 Register
                               </Button>
-                            ) : (
-                              <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
-                                <Button variant="primary" className="h-8 px-3 text-xs">
-                                  Open Event
-                                </Button>
-                              </Link>
                             )}
                           </>
                         }

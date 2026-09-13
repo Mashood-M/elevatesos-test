@@ -14,12 +14,18 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { TicketCard } from "@/components/ui/ticket-card";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole } from "@/lib/access";
-import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
+import {
+  canRegisterNow,
+  isEventVisibleToUser,
+  DEFAULT_EVENT_CATEGORIES,
+  getAllEventCategories,
+  getEventRegistrationState,
+} from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
-import { fromLocalInput, toLocalInput } from "@/lib/datetime";
-import { formatDateTime } from "@/lib/utils";
-import { Search, Users, GraduationCap, X } from "lucide-react";
+import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
+import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2 } from "lucide-react";
+import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
 import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
 
 
@@ -51,7 +57,6 @@ type EventDraft = {
   capacity: string;
   waitlistCapacity: string;
   visibility: Visibility;
-  status: EventStatus;
   startsAt: string;
   endsAt: string;
   registrationStart: string;
@@ -73,19 +78,14 @@ type EventDraft = {
 };
 
 function draftFromEvent(event: EventItem): EventDraft {
-  const status =
-    event.status === "pending_approval"
-      ? "registration_open"
-      : event.status;
   return {
     title: event.title,
-    category: event.category,
+    category: (event.category || "WORKSHOP").toUpperCase(),
     description: event.description,
     venue: event.venue,
     capacity: String(event.capacity),
     waitlistCapacity: String(event.waitlistCapacity),
     visibility: event.visibility,
-    status,
     startsAt: toLocalInput(event.startsAt),
     endsAt: toLocalInput(event.endsAt),
     registrationStart: toLocalInput(event.registrationStart),
@@ -111,14 +111,6 @@ function draftFromEvent(event: EventItem): EventDraft {
 
 
 
-const STATUS_OPTIONS: EventStatus[] = [
-  "draft",
-  "approved",
-  "registration_open",
-  "registration_closed",
-  "completed",
-  "cancelled",
-];
 
 function regStatusTone(
   status: RegistrationStatus,
@@ -141,9 +133,12 @@ export default function EventDetailPage({
     store,
     createForm,
     updateEvent,
+    deleteEvent,
     updateRegistrationStatus,
+    batchUpdateRegistrationStatus,
     setFormStatus,
     sendEventReminders,
+    addEventCategory,
   } = useStore();
   const { session } = useCurrentUser();
 
@@ -164,7 +159,9 @@ export default function EventDetailPage({
 
   const isFaculty = isFacultyRole(session.roleKey);
   const canEdit = hasPermission(store, session.roleKey, "event.manage");
-  const canApprove = hasPermission(store, session.roleKey, "registration.approve");
+  const canApprove =
+    hasPermission(store, session.roleKey, "registration.approve") ||
+    Boolean(event && event.organizerId === session.userId);
   const canReview = hasPermission(store, session.roleKey, "registration.review");
   const canAttendance = hasPermission(
     store,
@@ -179,13 +176,36 @@ export default function EventDetailPage({
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EventDraft | null>(null);
+  const [isAddingTopic, setIsAddingTopic] = useState(false);
+  const [newTopicInput, setNewTopicInput] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [queueFlash, setQueueFlash] = useState("");
+  const [admitCount, setAdmitCount] = useState<number>(1);
   const [publishFlash, setPublishFlash] = useState("");
   const [qrCopied, setQrCopied] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
   const [studentStatusFilter, setStudentStatusFilter] = useState<string>("all");
   const [studentDeptFilter, setStudentDeptFilter] = useState<string>("all");
   const [registerOpen, setRegisterOpen] = useState(false);
+
+  const allCategories = useMemo(() => {
+    const list = getAllEventCategories(store.eventCategories);
+    const cur = draft?.category ? draft.category.trim().toUpperCase() : "";
+    if (cur && !list.includes(cur)) {
+      return [...list, cur];
+    }
+    return list;
+  }, [store.eventCategories, draft?.category]);
+
+  const handleAddNewTopic = () => {
+    const normalized = newTopicInput.trim().toUpperCase();
+    if (!normalized) return;
+    addEventCategory(normalized);
+    setDraft((d) => (d ? { ...d, category: normalized } : d));
+    setNewTopicInput("");
+    setIsAddingTopic(false);
+  };
 
   useEffect(() => {
     if (event && !editing) {
@@ -248,6 +268,14 @@ export default function EventDetailPage({
     });
   }, [registeredStudents, studentSearch, studentStatusFilter, studentDeptFilter]);
 
+  if (isDeleting) {
+    return (
+      <div className="py-16 text-center">
+        <p className="text-xs text-text-dim">Deleting event...</p>
+      </div>
+    );
+  }
+
   if (!chapter || !event) {
     return (
       <div className="py-16 text-center">
@@ -300,6 +328,7 @@ export default function EventDetailPage({
   }
 
 
+  const regState = getEventRegistrationState(store, event, session.userId);
   const approved = regs.filter((r) => r.status === "approved").length;
   const waitlisted = regs.filter((r) => r.status === "waitlisted").length;
   const seatsLeft = Math.max(0, event.capacity - approved);
@@ -307,7 +336,14 @@ export default function EventDetailPage({
   const fbForm = getEventForm(store, event.id, "feedback");
   const myReg = regs.find((r) => r.userId === session.userId);
   const organizer = store.profiles.find((p) => p.id === event.organizerId);
-  const queue = regs.filter((r) => r.status === "waitlisted");
+  const queue = useMemo(() => {
+    return regs
+      .filter((r) => r.status === "waitlisted")
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+  }, [regs]);
   const eligibility = canRegisterNow(store, event, session.userId);
 
   function startEdit() {
@@ -339,9 +375,12 @@ export default function EventDetailPage({
         }
       : undefined;
 
+    const finalCategory = (draft.category.trim() || event!.category || "WORKSHOP").toUpperCase();
+    addEventCategory(finalCategory);
+
     updateEvent(event!.id, {
       title: draft.title.trim(),
-      category: draft.category.trim() || event!.category,
+      category: finalCategory,
       description: draft.description.trim(),
       venue: draft.venue.trim(),
       capacity: Math.max(1, parseInt(draft.capacity, 10) || event!.capacity),
@@ -350,7 +389,7 @@ export default function EventDetailPage({
         parseInt(draft.waitlistCapacity, 10) || 0,
       ),
       visibility: draft.visibility,
-      status: draft.status,
+      status: event!.status,
       startsAt: fromLocalInput(draft.startsAt),
       endsAt: fromLocalInput(draft.endsAt),
       registrationStart: fromLocalInput(draft.registrationStart),
@@ -507,10 +546,6 @@ export default function EventDetailPage({
               <dd className="capitalize">
                 {event.visibility.replaceAll("_", " ")}
               </dd>
-            </div>
-            <div className="flex justify-between gap-4">
-              <dt className="text-text-dim">Ticket</dt>
-              <dd>{event.ticketNo}</dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-text-dim">Organizer</dt>
@@ -722,22 +757,54 @@ export default function EventDetailPage({
           >
             {!myReg || myReg.status === "rejected" ? (
               <div className="space-y-3">
-                <p className="text-[13px] text-text-dim">
-                  {myReg?.status === "rejected"
-                    ? "Your previous registration was rejected. Use Register above if the form is still open."
-                    : eligibility.ok
-                      ? "You are not registered yet — register now with your student profile."
-                      : eligibility.reason}
-                </p>
-                {event.status !== "completed" && event.status !== "cancelled" ? (
-                  <Button
-                    variant="orange"
-                    className="h-8 px-3 text-[12px]"
-                    onClick={() => setRegisterOpen(true)}
-                  >
-                    Register now
-                  </Button>
-                ) : null}
+                {regState.status === "ended" ? (
+                  <p className="text-[13px] text-text-dim font-medium">
+                    This event has ended. Registrations are no longer accepted.
+                  </p>
+                ) : regState.isClosed ? (
+                  <>
+                    <p className="text-[13px] text-text-dim">
+                      {regState.reason || "Registration is closed for this event."}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      className="h-8 px-3 text-[12px] text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                      disabled
+                    >
+                      Registration Closed
+                    </Button>
+                  </>
+                ) : regState.isWaitlist ? (
+                  <>
+                    <p className="text-[13px] text-amber-500 font-medium">
+                      All confirmed seats are filled. Waiting list is open — registration will place you in the queue (first-come, first-served).
+                    </p>
+                    <Button
+                      variant="orange"
+                      className="h-8 px-3 text-[12px] bg-amber-600 hover:bg-amber-500 text-white font-semibold"
+                      onClick={() => setRegisterOpen(true)}
+                    >
+                      Join Waiting List
+                    </Button>
+                  </>
+                ) : eligibility.ok ? (
+                  <>
+                    <p className="text-[13px] text-text-dim">
+                      Direct registration with instant seat confirmation — no approval request needed.
+                    </p>
+                    <Button
+                      variant="orange"
+                      className="h-8 px-3 text-[12px]"
+                      onClick={() => setRegisterOpen(true)}
+                    >
+                      Register now
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-[13px] text-text-dim">
+                    {eligibility.reason}
+                  </p>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
@@ -746,7 +813,7 @@ export default function EventDetailPage({
                 </Badge>
                 {myReg.status === "waitlisted" ? (
                   <p className="text-[13px] text-amber-500 font-medium">
-                    You are on the waiting list because event capacity is full. Waiting list approvals are granted exclusively by the Campus Lead.
+                    You are on the waiting list in first-registered priority order. If registered members do not attend the event, the event coordinator will approve seats from the waiting list.
                   </p>
                 ) : null}
                 {myReg.status === "approved" && myReg.qrCode ? (
@@ -1041,15 +1108,82 @@ export default function EventDetailPage({
                 />
               </div>
               <div>
-                <FieldLabel>Category</FieldLabel>
-                <Input
-                  value={draft.category}
-                  onChange={(e) =>
-                    setDraft((d) =>
-                      d ? { ...d, category: e.target.value } : d,
-                    )
-                  }
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <FieldLabel className="mb-0">Category / Topic</FieldLabel>
+                  {!isAddingTopic ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingTopic(true)}
+                      className="text-[11px] font-bold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={11} /> Add New Topic
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingTopic(false);
+                        setNewTopicInput("");
+                      }}
+                      className="text-[11px] text-text-dim hover:underline cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                {isAddingTopic ? (
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      placeholder="e.g. CYBERSECURITY"
+                      value={newTopicInput}
+                      onChange={(e) => setNewTopicInput(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddNewTopic();
+                        } else if (e.key === "Escape") {
+                          setIsAddingTopic(false);
+                          setNewTopicInput("");
+                        }
+                      }}
+                      autoFocus
+                      className="font-bold uppercase tracking-wider h-11"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddNewTopic}
+                      disabled={!newTopicInput.trim()}
+                      className="h-11 px-4 font-bold uppercase tracking-wider shrink-0"
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ) : (
+                  <Select
+                    value={draft.category ? draft.category.toUpperCase() : "WORKSHOP"}
+                    onChange={(e) => {
+                      if (e.target.value === "__NEW_TOPIC__") {
+                        setIsAddingTopic(true);
+                      } else {
+                        setDraft((d) =>
+                          d ? { ...d, category: e.target.value.toUpperCase() } : d,
+                        );
+                      }
+                    }}
+                    className="font-semibold uppercase"
+                  >
+                    {allCategories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                    <option value="__NEW_TOPIC__" className="text-[var(--accent)] font-bold">
+                      + Add New Topic...
+                    </option>
+                  </Select>
+                )}
               </div>
               <div>
                 <FieldLabel>Venue</FieldLabel>
@@ -1105,7 +1239,7 @@ export default function EventDetailPage({
                 />
               </div>
 
-              <div>
+              <div className="sm:col-span-2">
                 <FieldLabel>Visibility</FieldLabel>
                 <Select
                   value={draft.visibility}
@@ -1124,25 +1258,6 @@ export default function EventDetailPage({
                   <option value="specific_chapters">Selected Chapters</option>
                   <option value="all_chapters">All Chapters</option>
                   <option value="public">Public</option>
-                </Select>
-              </div>
-              <div>
-                <FieldLabel>Status</FieldLabel>
-                <Select
-                  value={draft.status}
-                  onChange={(e) =>
-                    setDraft((d) =>
-                      d
-                        ? { ...d, status: e.target.value as EventStatus }
-                        : d,
-                    )
-                  }
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s.replaceAll("_", " ")}
-                    </option>
-                  ))}
                 </Select>
               </div>
               <div>
@@ -1325,22 +1440,44 @@ export default function EventDetailPage({
                   Certificates enabled
                 </label>
               </div>
-              <div className="md:col-span-2 flex flex-wrap gap-2">
-                <Button variant="primary" onClick={saveEdit}>
-                  Save changes
-                </Button>
-                <Button variant="ghost" onClick={cancelEdit}>
-                  Cancel
-                </Button>
+              <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/60">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" onClick={saveEdit}>
+                    Save changes
+                  </Button>
+                  <Button variant="ghost" onClick={cancelEdit}>
+                    Cancel
+                  </Button>
+                </div>
+                {canEdit ? (
+                  <Button
+                    variant="danger"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete event
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : (
             <>
               {detailsReadonly}
               {canEdit ? (
-                <Button variant="ghost" className="mt-4" onClick={startEdit}>
-                  Edit details
-                </Button>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/60">
+                  <Button variant="ghost" onClick={startEdit}>
+                    Edit details
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-1.5"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete event
+                  </Button>
+                </div>
               ) : null}
             </>
           )}
@@ -1504,39 +1641,92 @@ export default function EventDetailPage({
       {queue.length > 0 ? (
         <TerminalPanel
           title="waiting.list.approvals"
-          meta={`${queue.length} student${queue.length === 1 ? "" : "s"} on waitlist`}
+          meta={`${queue.length} student${queue.length === 1 ? "" : "s"} in queue (FIFO)`}
           accent="orange"
           className="mb-6"
         >
           <div className="mb-3 flex items-start gap-2.5 rounded-[10px] bg-amber-500/10 p-3 text-xs text-amber-400">
             <span className="text-base leading-none">ℹ️</span>
             <div>
-              <p className="font-semibold">Event Capacity Waiting List</p>
+              <p className="font-semibold">Event Capacity Waiting List (First-Come, First-Served)</p>
               <p className="mt-0.5 text-text-dim leading-relaxed">
-                Registrations are approved automatically with an instant QR pass as long as seats are available.
+                Direct registrations are approved immediately with an instant QR pass while seats are available.
                 These students joined the waiting list after the {event.capacity}-seat limit was reached.
-                <strong> Only the Campus Lead</strong> has authority to approve waitlisted students and grant them a confirmed seat with a check-in QR code.
+                <strong> If any registered members do not attend the event</strong>, the event coordinator can approve students from the waiting list for whatever amount of seats are needed.
+                The waiting list is strictly prioritized by first-registered order (first to register gets the seat).
               </p>
             </div>
           </div>
+
+          {canApprove ? (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-border/70 bg-bg p-3 shadow-[var(--shadow-sm)]">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-text">Admit from Waiting List:</span>
+                <span className="text-[11px] text-text-dim">(fill open or no-show seats)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={queue.length}
+                  value={admitCount}
+                  onChange={(e) =>
+                    setAdmitCount(
+                      Math.max(
+                        1,
+                        Math.min(queue.length, parseInt(e.target.value, 10) || 1),
+                      ),
+                    )
+                  }
+                  className="h-8 w-16 rounded border border-border bg-bg-panel px-2 text-center font-mono text-xs text-text"
+                />
+                <Button
+                  variant="orange"
+                  className="h-8 px-3 text-xs font-semibold"
+                  onClick={() => {
+                    const count = Math.min(admitCount, queue.length);
+                    const targetIds = queue.slice(0, count).map((r) => r.id);
+                    const ok = batchUpdateRegistrationStatus(
+                      targetIds,
+                      "approved",
+                      session.userId,
+                    );
+                    if (ok) {
+                      setQueueFlash(
+                        `Successfully approved the next ${count} waitlisted student${count === 1 ? "" : "s"} in priority order! Check-in QR codes minted.`,
+                      );
+                    }
+                  }}
+                >
+                  Approve Next {Math.min(admitCount, queue.length)} in Queue (FIFO) → Mint QR
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           {queueFlash ? (
             <div className="mb-3 rounded-[8px] bg-[var(--accent)]/10 px-3 py-2 text-xs font-medium text-[var(--accent)]">
               {queueFlash}
             </div>
           ) : null}
           <ul className="space-y-3">
-            {queue.map((reg) => {
+            {queue.map((reg, idx) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
               return (
                 <li
                   key={reg.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] bg-bg p-3 shadow-[var(--shadow-sm)]"
                 >
-                  <div>
-                    <p className="font-bold text-text">{user?.fullName || reg.guestName || "Student"}</p>
-                    <p className="text-[11px] text-text-dim">
-                      {user?.department || "Unassigned"} • Year {user?.year || "—"} • Registered {new Date(reg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
+                      Priority #{idx + 1}
+                    </span>
+                    <div>
+                      <p className="font-bold text-text">{user?.fullName || reg.guestName || "Student"}</p>
+                      <p className="text-[11px] text-text-dim">
+                        {user?.department || "Unassigned"} • Year {user?.year || "—"} • Registered {new Date(reg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {canApprove ? (
@@ -1558,7 +1748,7 @@ export default function EventDetailPage({
                       </>
                     ) : (
                       <span className="rounded-full bg-border/50 px-2.5 py-1 text-[11px] font-medium text-text-dim">
-                        Approvals restricted to Campus Lead
+                        Approvals restricted to Event Coordinator & Campus Lead
                       </span>
                     )}
                   </div>
@@ -1672,6 +1862,9 @@ export default function EventDetailPage({
                     <th className="py-2.5 px-3">Email Address</th>
                     <th className="py-2.5 px-3">Status</th>
                     <th className="py-2.5 px-3">Registered At</th>
+                    {canApprove && (
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
@@ -1723,6 +1916,36 @@ export default function EventDetailPage({
                           year: "numeric",
                         })}
                       </td>
+                      {canApprove && (
+                        <td className="py-2.5 px-3 text-right">
+                          {item.status === "waitlisted" ? (
+                            <Button
+                              variant="green"
+                              className="h-6 px-2 text-[11px]"
+                              onClick={() => handleRegAction(item.reg.id, "approved")}
+                            >
+                              Approve Seat
+                            </Button>
+                          ) : item.status === "approved" ? (
+                            <Button
+                              variant="ghost"
+                              className="h-6 px-2 text-[11px] text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                              onClick={() => handleRegAction(item.reg.id, "rejected")}
+                              title="Release seat if student does not attend"
+                            >
+                              Release / No-Show
+                            </Button>
+                          ) : item.status === "rejected" ? (
+                            <Button
+                              variant="ghost"
+                              className="h-6 px-2 text-[11px] text-[var(--accent)]"
+                              onClick={() => handleRegAction(item.reg.id, "approved")}
+                            >
+                              Re-admit
+                            </Button>
+                          ) : null}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -1731,6 +1954,21 @@ export default function EventDetailPage({
           )}
         </div>
       </TerminalPanel>
+
+      {event ? (
+        <DeleteEventDialog
+          open={showDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={() => {
+            const targetId = event.id;
+            setIsDeleting(true);
+            setShowDeleteConfirm(false);
+            deleteEvent(targetId);
+            router.push(`/chapter/${slug}/events`);
+          }}
+          eventTitle={event.title}
+        />
+      ) : null}
     </div>
   );
 }

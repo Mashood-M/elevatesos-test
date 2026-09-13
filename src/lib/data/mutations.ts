@@ -212,8 +212,12 @@ export async function deleteChapterRemote(id: string, slug?: string): Promise<Mu
 export async function persistEvent(event: EventItem): Promise<MutationResult> {
   return sendMutation("event", event);
 }
-export async function deleteEventRemote(id: string, slug?: string): Promise<MutationResult> {
-  return sendMutation("delete_event", { id, slug });
+export async function deleteEventRemote(
+  id: string,
+  slug?: string,
+  extra?: { title?: string; chapterId?: string }
+): Promise<MutationResult> {
+  return sendMutation("delete_event", { id, slug, ...extra });
 }
 
 // 3. Project

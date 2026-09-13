@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/lib/supabase/client";
 import { ensureTestChapter, deriveChapterShortCode } from "@/lib/chapters";
-import { deduplicateEvents } from "@/lib/events";
+import { deduplicateEvents, DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
 import { extractLocationFromNotes } from "@/lib/slug";
 import { isUuid } from "@/lib/uuid";
 import type {
@@ -55,7 +55,7 @@ function emptyStore(): ElevatesStore {
     leadershipTerms: [],
     leadershipAssignments: [],
     events: [],
-    eventCategories: [],
+    eventCategories: DEFAULT_EVENT_CATEGORIES,
     standardDepartments: [],
     guidelineCategories: [],
     academicYears: [],
@@ -216,9 +216,11 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
     // Load org-level presets and system data from Supabase settings JSONB column
     const orgSettings = (orgRow?.settings as Record<string, any>) ?? {};
 
-    const eventCategories: string[] = Array.isArray(orgSettings.event_categories)
-      ? (orgSettings.event_categories as string[])
-      : [];
+    const eventCategories: string[] = getAllEventCategories(
+      Array.isArray(orgSettings.event_categories)
+        ? (orgSettings.event_categories as string[])
+        : []
+    );
 
     const standardDepartments: string[] = Array.isArray(orgSettings.standard_departments)
       ? (orgSettings.standard_departments as string[])

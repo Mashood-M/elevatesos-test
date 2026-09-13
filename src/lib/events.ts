@@ -2,12 +2,229 @@ import { getEventForm, defaultFormsForEvent } from "@/lib/forms/helpers";
 import type { ElevatesStore, EventItem } from "@/types";
 
 export type RegisterEligibility =
-  | { ok: true; formId: string }
+  | { ok: true; formId: string; isWaitlist: boolean }
   | { ok: false; reason: string };
+
+export interface EventRegistrationState {
+  status: "open" | "waitlist_open" | "closed" | "ended" | "upcoming";
+  label: string;
+  canRegister: boolean;
+  isWaitlist: boolean;
+  isClosed: boolean;
+  approvedCount: number;
+  waitlistedCount: number;
+  capacity: number;
+  waitlistCapacity: number;
+  seatsLeft: number;
+  waitlistSeatsLeft: number;
+  hasWaitlist: boolean;
+  reason?: string;
+}
+
+/**
+ * Calculates current registration state, seat capacity, waitlist status, and whether registration is closed.
+ * - If seats are available (approved < capacity): Status is "open" (direct registration, priority-wise first registered gets seat).
+ * - If seats are full and event has waitlist (waitlistCapacity > 0):
+ *     - If waitlist has spots: Status is "waitlist_open" (users are added to waiting list).
+ *     - If waitlist is full: Status is "closed" ("Registration Closed").
+ * - If seats are full and event does not have waitlist (waitlistCapacity <= 0): Status is "closed" ("Registration Closed").
+ */
+export function getEventRegistrationState(
+  store: ElevatesStore,
+  event: EventItem,
+  userId?: string,
+  nowMs: number = Date.now(),
+): EventRegistrationState {
+  const approvedCount = (store.registrations ?? []).filter(
+    (r) => r.eventId === event.id && r.status === "approved",
+  ).length;
+  const waitlistedCount = (store.registrations ?? []).filter(
+    (r) => r.eventId === event.id && r.status === "waitlisted",
+  ).length;
+
+  const capacity =
+    typeof event.capacity === "number" && event.capacity > 0
+      ? event.capacity
+      : 100;
+  const waitlistCapacity =
+    typeof event.waitlistCapacity === "number" && event.waitlistCapacity > 0
+      ? event.waitlistCapacity
+      : 0;
+  const hasWaitlist = waitlistCapacity > 0;
+  const seatsLeft = Math.max(0, capacity - approvedCount);
+  const waitlistSeatsLeft = hasWaitlist
+    ? Math.max(0, waitlistCapacity - waitlistedCount)
+    : 0;
+
+  const st = (event.status || "").toLowerCase();
+  const isExplicitlyClosed =
+    st === "draft" ||
+    st === "completed" ||
+    st === "cancelled" ||
+    st === "registration_closed";
+
+  if (st === "completed" || st === "cancelled") {
+    return {
+      status: "ended",
+      label: st === "completed" ? "Event Ended" : "Event Cancelled",
+      canRegister: false,
+      isWaitlist: false,
+      isClosed: true,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+      reason:
+        st === "completed"
+          ? "This event has already ended."
+          : "This event was cancelled.",
+    };
+  }
+
+  if (isExplicitlyClosed) {
+    return {
+      status: "closed",
+      label: "Registration Closed",
+      canRegister: false,
+      isWaitlist: false,
+      isClosed: true,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+      reason:
+        st === "draft"
+          ? "This event is currently in draft mode and not published."
+          : "Registration is closed for this event.",
+    };
+  }
+
+  // Registration window
+  if (event.registrationStart) {
+    const start = new Date(event.registrationStart).getTime();
+    if (Number.isFinite(start) && nowMs < start) {
+      return {
+        status: "upcoming",
+        label: "Registration Upcoming",
+        canRegister: false,
+        isWaitlist: false,
+        isClosed: false,
+        approvedCount,
+        waitlistedCount,
+        capacity,
+        waitlistCapacity,
+        seatsLeft,
+        waitlistSeatsLeft,
+        hasWaitlist,
+        reason: "Registration has not opened yet.",
+      };
+    }
+  }
+
+  if (event.registrationEnd) {
+    const end = new Date(event.registrationEnd).getTime();
+    if (Number.isFinite(end) && nowMs > end) {
+      return {
+        status: "closed",
+        label: "Registration Closed",
+        canRegister: false,
+        isWaitlist: false,
+        isClosed: true,
+        approvedCount,
+        waitlistedCount,
+        capacity,
+        waitlistCapacity,
+        seatsLeft,
+        waitlistSeatsLeft,
+        hasWaitlist,
+        reason: "Registration has closed for this event.",
+      };
+    }
+  }
+
+  // Check seat capacity & waitlist
+  if (seatsLeft > 0) {
+    return {
+      status: "open",
+      label: "Register",
+      canRegister: true,
+      isWaitlist: false,
+      isClosed: false,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+    };
+  }
+
+  // Seats are full (seatsLeft === 0)
+  if (hasWaitlist) {
+    if (waitlistSeatsLeft > 0) {
+      return {
+        status: "waitlist_open",
+        label: "Join Waiting List",
+        canRegister: true,
+        isWaitlist: true,
+        isClosed: false,
+        approvedCount,
+        waitlistedCount,
+        capacity,
+        waitlistCapacity,
+        seatsLeft,
+        waitlistSeatsLeft,
+        hasWaitlist,
+      };
+    } else {
+      // Waiting list is full
+      return {
+        status: "closed",
+        label: "Registration Closed",
+        canRegister: false,
+        isWaitlist: false,
+        isClosed: true,
+        approvedCount,
+        waitlistedCount,
+        capacity,
+        waitlistCapacity,
+        seatsLeft,
+        waitlistSeatsLeft,
+        hasWaitlist,
+        reason:
+          "Registration is closed. Both event capacity and waiting list are full.",
+      };
+    }
+  } else {
+    // No waiting list on this event and seats are full
+    return {
+      status: "closed",
+      label: "Registration Closed",
+      canRegister: false,
+      isWaitlist: false,
+      isClosed: true,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+      reason: "Registration is closed. All available seats have been filled.",
+    };
+  }
+}
 
 /**
  * Whether a user can register for an event right now.
- * Checks: event status, form availability, registration window,
+ * Checks: capacity & waitlist availability, form availability, registration window,
  * platform account requirement, chapter-only visibility, and duplicate registration.
  */
 export function canRegisterNow(
@@ -16,24 +233,12 @@ export function canRegisterNow(
   userId: string | undefined,
   nowMs: number = Date.now(),
 ): RegisterEligibility {
-  // 1. Event status check
-  // Open statuses: "registration_open", "approved", or case-insensitive "upcoming" / "ongoing"
-  const st = (event.status || "").toLowerCase();
-  const isExplicitlyClosed =
-    st === "draft" ||
-    st === "completed" ||
-    st === "cancelled" ||
-    st === "registration_closed";
-
-  if (isExplicitlyClosed) {
+  // 1. Capacity, Waitlist & Event Status State Check
+  const regState = getEventRegistrationState(store, event, userId, nowMs);
+  if (!regState.canRegister) {
     return {
       ok: false,
-      reason:
-        st === "draft"
-          ? "This event is currently in draft mode and not published."
-          : st === "completed"
-            ? "This event has already ended."
-            : "Registration is not open for this event.",
+      reason: regState.reason || "Registration is closed for this event.",
     };
   }
 
@@ -53,21 +258,7 @@ export function canRegisterNow(
     };
   }
 
-  // 3. Registration window
-  if (event.registrationStart) {
-    const start = new Date(event.registrationStart).getTime();
-    if (Number.isFinite(start) && nowMs < start) {
-      return { ok: false, reason: "Registration has not opened yet." };
-    }
-  }
-  if (event.registrationEnd) {
-    const end = new Date(event.registrationEnd).getTime();
-    if (Number.isFinite(end) && nowMs > end) {
-      return { ok: false, reason: "Registration has closed for this event." };
-    }
-  }
-
-  // 4. Platform account required — only registered platform users can join
+  // 3. Platform account required — only registered platform users can join
   const effectiveUserId =
     userId || store.session?.userId || store.session?.authUserId;
   if (!effectiveUserId) {
@@ -86,13 +277,15 @@ export function canRegisterNow(
     };
   }
 
-  // 5. Chapter closed visibility — only members of the same chapter can join.
+  // 4. Chapter closed visibility — only members of the same chapter can join.
   // Open-to-all events never require chapter membership.
-  // HQ users (founder, hq_admin, campus_lead) are allowed to test/register across chapters.
+  // Privileged users (founder, hq_admin, campus_lead, coordinators) are allowed to test/register across chapters.
   const isPrivilegedUser =
     store.session?.roleKey === "founder" ||
     store.session?.roleKey === "hq_admin" ||
-    store.session?.roleKey === "campus_lead";
+    store.session?.roleKey === "campus_lead" ||
+    store.session?.roleKey === "elevates_coordinator" ||
+    store.session?.roleKey === "faculty_coordinator";
 
   if (!isOpenToAllEvent(event) && !isPrivilegedUser) {
     const userProfile = store.profiles.find((p) => p.id === effectiveUserId);
@@ -108,7 +301,7 @@ export function canRegisterNow(
     }
   }
 
-  // 6. Duplicate registration check
+  // 5. Duplicate registration check
   const duplicate = store.registrations?.some(
     (r) =>
       r.eventId === event.id &&
@@ -119,7 +312,11 @@ export function canRegisterNow(
     return { ok: false, reason: "You are already registered for this event." };
   }
 
-  return { ok: true, formId: form?.id || `form-reg-${event.id}` };
+  return {
+    ok: true,
+    formId: form?.id || `form-reg-${event.id}`,
+    isWaitlist: regState.isWaitlist,
+  };
 }
 
 /** Check if an event is open to all students across colleges and chapters. */
@@ -236,5 +433,31 @@ export function isEventVisibleToUser(
 
   // 6. Closed / chapter-only events: ONLY visible to users who belong to this chapter
   return isSameChapter;
+}
+
+export const DEFAULT_EVENT_CATEGORIES: string[] = [
+  "WORKSHOP",
+  "HACKATHON",
+  "MEETUP",
+  "LECTURE",
+  "LAB",
+  "SHOWCASE",
+  "CHALLENGE",
+];
+
+export function getAllEventCategories(storeCategories?: string[]): string[] {
+  const merged = [
+    ...DEFAULT_EVENT_CATEGORIES,
+    ...(storeCategories || []).map((c) => String(c).trim().toUpperCase()),
+  ];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const cat of merged) {
+    if (cat && !seen.has(cat)) {
+      seen.add(cat);
+      result.push(cat);
+    }
+  }
+  return result;
 }
 

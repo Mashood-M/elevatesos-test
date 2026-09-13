@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+// @ts-ignore
 import jsQR from "jsqr";
 import { Button } from "@/components/ui/button";
 

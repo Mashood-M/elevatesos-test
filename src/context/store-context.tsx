@@ -93,7 +93,7 @@ import {
   isAssignableLeadershipRole,
   isSingletonLeadershipRole,
 } from "@/lib/leadership";
-import { deduplicateEvents } from "@/lib/events";
+import { deduplicateEvents, DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
 import { resolveBrandKit } from "@/lib/brand/kit";
 import { isDemoMode } from "@/lib/mode";
 import { hasPermission, isHqRole, isSuperAdmin } from "@/lib/permissions";
@@ -1016,7 +1016,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       leadershipTerms: [],
       leadershipAssignments: [],
       events: [],
-      eventCategories: [],
+      eventCategories: DEFAULT_EVENT_CATEGORIES,
       standardDepartments: [],
       guidelineCategories: [],
       academicYears: [],
@@ -1181,13 +1181,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             const isAuthorized =
               actorRole === "campus_lead" ||
               actorRole === "chairman" ||
-              isSuperAdmin(actorRole);
+              actorRole === "elevates_coordinator" ||
+              actorRole === "faculty_coordinator" ||
+              isSuperAdmin(actorRole) ||
+              Boolean(s.events.find((e) => e.id === reg.eventId)?.organizerId === s.session.userId);
 
             if (!isAuthorized) {
               result = {
                 ok: false,
                 message:
-                  "Access restricted: Only the Campus Lead can approve registrations from the waiting list.",
+                  "Access restricted: Only the Event Coordinator or Campus Lead can approve registrations from the waiting list.",
               };
               return s;
             }
@@ -1772,6 +1775,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ? ("registration_open" as const)
             : (event.status || "draft");
 
+        const rawCategory = (event.category || existing?.category || "WORKSHOP").trim().toUpperCase();
+        if (rawCategory) {
+          const currentList = getAllEventCategories(store.eventCategories);
+          if (!currentList.some((c) => c.toUpperCase() === rawCategory)) {
+            const updatedCats = [...currentList, rawCategory];
+            setStore((s) => ({ ...s, eventCategories: updatedCats }));
+            void persistOrgSettingsPatch({ event_categories: updatedCats });
+          }
+        }
+
         const normalized: EventItem = {
           ...existing,
           ...event,
@@ -1780,6 +1793,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           chapterId: targetChapterId,
           organizerId: organizerId || existing?.organizerId || event.organizerId,
           status,
+          category: rawCategory,
         };
 
         setStore((s) => {
@@ -1856,6 +1870,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (safe.status === "pending_approval") {
           safe.status = "registration_open";
         }
+        if (safe.category) {
+          const cat = safe.category.trim().toUpperCase();
+          safe.category = cat;
+          if (cat) {
+            const currentList = getAllEventCategories(store.eventCategories);
+            if (!currentList.some((c) => c.toUpperCase() === cat)) {
+              const updatedCats = [...currentList, cat];
+              setStore((s) => ({ ...s, eventCategories: updatedCats }));
+              void persistOrgSettingsPatch({ event_categories: updatedCats });
+            }
+          }
+        }
         const nextTitle = safe.title ?? prev.title;
         const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
         setStore((s) => ({
@@ -1879,33 +1905,97 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         });
       },
       deleteEvent: (id) => {
-        const ev = store.events.find((e) => e.id === id);
+        const ev = store.events.find(
+          (e) =>
+            e.id === id ||
+            (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+            e.id.toLowerCase() === id.toLowerCase() ||
+            `evt-${e.id}` === id ||
+            e.id === `evt-${id}`,
+        );
+        const targetId = ev?.id || id;
+        const targetSlug = ev?.slug;
+        const targetTitle = (ev?.title || "").trim().toLowerCase();
+        const targetChapterId = ev?.chapterId;
+
+        // Collect all IDs and slugs that match this event
+        const matchedEventIds = new Set<string>();
+        matchedEventIds.add(targetId);
+        matchedEventIds.add(id);
+        if (`evt-${targetId}` !== targetId) matchedEventIds.add(`evt-${targetId}`);
+        if (`evt-${id}` !== id) matchedEventIds.add(`evt-${id}`);
+
+        store.events.forEach((e) => {
+          if (!e) return;
+          if (
+            e.id === targetId ||
+            e.id === id ||
+            `evt-${e.id}` === targetId ||
+            `evt-${e.id}` === id ||
+            e.id === `evt-${targetId}` ||
+            e.id === `evt-${id}` ||
+            e.id.toLowerCase() === targetId.toLowerCase() ||
+            e.id.toLowerCase() === id.toLowerCase() ||
+            (targetSlug && e.slug && e.slug.toLowerCase() === targetSlug.toLowerCase()) ||
+            (id && e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+            (targetTitle && e.title && e.title.trim().toLowerCase() === targetTitle && (!targetChapterId || !e.chapterId || e.chapterId === targetChapterId))
+          ) {
+            matchedEventIds.add(e.id);
+            if (e.slug) matchedEventIds.add(e.slug);
+          }
+        });
+
+        const isEventMatch = (e: EventItem) => {
+          if (!e) return false;
+          if (matchedEventIds.has(e.id)) return true;
+          if (e.slug && matchedEventIds.has(e.slug)) return true;
+          if (targetTitle && e.title && e.title.trim().toLowerCase() === targetTitle) {
+            if (!targetChapterId || !e.chapterId || e.chapterId === targetChapterId) {
+              return true;
+            }
+          }
+          return false;
+        };
+
         setStore((s) => ({
           ...s,
-          events: s.events.filter((e) => e.id !== id),
-          forms: (s.forms ?? []).filter((f) => f.eventId !== id),
-          eventForms: s.eventForms.filter((f) => f.eventId !== id),
+          events: s.events.filter((e) => !isEventMatch(e)),
+          forms: (s.forms ?? []).filter(
+            (f) => !f.eventId || !matchedEventIds.has(f.eventId),
+          ),
+          eventForms: s.eventForms.filter(
+            (f) => !f.eventId || !matchedEventIds.has(f.eventId),
+          ),
+          registrations: (s.registrations ?? []).filter(
+            (r) => !r.eventId || !matchedEventIds.has(r.eventId),
+          ),
+          attendance: (s.attendance ?? []).filter(
+            (a) => !a.eventId || !matchedEventIds.has(a.eventId),
+          ),
+          eventPermissions: (s.eventPermissions ?? []).filter(
+            (ep) => !ep.eventId || !matchedEventIds.has(ep.eventId),
+          ),
           activityLogs: [
             log(
               s.session.userId,
               "event_deleted",
               "event",
-              id,
+              targetId,
               ev?.title || "Deleted Event",
             ),
             ...s.activityLogs,
           ],
         }));
-        void runPersist(deleteEventRemote(id, ev?.slug), {
+        void runPersist(deleteEventRemote(targetId, targetSlug, { title: ev?.title, chapterId: ev?.chapterId }), {
           errorMessage: `Failed to delete event`,
         });
       },
       addEventCategory: (category) => {
         const normalized = category.trim().toUpperCase();
         if (!normalized) return false;
-        const existing = store.eventCategories ?? [];
-        if (existing.includes(normalized)) return false;
-        const updated = [...existing, normalized];
+        const currentList = getAllEventCategories(store.eventCategories);
+        if (currentList.some((c) => c.toUpperCase() === normalized)) return false;
+        const updated = [...currentList, normalized];
         setStore((s) => ({
           ...s,
           eventCategories: updated,
@@ -2001,17 +2091,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
 
           // Capacity-driven instant approval vs waitlist:
-          // If approved registrations < capacity, auto-approve immediately and mint QR code.
-          // If approved registrations >= capacity, place on waitlist without QR code.
+          // Priority-wise: first registers directly get confirmed registration.
+          // If registration limit is reached and event has waiting list: add to waiting list.
+          // If event has waiting list and waiting list is full: registration is closed.
+          // If event has no waiting list and capacity reached: registration is closed.
+          const cap =
+            typeof event.capacity === "number" && event.capacity > 0
+              ? event.capacity
+              : 100;
+          const waitlistCap =
+            typeof event.waitlistCapacity === "number" &&
+            event.waitlistCapacity > 0
+              ? event.waitlistCapacity
+              : 0;
+          const hasWaitlist = waitlistCap > 0;
+
           const approvedCount = s.registrations.filter(
             (r) => r.eventId === registration.eventId && r.status === "approved",
           ).length;
-          const cap = typeof event.capacity === "number" && event.capacity > 0 ? event.capacity : 100;
+          const waitlistedCount = s.registrations.filter(
+            (r) => r.eventId === registration.eventId && r.status === "waitlisted",
+          ).length;
+
           const hasSeat = approvedCount < cap;
 
-          const assignedStatus: RegistrationStatus = hasSeat ? "approved" : "waitlisted";
+          if (!hasSeat) {
+            if (!hasWaitlist) {
+              result = {
+                ok: false,
+                message:
+                  "Registration is closed. All available seats have been filled.",
+              };
+              return s;
+            }
+            if (waitlistedCount >= waitlistCap) {
+              result = {
+                ok: false,
+                message:
+                  "Registration is closed. Both event capacity and waiting list are full.",
+              };
+              return s;
+            }
+          }
+
+          const assignedStatus: RegistrationStatus = hasSeat
+            ? "approved"
+            : "waitlisted";
           const qrCode = hasSeat
-            ? (registration.qrCode || mintQrCode(registration.eventId, registration.userId))
+            ? registration.qrCode ||
+              mintQrCode(registration.eventId, registration.userId)
             : "";
 
           normalized = {
@@ -3384,12 +3512,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const prevRegistrations = store.registrations;
         if (status === "approved") {
           const actorRole = store.session.roleKey;
-          const isAuthorizedCampusLead =
+          const isAuthorized =
             actorRole === "campus_lead" ||
             actorRole === "chairman" ||
-            isSuperAdmin(actorRole);
+            actorRole === "elevates_coordinator" ||
+            actorRole === "faculty_coordinator" ||
+            isSuperAdmin(actorRole) ||
+            registrationIds.some((id) => {
+              const r = store.registrations.find((reg) => reg.id === id);
+              return (
+                r &&
+                store.events.find((e) => e.id === r.eventId)?.organizerId ===
+                  store.session.userId
+              );
+            });
 
-          if (!isAuthorizedCampusLead) {
+          if (!isAuthorized) {
             return false;
           }
         }

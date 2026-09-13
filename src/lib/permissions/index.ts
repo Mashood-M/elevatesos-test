@@ -65,7 +65,13 @@ export function hasPermission(
     }
   }
   if (permission === "registration.approve") {
-    return roleKey === "campus_lead" || roleKey === "chairman" || isSuperAdmin(roleKey);
+    return (
+      roleKey === "campus_lead" ||
+      roleKey === "chairman" ||
+      roleKey === "elevates_coordinator" ||
+      roleKey === "faculty_coordinator" ||
+      isSuperAdmin(roleKey)
+    );
   }
   if (permission === "attendance.verify") {
     return canVerifyAttendance(roleKey);
@@ -101,7 +107,13 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
       allowed = true;
     } else if (p.key === "attendance.view" && canViewAttendance(roleKey)) {
       allowed = true;
-    } else if (p.key === "registration.approve" && (roleKey === "campus_lead" || roleKey === "chairman")) {
+    } else if (
+      p.key === "registration.approve" &&
+      (roleKey === "campus_lead" ||
+        roleKey === "chairman" ||
+        roleKey === "elevates_coordinator" ||
+        roleKey === "faculty_coordinator")
+    ) {
       allowed = true;
     } else if (p.key === "event.create" && canCreateEvent(roleKey)) {
       allowed = true;

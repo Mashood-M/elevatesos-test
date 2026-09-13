@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/context/store-context";
 import Link from "next/link";
 import {
@@ -40,10 +40,12 @@ import {
   formatDisplayTime,
   getDefaultUpcomingEventTimes,
 } from "@/components/domain/date-time-pickers";
+import { DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
+import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
 
 type EventStatus = "Completed" | "Upcoming" | "Ongoing" | "Cancelled";
 type EventFormat = "Campus Exclusive" | "Open" | "Online" | "Multi-Campus";
-type EventCategory = "Workshop" | "Meetup" | "Hackathon" | "Challenge" | "Showcase" | "Lecture" | "Lab";
+type EventCategory = string;
 
 interface Host { name: string; role: string; }
 interface Organizer { name: string; }
@@ -81,6 +83,7 @@ interface EventItem {
   hosts: Host[];
   topics: string[];
   attendeesCount: number;
+  waitlistCapacity?: number;
   coverImage: string;
   featured: boolean;
   platform?: PlatformCaseStudyRef;
@@ -158,10 +161,46 @@ function OrgList({ orgs, onChange }: { orgs: Organizer[]; onChange: (v: Organize
   );
 }
 
-function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e: EventItem) => void; onClose: () => void }) {
-  const { store } = useStore();
-  const [d, setD] = useState<EventItem>(event);
+function EventEditor({
+  event,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  event: EventItem;
+  onSave: (e: EventItem) => void;
+  onDelete?: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { store, addEventCategory } = useStore();
+  const [d, setD] = useState<EventItem>(() => ({
+    ...event,
+    category: (event.category || "WORKSHOP").toUpperCase(),
+  }));
   const u = (patch: Partial<EventItem>) => setD((prev) => ({ ...prev, ...patch }));
+
+  const [isAddingTopic, setIsAddingTopic] = useState(false);
+  const [newTopicInput, setNewTopicInput] = useState("");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const topicInputRef = useRef<HTMLInputElement>(null);
+
+  const allCategories = useMemo(() => {
+    const list = getAllEventCategories(store.eventCategories);
+    const cur = d.category ? d.category.trim().toUpperCase() : "";
+    if (cur && !list.includes(cur)) {
+      return [...list, cur];
+    }
+    return list;
+  }, [store.eventCategories, d.category]);
+
+  const handleAddNewTopic = () => {
+    const normalized = newTopicInput.trim().toUpperCase();
+    if (!normalized) return;
+    addEventCategory(normalized);
+    u({ category: normalized });
+    setNewTopicInput("");
+    setIsAddingTopic(false);
+  };
 
   const currentPlatform = d.platform ?? {
     enabled: false, platformName: "", tagline: "", caseStudySlug: "",
@@ -341,25 +380,124 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
           </div>
 
           {/* Meta Controls */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Format">
               <select className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text" value={d.format} onChange={(e) => u({ format: e.target.value as EventFormat })}>
                 {["Campus Exclusive", "Open", "Online", "Multi-Campus"].map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </Field>
-            <Field label="Category">
-              <select className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text" value={d.category} onChange={(e) => u({ category: e.target.value as EventCategory })}>
-                {["Workshop", "Meetup", "Hackathon", "Challenge", "Showcase", "Lecture", "Lab"].map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-semibold text-text-dim">
+                  Category / Topic
+                </label>
+                {!isAddingTopic ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingTopic(true);
+                      setTimeout(() => topicInputRef.current?.focus(), 50);
+                    }}
+                    className="text-[10px] font-bold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={11} /> Add New Topic
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingTopic(false);
+                      setNewTopicInput("");
+                    }}
+                    className="text-[10px] text-text-dim hover:underline cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              {isAddingTopic ? (
+                <div className="flex gap-1.5 items-center">
+                  <input
+                    ref={topicInputRef}
+                    type="text"
+                    className="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--accent)] bg-bg px-2.5 text-xs font-bold uppercase tracking-wider text-text placeholder:text-text-mute placeholder:normal-case outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                    placeholder="e.g. CYBERSECURITY"
+                    value={newTopicInput}
+                    onChange={(e) => setNewTopicInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddNewTopic();
+                      } else if (e.key === "Escape") {
+                        setIsAddingTopic(false);
+                        setNewTopicInput("");
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddNewTopic}
+                    disabled={!newTopicInput.trim()}
+                    className="h-9 px-3 rounded-[var(--radius-md)] bg-[var(--accent)] text-white text-xs font-bold uppercase tracking-wider hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer shrink-0"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <select
+                  className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs font-semibold uppercase text-text"
+                  value={d.category ? d.category.toUpperCase() : "WORKSHOP"}
+                  onChange={(e) => {
+                    if (e.target.value === "__NEW_TOPIC__") {
+                      setIsAddingTopic(true);
+                      setTimeout(() => topicInputRef.current?.focus(), 50);
+                    } else {
+                      u({ category: e.target.value.toUpperCase() });
+                    }
+                  }}
+                >
+                  {allCategories.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                  <option value="__NEW_TOPIC__" className="text-[var(--accent)] font-bold">
+                    + Add New Topic...
+                  </option>
+                </select>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Seat Capacity">
+              <input
+                type="number"
+                min={1}
+                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+                placeholder="60"
+                value={d.attendeesCount || ""}
+                onChange={(e) =>
+                  u({ attendeesCount: parseInt(e.target.value) || 0 })
+                }
+              />
             </Field>
-            <Field label="Status">
-              <select className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-2 text-xs text-text" value={d.status} onChange={(e) => u({ status: e.target.value as EventStatus })}>
-                {["Upcoming", "Ongoing", "Completed", "Cancelled"].map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </Field>
-            <Field label="Attendees Count">
-              <input type="number" className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text" value={d.attendeesCount}
-                onChange={(e) => u({ attendeesCount: parseInt(e.target.value) || 0 })} />
+            <Field label="Waitlist Capacity (0 = no waitlist)">
+              <input
+                type="number"
+                min={0}
+                className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+                placeholder="0"
+                value={d.waitlistCapacity === undefined ? "" : d.waitlistCapacity}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  u({
+                    waitlistCapacity:
+                      val === "" ? 0 : Math.max(0, parseInt(val, 10) || 0),
+                  });
+                }}
+              />
             </Field>
           </div>
 
@@ -479,71 +617,95 @@ function EventEditor({ event, onSave, onClose }: { event: EventItem; onSave: (e:
           </Field>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-border p-5">
-          <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-          <Button variant="orange" size="sm" onClick={() => { onSave(d); onClose(); }}>Save Event</Button>
+        <div className="flex items-center justify-between gap-3 border-t border-border p-5">
+          {event.id && event.title && onDelete ? (
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5"
+            >
+              <Trash2 size={13} /> Delete Event
+            </Button>
+          ) : <div />}
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+            <Button variant="orange" size="sm" onClick={() => { onSave(d); onClose(); }}>Save Event</Button>
+          </div>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <DeleteEventDialog
+          open={showDeleteConfirm}
+          onClose={() => setShowDeleteConfirm(false)}
+          onConfirm={() => {
+            onDelete?.(event.id);
+            setShowDeleteConfirm(false);
+            onClose();
+          }}
+          eventTitle={d.title || event.title}
+        />
+      )}
     </div>
   );
 }
 
 export default function EventsCMSPage() {
-  const { store, createEvent, updateEvent, deleteEvent } = useStore();
-  const [events, setEvents] = useState<EventItem[]>([]);
-
-  useEffect(() => {
-    if (store.events && store.events.length > 0) {
-      const dynamicEvents: EventItem[] = store.events.map((e) => ({
-        id: e.id,
-        slug: e.slug || e.id,
-        title: e.title,
-        tagline: e.summary || e.description || "",
-        description: e.description || "",
-        fullDescription: e.description || "",
-        format: (e.visibility === "open_to_all" || e.visibility === "public" || e.visibility === "all_chapters")
-          ? (e.mode === "online" ? "Online" : "Open")
-          : "Campus Exclusive",
-        category: (e.category as EventCategory) || "Workshop",
-        status: ((e.status as string) === "completed" ? "Completed" : (e.status as string) === "registration_open" ? "Ongoing" : "Upcoming") as EventStatus,
-        startDate: e.startsAt ? new Date(e.startsAt).toLocaleDateString() : "",
-        endDate: e.endsAt ? new Date(e.endsAt).toLocaleDateString() : "",
-        startTime: e.startsAt ? new Date(e.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
-        endTime: e.endsAt ? new Date(e.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
-        isoStartDate: e.startsAt || "",
-        isoEndDate: e.endsAt || "",
-        venue: e.venue || "Seminar Hall",
-        locationName: "",
-        organizer: [{ name: "ELEVATES" }],
-        hosts: [],
-        topics: e.topics || [],
-        attendeesCount: e.capacity || 50,
-        coverImage: e.bannerUrl || "",
-        featured: true,
-        platform: e.platform?.enabled
-          ? {
-              enabled: true,
-              platformName: e.platform.platformName || e.title,
-              tagline: e.platform.tagline || "",
-              caseStudySlug: e.caseStudy?.caseStudySlug || e.slug || "case-study",
-              liveUrl: e.platform.liveUrl,
-              repoUrl: e.platform.repoUrl,
-              highlightMetric: e.platform.highlightMetric,
-              architectureSummary: e.platform.architectureSummary,
-            }
-          : undefined,
-        chapterSlug: store.chapters.find((c) => c.id === e.chapterId)?.slug || store.chapters[0]?.slug || "ch-main",
-        chapterName: store.chapters.find((c) => c.id === e.chapterId)?.name || store.chapters[0]?.name || "Campus Chapter",
-      }));
-      setEvents(dynamicEvents);
-    }
-  }, [store.events, store.chapters]);
+  const { store, createEvent, updateEvent, deleteEvent, addEventCategory } = useStore();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<EventStatus | "all">("all");
   const [filterChapter, setFilterChapter] = useState<string>("all");
   const [filterPlatformOnly, setFilterPlatformOnly] = useState(false);
   const [editing, setEditing] = useState<EventItem | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState<EventItem | null>(null);
+
+  const events = useMemo<EventItem[]>(() => {
+    return (store.events ?? []).map((e) => ({
+      id: e.id,
+      slug: e.slug || e.id,
+      title: e.title,
+      tagline: e.summary || e.description || "",
+      description: e.description || "",
+      fullDescription: e.description || "",
+      format: (e.visibility === "open_to_all" || e.visibility === "public" || e.visibility === "all_chapters")
+        ? (e.mode === "online" ? "Online" : "Open")
+        : "Campus Exclusive",
+      category: (e.category || "WORKSHOP").toUpperCase(),
+      status: ((e.status as string) === "completed" ? "Completed" : (e.status as string) === "registration_open" ? "Ongoing" : "Upcoming") as EventStatus,
+      startDate: e.startsAt ? new Date(e.startsAt).toLocaleDateString() : "",
+      endDate: e.endsAt ? new Date(e.endsAt).toLocaleDateString() : "",
+      startTime: e.startsAt ? new Date(e.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+      endTime: e.endsAt ? new Date(e.endsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+      isoStartDate: e.startsAt || "",
+      isoEndDate: e.endsAt || "",
+      venue: e.venue || "Seminar Hall",
+      locationName: "",
+      organizer: [{ name: "ELEVATES" }],
+      hosts: [],
+      topics: e.topics || [],
+      attendeesCount: e.capacity || 50,
+      waitlistCapacity: typeof e.waitlistCapacity === "number" ? e.waitlistCapacity : 15,
+      coverImage: e.bannerUrl || "",
+      featured: true,
+      platform: e.platform?.enabled
+        ? {
+            enabled: true,
+            platformName: e.platform.platformName || e.title,
+            tagline: e.platform.tagline || "",
+            caseStudySlug: e.caseStudy?.caseStudySlug || e.slug || "case-study",
+            liveUrl: e.platform.liveUrl,
+            repoUrl: e.platform.repoUrl,
+            highlightMetric: e.platform.highlightMetric,
+            architectureSummary: e.platform.architectureSummary,
+          }
+        : undefined,
+      chapterSlug: store.chapters.find((c) => c.id === e.chapterId)?.slug || store.chapters[0]?.slug || "ch-main",
+      chapterName: store.chapters.find((c) => c.id === e.chapterId)?.name || store.chapters[0]?.name || "Campus Chapter",
+    }));
+  }, [store.events, store.chapters]);
 
   const q = search.toLowerCase();
   const filtered = events.filter((e) => {
@@ -559,7 +721,7 @@ export default function EventsCMSPage() {
     const startDate = times.displayDate;
     return {
       id: `evt-${Date.now()}`, slug: "", title: "", tagline: "", description: "", fullDescription: "",
-      format: "Campus Exclusive", category: "Workshop", status: "Upcoming",
+      format: "Campus Exclusive", category: "WORKSHOP", status: "Upcoming",
       startDate, endDate: startDate,
       startTime: times.displayStartTime,
       endTime: times.displayEndTime,
@@ -567,7 +729,7 @@ export default function EventsCMSPage() {
       isoEndDate: times.isoEndDate,
       venue: "Main Seminar Hall", locationName: "",
       organizer: [{ name: "ELEVATES" }], hosts: [{ name: "", role: "" }],
-      topics: [], attendeesCount: 50, coverImage: "", featured: false,
+      topics: [], attendeesCount: 50, waitlistCapacity: 0, coverImage: "", featured: false,
       platform: { enabled: false, platformName: "", tagline: "", caseStudySlug: "" },
       chapterSlug: store.chapters[0]?.slug || "ch-main", chapterName: store.chapters[0]?.name || "Campus Chapter",
     };
@@ -589,7 +751,7 @@ export default function EventsCMSPage() {
       />
 
       {/* Stats Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
           <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{events.length}</p>
           <p className="text-xs text-text-dim">Total Events</p>
@@ -603,12 +765,6 @@ export default function EventsCMSPage() {
         <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
           <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">{events.filter((e) => e.status === "Completed").length}</p>
           <p className="text-xs text-text-dim">Completed</p>
-        </div>
-        <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4">
-          <p className="text-2xl font-[family-name:var(--font-display)] font-bold text-text">
-            {events.reduce((sum, e) => sum + e.attendeesCount, 0).toLocaleString()}
-          </p>
-          <p className="text-xs text-text-dim">Total Attendees</p>
         </div>
       </div>
 
@@ -733,11 +889,15 @@ export default function EventsCMSPage() {
 
               <div className="flex flex-col gap-2 shrink-0">
                 <Button variant="secondary" size="sm" onClick={() => { setEditing(evt); setIsNew(false); }}><Edit size={13} /> Edit</Button>
-                <Button variant="ghost" size="sm" className="text-[var(--danger)]" onClick={() => {
-                  if (confirm(`Delete event "${evt.title}"?`)) {
-                    deleteEvent(evt.id);
-                  }
-                }}><Trash2 size={13} /></Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-[var(--danger)] hover:bg-red-500/10 cursor-pointer"
+                  onClick={() => setDeletingEvent(evt)}
+                  title={`Delete event "${evt.title}"`}
+                >
+                  <Trash2 size={13} />
+                </Button>
               </div>
             </div>
           </div>
@@ -745,8 +905,17 @@ export default function EventsCMSPage() {
       </div>
 
       {editing && (
-        <EventEditor event={editing} onClose={() => { setEditing(null); setIsNew(false); }}
+        <EventEditor
+          event={editing}
+          onClose={() => { setEditing(null); setIsNew(false); }}
+          onDelete={(id) => {
+            deleteEvent(id);
+            setEditing(null);
+          }}
           onSave={async (saved) => {
+            const finalCategory = saved.category ? saved.category.trim().toUpperCase() : "WORKSHOP";
+            addEventCategory(finalCategory);
+
             const targetChapter =
               store.chapters.find((c) => c.slug === saved.chapterSlug) ||
               store.chapters[0];
@@ -773,7 +942,10 @@ export default function EventsCMSPage() {
                 new Date(Date.now() + 7200000).toISOString(),
               organizerId: store.session.userId,
               capacity: saved.attendeesCount || 60,
-              waitlistCapacity: 15,
+              waitlistCapacity:
+                typeof saved.waitlistCapacity === "number"
+                  ? Math.max(0, saved.waitlistCapacity)
+                  : 0,
               visibility,
               mode:
                 saved.format === "Online"
@@ -793,7 +965,7 @@ export default function EventsCMSPage() {
                   : "completed",
               certificateEnabled: true,
               ticketNo: `NO. ${String(store.events.length + 10).padStart(2, "0")}`,
-              category: saved.category?.toUpperCase() || "WORKSHOP",
+              category: finalCategory,
               topics: saved.topics || [],
               bannerUrl: saved.coverImage || undefined,
               platform: saved.platform?.enabled
@@ -833,6 +1005,20 @@ export default function EventsCMSPage() {
             setEditing(null);
             setIsNew(false);
           }}
+        />
+      )}
+
+      {deletingEvent && (
+        <DeleteEventDialog
+          open={Boolean(deletingEvent)}
+          onClose={() => setDeletingEvent(null)}
+          onConfirm={() => {
+            if (deletingEvent) {
+              deleteEvent(deletingEvent.id);
+              setDeletingEvent(null);
+            }
+          }}
+          eventTitle={deletingEvent.title}
         />
       )}
     </div>

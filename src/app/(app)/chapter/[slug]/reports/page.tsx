@@ -59,19 +59,6 @@ export default function ChapterReportsPage({
   const [images, setImages] = useState<ReportImage[]>([]);
   const [wizardError, setWizardError] = useState("");
 
-  if (!mounted) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-mono text-xs text-text-dim animate-pulse">Loading reports...</p>
-      </div>
-    );
-  }
-
-  if (!chapter) {
-    return <ChapterNotFound />;
-  }
-  const currentChapter = chapter;
-
   const canSubmit = hasPermission(store, session.roleKey, "report.submit");
   const canDownload = hasPermission(store, session.roleKey, "report.download");
   const isFaculty = isFacultyRole(session.roleKey);
@@ -82,12 +69,9 @@ export default function ChapterReportsPage({
     isHqRole(session.roleKey) ||
     (!isFaculty && !isStudent && canSubmit);
 
-  const chapterEvents = store.events.filter(
-    (e) => e.chapterId === currentChapter.id,
-  );
-
   const reports = useMemo(() => {
-    let list = store.reports.filter((r) => r.chapterId === currentChapter.id);
+    if (!chapter) return [];
+    let list = store.reports.filter((r) => r.chapterId === chapter.id);
     if (isFaculty) {
       list = list.filter((r) => r.status === "approved");
     } else if (isStudent && !isExecOrHq) {
@@ -104,12 +88,29 @@ export default function ChapterReportsPage({
       );
   }, [
     store.reports,
-    currentChapter.id,
+    chapter?.id,
     isFaculty,
     isStudent,
     isExecOrHq,
     session.userId,
   ]);
+
+  if (!mounted) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs text-text-dim animate-pulse">Loading reports...</p>
+      </div>
+    );
+  }
+
+  if (!chapter) {
+    return <ChapterNotFound />;
+  }
+  const currentChapter = chapter;
+
+  const chapterEvents = store.events.filter(
+    (e) => e.chapterId === currentChapter.id,
+  );
 
   function flashMsg(msg: string) {
     setFlash(msg);

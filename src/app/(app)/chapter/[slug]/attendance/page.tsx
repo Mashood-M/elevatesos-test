@@ -40,7 +40,9 @@ export default function ChapterAttendancePage({
     session.roleKey === "campus_lead" ||
     session.roleKey === "chairman" ||
     session.roleKey === "founder" ||
-    session.roleKey === "hq_admin";
+    session.roleKey === "hq_admin" ||
+    session.roleKey === "elevates_coordinator" ||
+    session.roleKey === "faculty_coordinator";
 
   // Class Representative Scoped Cohort
   const myClassCohort = useMemo(() => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,12 +13,12 @@ import { EventManagerCreateDialog } from "@/components/domain/event-manager-dial
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
-import { canRegisterNow, isEventVisibleToUser } from "@/lib/events";
+import { canRegisterNow, isEventVisibleToUser, getEventRegistrationState } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
-import type { EventItem, EventStatus } from "@/types";
+import type { EventItem, EventRegistration, EventStatus } from "@/types";
 
 
 type StatusChip = "all" | "registration_open" | "draft" | "completed";
@@ -50,6 +50,7 @@ export default function ChapterEventsPage({
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   const [selectedRegIds, setSelectedRegIds] = useState<string[]>([]);
+  const [admitCount, setAdmitCount] = useState<number>(1);
   const toggleSelectReg = (id: string) => {
     setSelectedRegIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
@@ -76,6 +77,19 @@ export default function ChapterEventsPage({
       setShowForm(true);
     }
   }, [searchParams, canCreate]);
+
+  const waitlistRegistrations: EventRegistration[] = useMemo(() => {
+    if (!chapter) return [];
+    return (store.registrations ?? [])
+      .filter((r) => {
+        const ev = store.events.find((e) => e.id === r.eventId);
+        return ev?.chapterId === chapter.id && r.status === "waitlisted";
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+  }, [store.registrations, store.events, chapter?.id]);
 
   if (!mounted) {
     return (
@@ -118,16 +132,6 @@ export default function ChapterEventsPage({
       (a, b) =>
         new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
     );
-
-  const waitlistRegistrations = store.registrations.filter((r) => {
-    const ev = store.events.find((e) => e.id === r.eventId);
-    return (
-      ev?.chapterId === chapter.id &&
-      r.status === "waitlisted"
-    );
-  });
-
-
 
   function publishEventFromList(eventItem: EventItem) {
     const existing = getEventForm(store, eventItem.id, "registration");
@@ -172,42 +176,95 @@ export default function ChapterEventsPage({
 
       {waitlistRegistrations.length > 0 ? (
         <div className="mb-5 rounded-[var(--radius)] border border-border/80 bg-bg-panel px-4 py-3 shadow-[var(--shadow-sm)]">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-[12px] font-semibold tracking-[-0.01em] text-text">
-                Waiting List Approvals ({waitlistRegistrations.length} student{waitlistRegistrations.length === 1 ? "" : "s"} on waitlist)
+                Waiting List Approvals ({waitlistRegistrations.length} student{waitlistRegistrations.length === 1 ? "" : "s"} in queue)
               </p>
               <p className="text-[11px] text-text-dim">
-                Registration is automatically approved when seats are available. Only the Campus Lead can approve students from the waiting list.
+                Registration directly confirms seats while open. If registered members do not come to the event, event coordinators approve waitlisted students in first-registered priority order (FIFO).
               </p>
             </div>
-            {canApprove && selectedRegIds.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  className="h-8 px-3 text-[12px] text-red-400"
-                  onClick={() => {
-                    batchUpdateRegistrationStatus(selectedRegIds, "rejected", session.userId);
-                    setSelectedRegIds([]);
-                  }}
-                >
-                  Decline Selected
-                </Button>
-                <Button
-                  variant="green"
-                  className="h-8 px-3 text-[12px]"
-                  onClick={() => {
-                    batchUpdateRegistrationStatus(selectedRegIds, "approved", session.userId);
-                    setSelectedRegIds([]);
-                  }}
-                >
-                  Approve Selected → QR ({selectedRegIds.length})
-                </Button>
+            {canApprove && (
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-border bg-bg px-2 py-1">
+                  <span className="text-[11px] text-text-dim">Admit seats:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={waitlistRegistrations.length}
+                    value={admitCount}
+                    onChange={(e) =>
+                      setAdmitCount(
+                        Math.max(
+                          1,
+                          Math.min(
+                            waitlistRegistrations.length,
+                            parseInt(e.target.value, 10) || 1,
+                          ),
+                        ),
+                      )
+                    }
+                    className="h-6 w-12 rounded border border-border bg-bg-panel text-center font-mono text-[11px] text-text"
+                  />
+                  <Button
+                    variant="orange"
+                    className="h-6 px-2.5 text-[11px]"
+                    onClick={() => {
+                      const count = Math.min(
+                        admitCount,
+                        waitlistRegistrations.length,
+                      );
+                      const targetIds = waitlistRegistrations
+                        .slice(0, count)
+                        .map((r) => r.id);
+                      batchUpdateRegistrationStatus(
+                        targetIds,
+                        "approved",
+                        session.userId,
+                      );
+                    }}
+                  >
+                    Approve Next {Math.min(admitCount, waitlistRegistrations.length)} (FIFO) → QR
+                  </Button>
+                </div>
+                {selectedRegIds.length > 0 && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="h-7 px-2.5 text-[11px] text-red-400"
+                      onClick={() => {
+                        batchUpdateRegistrationStatus(
+                          selectedRegIds,
+                          "rejected",
+                          session.userId,
+                        );
+                        setSelectedRegIds([]);
+                      }}
+                    >
+                      Decline Selected
+                    </Button>
+                    <Button
+                      variant="green"
+                      className="h-7 px-2.5 text-[11px]"
+                      onClick={() => {
+                        batchUpdateRegistrationStatus(
+                          selectedRegIds,
+                          "approved",
+                          session.userId,
+                        );
+                        setSelectedRegIds([]);
+                      }}
+                    >
+                      Approve Selected ({selectedRegIds.length})
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
           <ul className="divide-y divide-border/80">
-            {waitlistRegistrations.map((reg) => {
+            {waitlistRegistrations.map((reg, idx) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
               const ev = store.events.find((e) => e.id === reg.eventId);
               const isSelected = selectedRegIds.includes(reg.id);
@@ -225,6 +282,9 @@ export default function ChapterEventsPage({
                         className="rounded border-border"
                       />
                     )}
+                    <span className="font-mono text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                      #{idx + 1}
+                    </span>
                     <p className="text-[13px] font-medium text-text">
                       {user?.fullName || reg.guestName || "Student"}
                       <span className="font-normal text-text-dim">
@@ -234,7 +294,7 @@ export default function ChapterEventsPage({
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge tone="orange">waitlisted</Badge>
+                    <Badge tone="orange">Priority #{idx + 1}</Badge>
                     {canApprove ? (
                       <>
                         <Button
@@ -266,7 +326,7 @@ export default function ChapterEventsPage({
                       </>
                     ) : (
                       <span className="rounded-full bg-border/50 px-2 py-0.5 text-[11px] text-text-dim">
-                        Campus Lead only
+                        Coordinator approval required
                       </span>
                     )}
                   </div>
@@ -350,6 +410,7 @@ export default function ChapterEventsPage({
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
             {filteredEvents.map((ev) => {
+              const regState = getEventRegistrationState(store, ev, session.userId);
               const regForm = getEventForm(store, ev.id, "registration");
               const fbForm = getEventForm(store, ev.id, "feedback");
               const approved = store.registrations.filter(
@@ -432,7 +493,30 @@ export default function ChapterEventsPage({
                         >
                           Draft (pending publish)
                         </Button>
-                      ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
+                      ) : regState.status === "ended" ? (
+                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                          <Button variant="primary" className="h-9 px-4">
+                            Open event
+                          </Button>
+                        </Link>
+                      ) : regState.isClosed ? (
+                        <Button
+                          variant="ghost"
+                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                          disabled
+                          title={regState.reason || "Registration is closed"}
+                        >
+                          Registration Closed
+                        </Button>
+                      ) : regState.isWaitlist ? (
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-4 border-amber-500/40 text-amber-500 hover:bg-amber-500/10 font-semibold"
+                          onClick={() => setSelectedEventForReg(ev)}
+                        >
+                          Join Waiting List
+                        </Button>
+                      ) : (
                         <Button
                           variant="orange"
                           className="h-9 px-4"
@@ -440,12 +524,6 @@ export default function ChapterEventsPage({
                         >
                           Register
                         </Button>
-                      ) : (
-                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                          <Button variant="primary" className="h-9 px-4">
-                            Open event
-                          </Button>
-                        </Link>
                       )}
                       {secondary && !isFacultyRole(session.roleKey) ? (
                         <Link

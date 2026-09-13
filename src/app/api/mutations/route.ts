@@ -139,12 +139,90 @@ export async function POST(req: Request) {
     }
 
     if (type === "delete_event") {
-      const { id, slug } = data;
-      const { error } = await admin.from("events").delete().match(isUuid(id) ? { id } : { slug: slug || id });
+      const { id, slug, title, chapterId } = data;
+      let targetId = isUuid(id) ? id : null;
+      if (!targetId && slug) {
+        const { data: row } = await admin.from("events").select("id").eq("slug", slug).maybeSingle();
+        if (row?.id) targetId = row.id;
+      }
+      if (!targetId && id) {
+        const { data: row } = await admin.from("events").select("id").eq("slug", id).maybeSingle();
+        if (row?.id) targetId = row.id;
+      }
+      if (!targetId && title) {
+        let query = admin.from("events").select("id").ilike("title", title);
+        if (chapterId && isUuid(chapterId)) {
+          query = query.eq("chapter_id", chapterId);
+        }
+        const { data: row } = await query.limit(1).maybeSingle();
+        if (row?.id) targetId = row.id;
+      }
+
+      if (targetId) {
+        // 1. Break self-referencing next_event_id and parent_event_id
+        await admin.from("events").update({ next_event_id: null }).eq("next_event_id", targetId);
+        await admin.from("events").update({ parent_event_id: null }).eq("parent_event_id", targetId);
+
+        // 2. Delete attendance records first (they have foreign keys to event_registrations)
+        await admin.from("attendance_records").delete().eq("event_id", targetId);
+        try { await admin.from("attendance").delete().eq("event_id", targetId); } catch {}
+
+        // 3. Delete event registrations
+        await admin.from("event_registrations").delete().eq("event_id", targetId);
+
+        // 4. Delete certificates
+        await admin.from("certificates").delete().eq("event_id", targetId);
+
+        // 5. Delete form responses for event and for forms attached to this event
+        await admin.from("form_responses").delete().eq("event_id", targetId);
+        const { data: eventForms } = await admin.from("forms").select("id").eq("event_id", targetId);
+        if (eventForms && eventForms.length > 0) {
+          const formIds = eventForms.map((f: { id: string }) => f.id);
+          await admin.from("form_responses").delete().in("form_id", formIds);
+        }
+
+        // 6. Delete event form fields if table exists
+        try { await admin.from("event_form_fields").delete().eq("event_id", targetId); } catch {}
+
+        // 7. Delete forms
+        await admin.from("forms").delete().eq("event_id", targetId);
+
+        // 8. Delete event permissions
+        await admin.from("event_permissions").delete().eq("event_id", targetId);
+
+        // 9. Unlink tasks and reports
+        await admin.from("tasks").update({ event_id: null }).eq("event_id", targetId);
+        await admin.from("reports").update({ event_id: null }).eq("event_id", targetId);
+      }
+
+      // Finally delete the event row itself
+      let deleteQuery = admin.from("events").delete();
+      if (targetId) {
+        deleteQuery = deleteQuery.eq("id", targetId);
+      } else if (slug) {
+        deleteQuery = deleteQuery.eq("slug", slug);
+      } else if (id) {
+        deleteQuery = deleteQuery.eq("slug", id);
+      } else if (title && chapterId && isUuid(chapterId)) {
+        deleteQuery = deleteQuery.match({ chapter_id: chapterId, title });
+      }
+
+      const { error } = await deleteQuery;
+
       if (error) {
+        console.error("Mutation error (delete_event):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
-      await revalidateWeb(["events", `event:${slug}`]);
+
+      // Cleanup any duplicate entries matching slug or title in chapter
+      if (slug) {
+        try { await admin.from("events").delete().eq("slug", slug); } catch {}
+      }
+      if (title && chapterId && isUuid(chapterId)) {
+        try { await admin.from("events").delete().match({ chapter_id: chapterId, title }); } catch {}
+      }
+
+      await revalidateWeb(["events", `event:${slug || id}`]);
       return NextResponse.json({ ok: true });
     }
 
@@ -282,9 +360,13 @@ export async function POST(req: Request) {
     // Dedicated mutation: patch org-level settings (e.g. add an event category)
     if (type === "org_settings_patch") {
       const patch = data as Record<string, unknown>; // e.g. { event_categories: [...] }
-      const orgId = DEFAULT_ORG_ID;
       // Fetch current settings first, then merge
-      const { data: orgRow } = await admin.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+      let { data: orgRow } = await admin.from("organizations").select("id, settings").eq("id", DEFAULT_ORG_ID).maybeSingle();
+      if (!orgRow) {
+        const { data: firstOrg } = await admin.from("organizations").select("id, settings").limit(1).maybeSingle();
+        orgRow = firstOrg;
+      }
+      const orgId = orgRow?.id ?? DEFAULT_ORG_ID;
       const currentSettings: Record<string, unknown> = (orgRow?.settings as Record<string, unknown>) ?? {};
       const mergedSettings = { ...currentSettings, ...patch };
       const { error } = await admin.from("organizations").update({ settings: mergedSettings }).eq("id", orgId);

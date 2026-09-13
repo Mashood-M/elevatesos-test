@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState } from "@/lib/events";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
@@ -204,6 +204,7 @@ export default function OpenEventsPage() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {filteredEvents.map((ev: EventItem) => {
+              const regState = getEventRegistrationState(store, ev, session.userId);
               const eligibility = canRegisterNow(store, ev, session.userId);
               const chapter = store.chapters.find((c) => c.id === ev.chapterId);
               const eventHref = chapter
@@ -245,7 +246,30 @@ export default function OpenEventsPage() {
                                 : "Registered"}
                           </Button>
                         </Link>
-                      ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
+                      ) : regState.status === "ended" ? (
+                        <Link href={eventHref}>
+                          <Button variant="primary" className="h-9 px-4">
+                            Open Event
+                          </Button>
+                        </Link>
+                      ) : regState.isClosed ? (
+                        <Button
+                          variant="ghost"
+                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                          disabled
+                          title={regState.reason || "Registration is closed"}
+                        >
+                          Registration Closed
+                        </Button>
+                      ) : regState.isWaitlist ? (
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-4 border-amber-500/40 text-amber-500 hover:bg-amber-500/10 font-semibold"
+                          onClick={() => setSelectedEventForReg(ev)}
+                        >
+                          Join Waiting List
+                        </Button>
+                      ) : (
                         <Button
                           variant="orange"
                           className="h-9 px-4"
@@ -253,12 +277,6 @@ export default function OpenEventsPage() {
                         >
                           Register
                         </Button>
-                      ) : (
-                        <Link href={eventHref}>
-                          <Button variant="primary" className="h-9 px-4">
-                            Open Event
-                          </Button>
-                        </Link>
                       )}
                     </>
                   }

@@ -39,10 +39,7 @@ export function TicketCard({
     <>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] text-text-mute">
-            {event.ticketNo}
-          </p>
-          <h3 className="mt-1 font-[family-name:var(--font-display)] text-[15px] font-bold tracking-[-0.03em]">
+          <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold tracking-[-0.03em]">
             {event.title}
           </h3>
           <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>

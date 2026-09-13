@@ -678,7 +678,17 @@ export function applyRealtimeChangeToStore(
       if (eventType === "DELETE") {
         return {
           ...store,
-          events: store.events.filter((e) => e.id !== targetId),
+          events: store.events.filter(
+            (e) =>
+              e.id !== targetId &&
+              `evt-${e.id}` !== targetId &&
+              e.id !== `evt-${targetId}` &&
+              (!oldRow?.slug || e.slug !== oldRow.slug) &&
+              (!oldRow?.title || e.title?.toLowerCase() !== oldRow.title?.toLowerCase())
+          ),
+          forms: (store.forms ?? []).filter((f) => f.eventId !== targetId && f.eventId !== `evt-${targetId}`),
+          eventForms: (store.eventForms ?? []).filter((f) => f.eventId !== targetId && f.eventId !== `evt-${targetId}`),
+          registrations: (store.registrations ?? []).filter((r) => r.eventId !== targetId && r.eventId !== `evt-${targetId}`),
         };
       }
       const item = transformEventRow(newRow);

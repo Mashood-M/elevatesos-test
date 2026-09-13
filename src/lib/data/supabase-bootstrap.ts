@@ -10,6 +10,7 @@ import type {
   DemoUserSession,
   ElevatesStore,
   EventItem,
+  EventReminder,
   FormDefinition,
   Organization,
   Profile,
@@ -87,6 +88,7 @@ function emptyStore(): ElevatesStore {
     outboundMessages: [],
     activityLogs: [],
     inviteTokens: [],
+    eventReminders: [],
     session: {
       userId: "",
       roleKey: "student" as RoleKey,
@@ -141,6 +143,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: formRespRows },
       { data: laAppRows },
       { data: standardCheckRows },
+      { data: reminderRows },
       sessionRes,
       userRes,
     ] = await Promise.all([
@@ -174,6 +177,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("form_responses").select("*"),
       supabase.from("leadership_applications").select("*"),
       supabase.from("chapter_standard_checks").select("*"),
+      supabase.from("event_reminders").select("*"),
       Promise.race([
         supabase.auth.getSession().catch((err: any) => {
           if (
@@ -386,6 +390,13 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         summary: e.summary ?? undefined,
         bannerUrl: e.banner_url ?? undefined,
         mode: e.mode ?? undefined,
+        topics: Array.isArray(e.topics) ? e.topics : [],
+        hosts: Array.isArray(e.hosts) ? e.hosts : [],
+        organizers: Array.isArray(e.organizers) ? e.organizers : (Array.isArray(e.organizer) ? e.organizer : []),
+        organizer: Array.isArray(e.organizers) ? e.organizers : (Array.isArray(e.organizer) ? e.organizer : []),
+        platform: e.platform ?? undefined,
+        caseStudy: e.case_study ?? undefined,
+        attendanceSessions: Array.isArray(e.attendance_sessions) ? e.attendance_sessions : undefined,
       })) ?? [],
     );
 
@@ -416,8 +427,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         description: f.description ?? undefined,
         chapterId: f.chapter_id,
         eventId: f.event_id ?? undefined,
-        status: f.status,
-        questions: Array.isArray(f.schema) ? f.schema : [],
+        status: f.status ?? (f.event_id ? "open" : "draft"),
+        questions: Array.isArray(f.schema) && f.schema.length > 0
+          ? f.schema
+          : (Array.isArray(f.questions) ? f.questions : []),
+        logicEnabled: Boolean(f.logic_enabled),
+        logicRules: Array.isArray(f.logic_rules) ? f.logic_rules : [],
         createdAt: f.created_at,
         updatedAt: f.updated_at ?? f.created_at,
       })) ?? [];
@@ -853,9 +868,28 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       }
     }
 
+    const eventReminders: EventReminder[] =
+      reminderRows?.map((r: Record<string, any>) => ({
+        id: r.id,
+        eventId: r.event_id,
+        chapterId: r.chapter_id ?? undefined,
+        title: r.title || "Event Reminder",
+        message: r.message || "",
+        triggerType: r.trigger_type || "24h_before",
+        scheduledFor: r.scheduled_for || r.created_at,
+        channel: r.channel || "all",
+        status: r.status || "scheduled",
+        sentAt: r.sent_at ?? undefined,
+        recipientCount: Number(r.recipient_count ?? 0),
+        createdBy: r.created_by ?? undefined,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at ?? r.created_at,
+      })) ?? [];
+
     return {
       store: {
         ...emptyStore(),
+        eventReminders,
         organization,
         eventCategories,
         standardDepartments,

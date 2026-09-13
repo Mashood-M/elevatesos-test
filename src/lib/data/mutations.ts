@@ -9,6 +9,7 @@ import type {
   EventItem,
   EventPermission,
   EventRegistration,
+  EventReminder,
   FormDefinition,
   FormResponse,
   Guideline,
@@ -138,6 +139,12 @@ function broadcastMutation(type: string, data: any, resultData?: any) {
       break;
     case "notification":
       broadcastChange("notifications", "INSERT", payload);
+      break;
+    case "event_reminder":
+      broadcastChange("event_reminders", "UPDATE", payload);
+      break;
+    case "delete_event_reminder":
+      broadcastChange("event_reminders", "DELETE", undefined, data);
       break;
     case "mark_notification_read":
       broadcastChange("notifications", "UPDATE", { id: data?.id, read: true });
@@ -270,6 +277,22 @@ export async function persistFormResponse(response: FormResponse): Promise<Mutat
 }
 export async function deleteFormResponseRemote(id: string): Promise<MutationResult> {
   return sendMutation("delete_form_response", { id });
+}
+
+// 7b. Event Reminders
+export async function persistEventReminder(
+  reminder: EventReminder | Partial<EventReminder> | Record<string, any>,
+): Promise<MutationResult> {
+  return sendMutation("event_reminder", reminder);
+}
+export async function deleteEventReminderRemote(id: string): Promise<MutationResult> {
+  return sendMutation("delete_event_reminder", { id });
+}
+export async function sendEventReminderRemote(
+  reminderId: string,
+  eventId: string,
+): Promise<MutationResult> {
+  return sendMutation("send_event_reminder", { reminderId, eventId });
 }
 
 // 8. Reports & Tasks

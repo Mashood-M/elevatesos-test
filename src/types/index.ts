@@ -384,10 +384,40 @@ export interface EventItem {
   platform?: EventPlatformRef;
   /** Configurable attendance sessions (e.g. 1 session for workshop, 3-4 checkpoints for hackathon) */
   attendanceSessions?: EventAttendanceSession[];
+  hosts?: Array<{ name: string; role: string }>;
+  organizers?: Array<{ name: string }>;
+  organizer?: Array<{ name: string }>;
   managingTeamMode?: "permanent" | "temporary";
   mediaTeamMode?: "permanent" | "temporary";
   managingStudentIds?: string[];
   mediaStudentIds?: string[];
+  reminders?: EventReminder[];
+}
+
+export type EventReminderTrigger =
+  | "24h_before"
+  | "1h_before"
+  | "2h_before"
+  | "morning_of"
+  | "custom";
+
+export type EventReminderStatus = "scheduled" | "sent" | "cancelled";
+
+export interface EventReminder {
+  id: string;
+  eventId: string;
+  chapterId?: string;
+  title: string;
+  message: string;
+  triggerType: EventReminderTrigger;
+  scheduledFor: string;
+  channel: OutboundChannel | "all";
+  status: EventReminderStatus;
+  sentAt?: string;
+  recipientCount?: number;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export type EventPermissionType = "manage_event" | "take_attendance" | "manage_media";
@@ -860,6 +890,7 @@ export interface ElevatesStore {
   inviteTokens: InviteToken[];
   chapterInviteCodes?: ChapterInviteCode[];
   peerLabs?: Record<string, any>[];
+  eventReminders?: EventReminder[];
   // ── SUPABASE-STORED PRESETS & SYSTEM DATA ──────────────────────────────────
   standardDepartments: string[];
   guidelineCategories: string[];

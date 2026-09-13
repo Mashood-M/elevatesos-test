@@ -683,8 +683,10 @@ export default function EventsCMSPage() {
       isoEndDate: e.endsAt || "",
       venue: e.venue || "Seminar Hall",
       locationName: "",
-      organizer: [{ name: "ELEVATES" }],
-      hosts: [],
+      organizer: Array.isArray(e.organizers) && e.organizers.length > 0
+        ? e.organizers
+        : (Array.isArray(e.organizer) && e.organizer.length > 0 ? e.organizer : [{ name: "ELEVATES" }]),
+      hosts: Array.isArray(e.hosts) ? e.hosts : [],
       topics: e.topics || [],
       attendeesCount: e.capacity || 50,
       waitlistCapacity: typeof e.waitlistCapacity === "number" ? e.waitlistCapacity : 15,
@@ -967,6 +969,9 @@ export default function EventsCMSPage() {
               ticketNo: `NO. ${String(store.events.length + 10).padStart(2, "0")}`,
               category: finalCategory,
               topics: saved.topics || [],
+              hosts: (saved.hosts || []).filter((h) => h.name.trim() !== ""),
+              organizers: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
+              organizer: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
               bannerUrl: saved.coverImage || undefined,
               platform: saved.platform?.enabled
                 ? {

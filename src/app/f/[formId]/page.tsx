@@ -23,21 +23,21 @@ export default function PublicFormFillPage({
       const target = formId.replace("form-reg-", "");
       const ev = store.events.find((e) => e.id === target || e.slug === target);
       if (ev) {
-        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title, ev);
         raw = defs.find((d) => d.purpose === "registration");
       }
     } else if (formId.startsWith("form-fb-")) {
       const target = formId.replace("form-fb-", "");
       const ev = store.events.find((e) => e.id === target || e.slug === target);
       if (ev) {
-        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title, ev);
         raw = defs.find((d) => d.purpose === "feedback");
       }
     } else {
       // Check if formId matches an event ID or slug directly
       const ev = store.events.find((e) => e.id === formId || e.slug === formId);
       if (ev) {
-        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title);
+        const defs = defaultFormsForEvent(ev.id, ev.chapterId, ev.title, ev);
         raw = defs.find((d) => d.purpose === "registration");
       }
     }

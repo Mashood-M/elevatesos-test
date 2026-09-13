@@ -475,17 +475,21 @@ export function GoogleFormBuilder({
             }
           }}
           className={cn(
-            "rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] md:p-6",
-            selectedId === "title" && "ring-1 ring-[var(--accent)]",
+            "rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] md:p-6 overflow-hidden relative",
+            selectedId === "title" && "ring-2 ring-[var(--accent)]",
           )}
         >
-          <p className="mb-2 text-[12px] text-text-mute">{meta.purpose}</p>
+          {/* Google Forms-style top colored accent stripe */}
+          <div className="h-2.5 -mx-5 -mt-5 md:-mx-6 md:-mt-6 bg-[var(--accent)] mb-4" />
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-[var(--accent)] font-mono">
+            {meta.purpose === "registration" ? "Event Registration Form" : meta.purpose}
+          </p>
           <input
             value={meta.title}
             onChange={(e) => setMeta((m) => ({ ...m, title: e.target.value }))}
             onBlur={() => persistMeta()}
             onClick={(e) => e.stopPropagation()}
-            className="w-full border-0 border-b border-transparent bg-transparent font-[family-name:var(--font-display)] text-[22px] font-bold tracking-[-0.03em] text-text outline-none focus:border-[var(--accent)]"
+            className="w-full border-0 border-b border-transparent bg-transparent font-[family-name:var(--font-display)] text-[24px] md:text-[28px] font-bold tracking-tight text-text outline-none focus:border-[var(--accent)] transition-colors"
             placeholder="Untitled form"
           />
           <textarea
@@ -495,9 +499,9 @@ export function GoogleFormBuilder({
             }
             onBlur={() => persistMeta()}
             onClick={(e) => e.stopPropagation()}
-            rows={2}
-            placeholder="Form description"
-            className="mt-3 w-full resize-none border-0 border-b border-transparent bg-transparent text-[14px] text-text-dim outline-none focus:border-[var(--accent)]"
+            rows={Math.max(6, (meta.description || "").split("\n").length + 2)}
+            placeholder="Form description and guidelines for participants..."
+            className="mt-3 w-full resize-y border-0 border-b border-transparent bg-transparent text-[14px] leading-relaxed text-text-dim outline-none focus:border-[var(--accent)] font-sans whitespace-pre-wrap transition-colors"
           />
         </section>
         {selectedId === "title" ? (

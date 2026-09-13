@@ -56,7 +56,7 @@ export function createFormFromTemplate(
     description: template.description,
     chapterId,
     eventId,
-    status: "draft",
+    status: eventId ? "open" : "draft",
     questions: cloneQuestions(template.questions || []),
     createdAt: now,
     updatedAt: now,

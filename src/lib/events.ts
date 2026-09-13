@@ -247,7 +247,7 @@ export function canRegisterNow(
   const customForm = getEventForm(store, event.id, "registration");
   const form =
     customForm ??
-    defaultFormsForEvent(event.id, event.chapterId, event.title).find(
+    defaultFormsForEvent(event.id, event.chapterId, event.title, event).find(
       (f) => f.purpose === "registration",
     );
 

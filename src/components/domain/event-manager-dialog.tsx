@@ -1052,6 +1052,9 @@ export function EventManagerCreateDialog({
       ticketNo: `NO. ${String(chapterEvents.length + 10).padStart(2, "0")}`,
       category: finalCategory,
       topics: saved.topics || [],
+      hosts: (saved.hosts || []).filter((h) => h.name.trim() !== ""),
+      organizers: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
+      organizer: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
       bannerUrl: saved.coverImage || undefined,
       platform: saved.platform?.enabled
         ? {

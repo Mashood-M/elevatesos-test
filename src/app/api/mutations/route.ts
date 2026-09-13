@@ -101,7 +101,7 @@ export async function POST(req: Request) {
 
         eventId = existing?.id || genUuid();
       }
-      const { error } = await admin.from("events").upsert({
+      const eventPayload: Record<string, any> = {
         id: eventId,
         chapter_id: event.chapterId,
         cluster_id: isUuid(event.clusterId) ? event.clusterId : null,
@@ -127,11 +127,42 @@ export async function POST(req: Request) {
         banner_url: event.bannerUrl,
         banner_emoji: event.bannerEmoji ?? "◆",
         mode: event.mode ?? "in_person",
-      });
+        topics: Array.isArray(event.topics) ? event.topics : [],
+        hosts: Array.isArray(event.hosts) ? event.hosts : [],
+        organizers: Array.isArray(event.organizers)
+          ? event.organizers
+          : (Array.isArray(event.organizer) ? event.organizer : []),
+      };
+
+      if (event.platform !== undefined) eventPayload.platform = event.platform;
+      if (event.caseStudy !== undefined) eventPayload.case_study = event.caseStudy;
+      if (event.attendanceSessions !== undefined) eventPayload.attendance_sessions = event.attendanceSessions;
+
+      let { error } = await admin.from("events").upsert(eventPayload);
+
+      // Graceful fallback if database migration 023 has not yet added hosts/organizers
+      if (error && (error.message?.includes("hosts") || error.message?.includes("organizers"))) {
+        console.warn("Retrying event upsert without hosts/organizers. Run migration 023 in Supabase SQL editor.");
+        delete eventPayload.hosts;
+        delete eventPayload.organizers;
+        const retryRes = await admin.from("events").upsert(eventPayload);
+        error = retryRes.error;
+      }
 
       if (error) {
         console.error("Mutation error (event):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+
+      if (eventPayload.status === "registration_open" && eventId) {
+        try {
+          await admin
+            .from("forms")
+            .update({ status: "open", updated_at: new Date().toISOString() })
+            .eq("event_id", eventId);
+        } catch (cascadeErr) {
+          console.warn("Cascade update to forms status notice:", cascadeErr);
+        }
       }
 
       await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
@@ -763,16 +794,37 @@ export async function POST(req: Request) {
       if (!isUuid(form.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
-      const formId = isUuid(form.id) ? form.id : genUuid();
+      const eventId = isUuid(form.eventId)
+        ? form.eventId
+        : (form.eventId?.startsWith("evt-") && isUuid(form.eventId.slice(4))
+            ? form.eventId.slice(4)
+            : null);
+      let formId = isUuid(form.id) ? form.id : null;
+      if (!formId && eventId) {
+        const { data: existing } = await admin
+          .from("forms")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("purpose", form.purpose ?? "registration")
+          .limit(1)
+          .maybeSingle();
+        if (existing?.id) {
+          formId = existing.id;
+        }
+      }
+      if (!formId) formId = genUuid();
       const { error } = await admin.from("forms").upsert({
         id: formId,
         chapter_id: form.chapterId,
-        event_id: isUuid(form.eventId) ? form.eventId : null,
+        event_id: eventId,
         title: form.title,
         description: form.description,
         purpose: form.purpose ?? "custom",
         schema: form.questions ?? [],
-        status: form.status ?? "draft",
+        questions: form.questions ?? [],
+        logic_enabled: Boolean(form.logicEnabled),
+        logic_rules: form.logicRules ?? [],
+        status: form.status ?? (eventId ? "open" : "draft"),
         updated_at: new Date().toISOString(),
       });
 
@@ -812,6 +864,141 @@ export async function POST(req: Request) {
         await admin.from("forms").delete().eq("id", id);
       }
       return NextResponse.json({ ok: true });
+    }
+
+    // 8b. EVENT REMINDER MUTATIONS
+    if (type === "event_reminder") {
+      const rem = data;
+      const eventId = isUuid(rem.eventId)
+        ? rem.eventId
+        : (rem.eventId?.startsWith("evt-") && isUuid(rem.eventId.slice(4))
+            ? rem.eventId.slice(4)
+            : null);
+      if (!eventId) {
+        return NextResponse.json({ ok: false, error: "Valid eventId is required" }, { status: 400 });
+      }
+      const reminderId = isUuid(rem.id) ? rem.id : genUuid();
+      const payload: Record<string, any> = {
+        id: reminderId,
+        event_id: eventId,
+        chapter_id: isUuid(rem.chapterId) ? rem.chapterId : null,
+        title: rem.title || "Event Reminder",
+        message: rem.message || "",
+        trigger_type: rem.triggerType || "24h_before",
+        scheduled_for: rem.scheduledFor || new Date().toISOString(),
+        channel: rem.channel || "all",
+        status: rem.status || "scheduled",
+        sent_at: rem.sentAt || null,
+        recipient_count: rem.recipientCount ?? 0,
+        created_by: isUuid(rem.createdBy) ? rem.createdBy : null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await admin.from("event_reminders").upsert(payload);
+      if (error) {
+        console.error("Mutation error (event_reminder):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+
+      try {
+        const { data: allRems } = await admin.from("event_reminders").select("*").eq("event_id", eventId);
+        if (allRems) {
+          await admin.from("events").update({ reminders: allRems }).eq("id", eventId);
+        }
+      } catch {}
+
+      return NextResponse.json({ ok: true, id: reminderId });
+    }
+
+    if (type === "delete_event_reminder") {
+      const { id, eventId } = data;
+      if (isUuid(id)) {
+        await admin.from("event_reminders").delete().eq("id", id);
+        if (eventId && isUuid(eventId)) {
+          try {
+            const { data: allRems } = await admin.from("event_reminders").select("*").eq("event_id", eventId);
+            await admin.from("events").update({ reminders: allRems || [] }).eq("id", eventId);
+          } catch {}
+        }
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "send_event_reminder") {
+      const { reminderId, eventId: inputEventId } = data;
+      let targetEventId = isUuid(inputEventId)
+        ? inputEventId
+        : (inputEventId?.startsWith("evt-") && isUuid(inputEventId.slice(4))
+            ? inputEventId.slice(4)
+            : null);
+
+      let reminder: any = null;
+      if (isUuid(reminderId)) {
+        const { data: row } = await admin.from("event_reminders").select("*").eq("id", reminderId).maybeSingle();
+        reminder = row;
+        if (row?.event_id && !targetEventId) {
+          targetEventId = row.event_id;
+        }
+      }
+
+      if (!targetEventId) {
+        return NextResponse.json({ ok: false, error: "Event ID not found for reminder" }, { status: 400 });
+      }
+
+      const { data: regRows } = await admin
+        .from("event_registrations")
+        .select("user_id")
+        .eq("event_id", targetEventId);
+
+      const { data: eventRow } = await admin
+        .from("events")
+        .select("title, chapter_id, chapters(slug)")
+        .eq("id", targetEventId)
+        .maybeSingle();
+
+      const userIds = Array.from(new Set((regRows || []).map((r: any) => r.user_id).filter(Boolean)));
+      const title = reminder?.title || `Reminder: ${eventRow?.title || "Upcoming Event"}`;
+      const body = reminder?.message || `Your event ${eventRow?.title || ""} is coming up soon!`;
+      const chapterSlug = (eventRow as any)?.chapters?.slug || "hq";
+      const href = `/chapter/${chapterSlug}/events/${targetEventId}`;
+
+      if (userIds.length > 0) {
+        const notifInserts = userIds.map((uid) => ({
+          id: genUuid(),
+          user_id: uid,
+          title,
+          body,
+          read: false,
+          href,
+          created_at: new Date().toISOString(),
+        }));
+        await admin.from("notifications").insert(notifInserts);
+      }
+
+      const now = new Date().toISOString();
+      if (isUuid(reminderId)) {
+        await admin.from("event_reminders").update({
+          status: "sent",
+          sent_at: now,
+          recipient_count: userIds.length,
+          updated_at: now,
+        }).eq("id", reminderId);
+      }
+
+      await admin.from("activity_logs").insert({
+        id: genUuid(),
+        actor_id: "11111111-1111-1111-1111-111111111111",
+        action: "event_reminders_sent",
+        entity: "event",
+        entity_id: targetEventId,
+        created_at: now,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        sentCount: userIds.length,
+        sentAt: now,
+      });
     }
 
     // 9. FORM RESPONSE MUTATIONS

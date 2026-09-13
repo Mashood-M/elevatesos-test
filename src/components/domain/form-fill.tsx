@@ -614,7 +614,7 @@ export function FormFill({
           accent="orange"
         >
           {resolvedForm.description ? (
-            <p className="text-[14px] text-text-dim">
+            <p className="mt-2 text-[14px] leading-relaxed text-text-dim whitespace-pre-line">
               {resolvedForm.description}
             </p>
           ) : null}
@@ -841,7 +841,7 @@ export function FormFill({
         accent="orange"
       >
         {resolvedForm.description && safeIndex === 0 && !current?.header ? (
-          <p className="text-[14px] text-text-dim">
+          <p className="mt-2 text-[14px] leading-relaxed text-text-dim whitespace-pre-line">
             {resolvedForm.description}
           </p>
         ) : null}

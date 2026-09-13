@@ -8,6 +8,7 @@ import { FormSharePanel } from "@/components/domain/form-share-panel";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -24,8 +25,9 @@ import {
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
-import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2 } from "lucide-react";
+import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell } from "lucide-react";
 import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
+import { EventRemindersPanel } from "@/components/domain/event-reminders-panel";
 import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
 
 
@@ -247,6 +249,18 @@ export default function EventDetailPage({
     return Array.from(set).sort();
   }, [registeredStudents]);
 
+  const [showRemindersModal, setShowRemindersModal] = useState(false);
+
+  const eventReminders = useMemo(() => {
+    if (!event) return [];
+    return (store.eventReminders ?? []).filter(
+      (r) =>
+        r.eventId === event.id ||
+        r.eventId === `evt-${event.id}` ||
+        (event.slug && r.eventId === event.slug),
+    );
+  }, [store.eventReminders, event]);
+
   const filteredRegisteredStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
     return registeredStudents.filter((item) => {
@@ -430,6 +444,7 @@ export default function EventDetailPage({
       event!.id,
       chapter!.id,
       event!.title,
+      event!,
     );
     const template = defaults.find((f) => f.purpose === purpose)!;
     const created = createForm({
@@ -448,6 +463,7 @@ export default function EventDetailPage({
         event!.id,
         chapter!.id,
         event!.title,
+        event!,
       ).find((f) => f.purpose === "registration")!;
       createForm({
         ...template,
@@ -900,17 +916,11 @@ export default function EventDetailPage({
               {canEdit || canApprove ? (
                 <button
                   type="button"
-                  className="hover:text-[var(--accent)]"
-                  onClick={() => {
-                    const n = sendEventReminders(event.id);
-                    setQueueFlash(
-                      n
-                        ? `Queued ${n} reminder messages (email + WhatsApp demo).`
-                        : "No approved registrants to remind.",
-                    );
-                  }}
+                  className="inline-flex items-center gap-1.5 hover:text-[var(--accent)] transition-colors"
+                  onClick={() => setShowRemindersModal(true)}
                 >
-                  Send reminders
+                  <Bell size={13} className="text-[var(--accent)]" />
+                  <span>Reminders ({eventReminders.length})</span>
                 </button>
               ) : null}
             </div>
@@ -950,11 +960,19 @@ export default function EventDetailPage({
                       </Button>
                     )}
                     <Button
+                      variant="secondary"
+                      className="h-8 px-3 text-[12px]"
+                      onClick={() => ensureForm("registration")}
+                      title="Edit the registration questions, fields, and options for this event"
+                    >
+                      Customize Form 📋
+                    </Button>
+                    <Button
                       variant="primary"
                       className="h-8 px-3 text-[12px]"
                       onClick={startEdit}
                     >
-                      Edit
+                      Edit Details
                     </Button>
                   </>
                 )}
@@ -983,19 +1001,28 @@ export default function EventDetailPage({
                 </p>
                 <p className="text-[11px] text-text-dim">
                   {canPublish
-                    ? "This event is currently saved in draft mode and is hidden from students. Click publish when you are ready to open registrations."
+                    ? "A registration form has been generated. You can customize questions, add fields, and publish when ready."
                     : "This event is saved as a draft. It will be visible to students once published by the Campus Lead."}
                 </p>
               </div>
             </div>
             {canPublish && (
-              <Button
-                variant="orange"
-                className="h-8 px-4 text-[12px] font-semibold shadow-sm"
-                onClick={publishEvent}
-              >
-                Publish Event → Open Registration
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3 text-[12px] font-semibold border border-amber-500/30"
+                  onClick={() => ensureForm("registration")}
+                >
+                  Customize Form Questions 📋
+                </Button>
+                <Button
+                  variant="orange"
+                  className="h-8 px-4 text-[12px] font-semibold shadow-sm"
+                  onClick={publishEvent}
+                >
+                  Publish Event → Open Registration
+                </Button>
+              </div>
             )}
           </div>
         </div>
@@ -1638,6 +1665,21 @@ export default function EventDetailPage({
         )}
       </div>
 
+      {isOps ? (
+        <TerminalPanel
+          title="event.reminders"
+          meta={`${eventReminders.length} configured`}
+          accent="orange"
+          className="mb-6"
+        >
+          <EventRemindersPanel
+            event={event}
+            chapterSlug={chapter.slug}
+            canManage={canEdit || canApprove}
+          />
+        </TerminalPanel>
+      ) : null}
+
       {queue.length > 0 ? (
         <TerminalPanel
           title="waiting.list.approvals"
@@ -1968,6 +2010,24 @@ export default function EventDetailPage({
           }}
           eventTitle={event.title}
         />
+      ) : null}
+
+      {event ? (
+        <Dialog
+          open={showRemindersModal}
+          onClose={() => setShowRemindersModal(false)}
+          title={`Reminders — ${event.title}`}
+          description="Schedule automated notifications or trigger an immediate broadcast to attendees."
+          className="max-w-2xl"
+        >
+          <div className="pt-2">
+            <EventRemindersPanel
+              event={event}
+              chapterSlug={chapter.slug}
+              canManage={canEdit || canApprove}
+            />
+          </div>
+        </Dialog>
       ) : null}
     </div>
   );

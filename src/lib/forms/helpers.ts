@@ -8,6 +8,7 @@ import { getAllEventCategories } from "@/lib/events";
 import type {
   ClassCohort,
   ElevatesStore,
+  EventItem,
   FormDefinition,
   FormField,
   FormFieldType,
@@ -264,7 +265,7 @@ export function migrateForm(raw: FormDefinition & { fields?: FormField[] }): For
     description: raw.description,
     chapterId: raw.chapterId || "",
     eventId: raw.eventId,
-    status: raw.status ?? "draft",
+    status: raw.status ?? (raw.eventId ? "open" : "draft"),
     questions,
     logicEnabled: raw.logicEnabled,
     logicRules: Array.isArray(raw.logicRules)
@@ -339,9 +340,24 @@ export function getEventForm(
   purpose: FormPurpose,
 ): FormDefinition | undefined {
   const form = store.forms?.find(
-    (f) => f.eventId === eventId && f.purpose === purpose,
+    (f) =>
+      (f.eventId === eventId ||
+        (eventId && f.eventId === `evt-${eventId}`) ||
+        (f.eventId && `evt-${f.eventId}` === eventId)) &&
+      f.purpose === purpose,
   );
-  return form ? ensureRepresentativeQuestion(migrateForm(form)) : undefined;
+  if (!form) return undefined;
+  const migrated = ensureRepresentativeQuestion(migrateForm(form));
+  const event = store.events.find(
+    (e) =>
+      e.id === eventId ||
+      `evt-${e.id}` === eventId ||
+      e.id === eventId.replace(/^evt-/, ""),
+  );
+  if (event && event.status === "registration_open") {
+    migrated.status = "open";
+  }
+  return migrated;
 }
 
 export function registrationFields(
@@ -401,28 +417,150 @@ const DEFAULT_FEEDBACK_QUESTIONS: FormQuestion[] = [
   },
 ];
 
+export function buildEventParticipationClarification(
+  title: string,
+  event?: Partial<EventItem> | Record<string, any>,
+): string {
+  const lines: string[] = [];
+
+  // 1. Custom summary/description if provided by the event creator
+  const customSummary = event?.summary?.trim() || event?.description?.trim();
+  if (customSummary && customSummary !== "Event organized by ELEVATES.") {
+    lines.push(customSummary);
+    lines.push("");
+  }
+
+  // 2. Section Header matching the reference form image
+  lines.push("📌 Clarification for Event Participation");
+  lines.push("");
+
+  // 3. Date
+  if (event?.startsAt) {
+    try {
+      const d = new Date(event.startsAt);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, "0");
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const year = String(d.getFullYear()).slice(-2);
+        lines.push(`Date: ${day}/${month}/${year}`);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. Time
+  if (event?.startsAt) {
+    try {
+      const d1 = new Date(event.startsAt);
+      const d2 = event.endsAt ? new Date(event.endsAt) : null;
+      if (!isNaN(d1.getTime())) {
+        const t1 = d1.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+        const t2 = d2 && !isNaN(d2.getTime())
+          ? d2.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+          : null;
+        lines.push(`Time: ${t1}${t2 ? ` – ${t2}` : ""}`);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 5. Venue
+  if (event?.venue) {
+    lines.push(`Venue: ${event.venue}`);
+  }
+
+  // 6. Speakers / Hosts
+  if (Array.isArray(event?.hosts) && event.hosts.length > 0) {
+    const validHosts = event.hosts
+      .filter((h: any) => h && h.name && h.name.trim())
+      .map((h: any) => `${h.name.trim()}${h.role?.trim() ? ` (${h.role.trim()})` : ""}`);
+    if (validHosts.length > 0) {
+      lines.push(`Speakers / Hosts: ${validHosts.join(", ")}`);
+    }
+  }
+
+  // 7. Organizers
+  const organizersList = Array.isArray(event?.organizers)
+    ? event.organizers
+        .filter((o: any) => o && o.name && o.name.trim())
+        .map((o: any) => o.name.trim())
+        .join(", ")
+    : (Array.isArray(event?.organizer)
+        ? event.organizer
+            .filter((o: any) => o && o.name && o.name.trim())
+            .map((o: any) => o.name.trim())
+            .join(", ")
+        : "");
+  if (organizersList && organizersList !== "ELEVATES") {
+    lines.push(`Organizers: ${organizersList}`);
+  }
+
+  // 8. Contact Info
+  let contactLine = "contact your class representative or event coordinator.";
+  if (Array.isArray(event?.hosts) && event.hosts.length > 0 && event.hosts[0]?.name) {
+    const primary = event.hosts[0];
+    contactLine = `contact:\n   ${primary.name}${primary.role ? ` (${primary.role})` : ""}`;
+  }
+
+  // 9. Structured Guidelines matching user image format
+  lines.push("");
+  lines.push("1. Participants are requested to bring their own laptops.");
+  lines.push("   Note: Two students can share one laptop during the workshop. The names of those students must be given to their class representative.");
+  lines.push("2. The laptop should have required tools / software pre-installed for smooth functioning.");
+  lines.push("3. Instructions and guides will be shared prior to the session for setup.");
+  lines.push(`4. If you face any issues or have doubts regarding prerequisites or any further information, feel free to ${contactLine}`);
+  lines.push("5. Participants are required to maintain discipline during the workshop.");
+  lines.push("   Any misbehaviour will lead to immediate termination from the workshop.");
+
+  return lines.join("\n");
+}
+
 export function defaultFormsForEvent(
   eventId: string,
   chapterId: string,
   title: string,
+  eventData?: Partial<EventItem> | Record<string, any>,
 ): FormDefinition[] {
   const now = new Date().toISOString();
+  const cleanTitle = title.trim() || "Event";
+  const formTitle = cleanTitle.toLowerCase().startsWith("elevates")
+    ? cleanTitle
+    : `Elevates - ${cleanTitle}`;
+  const description = buildEventParticipationClarification(cleanTitle, eventData);
+
   return [
     {
       id: `form-reg-${eventId}`,
       purpose: "registration",
-      title: `${title} registration`,
+      title: formTitle,
+      description,
       chapterId,
       eventId,
       status: "open",
-      questions: DEFAULT_REG_QUESTIONS,
+      questions: [
+        ...DEFAULT_REG_QUESTIONS,
+        {
+          id: "f-laptop",
+          type: "multiple_choice",
+          title: "Will you be bringing a laptop for this workshop?",
+          required: false,
+          options: [
+            "Yes, bringing my own laptop",
+            "Sharing with a peer / classmate",
+            "No, I do not have a laptop",
+          ],
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     },
     {
       id: `form-fb-${eventId}`,
       purpose: "feedback",
-      title: `${title} feedback`,
+      title: `${cleanTitle} Feedback`,
+      description: `Thank you for attending ${cleanTitle}. Please share your feedback to help us improve future Elevates events.`,
       chapterId,
       eventId,
       status: "open",
@@ -588,6 +726,7 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     formResponses,
     outboundMessages: store.outboundMessages ?? [],
     inviteTokens: store.inviteTokens ?? [],
+    eventReminders: store.eventReminders ?? [],
   };
 }
 

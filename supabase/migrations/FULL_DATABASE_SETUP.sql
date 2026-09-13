@@ -354,6 +354,8 @@ CREATE TABLE IF NOT EXISTS public.events (
     next_event_id UUID,
     published_at TIMESTAMPTZ,
     topics TEXT[] DEFAULT '{}',
+    hosts JSONB DEFAULT '[]'::jsonb,
+    organizers JSONB DEFAULT '[]'::jsonb,
     event_type TEXT DEFAULT 'standalone',
     parent_event_id UUID REFERENCES public.events(id) ON DELETE SET NULL,
     sub_event_ids UUID[] DEFAULT '{}',
@@ -502,6 +504,23 @@ CREATE TABLE IF NOT EXISTS public.certificates (
     pdf_url TEXT,
     is_revoked BOOLEAN DEFAULT false,
     download_count INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS public.event_reminders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id UUID NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
+    chapter_id UUID REFERENCES public.chapters(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    trigger_type TEXT NOT NULL DEFAULT '24h_before',
+    scheduled_for TIMESTAMPTZ NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'all',
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    sent_at TIMESTAMPTZ,
+    recipient_count INT DEFAULT 0,
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- ============================================================================

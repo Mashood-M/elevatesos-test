@@ -22,6 +22,7 @@ import type {
   EventItem,
   EventPermission,
   EventRegistration,
+  EventReminder,
   FormDefinition,
   FormResponse,
   LeadershipApplication,
@@ -83,6 +84,15 @@ export function transformEventRow(e: Record<string, any>): EventItem {
     summary: e.summary ?? undefined,
     bannerUrl: e.bannerUrl ?? e.banner_url ?? undefined,
     mode: e.mode ?? undefined,
+    topics: Array.isArray(e.topics) ? e.topics : [],
+    hosts: Array.isArray(e.hosts) ? e.hosts : [],
+    organizers: Array.isArray(e.organizers) ? e.organizers : (Array.isArray(e.organizer) ? e.organizer : []),
+    organizer: Array.isArray(e.organizers) ? e.organizers : (Array.isArray(e.organizer) ? e.organizer : []),
+    platform: e.platform ?? undefined,
+    caseStudy: e.caseStudy ?? e.case_study ?? undefined,
+    attendanceSessions: Array.isArray(e.attendanceSessions ?? e.attendance_sessions)
+      ? (e.attendanceSessions ?? e.attendance_sessions)
+      : undefined,
   };
 }
 
@@ -325,21 +335,43 @@ export function transformClassCohortRow(cc: Record<string, any>): ClassCohort {
 }
 
 export function transformFormRow(f: Record<string, any>): FormDefinition {
+  const eventId = f.eventId ?? f.event_id ?? undefined;
   return {
     id: f.id,
     purpose: f.purpose ?? "custom",
     title: f.title,
     description: f.description ?? undefined,
     chapterId: f.chapterId ?? f.chapter_id,
-    eventId: f.eventId ?? f.event_id ?? undefined,
-    status: f.status,
-    questions: Array.isArray(f.schema)
+    eventId,
+    status: f.status ?? (eventId ? "open" : "draft"),
+    questions: Array.isArray(f.schema) && f.schema.length > 0
       ? f.schema
       : Array.isArray(f.questions)
         ? f.questions
         : [],
+    logicEnabled: Boolean(f.logic_enabled ?? f.logicEnabled),
+    logicRules: Array.isArray(f.logic_rules) ? f.logic_rules : (Array.isArray(f.logicRules) ? f.logicRules : undefined),
     createdAt: f.createdAt ?? f.created_at,
     updatedAt: f.updatedAt ?? f.updated_at ?? f.createdAt ?? f.created_at,
+  };
+}
+
+export function transformEventReminderRow(r: Record<string, any>): EventReminder {
+  return {
+    id: r.id,
+    eventId: r.eventId ?? r.event_id,
+    chapterId: r.chapterId ?? r.chapter_id ?? undefined,
+    title: r.title || "Event Reminder",
+    message: r.message || "",
+    triggerType: r.triggerType ?? r.trigger_type ?? "24h_before",
+    scheduledFor: r.scheduledFor ?? r.scheduled_for ?? r.created_at,
+    channel: r.channel || "all",
+    status: r.status || "scheduled",
+    sentAt: r.sentAt ?? r.sent_at ?? undefined,
+    recipientCount: Number(r.recipientCount ?? r.recipient_count ?? 0),
+    createdBy: r.createdBy ?? r.created_by ?? undefined,
+    createdAt: r.createdAt ?? r.created_at ?? new Date().toISOString(),
+    updatedAt: r.updatedAt ?? r.updated_at ?? r.createdAt ?? r.created_at,
   };
 }
 
@@ -976,6 +1008,24 @@ export function applyRealtimeChangeToStore(
       };
     }
 
+    case "event_reminders": {
+      const reminders = store.eventReminders ?? [];
+      if (eventType === "DELETE") {
+        return {
+          ...store,
+          eventReminders: reminders.filter((r) => r.id !== targetId),
+        };
+      }
+      const item = transformEventReminderRow(newRow);
+      const exists = reminders.some((r) => r.id === item.id);
+      return {
+        ...store,
+        eventReminders: exists
+          ? reminders.map((r) => (r.id === item.id ? item : r))
+          : [item, ...reminders],
+      };
+    }
+
     case "chapters": {
       if (eventType === "DELETE") {
         return {
@@ -1322,6 +1372,7 @@ const MONITORED_TABLES = [
   "reports",
   "announcements",
   "notifications",
+  "event_reminders",
   "chapters",
   "departments",
   "class_cohorts",

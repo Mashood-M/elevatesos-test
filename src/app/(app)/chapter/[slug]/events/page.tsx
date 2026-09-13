@@ -140,6 +140,7 @@ export default function ChapterEventsPage({
         eventItem.id,
         chapter!.id,
         eventItem.title,
+        eventItem,
       ).find((f) => f.purpose === "registration")!;
       createForm({
         ...template,

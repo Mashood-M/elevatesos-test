@@ -91,8 +91,27 @@ export default function FormWorkspacePage({
   ).length;
 
   const event = form.eventId
-    ? store.events.find((e) => e.id === form.eventId)
+    ? store.events.find(
+        (e) =>
+          e.id === form.eventId ||
+          `evt-${e.id}` === form.eventId ||
+          e.id === form.eventId?.replace(/^evt-/, ""),
+      )
     : undefined;
+
+  const isEventForm = Boolean(form.eventId || form.purpose === "registration" || event);
+  const isEventOpen = Boolean(event && event.status === "registration_open");
+  const isEventClosed = Boolean(event && event.status === "completed");
+  const effectiveStatus = isEventForm
+    ? (isEventOpen || form.status === "open" ? "open" : (isEventClosed ? "closed" : form.status))
+    : form.status;
+
+  // Automatically keep event forms in "open" status if parent event is registration_open
+  useEffect(() => {
+    if (isEventForm && isEventOpen && form.status !== "open") {
+      setFormStatus(form.id, "open");
+    }
+  }, [isEventForm, isEventOpen, form.id, form.status, setFormStatus]);
 
   const shell = (
     <div
@@ -109,14 +128,14 @@ export default function FormWorkspacePage({
             <div className="flex flex-wrap items-center gap-2">
               <Badge
                 tone={
-                  form.status === "open"
+                  effectiveStatus === "open"
                     ? "orange"
-                    : form.status === "closed"
+                    : effectiveStatus === "closed"
                       ? "mute"
                       : "green"
                 }
               >
-                {form.status === "open" ? "Accepting" : form.status}
+                {effectiveStatus === "open" ? "Accepting" : effectiveStatus}
               </Badge>
               <span>
                 {form.purpose} form
@@ -163,7 +182,7 @@ export default function FormWorkspacePage({
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {canManage ? (
+              {canManage && !isEventForm ? (
                 <Button
                   variant="primary"
                   className="h-9"
@@ -182,7 +201,7 @@ export default function FormWorkspacePage({
               <Button
                 variant="orange"
                 className="h-9"
-                disabled={form.status !== "open"}
+                disabled={effectiveStatus !== "open"}
                 onClick={() => setSendOpen(true)}
               >
                 Send
@@ -211,7 +230,7 @@ export default function FormWorkspacePage({
         ))}
       </div>
 
-      {form.status === "draft" && canManage && activeTab === "questions" ? (
+      {!isEventForm && form.status === "draft" && canManage && activeTab === "questions" ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius)] bg-bg-panel px-4 py-3 text-[13px] shadow-[var(--shadow-sm)]">
           <p className="text-text-dim">
             Draft — open the form when you are ready to collect responses.
@@ -263,7 +282,7 @@ export default function FormWorkspacePage({
       ) : null}
 
       {activeTab === "preview" ? (
-        <div className="py-1">
+        <div className="mx-auto max-w-xl">
           <FormFill form={form} preview />
         </div>
       ) : null}
@@ -273,14 +292,20 @@ export default function FormWorkspacePage({
         onClose={() => setSendOpen(false)}
         title="Send form"
         description={
-          form.status === "open"
+          effectiveStatus === "open"
             ? "Share the public link or QR with your campus."
-            : "Open the form (Accept responses) before sharing."
+            : isEventForm
+              ? "Publish the event to open registration and share."
+              : "Open the form (Accept responses) before sharing."
         }
         className="max-w-lg"
       >
-        {form.status === "open" ? (
+        {effectiveStatus === "open" ? (
           <FormSharePanel formId={form.id} title={form.title} />
+        ) : isEventForm && event ? (
+          <Link href={`/chapter/${slug}/events/${event.id}`}>
+            <Button variant="orange">Go to event to publish</Button>
+          </Link>
         ) : (
           <Button
             variant="orange"
@@ -291,7 +316,7 @@ export default function FormWorkspacePage({
             Accept responses first
           </Button>
         )}
-        {form.status === "open" ? (
+        {effectiveStatus === "open" ? (
           <div className="mt-3 flex flex-wrap gap-2">
             <Link href={`/f/${form.id}`} target="_blank">
               <Button variant="ghost">Open public fill</Button>

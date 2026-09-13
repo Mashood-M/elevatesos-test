@@ -76,7 +76,11 @@ import {
   persistLeadershipApplication,
   persistLeadershipApplicationStatus,
   revokeCertificateRemote,
+  persistEventReminder,
+  deleteEventReminderRemote,
+  sendEventReminderRemote,
 } from "@/lib/data/mutations";
+import { buildDefaultEventReminders } from "@/lib/events/reminders";
 import {
   answerableQuestions,
   cohortRepIds,
@@ -124,6 +128,7 @@ import type {
   LeadershipApplication,
   EventItem,
   EventRegistration,
+  EventReminder,
   FormDefinition,
   FormField,
   FormPurpose,
@@ -589,6 +594,10 @@ type StoreContextValue = {
   markAllNotificationsRead: (userId: string) => void;
   /** Demo: queue email + WhatsApp reminders for all approved regs on an event */
   sendEventReminders: (eventId: string) => number;
+  createEventReminder: (reminder: EventReminder) => EventReminder;
+  updateEventReminder: (id: string, patch: Partial<EventReminder>) => void;
+  deleteEventReminder: (id: string, eventId?: string) => void;
+  sendEventReminder: (reminderId: string, eventId?: string) => Promise<number>;
   resetDemoStore: () => void;
 };
 
@@ -1048,6 +1057,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       outboundMessages: [],
       activityLogs: [],
       inviteTokens: [],
+      eventReminders: [],
       session: {
         userId: "",
         roleKey: "student",
@@ -1700,6 +1710,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               ? { ...e, status: "registration_open" as const }
               : e,
           ),
+          forms: (s.forms ?? []).map((f) =>
+            f.eventId === eventId || f.eventId === `evt-${eventId}` || `evt-${f.eventId}` === eventId
+              ? { ...f, status: "open" as const, updatedAt: new Date().toISOString() }
+              : f,
+          ),
         }));
         void runPersist(persistEvent({ ...ev, status: "registration_open" }), {
           errorMessage: `Failed to approve event "${ev.title}"`,
@@ -1709,6 +1724,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               events: s.events.map((e) => (e.id === eventId ? { ...e, status: prevStatus } : e)),
             }));
           },
+        });
+        const linkedForms = (store.forms ?? []).filter(
+          (f) => f.eventId === eventId || f.eventId === `evt-${eventId}` || `evt-${f.eventId}` === eventId,
+        );
+        linkedForms.forEach((f) => {
+          void runPersist(
+            persistForm({ ...f, status: "open", updatedAt: new Date().toISOString() }),
+            { errorMessage: `Failed to open form "${f.title}"` },
+          );
         });
       },
       approveReport: (reportId, comment, actorId) => {
@@ -1768,6 +1792,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           eventId,
           targetChapterId,
           event.title,
+          event,
         );
         const regFields = forms[0].questions.map(questionToField);
         const status =
@@ -1816,6 +1841,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return true;
           });
 
+          const defaultReminders = buildDefaultEventReminders(normalized, targetChapterId);
           return {
             ...s,
             events: [normalized, ...filtered],
@@ -1824,6 +1850,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               existingIndex >= 0
                 ? s.eventForms
                 : [{ eventId, fields: regFields }, ...s.eventForms],
+            eventReminders:
+              existingIndex >= 0
+                ? (s.eventReminders ?? [])
+                : [...defaultReminders, ...(s.eventReminders ?? [])],
             activityLogs: [
               log(
                 s.session.userId,
@@ -1846,6 +1876,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 events: s.events.filter((e) => e.id !== eventId),
                 forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
                 eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
+                eventReminders: (s.eventReminders ?? []).filter((r) => r.eventId !== eventId),
               }));
             }
           },
@@ -1854,6 +1885,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             forms.forEach((f) =>
               void runPersist(persistForm(f), {
                 errorMessage: `Failed to persist form "${f.title}"`,
+              })
+            );
+            const defaultReminders = buildDefaultEventReminders(normalized, targetChapterId);
+            defaultReminders.forEach((rem) =>
+              void runPersist(persistEventReminder(rem), {
+                errorMessage: `Failed to persist reminder "${rem.title}"`,
               })
             );
           }
@@ -1884,11 +1921,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const nextTitle = safe.title ?? prev.title;
         const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
+        const isRegistrationOpen = updatedEvent.status === "registration_open";
         setStore((s) => ({
           ...s,
           events: s.events.map((e) =>
             e.id === id ? updatedEvent : e,
           ),
+          forms: isRegistrationOpen
+            ? (s.forms ?? []).map((f) =>
+                f.eventId === id || f.eventId === `evt-${id}` || `evt-${f.eventId}` === id
+                  ? { ...f, status: "open" as const, updatedAt: new Date().toISOString() }
+                  : f,
+              )
+            : s.forms,
           activityLogs: [
             log(s.session.userId, "event_updated", "event", id, nextTitle),
             ...s.activityLogs,
@@ -1903,6 +1948,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }));
           },
         });
+        if (isRegistrationOpen) {
+          const linkedForms = (store.forms ?? []).filter(
+            (f) => f.eventId === id || f.eventId === `evt-${id}` || `evt-${f.eventId}` === id,
+          );
+          linkedForms.forEach((f) => {
+            void runPersist(
+              persistForm({ ...f, status: "open", updatedAt: new Date().toISOString() }),
+              { errorMessage: `Failed to open form "${f.title}"` },
+            );
+          });
+        }
       },
       deleteEvent: (id) => {
         const ev = store.events.find(
@@ -2453,7 +2509,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       submitFormResponse: (input) => {
         const form = (store.forms ?? []).find((f) => f.id === input.formId);
-        if (!form || form.status !== "open") {
+        const event = form?.eventId
+          ? (store.events ?? []).find(
+              (e) =>
+                e.id === form.eventId ||
+                `evt-${e.id}` === form.eventId ||
+                e.id === form.eventId?.replace(/^evt-/, ""),
+            )
+          : undefined;
+        const isEventOpen = Boolean(event && event.status === "registration_open");
+        if (!form || (form.status !== "open" && !isEventOpen)) {
           console.warn("submitFormResponse rejected: form not found or not open", { form, inputFormId: input.formId });
           return null;
         }
@@ -5829,6 +5894,133 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
         return count;
+      },
+      createEventReminder: (reminder) => {
+        const id = isUuid(reminder.id) ? reminder.id : genUuid();
+        const now = new Date().toISOString();
+        const normalizedRem: EventReminder = {
+          ...reminder,
+          id,
+          createdAt: reminder.createdAt || now,
+          updatedAt: now,
+        };
+        setStore((s) => ({
+          ...s,
+          eventReminders: [normalizedRem, ...(s.eventReminders ?? [])],
+        }));
+        void runPersist(persistEventReminder(normalizedRem), {
+          errorMessage: `Failed to create reminder "${normalizedRem.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              eventReminders: (s.eventReminders ?? []).filter((r) => r.id !== id),
+            }));
+          },
+        });
+        return normalizedRem;
+      },
+      updateEventReminder: (id, patch) => {
+        const prev = (store.eventReminders ?? []).find((r) => r.id === id);
+        if (!prev) return;
+        const updated: EventReminder = {
+          ...prev,
+          ...patch,
+          id: prev.id,
+          updatedAt: new Date().toISOString(),
+        };
+        setStore((s) => ({
+          ...s,
+          eventReminders: (s.eventReminders ?? []).map((r) => (r.id === id ? updated : r)),
+        }));
+        void runPersist(persistEventReminder(updated), {
+          errorMessage: `Failed to update reminder "${updated.title}"`,
+          rollback: () => {
+            setStore((s) => ({
+              ...s,
+              eventReminders: (s.eventReminders ?? []).map((r) => (r.id === id ? prev : r)),
+            }));
+          },
+        });
+      },
+      deleteEventReminder: (id, eventId) => {
+        const prev = (store.eventReminders ?? []).find((r) => r.id === id);
+        setStore((s) => ({
+          ...s,
+          eventReminders: (s.eventReminders ?? []).filter((r) => r.id !== id),
+        }));
+        void runPersist(deleteEventReminderRemote(id), {
+          errorMessage: `Failed to delete reminder`,
+          rollback: () => {
+            if (prev) {
+              setStore((s) => ({
+                ...s,
+                eventReminders: [...(s.eventReminders ?? []), prev],
+              }));
+            }
+          },
+        });
+      },
+      sendEventReminder: async (reminderId, eventId) => {
+        const reminder = (store.eventReminders ?? []).find((r) => r.id === reminderId);
+        const targetEventId = eventId || reminder?.eventId;
+        if (!targetEventId) return 0;
+        const event = store.events.find(
+          (e) => e.id === targetEventId || e.id === `evt-${targetEventId}` || e.slug === targetEventId,
+        );
+        const chapter = event ? store.chapters.find((c) => c.id === event.chapterId) : undefined;
+        const userIds = [
+          ...new Set(
+            store.registrations
+              .filter(
+                (r) =>
+                  (r.eventId === targetEventId || r.eventId === `evt-${targetEventId}`) &&
+                  (r.status === "approved" || r.status === "pending"),
+              )
+              .map((r) => r.userId)
+              .filter(Boolean),
+          ),
+        ];
+        const title = reminder?.title || `Reminder: ${event?.title || "Upcoming Event"}`;
+        const body =
+          reminder?.message ||
+          `Your event ${event?.title || ""} is coming up soon. Check Elevates for details.`;
+        const alerts = notifyUsers(userIds, {
+          title,
+          body,
+          href: chapter ? `/chapter/${chapter.slug}/events/${targetEventId}` : undefined,
+        });
+        const now = new Date().toISOString();
+        setStore((s) => ({
+          ...s,
+          notifications: [...alerts, ...s.notifications],
+          eventReminders: (s.eventReminders ?? []).map((r) =>
+            r.id === reminderId
+              ? {
+                  ...r,
+                  status: "sent" as const,
+                  sentAt: now,
+                  recipientCount: userIds.length,
+                  updatedAt: now,
+                }
+              : r,
+          ),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "event_reminders_sent",
+              "event",
+              targetEventId,
+              `${userIds.length} recipients`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+        try {
+          await sendEventReminderRemote(reminderId, targetEventId);
+        } catch (err) {
+          console.warn("sendEventReminderRemote error:", err);
+        }
+        return userIds.length;
       },
       resetDemoStore: () => {
         void loadStoreFromSupabase().then((result) => {

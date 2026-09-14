@@ -22,6 +22,10 @@ import {
   getAllEventCategories,
   getEventRegistrationState,
   canPublishEvent,
+  isEventOngoing,
+  isEventEnded,
+  isEventBeforeStart,
+  isAttendanceTakeable,
 } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
@@ -136,6 +140,8 @@ export default function EventDetailPage({
     store,
     createForm,
     updateEvent,
+    startEvent,
+    endEvent,
     deleteEvent,
     updateRegistrationStatus,
     batchUpdateRegistrationStatus,
@@ -718,6 +724,15 @@ export default function EventDetailPage({
               >
                 ← Events
               </Link>
+              {isEventOngoing(event) && (
+                <Badge tone="green" className="flex items-center gap-1 font-bold animate-pulse shadow-sm">
+                  <span className="relative flex h-2 w-2 mr-0.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  Ongoing Event
+                </Badge>
+              )}
               {myReg && myReg.status !== "rejected" ? (
                 <Badge tone={regStatusTone(myReg.status)}>
                   {myReg.status === "approved" ? "Confirmed Pass" : myReg.status.replaceAll("_", " ")}
@@ -772,6 +787,21 @@ export default function EventDetailPage({
             </div>
           }
         />
+
+        {isEventOngoing(event) && (
+          <div className="mb-4 rounded-[var(--radius)] border border-emerald-500/40 bg-emerald-500/10 p-3.5 text-xs text-emerald-400 flex items-center gap-2.5 shadow-[var(--shadow-sm)]">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div>
+              <p className="font-semibold text-emerald-300">This event is currently ongoing</p>
+              <p className="text-text-dim text-[11px] mt-0.5">
+                The session is live at {event.venue}. Attendance is being taken now.
+              </p>
+            </div>
+          </div>
+        )}
 
         {(regState.status === "upcoming" || regState.isUpcoming) && (
           <div className="mb-4 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-500 flex items-center gap-2.5">
@@ -995,6 +1025,15 @@ export default function EventDetailPage({
             {isFaculty ? (
               <Badge tone="cyan">Faculty Oversight</Badge>
             ) : null}
+            {isEventOngoing(event) && (
+              <Badge tone="green" className="flex items-center gap-1 font-bold animate-pulse shadow-sm">
+                <span className="relative flex h-2 w-2 mr-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Live / Ongoing
+              </Badge>
+            )}
             {canEdit ? (
               <div className="flex flex-wrap items-center gap-2">
                 {editing ? (
@@ -1016,6 +1055,37 @@ export default function EventDetailPage({
                   </>
                 ) : (
                   <>
+                    {/* Start / End Event Controls */}
+                    {canPublish && (
+                      event.status === "ongoing" || isEventOngoing(event) ? (
+                        <Button
+                          variant="danger"
+                          className="h-8 px-3 text-[12px] flex items-center gap-1 font-semibold"
+                          onClick={() => {
+                            endEvent(event.id, session.userId);
+                            setPublishFlash("Event ended. Status marked Completed, and attendance is now closed.");
+                          }}
+                          title="End this event now and close attendance"
+                        >
+                          <CheckCircle2 size={13} />
+                          End Event
+                        </Button>
+                      ) : event.status !== "completed" && event.status !== "cancelled" ? (
+                        <Button
+                          variant="green"
+                          className="h-8 px-3 text-[12px] flex items-center gap-1.5 font-bold shadow-sm"
+                          onClick={() => {
+                            startEvent(event.id, session.userId);
+                            setPublishFlash("Event started! Event status is now Ongoing and attendance can be taken.");
+                          }}
+                          title="Start event now - transitions to Ongoing and allows attendance"
+                        >
+                          <Play size={13} className="fill-current" />
+                          Start Event
+                        </Button>
+                      ) : null
+                    )}
+
                     {canPublish && (
                       event.status === "registration_open" ? (
                         <Button
@@ -1061,6 +1131,48 @@ export default function EventDetailPage({
           </div>
         }
       />
+
+      {isEventOngoing(event) && (
+        <div className="mb-5 rounded-[var(--radius)] border border-emerald-500/40 bg-emerald-500/10 p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-3.5 w-3.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+              </span>
+              <div>
+                <p className="text-[13px] font-bold text-emerald-400">
+                  Event is Currently Ongoing
+                </p>
+                <p className="text-[11px] text-text-dim">
+                  This event is active right now. Attendance is open and can be recorded for students.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(canAttendance || isOps || isFaculty) && (
+                <Link href={`/chapter/${slug}/attendance?eventId=${event.id}`}>
+                  <Button variant="green" className="h-8 px-3.5 text-[12px] font-bold shadow-sm">
+                    Take Attendance Now →
+                  </Button>
+                </Link>
+              )}
+              {canPublish && (
+                <Button
+                  variant="ghost"
+                  className="h-8 px-3 text-[12px] border border-red-500/40 text-red-400 hover:bg-red-500/10 font-semibold"
+                  onClick={() => {
+                    endEvent(event.id, session.userId);
+                    setPublishFlash("Event ended. Marked completed.");
+                  }}
+                >
+                  End Event
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {publishFlash || queueFlash ? (
         <p className="mb-4 text-[13px] text-[var(--accent)]">

@@ -1,5 +1,5 @@
 import { getEventForm, defaultFormsForEvent } from "@/lib/forms/helpers";
-import type { ElevatesStore, EventItem } from "@/types";
+import type { ElevatesStore, EventItem, EventStatus } from "@/types";
 
 export type RegisterEligibility =
   | { ok: true; formId: string; isWaitlist: boolean }
@@ -78,6 +78,25 @@ export function getEventRegistrationState(
         st === "completed"
           ? "This event has already ended."
           : "This event was cancelled.",
+    };
+  }
+
+  if (st === "ongoing") {
+    return {
+      status: "closed",
+      label: "Event Ongoing",
+      canRegister: false,
+      isWaitlist: false,
+      isClosed: true,
+      isUpcoming: false,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+      reason: "This event is currently ongoing. New registrations are closed.",
     };
   }
 
@@ -518,4 +537,149 @@ export function canPublishEvent(
   }
   return false;
 }
+
+/**
+ * Checks if an event is currently ongoing.
+ * Returns true if:
+ * 1. Event status is explicitly set to "ongoing" (and has not passed endsAt); OR
+ * 2. Event is published/scheduled (status is registration_open, registration_closed, or approved),
+ *    and the current real time is >= startsAt and < endsAt.
+ */
+export function isEventOngoing(
+  event: EventItem | undefined | null,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!event) return false;
+  const st = (event.status || "").toLowerCase();
+  if (st === "completed" || st === "cancelled" || st === "draft" || st === "pending_approval") {
+    return false;
+  }
+
+  const startMs = event.startsAt ? new Date(event.startsAt).getTime() : NaN;
+  const endMs = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
+
+  if (st === "ongoing") {
+    if (Number.isFinite(endMs) && nowMs >= endMs) {
+      return false;
+    }
+    return true;
+  }
+
+  // Auto-start check: current real time matches or has passed startsAt, and is before endsAt
+  if (Number.isFinite(startMs) && nowMs >= startMs) {
+    if (Number.isFinite(endMs) && nowMs >= endMs) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Checks if an event has already ended.
+ */
+export function isEventEnded(
+  event: EventItem | undefined | null,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!event) return false;
+  const st = (event.status || "").toLowerCase();
+  if (st === "completed" || st === "cancelled") {
+    return true;
+  }
+  const endMs = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
+  if (Number.isFinite(endMs) && nowMs >= endMs) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks if an event has not started yet.
+ */
+export function isEventBeforeStart(
+  event: EventItem | undefined | null,
+  nowMs: number = Date.now(),
+): boolean {
+  if (!event) return false;
+  const st = (event.status || "").toLowerCase();
+  if (st === "ongoing") return false;
+  const startMs = event.startsAt ? new Date(event.startsAt).getTime() : NaN;
+  if (Number.isFinite(startMs) && nowMs < startMs) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether attendance can be taken for an event.
+ * Attendance can ONLY be taken during the event (while it is ongoing/live).
+ * Before the event starts and after the event ends, attendance is not takeable.
+ */
+export function isAttendanceTakeable(
+  event: EventItem | undefined | null,
+  nowMs: number = Date.now(),
+): { allowed: boolean; reason?: string } {
+  if (!event) {
+    return { allowed: false, reason: "Event not found." };
+  }
+  const st = (event.status || "").toLowerCase();
+  if (st === "completed") {
+    return {
+      allowed: false,
+      reason: "Attendance cannot be taken because this event has already ended.",
+    };
+  }
+  if (st === "cancelled") {
+    return {
+      allowed: false,
+      reason: "Attendance cannot be taken because this event was cancelled.",
+    };
+  }
+  if (st === "draft" || st === "pending_approval") {
+    return {
+      allowed: false,
+      reason: "Attendance cannot be taken for a draft or unapproved event.",
+    };
+  }
+
+  if (isEventEnded(event, nowMs)) {
+    return {
+      allowed: false,
+      reason: "Attendance cannot be taken after the event has ended.",
+    };
+  }
+
+  if (isEventBeforeStart(event, nowMs)) {
+    return {
+      allowed: false,
+      reason: "Attendance cannot be taken before the event starts. Please start the event first.",
+    };
+  }
+
+  return { allowed: true };
+}
+
+/**
+ * Returns the effective event status, taking into account real-time progression.
+ */
+export function getEffectiveEventStatus(
+  event: EventItem | undefined | null,
+  nowMs: number = Date.now(),
+): EventStatus {
+  if (!event) return "draft";
+  const st = (event.status || "").toLowerCase() as EventStatus;
+  if (st === "completed" || st === "cancelled" || st === "draft" || st === "pending_approval") {
+    return st;
+  }
+  if (isEventEnded(event, nowMs)) {
+    return "completed";
+  }
+  if (isEventOngoing(event, nowMs)) {
+    return "ongoing";
+  }
+  return st;
+}
+
 

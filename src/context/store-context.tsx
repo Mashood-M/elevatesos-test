@@ -98,7 +98,14 @@ import {
   isAssignableLeadershipRole,
   isSingletonLeadershipRole,
 } from "@/lib/leadership";
-import { deduplicateEvents, DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
+import {
+  deduplicateEvents,
+  DEFAULT_EVENT_CATEGORIES,
+  getAllEventCategories,
+  isAttendanceTakeable,
+  isEventOngoing,
+  isEventEnded,
+} from "@/lib/events";
 import { resolveBrandKit } from "@/lib/brand/kit";
 import { isDemoMode } from "@/lib/mode";
 import { hasPermission, isHqRole, isSuperAdmin } from "@/lib/permissions";
@@ -220,6 +227,8 @@ type StoreContextValue = {
   ) => boolean;
   createEvent: (event: EventItem) => EventItem;
   updateEvent: (id: string, patch: Partial<EventItem>) => void;
+  startEvent: (eventId: string, actorId?: string) => void;
+  endEvent: (eventId: string, actorId?: string) => void;
   deleteEvent: (id: string) => void;
   /** Add a new global event category. Category is uppercased and de-duplicated. Returns true if added, false if duplicate. */
   addEventCategory: (category: string) => boolean;
@@ -1117,6 +1126,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [hydrated, refreshStore]);
 
+  // Auto-start and auto-end events when real time matches scheduled start/end time
+  useEffect(() => {
+    if (!hydrated) return;
+
+    function checkEventTimers() {
+      const now = Date.now();
+      setStore((prev) => {
+        let changed = false;
+        const nextEvents = prev.events.map((ev) => {
+          const st = (ev.status || "").toLowerCase();
+          // Never auto-start draft, pending_approval, or cancelled events
+          if (st === "draft" || st === "pending_approval" || st === "cancelled") {
+            return ev;
+          }
+
+          const startMs = ev.startsAt ? new Date(ev.startsAt).getTime() : NaN;
+          const endMs = ev.endsAt ? new Date(ev.endsAt).getTime() : NaN;
+
+          // 1. Auto-complete when ended
+          if (Number.isFinite(endMs) && now >= endMs) {
+            if (st !== "completed") {
+              changed = true;
+              const updated = { ...ev, status: "completed" as const };
+              void runPersist(persistEvent(updated), {
+                errorMessage: `Auto-complete failed for event ${ev.id}`,
+              });
+              return updated;
+            }
+            return ev;
+          }
+
+          // 2. Auto-start when real time matches or exceeds startsAt (and not past endsAt)
+          if (Number.isFinite(startMs) && now >= startMs) {
+            if (st !== "ongoing" && st !== "completed") {
+              changed = true;
+              const updated = { ...ev, status: "ongoing" as const };
+              void runPersist(persistEvent(updated), {
+                errorMessage: `Auto-start failed for event ${ev.id}`,
+              });
+              return updated;
+            }
+          }
+
+          return ev;
+        });
+
+        if (!changed) return prev;
+        return {
+          ...prev,
+          events: nextEvents,
+        };
+      });
+    }
+
+    // Run immediately on hydration
+    checkEventTimers();
+
+    // Check periodically every 15 seconds to ensure accurate real-time event starting
+    const interval = setInterval(checkEventTimers, 15000);
+    return () => clearInterval(interval);
+  }, [hydrated]);
+
   const value = useMemo<StoreContextValue>(
     () => ({
       store,
@@ -1314,6 +1385,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Registration not found." };
             return s;
           }
+          const targetEventId = expectedEventId || reg.eventId;
+          const ev = s.events.find((e) => e.id === targetEventId || e.id === reg.eventId);
+          if (ev) {
+            const takeable = isAttendanceTakeable(ev);
+            if (!takeable.allowed) {
+              result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
+              return s;
+            }
+          }
           let activeReg = reg;
           let nextRegistrations = s.registrations;
           if (reg.status !== "approved") {
@@ -1437,6 +1517,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Event not found." };
             return s;
           }
+          const takeable = isAttendanceTakeable(event);
+          if (!takeable.allowed) {
+            result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
+            return s;
+          }
           const userProf = s.profiles.find((p) => p.id === studentUserId);
           if (!userProf) {
             result = { ok: false, message: "Student profile not found." };
@@ -1555,8 +1640,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const existing = s.attendance.find(
             (a) => a.registrationId === registrationId && (a.sessionId === session || a.session === session),
           );
+          const reg = s.registrations.find((r) => r.id === registrationId);
+          const eventId = reg?.eventId || existing?.eventId;
+          if (eventId) {
+            const ev = s.events.find((e) => e.id === eventId);
+            if (ev) {
+              const takeable = isAttendanceTakeable(ev);
+              if (!takeable.allowed) {
+                result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
+                return s;
+              }
+            }
+          }
           if (!existing) {
-            const reg = s.registrations.find((r) => r.id === registrationId);
             if (!reg) {
               result = { ok: false, message: "Registration not found." };
               return s;
@@ -2044,6 +2140,65 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             );
           });
         }
+      },
+      startEvent: (id, actorId) => {
+        const prev = store.events.find(
+          (e) =>
+            e.id === id ||
+            (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+            e.id.toLowerCase() === id.toLowerCase() ||
+            `evt-${e.id}` === id ||
+            e.id === `evt-${id}`,
+        );
+        if (!prev) return;
+        const effectiveActorId = actorId || store.session.userId || "system";
+        const updatedEvent: EventItem = {
+          ...prev,
+          status: "ongoing",
+        };
+        setStore((s) => ({
+          ...s,
+          events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
+          activityLogs: [
+            log(effectiveActorId, "start_event", "event", prev.id, prev.title),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(persistEvent(updatedEvent), {
+          errorMessage: `Failed to start event "${updatedEvent.title}"`,
+        });
+      },
+      endEvent: (id, actorId) => {
+        const prev = store.events.find(
+          (e) =>
+            e.id === id ||
+            (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+            e.id.toLowerCase() === id.toLowerCase() ||
+            `evt-${e.id}` === id ||
+            e.id === `evt-${id}`,
+        );
+        if (!prev) return;
+        const effectiveActorId = actorId || store.session.userId || "system";
+        const updatedEvent: EventItem = {
+          ...prev,
+          status: "completed",
+        };
+        setStore((s) => ({
+          ...s,
+          events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
+          forms: (s.forms ?? []).map((f) =>
+            f.eventId === prev.id || f.eventId === `evt-${prev.id}` || `evt-${f.eventId}` === prev.id
+              ? { ...f, status: "closed" as const, updatedAt: new Date().toISOString() }
+              : f,
+          ),
+          activityLogs: [
+            log(effectiveActorId, "end_event", "event", prev.id, prev.title),
+            ...s.activityLogs,
+          ],
+        }));
+        void runPersist(persistEvent(updatedEvent), {
+          errorMessage: `Failed to end event "${updatedEvent.title}"`,
+        });
       },
       deleteEvent: (id) => {
         const ev = store.events.find(

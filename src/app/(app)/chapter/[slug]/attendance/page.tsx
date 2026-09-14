@@ -9,9 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
-import { CheckCircle2, ChevronDown, Users, X, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, Play, Users, X, XCircle } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import {
+  isAttendanceTakeable,
+  isEventOngoing,
+  isEventEnded,
+  isEventBeforeStart,
+} from "@/lib/events";
 import {
   clearOfflineQueue,
   enqueueOfflineCheckIn,
@@ -33,7 +39,18 @@ export default function ChapterAttendancePage({
 }) {
   const { slug } = use(params);
   const searchParams = useSearchParams();
-  const { store, checkIn, updateAttendance, quickRegisterAndCheckIn, deleteAttendance, deleteRegistration, issueCertificate, updateEvent } = useStore();
+  const {
+    store,
+    checkIn,
+    updateAttendance,
+    quickRegisterAndCheckIn,
+    deleteAttendance,
+    deleteRegistration,
+    issueCertificate,
+    updateEvent,
+    startEvent,
+    endEvent,
+  } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
@@ -126,6 +143,7 @@ export default function ChapterAttendancePage({
     const chapterEvents = store.events.filter((e) => e.chapterId === chapter.id);
     const preferred = chapterEvents.filter((e) =>
       [
+        "ongoing",
         "registration_open",
         "registration_closed",
         "completed",
@@ -153,6 +171,13 @@ export default function ChapterAttendancePage({
   const eventId = selectedEvent || events[0]?.id || "";
   const hasEvent = Boolean(eventId);
   const currentEvent = store.events.find((e) => e.id === eventId);
+  const attendanceTakeable = useMemo(
+    () => isAttendanceTakeable(currentEvent),
+    [currentEvent],
+  );
+  const isOngoing = currentEvent ? isEventOngoing(currentEvent) : false;
+  const isEnded = currentEvent ? isEventEnded(currentEvent) : false;
+  const isBefore = currentEvent ? isEventBeforeStart(currentEvent) : false;
 
   // Configured attendance terms/sessions for this event
   const attendanceSessions: EventAttendanceSession[] = useMemo(() => {
@@ -530,6 +555,12 @@ export default function ChapterAttendancePage({
         setFlash({ tone: "err", text: "Select an event first." });
         return false;
       }
+      const targetEvent = store.events.find((e) => e.id === eid);
+      const takeable = isAttendanceTakeable(targetEvent);
+      if (!takeable.allowed) {
+        setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
+        return false;
+      }
       if (session.roleKey === "class_representative" && myClassCohort) {
         const reg = store.registrations.find((r) => r.id === registrationId);
         const user = store.profiles.find((p) => p.id === reg?.userId);
@@ -558,13 +589,18 @@ export default function ChapterAttendancePage({
       });
       return true;
     },
-    [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles],
+    [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles, store.events],
   );
 
   const handleAddVolunteer = useCallback(
     async (studentId: string, _studentName: string) => {
       if (!eventId) {
         setPopNotification({ tone: "err", text: "Select an event first." });
+        return;
+      }
+      const takeable = isAttendanceTakeable(currentEvent);
+      if (!takeable.allowed) {
+        setPopNotification({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
         return;
       }
       if (volunteerPendingId) return;
@@ -676,6 +712,12 @@ export default function ChapterAttendancePage({
         deskRef.current;
       if (!eid) {
         setFlash({ tone: "err", text: "Select an event first." });
+        return;
+      }
+      const targetEvent = store.events.find((e) => e.id === eid);
+      const takeable = isAttendanceTakeable(targetEvent);
+      if (!takeable.allowed) {
+        setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
         return;
       }
 
@@ -825,6 +867,11 @@ export default function ChapterAttendancePage({
 
   function syncOffline() {
     if (!online || !offlineQueue.length || !eventId) return;
+    const takeable = isAttendanceTakeable(currentEvent);
+    if (!takeable.allowed) {
+      setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
+      return;
+    }
     let ok = 0;
     for (const item of offlineQueue) {
       const reg = store.registrations.find(
@@ -857,6 +904,12 @@ export default function ChapterAttendancePage({
       .map((l) => l.trim())
       .filter(Boolean);
     if (!lines.length) return;
+    if (!eventId || !currentEvent) return;
+    const takeable = isAttendanceTakeable(currentEvent);
+    if (!takeable.allowed) {
+      setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
+      return;
+    }
     let ok = 0;
     for (const line of lines) {
       let reg = store.registrations.find(
@@ -927,7 +980,12 @@ export default function ChapterAttendancePage({
   }
 
   function handleRepresentative() {
-    if (!selectedRegs.length || !eventId) return;
+    if (!selectedRegs.length || !eventId || !currentEvent) return;
+    const takeable = isAttendanceTakeable(currentEvent);
+    if (!takeable.allowed) {
+      setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
+      return;
+    }
     let ok = 0;
     for (const regId of selectedRegs) {
       const res = checkIn(
@@ -997,6 +1055,8 @@ export default function ChapterAttendancePage({
                 <Button
                   variant="orange"
                   className="text-xs"
+                  disabled={!attendanceTakeable.allowed}
+                  title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                   onClick={() => setIsOnSpotOpen(true)}
                 >
                   + On-Spot Check-in
@@ -1127,8 +1187,8 @@ export default function ChapterAttendancePage({
               <div className="rounded-[var(--radius)] border border-border/70 bg-bg/70 p-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-text">{currentEvent.title}</span>
-                  <Badge tone={currentEvent.status === "completed" ? "green" : "orange"}>
-                    {currentEvent.status.replace("_", " ")}
+                  <Badge tone={isOngoing ? "green" : currentEvent.status === "completed" ? "green" : "orange"}>
+                    {isOngoing ? "Live Ongoing" : currentEvent.status.replace("_", " ")}
                   </Badge>
                 </div>
                 <p className="mt-1 text-[11px] text-text-dim">
@@ -1223,6 +1283,96 @@ export default function ChapterAttendancePage({
             </Select>
           </div>
 
+          {currentEvent && (
+            <div
+              className={cn(
+                "mt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-[var(--radius)] border p-3 text-xs",
+                isOngoing
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                  : isBefore
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                    : "border-red-500/40 bg-red-500/10 text-red-300",
+              )}
+            >
+              <div className="flex items-start sm:items-center gap-2.5">
+                {isOngoing ? (
+                  <span className="relative flex h-2.5 w-2.5 shrink-0 mt-0.5 sm:mt-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                  </span>
+                ) : isBefore ? (
+                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 mt-0.5 sm:mt-0" />
+                ) : (
+                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-400 mt-0.5 sm:mt-0" />
+                )}
+                <div>
+                  <div className="font-semibold flex items-center gap-2">
+                    <span>
+                      {isOngoing
+                        ? "Event is Currently Ongoing · Attendance Active"
+                        : isBefore
+                          ? "Event Has Not Started Yet · Attendance Locked"
+                          : "Event Concluded · Attendance Closed"}
+                    </span>
+                    <Badge tone={isOngoing ? "green" : isBefore ? "orange" : "mute"}>
+                      {currentEvent.status === "ongoing"
+                        ? "Live Ongoing"
+                        : currentEvent.status.replace("_", " ")}
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-[11px] opacity-90">
+                    {isOngoing
+                      ? "Attendance can only be taken while the event is ongoing. Real-time verification is active."
+                      : isBefore
+                        ? `Attendance cannot be taken before the event starts. Scheduled: ${formatDateTime(currentEvent.startsAt)}. Start the event manually or wait for scheduled time.`
+                        : `This event ended on ${formatDateTime(currentEvent.endsAt || currentEvent.startsAt)}. Attendance cannot be taken after the event has ended.`}
+                  </p>
+                </div>
+              </div>
+
+              {isCampusLead && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {isBefore && (
+                    <Button
+                      size="sm"
+                      variant="orange"
+                      className="h-8 px-3 text-xs font-semibold shadow-sm flex items-center gap-1.5"
+                      onClick={async () => {
+                        await startEvent(currentEvent.id, session.userId);
+                        setFlash({
+                          tone: "ok",
+                          text: `Event "${currentEvent.title}" is now ONGOING! Attendance is active.`,
+                        });
+                      }}
+                    >
+                      <Play size={12} className="fill-current" />
+                      Start Event Now
+                    </Button>
+                  )}
+                  {isOngoing && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 px-3 text-xs font-semibold border border-red-500/50 hover:bg-red-500/20 text-red-300 flex items-center gap-1"
+                      onClick={async () => {
+                        if (confirm(`End event "${currentEvent.title}"? Attendance will be closed.`)) {
+                          await endEvent(currentEvent.id, session.userId);
+                          setFlash({
+                            tone: "ok",
+                            text: `Event "${currentEvent.title}" ended. Attendance is closed.`,
+                          });
+                        }
+                      }}
+                    >
+                      <CheckCircle2 size={12} />
+                      End Event
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {flash ? (
             <p
               className={cn(
@@ -1244,20 +1394,26 @@ export default function ChapterAttendancePage({
                   Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
                   {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
                 </span>
-                <Badge tone="green">Ready</Badge>
+                <Badge tone={attendanceTakeable.allowed ? "green" : "mute"}>
+                  {attendanceTakeable.allowed ? "Ready" : "Locked"}
+                </Badge>
               </div>
             ) : null}
 
             <QrScanner
               onScan={onCameraScan}
-              active={true}
-              disabled={!hasEvent}
+              active={attendanceTakeable.allowed}
+              disabled={!hasEvent || !attendanceTakeable.allowed}
               sideContent={
                 <div className="flex items-center gap-2">
                   <Input
-                    placeholder="Or paste / type QR code..."
+                    placeholder={
+                      !attendanceTakeable.allowed
+                        ? "Attendance locked (event not ongoing)"
+                        : "Or paste / type QR code..."
+                    }
                     value={qrInput}
-                    disabled={!hasEvent}
+                    disabled={!hasEvent || !attendanceTakeable.allowed}
                     onChange={(e) => setQrInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
                     aria-label="QR Code input"
@@ -1267,7 +1423,7 @@ export default function ChapterAttendancePage({
                     variant="orange"
                     size="sm"
                     className="h-9 px-4 text-xs font-semibold shrink-0"
-                    disabled={!hasEvent || !qrInput.trim()}
+                    disabled={!hasEvent || !qrInput.trim() || !attendanceTakeable.allowed}
                     onClick={() => handleQrScan()}
                   >
                     Verify
@@ -1275,6 +1431,11 @@ export default function ChapterAttendancePage({
                 </div>
               }
             />
+            {!attendanceTakeable.allowed && currentEvent && (
+              <p className="mt-2 text-center text-[11px] text-text-dim">
+                ⚠️ Attendance cannot be taken {isBefore ? "before the event starts" : "after the event has ended"}.
+              </p>
+            )}
           </div>
         </TerminalPanel>
       )}
@@ -1329,8 +1490,19 @@ export default function ChapterAttendancePage({
             {hasEvent && !isReadOnly && (
               <button
                 type="button"
-                className="h-8 px-2.5 text-xs font-medium rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated hover:border-border text-text hover:text-orange-500 transition-colors flex items-center gap-1.5 shrink-0"
-                onClick={() => setIsVolunteerModalOpen(true)}
+                disabled={!attendanceTakeable.allowed}
+                title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                className={cn(
+                  "h-8 px-2.5 text-xs font-medium rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated hover:border-border text-text hover:text-orange-500 transition-colors flex items-center gap-1.5 shrink-0",
+                  !attendanceTakeable.allowed && "opacity-50 cursor-not-allowed",
+                )}
+                onClick={() => {
+                  if (!attendanceTakeable.allowed) {
+                    setFlash({ tone: "err", text: attendanceTakeable.reason || "Attendance cannot be taken at this time." });
+                    return;
+                  }
+                  setIsVolunteerModalOpen(true);
+                }}
               >
                 <Users className="w-3.5 h-3.5 text-orange-500" />
                 <span>+ Volunteer Student</span>
@@ -1534,14 +1706,23 @@ export default function ChapterAttendancePage({
                                       <Button
                                         variant="ghost"
                                         className="h-6 px-1 text-[10px]"
+                                        disabled={!attendanceTakeable.allowed}
+                                        title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                                         onClick={() => {
-                                          updateAttendance(
+                                          if (!attendanceTakeable.allowed) {
+                                            setFlash({ tone: "err", text: attendanceTakeable.reason || "Attendance cannot be taken at this time." });
+                                            return;
+                                          }
+                                          const res = updateAttendance(
                                             reg.id,
                                             sessRecord.status === "present" ? "absent" : "present",
                                             session.userId,
                                             sess.id,
                                             sess.name,
                                           );
+                                          if (!res.ok) {
+                                            setFlash({ tone: "err", text: res.message });
+                                          }
                                         }}
                                       >
                                         ⇄
@@ -1552,6 +1733,8 @@ export default function ChapterAttendancePage({
                                   <Button
                                     variant="ghost"
                                     className="h-6 px-2 text-[10px] border border-border"
+                                    disabled={!hasEvent || !attendanceTakeable.allowed}
+                                    title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                                     onClick={() => runCheckIn(reg.id, "manual", sess.id, sess.name)}
                                   >
                                     + Mark
@@ -1606,7 +1789,8 @@ export default function ChapterAttendancePage({
                                 <Button
                                   variant="ghost"
                                   className="h-8"
-                                  disabled={!hasEvent}
+                                  disabled={!hasEvent || !attendanceTakeable.allowed}
+                                  title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                                   onClick={() => runCheckIn(reg.id, "manual")}
                                 >
                                   Check in
@@ -1614,7 +1798,8 @@ export default function ChapterAttendancePage({
                                 <Button
                                   variant="ghost"
                                   className="h-8"
-                                  disabled={!hasEvent}
+                                  disabled={!hasEvent || !attendanceTakeable.allowed}
+                                  title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                                   onClick={() => {
                                     const result = checkIn(
                                       reg.id,

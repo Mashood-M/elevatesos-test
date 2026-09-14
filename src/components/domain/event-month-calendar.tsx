@@ -29,6 +29,7 @@ export const eventStatusTone: Record<
   approved: "cyan",
   registration_open: "green",
   registration_closed: "magenta",
+  ongoing: "green",
   completed: "mute",
   cancelled: "mute",
 };

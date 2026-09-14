@@ -54,6 +54,7 @@ export type EventStatus =
   | "approved"
   | "registration_open"
   | "registration_closed"
+  | "ongoing"
   | "completed"
   | "cancelled";
 export type Visibility =

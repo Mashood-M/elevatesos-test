@@ -13,7 +13,13 @@ import { EventManagerCreateDialog } from "@/components/domain/event-manager-dial
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
-import { canRegisterNow, isEventVisibleToUser, getEventRegistrationState, canPublishEvent } from "@/lib/events";
+import {
+  canRegisterNow,
+  isEventVisibleToUser,
+  getEventRegistrationState,
+  canPublishEvent,
+  isEventOngoing,
+} from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -21,10 +27,11 @@ import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import type { EventItem, EventRegistration, EventStatus } from "@/types";
 
 
-type StatusChip = "all" | "registration_open" | "registration_closed" | "draft" | "completed";
+type StatusChip = "all" | "ongoing" | "registration_open" | "registration_closed" | "draft" | "completed";
 
 const STATUS_CHIPS: { key: StatusChip; label: string }[] = [
   { key: "all", label: "All" },
+  { key: "ongoing", label: "Ongoing" },
   { key: "registration_open", label: "Open" },
   { key: "registration_closed", label: "Stopped" },
   { key: "draft", label: "Draft" },
@@ -46,7 +53,18 @@ export default function ChapterEventsPage({
   const { slug } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { store, createEvent, updateEvent, createForm, setFormStatus, updateRegistrationStatus, batchUpdateRegistrationStatus, addEventCategory } = useStore();
+  const {
+    store,
+    createEvent,
+    updateEvent,
+    startEvent,
+    endEvent,
+    createForm,
+    setFormStatus,
+    updateRegistrationStatus,
+    batchUpdateRegistrationStatus,
+    addEventCategory,
+  } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
@@ -117,9 +135,11 @@ export default function ChapterEventsPage({
   const mainEvents = events.filter((e) => e.eventType === "main" || !e.parentEventId);
   const q = search.trim().toLowerCase();
   const filteredEvents = events
-    .filter((e) =>
-      statusChip === "all" ? true : e.status === (statusChip as EventStatus),
-    )
+    .filter((e) => {
+      if (statusChip === "all") return true;
+      if (statusChip === "ongoing") return isEventOngoing(e);
+      return e.status === (statusChip as EventStatus);
+    })
     .filter((e) => {
       if (!q) return true;
       return (
@@ -494,6 +514,12 @@ export default function ChapterEventsPage({
                                 : "Registered"}
                           </Button>
                         </Link>
+                      ) : isEventOngoing(ev) ? (
+                        <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                          <Button variant="green" className="h-9 px-4 font-semibold shadow-sm">
+                            Live Event Ongoing
+                          </Button>
+                        </Link>
                       ) : regState.status === "ended" ? (
                         <Link href={`/chapter/${slug}/events/${ev.id}`}>
                           <Button variant="primary" className="h-9 px-4">
@@ -536,7 +562,29 @@ export default function ChapterEventsPage({
                         </Button>
                       )}
 
-                      {/* Management Controls: Publish & Stop Registration Buttons for each event */}
+                      {/* Management Controls: Start Event, End Event, Publish & Stop Registration */}
+                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) ? (
+                        ev.status === "ongoing" || isEventOngoing(ev) ? (
+                          <Button
+                            variant="danger"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold"
+                            onClick={() => endEvent(ev.id, session.userId)}
+                            title="End this event now and close attendance"
+                          >
+                            End Event
+                          </Button>
+                        ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
+                          <Button
+                            variant="green"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
+                            onClick={() => startEvent(ev.id, session.userId)}
+                            title="Start this event now - marks as Ongoing and opens attendance"
+                          >
+                            Start Event
+                          </Button>
+                        ) : null
+                      ) : null}
+
                       {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) ? (
                         ev.status === "registration_open" ? (
                           <Button
@@ -547,7 +595,7 @@ export default function ChapterEventsPage({
                           >
                             Stop Registration
                           </Button>
-                        ) : (
+                        ) : ev.status !== "ongoing" && ev.status !== "completed" ? (
                           <Button
                             variant="orange"
                             className="h-9 px-3 text-xs"
@@ -556,7 +604,7 @@ export default function ChapterEventsPage({
                           >
                             Publish Event
                           </Button>
-                        )
+                        ) : null
                       ) : null}
 
                       {secondary && !isFacultyRole(session.roleKey) ? (

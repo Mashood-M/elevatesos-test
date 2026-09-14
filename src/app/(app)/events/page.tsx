@@ -9,20 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState, canPublishEvent } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState, canPublishEvent, isEventOngoing } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { hasPermission } from "@/lib/permissions";
 import { isFacultyRole } from "@/lib/access";
-import { Search, Sparkles, Calendar, ArrowRight, Ban, Play } from "lucide-react";
+import { Search, Sparkles, Calendar, ArrowRight, Ban, Play, CheckCircle2 } from "lucide-react";
 import type { EventItem } from "@/types";
 
-type FilterTab = "all" | "open_reg" | "workshop" | "challenge";
+type FilterTab = "all" | "ongoing" | "open_reg" | "workshop" | "challenge";
 
 export default function OpenEventsPage() {
-  const { store, updateEvent, createForm, setFormStatus } = useStore();
+  const { store, updateEvent, startEvent, endEvent, createForm, setFormStatus } = useStore();
   const { session } = useCurrentUser();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
@@ -91,6 +91,9 @@ export default function OpenEventsPage() {
         }
       }
 
+      if (activeTab === "ongoing") {
+        return isEventOngoing(ev);
+      }
       if (activeTab === "open_reg") {
         return ev.status === "registration_open";
       }
@@ -159,6 +162,17 @@ export default function OpenEventsPage() {
             }`}
           >
             All Events ({allOpenEvents.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("ongoing")}
+            className={`rounded-[10px] px-3 py-1.5 text-xs font-medium transition-colors ${
+              activeTab === "ongoing"
+                ? "bg-emerald-600 text-white font-semibold shadow-sm"
+                : "bg-bg-panel text-text-dim hover:text-text border border-border"
+            }`}
+          >
+            ● Live / Ongoing
           </button>
           <button
             type="button"
@@ -283,6 +297,12 @@ export default function OpenEventsPage() {
                                 : "Registered"}
                           </Button>
                         </Link>
+                      ) : isEventOngoing(ev) ? (
+                        <Link href={eventHref}>
+                          <Button variant="green" className="h-9 px-4 font-semibold shadow-sm">
+                            Live Event Ongoing
+                          </Button>
+                        </Link>
                       ) : regState.status === "ended" ? (
                         <Link href={eventHref}>
                           <Button variant="primary" className="h-9 px-4">
@@ -325,7 +345,31 @@ export default function OpenEventsPage() {
                         </Button>
                       )}
 
-                      {/* Management Controls: Publish & Stop */}
+                      {/* Management Controls: Start Event, End Event, Publish & Stop */}
+                      {canPublishEvent(session.roleKey, ev, session.userId) ? (
+                        ev.status === "ongoing" || isEventOngoing(ev) ? (
+                          <Button
+                            variant="danger"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold"
+                            onClick={() => endEvent(ev.id, session.userId)}
+                            title="End this event and close attendance"
+                          >
+                            <CheckCircle2 size={13} />
+                            End Event
+                          </Button>
+                        ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
+                          <Button
+                            variant="green"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
+                            onClick={() => startEvent(ev.id, session.userId)}
+                            title="Start this event now and begin attendance"
+                          >
+                            <Play size={13} className="fill-current" />
+                            Start Event
+                          </Button>
+                        ) : null
+                      ) : null}
+
                       {canPublishEvent(session.roleKey, ev, session.userId) ? (
                         ev.status === "registration_open" ? (
                           <Button
@@ -337,7 +381,7 @@ export default function OpenEventsPage() {
                             <Ban size={13} />
                             Stop Registration
                           </Button>
-                        ) : (
+                        ) : ev.status !== "ongoing" && ev.status !== "completed" ? (
                           <Button
                             variant="orange"
                             className="h-9 px-3 text-xs flex items-center gap-1"
@@ -347,7 +391,7 @@ export default function OpenEventsPage() {
                             <Play size={13} />
                             Publish Event
                           </Button>
-                        )
+                        ) : null
                       ) : null}
                     </div>
                   }

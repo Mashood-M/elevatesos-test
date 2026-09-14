@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SectionGrid } from "@/components/layout/page-frame";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
-import { isEventVisibleToUser } from "@/lib/events";
+import { isEventVisibleToUser, isEventOngoing, isEventEnded } from "@/lib/events";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { formatDate, formatDateTime, initials } from "@/lib/utils";
@@ -100,12 +100,16 @@ export default function ChapterDashboardPage({
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
   const tasks = store.tasks.filter((t) => t.chapterId === chapter.id);
   const openTasks = tasks.filter((t) => t.status !== "completed");
+  const ongoingEvents = events.filter((e) => isEventOngoing(e));
   const upcoming = events
-    .filter((e) => new Date(e.startsAt) >= new Date())
-    .sort(
-      (a, b) =>
-        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-    );
+    .filter((e) => isEventOngoing(e) || (!isEventEnded(e) && new Date(e.startsAt) >= new Date()))
+    .sort((a, b) => {
+      const aOngoing = isEventOngoing(a);
+      const bOngoing = isEventOngoing(b);
+      if (aOngoing && !bOngoing) return -1;
+      if (!aOngoing && bOngoing) return 1;
+      return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+    });
 
   const chapterLogs = (store.activityLogs ?? [])
     .filter((l) => {
@@ -260,6 +264,24 @@ export default function ChapterDashboardPage({
               </Link>
             }
           >
+            {ongoingEvents.length > 0 && (
+              <div className="mb-3 rounded-[var(--radius)] border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-300 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                  </span>
+                  <span>
+                    <strong>{ongoingEvents.length} Event{ongoingEvents.length === 1 ? "" : "s"} Ongoing Right Now:</strong> Attendance is active!
+                  </span>
+                </div>
+                <Link href={`/chapter/${slug}/events/${ongoingEvents[0].id}`}>
+                  <Button size="sm" variant="orange" className="h-7 text-xs font-semibold">
+                    View Live Event
+                  </Button>
+                </Link>
+              </div>
+            )}
             {upcoming.length === 0 ? (
               <p className="text-[13px] text-text-dim">
                 No upcoming events.

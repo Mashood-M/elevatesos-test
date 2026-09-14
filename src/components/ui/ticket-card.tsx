@@ -4,11 +4,14 @@ import { Badge } from "@/components/ui/badge";
 import type { EventItem } from "@/types";
 import { cn, formatDateTime } from "@/lib/utils";
 
+import { isEventOngoing } from "@/lib/events";
+
 const statusTone: Record<
   string,
   "cyan" | "magenta" | "green" | "orange" | "mute"
 > = {
   completed: "mute",
+  ongoing: "green",
   registration_open: "green",
   pending_approval: "orange",
   approved: "cyan",
@@ -35,6 +38,8 @@ export function TicketCard({
   /** When true, suppresses the status badge (e.g. hides "draft" from student-facing views) */
   hideStatus?: boolean;
 }) {
+  const ongoing = isEventOngoing(event);
+
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -45,12 +50,21 @@ export function TicketCard({
           <p className="mt-0.5 text-[12px] text-text-dim">{event.category}</p>
         </div>
         <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-1.5 shrink-0 max-w-[50%] sm:max-w-none">
+          {ongoing ? (
+            <Badge tone="green" className="flex items-center gap-1 font-bold shadow-sm">
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              Ongoing
+            </Badge>
+          ) : null}
           {(event.visibility === "open_to_all" || event.visibility === "public" || event.visibility === "all_chapters") ? (
             <Badge tone="cyan">Open to All</Badge>
           ) : (
             <Badge tone="mute">Campus Exclusive</Badge>
           )}
-          {!hideStatus && (() => {
+          {!hideStatus && !ongoing && (() => {
             const isUpcoming =
               event.status === "registration_open" &&
               Boolean(event.registrationStart && new Date(event.registrationStart).getTime() > Date.now());

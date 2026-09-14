@@ -684,6 +684,45 @@ export async function POST(req: Request) {
         }
       }
 
+      // Validate attendance window against Supabase event status and scheduled times
+      if (isUuid(att.eventId)) {
+        const { data: ev } = await admin
+          .from("events")
+          .select("id, status, starts_at, ends_at")
+          .eq("id", att.eventId)
+          .maybeSingle();
+
+        if (ev) {
+          const nowMs = Date.now();
+          const startsAtMs = new Date(ev.starts_at).getTime();
+          const endsAtMs = ev.ends_at ? new Date(ev.ends_at).getTime() : startsAtMs + 2 * 60 * 60 * 1000;
+          const isOngoing =
+            ev.status === "ongoing" ||
+            (nowMs >= startsAtMs && nowMs < endsAtMs && ev.status !== "completed" && ev.status !== "cancelled");
+
+          if (!isOngoing && ev.status !== "ongoing") {
+            if (nowMs < startsAtMs) {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: "Attendance cannot be taken before the event starts. Please start the event first.",
+                },
+                { status: 400 },
+              );
+            }
+            if (nowMs >= endsAtMs || ev.status === "completed") {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: "Attendance cannot be taken after the event has ended.",
+                },
+                { status: 400 },
+              );
+            }
+          }
+        }
+      }
+
       const rec = {
         id: attId,
         event_id: isUuid(att.eventId) ? att.eventId : null,

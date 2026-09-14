@@ -91,15 +91,28 @@ export async function POST(req: Request) {
       const slug = event.slug ?? slugify(event.title || "event");
       let eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : null);
       if (!eventId) {
-        const { data: existing } = await admin
-          .from("events")
-          .select("id")
-          .eq("chapter_id", event.chapterId)
-          .or(`slug.eq.${slug},title.eq.${event.title}`)
-          .limit(1)
-          .maybeSingle();
-
-        eventId = existing?.id || genUuid();
+        let existingId: string | null = null;
+        if (slug) {
+          const { data: bySlug } = await admin
+            .from("events")
+            .select("id")
+            .eq("chapter_id", event.chapterId)
+            .eq("slug", slug)
+            .limit(1)
+            .maybeSingle();
+          if (bySlug?.id) existingId = bySlug.id;
+        }
+        if (!existingId && event.title) {
+          const { data: byTitle } = await admin
+            .from("events")
+            .select("id")
+            .eq("chapter_id", event.chapterId)
+            .ilike("title", event.title)
+            .limit(1)
+            .maybeSingle();
+          if (byTitle?.id) existingId = byTitle.id;
+        }
+        eventId = existingId || genUuid();
       }
       const eventPayload: Record<string, any> = {
         id: eventId,
@@ -760,6 +773,34 @@ export async function POST(req: Request) {
     if (type === "bulk_attendance") {
       const { records } = data;
       if (Array.isArray(records) && records.length > 0) {
+        const sampleEventId = records.find((r: any) => isUuid(r.eventId))?.eventId;
+        if (sampleEventId) {
+          const { data: ev } = await admin
+            .from("events")
+            .select("id, status, starts_at, ends_at")
+            .eq("id", sampleEventId)
+            .maybeSingle();
+
+          if (ev) {
+            const nowMs = Date.now();
+            const startsAtMs = new Date(ev.starts_at).getTime();
+            const endsAtMs = ev.ends_at ? new Date(ev.ends_at).getTime() : startsAtMs + 2 * 60 * 60 * 1000;
+            const isOngoing =
+              ev.status === "ongoing" ||
+              (nowMs >= startsAtMs && nowMs < endsAtMs && ev.status !== "completed" && ev.status !== "cancelled");
+
+            if (!isOngoing && ev.status !== "ongoing") {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: "Attendance cannot be recorded because this event is not currently ongoing.",
+                },
+                { status: 400 },
+              );
+            }
+          }
+        }
+
         const rows = await Promise.all(records.map(async (att: any) => {
           let validUserId = null;
           if (isUuid(att.userId)) {
@@ -777,7 +818,7 @@ export async function POST(req: Request) {
             checked_in_by: isUuid(att.checkedInBy) ? att.checkedInBy : null,
           };
         }));
-        await admin.from("attendance").upsert(rows);
+        await admin.from("attendance_records").upsert(rows);
       }
       return NextResponse.json({ ok: true });
     }

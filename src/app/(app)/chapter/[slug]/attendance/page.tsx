@@ -1330,9 +1330,9 @@ export default function ChapterAttendancePage({
                 </div>
               </div>
 
-              {isCampusLead && (
+              {(isCampusLead || session.roleKey === "elevates_coordinator" || session.roleKey === "hq_admin" || Boolean(currentEvent && currentEvent.organizerId === session.userId)) && (
                 <div className="flex items-center gap-2 shrink-0">
-                  {isBefore && (
+                  {!isOngoing && !isEnded && currentEvent.status !== "cancelled" && (
                     <Button
                       size="sm"
                       variant="orange"

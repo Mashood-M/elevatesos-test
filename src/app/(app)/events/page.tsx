@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState, canPublishEvent, isEventOngoing } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState, canPublishEvent, isEventOngoing, isEventEnded } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
@@ -346,52 +346,63 @@ export default function OpenEventsPage() {
                       )}
 
                       {/* Management Controls: Start Event, End Event, Publish & Stop */}
-                      {canPublishEvent(session.roleKey, ev, session.userId) ? (
-                        ev.status === "ongoing" || isEventOngoing(ev) ? (
+                      {(canPublishEvent(session.roleKey, ev, session.userId) || session.roleKey === "campus_lead" || session.roleKey === "chairman" || session.roleKey === "elevates_coordinator" || session.roleKey === "hq_admin" || ev.organizerId === session.userId) ? (
+                        (ev.status === "ongoing" || isEventOngoing(ev)) ? (
+                          /* When ongoing: ONLY End Event button! */
                           <Button
                             variant="danger"
-                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold shadow-sm"
                             onClick={() => endEvent(ev.id, session.userId)}
                             title="End this event and close attendance"
                           >
                             <CheckCircle2 size={13} />
                             End Event
                           </Button>
-                        ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
-                          <Button
-                            variant="green"
-                            className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
-                            onClick={() => startEvent(ev.id, session.userId)}
-                            title="Start this event now and begin attendance"
-                          >
-                            <Play size={13} className="fill-current" />
-                            Start Event
-                          </Button>
-                        ) : null
-                      ) : null}
+                        ) : (ev.status === "completed" || isEventEnded(ev)) ? (
+                          /* When ended: read-only badge, no publish/start/stop */
+                          <Badge tone="mute" className="text-xs px-2.5 py-1">
+                            Event Ended
+                          </Badge>
+                        ) : (
+                          /* Pre-event: Start Event and Publish / Stop Registration */
+                          <>
+                            {ev.status !== "cancelled" && (
+                              <Button
+                                variant="green"
+                                className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
+                                onClick={() => startEvent(ev.id, session.userId)}
+                                title="Start this event now and begin attendance"
+                              >
+                                <Play size={13} className="fill-current" />
+                                Start Event
+                              </Button>
+                            )}
 
-                      {canPublishEvent(session.roleKey, ev, session.userId) ? (
-                        ev.status === "registration_open" ? (
-                          <Button
-                            variant="danger"
-                            className="h-9 px-3 text-xs flex items-center gap-1"
-                            onClick={() => handleStopEvent(ev)}
-                            title="Stop registration for this event"
-                          >
-                            <Ban size={13} />
-                            Stop Registration
-                          </Button>
-                        ) : ev.status !== "ongoing" && ev.status !== "completed" ? (
-                          <Button
-                            variant="orange"
-                            className="h-9 px-3 text-xs flex items-center gap-1"
-                            onClick={() => handlePublishEvent(ev)}
-                            title="Publish / Open registration for this event"
-                          >
-                            <Play size={13} />
-                            Publish Event
-                          </Button>
-                        ) : null
+                            {canPublishEvent(session.roleKey, ev, session.userId) && (
+                              ev.status === "registration_open" ? (
+                                <Button
+                                  variant="danger"
+                                  className="h-9 px-3 text-xs flex items-center gap-1"
+                                  onClick={() => handleStopEvent(ev)}
+                                  title="Stop registration for this event"
+                                >
+                                  <Ban size={13} />
+                                  Stop Registration
+                                </Button>
+                              ) : ev.status !== "cancelled" ? (
+                                <Button
+                                  variant="orange"
+                                  className="h-9 px-3 text-xs flex items-center gap-1"
+                                  onClick={() => handlePublishEvent(ev)}
+                                  title="Publish / Open registration for this event"
+                                >
+                                  <Play size={13} />
+                                  {ev.status === "registration_closed" ? "Reopen Registration" : "Publish Event"}
+                                </Button>
+                              ) : null
+                            )}
+                          </>
+                        )
                       ) : null}
                     </div>
                   }

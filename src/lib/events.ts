@@ -59,10 +59,10 @@ export function getEventRegistrationState(
 
   const st = (event.status || "").toLowerCase();
 
-  if (st === "completed" || st === "cancelled") {
+  if (st === "completed" || st === "cancelled" || isEventEnded(event, nowMs)) {
     return {
       status: "ended",
-      label: st === "completed" ? "Event Ended" : "Event Cancelled",
+      label: st === "cancelled" ? "Event Cancelled" : "Event Ended",
       canRegister: false,
       isWaitlist: false,
       isClosed: true,
@@ -75,13 +75,13 @@ export function getEventRegistrationState(
       waitlistSeatsLeft,
       hasWaitlist,
       reason:
-        st === "completed"
+        st === "completed" || isEventEnded(event, nowMs)
           ? "This event has already ended."
           : "This event was cancelled.",
     };
   }
 
-  if (st === "ongoing") {
+  if (st === "ongoing" || isEventOngoing(event, nowMs)) {
     return {
       status: "closed",
       label: "Event Ongoing",
@@ -555,15 +555,13 @@ export function isEventOngoing(
     return false;
   }
 
-  const startMs = event.startsAt ? new Date(event.startsAt).getTime() : NaN;
-  const endMs = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
-
+  // If explicitly set to ongoing, it is always ongoing until ended
   if (st === "ongoing") {
-    if (Number.isFinite(endMs) && nowMs >= endMs) {
-      return false;
-    }
     return true;
   }
+
+  const startMs = event.startsAt ? new Date(event.startsAt).getTime() : NaN;
+  const endMs = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
 
   // Auto-start check: current real time matches or has passed startsAt, and is before endsAt
   if (Number.isFinite(startMs) && nowMs >= startMs) {
@@ -588,6 +586,10 @@ export function isEventEnded(
   if (st === "completed" || st === "cancelled") {
     return true;
   }
+  // Ongoing events are never ended
+  if (st === "ongoing") {
+    return false;
+  }
   const endMs = event.endsAt ? new Date(event.endsAt).getTime() : NaN;
   if (Number.isFinite(endMs) && nowMs >= endMs) {
     return true;
@@ -604,7 +606,7 @@ export function isEventBeforeStart(
 ): boolean {
   if (!event) return false;
   const st = (event.status || "").toLowerCase();
-  if (st === "ongoing") return false;
+  if (st === "ongoing" || st === "completed" || st === "cancelled") return false;
   const startMs = event.startsAt ? new Date(event.startsAt).getTime() : NaN;
   if (Number.isFinite(startMs) && nowMs < startMs) {
     return true;
@@ -625,6 +627,9 @@ export function isAttendanceTakeable(
     return { allowed: false, reason: "Event not found." };
   }
   const st = (event.status || "").toLowerCase();
+  if (st === "ongoing") {
+    return { allowed: true };
+  }
   if (st === "completed") {
     return {
       allowed: false,
@@ -644,6 +649,10 @@ export function isAttendanceTakeable(
     };
   }
 
+  if (isEventOngoing(event, nowMs)) {
+    return { allowed: true };
+  }
+
   if (isEventEnded(event, nowMs)) {
     return {
       allowed: false,
@@ -658,7 +667,7 @@ export function isAttendanceTakeable(
     };
   }
 
-  return { allowed: true };
+  return { allowed: false, reason: "Attendance is not active for this event." };
 }
 
 /**

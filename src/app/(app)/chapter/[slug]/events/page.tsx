@@ -19,11 +19,13 @@ import {
   getEventRegistrationState,
   canPublishEvent,
   isEventOngoing,
+  isEventEnded,
 } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
+import { CheckCircle2, Play } from "lucide-react";
 import type { EventItem, EventRegistration, EventStatus } from "@/types";
 
 
@@ -563,48 +565,61 @@ export default function ChapterEventsPage({
                       )}
 
                       {/* Management Controls: Start Event, End Event, Publish & Stop Registration */}
-                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) ? (
-                        ev.status === "ongoing" || isEventOngoing(ev) ? (
+                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage || session.roleKey === "campus_lead" || session.roleKey === "chairman" || session.roleKey === "elevates_coordinator" || session.roleKey === "hq_admin" || ev.organizerId === session.userId) ? (
+                        (ev.status === "ongoing" || isEventOngoing(ev)) ? (
+                          /* When ongoing: ONLY End Event button! All other actions closed. */
                           <Button
                             variant="danger"
-                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold"
+                            className="h-9 px-3 text-xs flex items-center gap-1 font-semibold shadow-sm"
                             onClick={() => endEvent(ev.id, session.userId)}
                             title="End this event now and close attendance"
                           >
+                            <CheckCircle2 size={13} />
                             End Event
                           </Button>
-                        ) : ev.status !== "completed" && ev.status !== "cancelled" ? (
-                          <Button
-                            variant="green"
-                            className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
-                            onClick={() => startEvent(ev.id, session.userId)}
-                            title="Start this event now - marks as Ongoing and opens attendance"
-                          >
-                            Start Event
-                          </Button>
-                        ) : null
-                      ) : null}
+                        ) : (ev.status === "completed" || isEventEnded(ev)) ? (
+                          /* When ended: read-only badge, no publish/start/stop */
+                          <Badge tone="mute" className="text-xs px-2.5 py-1">
+                            Event Ended
+                          </Badge>
+                        ) : (
+                          /* Pre-event: Start Event and Publish / Stop Registration */
+                          <>
+                            {ev.status !== "cancelled" && (
+                              <Button
+                                variant="green"
+                                className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm"
+                                onClick={() => startEvent(ev.id, session.userId)}
+                                title="Start this event now - marks as Ongoing and opens attendance"
+                              >
+                                <Play size={13} className="fill-current" />
+                                Start Event
+                              </Button>
+                            )}
 
-                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) ? (
-                        ev.status === "registration_open" ? (
-                          <Button
-                            variant="danger"
-                            className="h-9 px-3 text-xs"
-                            onClick={() => stopEventFromList(ev)}
-                            title="Stop registration immediately for this event"
-                          >
-                            Stop Registration
-                          </Button>
-                        ) : ev.status !== "ongoing" && ev.status !== "completed" ? (
-                          <Button
-                            variant="orange"
-                            className="h-9 px-3 text-xs"
-                            onClick={() => publishEventFromList(ev)}
-                            title="Publish / Open registration for this event"
-                          >
-                            Publish Event
-                          </Button>
-                        ) : null
+                            {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) && (
+                              ev.status === "registration_open" ? (
+                                <Button
+                                  variant="danger"
+                                  className="h-9 px-3 text-xs"
+                                  onClick={() => stopEventFromList(ev)}
+                                  title="Stop registration immediately for this event"
+                                >
+                                  Stop Registration
+                                </Button>
+                              ) : ev.status !== "cancelled" ? (
+                                <Button
+                                  variant="orange"
+                                  className="h-9 px-3 text-xs"
+                                  onClick={() => publishEventFromList(ev)}
+                                  title="Publish / Open registration for this event"
+                                >
+                                  {ev.status === "registration_closed" ? "Reopen Registration" : "Publish Event"}
+                                </Button>
+                              ) : null
+                            )}
+                          </>
+                        )
                       ) : null}
 
                       {secondary && !isFacultyRole(session.roleKey) ? (

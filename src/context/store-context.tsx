@@ -1136,17 +1136,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         let changed = false;
         const nextEvents = prev.events.map((ev) => {
           const st = (ev.status || "").toLowerCase();
-          // Never auto-start draft, pending_approval, or cancelled events
-          if (st === "draft" || st === "pending_approval" || st === "cancelled") {
+          // Never auto-start draft, pending_approval, cancelled, or completed events
+          if (st === "draft" || st === "pending_approval" || st === "cancelled" || st === "completed") {
             return ev;
           }
 
           const startMs = ev.startsAt ? new Date(ev.startsAt).getTime() : NaN;
           const endMs = ev.endsAt ? new Date(ev.endsAt).getTime() : NaN;
 
-          // 1. Auto-complete when ended
-          if (Number.isFinite(endMs) && now >= endMs) {
-            if (st !== "completed") {
+          // 1. Auto-complete when ended: strictly applies to ONGOING events whose endsAt has passed
+          if (st === "ongoing") {
+            if (Number.isFinite(endMs) && now >= endMs) {
               changed = true;
               const updated = { ...ev, status: "completed" as const };
               void runPersist(persistEvent(updated), {
@@ -1157,16 +1157,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return ev;
           }
 
-          // 2. Auto-start when real time matches or exceeds startsAt (and not past endsAt)
-          if (Number.isFinite(startMs) && now >= startMs) {
-            if (st !== "ongoing" && st !== "completed") {
+          // 2. Scheduled/approved events: check if scheduled start time has arrived
+          if (
+            (st === "registration_open" || st === "registration_closed" || st === "approved") &&
+            Number.isFinite(startMs) &&
+            now >= startMs
+          ) {
+            // If the scheduled end time has already elapsed, mark as completed
+            if (Number.isFinite(endMs) && now >= endMs) {
               changed = true;
-              const updated = { ...ev, status: "ongoing" as const };
+              const updated = { ...ev, status: "completed" as const };
               void runPersist(persistEvent(updated), {
-                errorMessage: `Auto-start failed for event ${ev.id}`,
+                errorMessage: `Auto-complete expired event ${ev.id}`,
               });
               return updated;
             }
+
+            // Real-time start match: auto-start event to ongoing!
+            changed = true;
+            const updated = { ...ev, status: "ongoing" as const };
+            void runPersist(persistEvent(updated), {
+              errorMessage: `Auto-start failed for event ${ev.id}`,
+            });
+            return updated;
           }
 
           return ev;
@@ -2142,63 +2155,108 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       startEvent: (id, actorId) => {
-        const prev = store.events.find(
-          (e) =>
-            e.id === id ||
-            (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
-            e.id.toLowerCase() === id.toLowerCase() ||
-            `evt-${e.id}` === id ||
-            e.id === `evt-${id}`,
-        );
-        if (!prev) return;
-        const effectiveActorId = actorId || store.session.userId || "system";
-        const updatedEvent: EventItem = {
-          ...prev,
-          status: "ongoing",
-        };
-        setStore((s) => ({
-          ...s,
-          events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
-          activityLogs: [
-            log(effectiveActorId, "start_event", "event", prev.id, prev.title),
-            ...s.activityLogs,
-          ],
-        }));
-        void runPersist(persistEvent(updatedEvent), {
-          errorMessage: `Failed to start event "${updatedEvent.title}"`,
+        const now = Date.now();
+        const nowIso = new Date(now).toISOString();
+        let targetEvent: EventItem | null = null;
+        let effectiveActorId = actorId || "system";
+
+        setStore((s) => {
+          effectiveActorId = actorId || s.session.userId || "system";
+          const prev = s.events.find(
+            (e) =>
+              e.id === id ||
+              (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+              e.id.toLowerCase() === id.toLowerCase() ||
+              `evt-${e.id}` === id ||
+              e.id === `evt-${id}`,
+          );
+          if (!prev) return s;
+
+          const endMs = prev.endsAt ? new Date(prev.endsAt).getTime() : NaN;
+          const startMs = prev.startsAt ? new Date(prev.startsAt).getTime() : NaN;
+
+          // If endsAt is in the past, invalid, or expiring in less than 30 mins,
+          // extend it by 4 hours so it stays ongoing and doesn't auto-complete immediately!
+          let newEndsAt = prev.endsAt;
+          if (!Number.isFinite(endMs) || endMs <= now + 30 * 60 * 1000) {
+            newEndsAt = new Date(now + 4 * 60 * 60 * 1000).toISOString();
+          }
+
+          // If startsAt is in the future or not set, set it to now
+          let newStartsAt = prev.startsAt;
+          if (!Number.isFinite(startMs) || startMs > now) {
+            newStartsAt = nowIso;
+          }
+
+          const updatedEvent: EventItem = {
+            ...prev,
+            status: "ongoing",
+            startsAt: newStartsAt,
+            endsAt: newEndsAt,
+          };
+          targetEvent = updatedEvent;
+
+          return {
+            ...s,
+            events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
+            activityLogs: [
+              log(effectiveActorId, "start_event", "event", prev.id, prev.title),
+              ...s.activityLogs,
+            ],
+          };
         });
+
+        if (targetEvent) {
+          void runPersist(persistEvent(targetEvent), {
+            errorMessage: `Failed to start event "${(targetEvent as EventItem).title}"`,
+          });
+        }
       },
       endEvent: (id, actorId) => {
-        const prev = store.events.find(
-          (e) =>
-            e.id === id ||
-            (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
-            e.id.toLowerCase() === id.toLowerCase() ||
-            `evt-${e.id}` === id ||
-            e.id === `evt-${id}`,
-        );
-        if (!prev) return;
-        const effectiveActorId = actorId || store.session.userId || "system";
-        const updatedEvent: EventItem = {
-          ...prev,
-          status: "completed",
-        };
-        setStore((s) => ({
-          ...s,
-          events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
-          forms: (s.forms ?? []).map((f) =>
-            f.eventId === prev.id || f.eventId === `evt-${prev.id}` || `evt-${f.eventId}` === prev.id
-              ? { ...f, status: "closed" as const, updatedAt: new Date().toISOString() }
-              : f,
-          ),
-          activityLogs: [
-            log(effectiveActorId, "end_event", "event", prev.id, prev.title),
-            ...s.activityLogs,
-          ],
-        }));
-        void runPersist(persistEvent(updatedEvent), {
-          errorMessage: `Failed to end event "${updatedEvent.title}"`,
+        const now = Date.now();
+        const nowIso = new Date(now).toISOString();
+        let targetEvent: EventItem | null = null;
+        let effectiveActorId = actorId || "system";
+
+        setStore((s) => {
+          effectiveActorId = actorId || s.session.userId || "system";
+          const prev = s.events.find(
+            (e) =>
+              e.id === id ||
+              (e.slug && e.slug.toLowerCase() === id.toLowerCase()) ||
+              e.id.toLowerCase() === id.toLowerCase() ||
+              `evt-${e.id}` === id ||
+              e.id === `evt-${id}`,
+          );
+          if (!prev) return s;
+
+          const updatedEvent: EventItem = {
+            ...prev,
+            status: "completed",
+            endsAt: nowIso,
+          };
+          targetEvent = updatedEvent;
+
+          return {
+            ...s,
+            events: s.events.map((e) => (e.id === prev.id ? updatedEvent : e)),
+            forms: (s.forms ?? []).map((f) =>
+              f.eventId === prev.id || f.eventId === `evt-${prev.id}` || `evt-${f.eventId}` === prev.id
+                ? { ...f, status: "closed" as const, updatedAt: nowIso }
+                : f,
+            ),
+            activityLogs: [
+              log(effectiveActorId, "end_event", "event", prev.id, prev.title),
+              ...s.activityLogs,
+            ],
+          };
         });
+
+        if (targetEvent) {
+          void runPersist(persistEvent(targetEvent), {
+            errorMessage: `Failed to end event "${(targetEvent as EventItem).title}"`,
+          });
+        }
       },
       deleteEvent: (id) => {
         const ev = store.events.find(

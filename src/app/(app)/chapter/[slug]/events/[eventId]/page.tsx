@@ -180,10 +180,29 @@ export default function EventDetailPage({
   const isOps = canEdit || canReview || canApprove;
   const canPublish =
     canPublishEvent(session.roleKey, event, session.userId) || isOps;
+  const canManageEvent =
+    canEdit ||
+    canPublish ||
+    isOps ||
+    session.roleKey === "campus_lead" ||
+    session.roleKey === "chairman" ||
+    session.roleKey === "elevates_coordinator" ||
+    session.roleKey === "faculty_coordinator" ||
+    session.roleKey === "hq_admin" ||
+    Boolean(event && event.organizerId === session.userId);
   const isFacultyMonitor = isFaculty && !isOps;
   const isStudentView = !isOps && !isFacultyMonitor && !isFaculty;
 
+  const isOngoing = event ? (event.status === "ongoing" || isEventOngoing(event)) : false;
+  const isEnded = event ? (event.status === "completed" || isEventEnded(event)) : false;
+
   const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if ((isEnded || isOngoing) && editing) {
+      setEditing(false);
+    }
+  }, [isEnded, isOngoing, editing]);
   const [draft, setDraft] = useState<EventDraft | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [newTopicInput, setNewTopicInput] = useState("");
@@ -368,6 +387,7 @@ export default function EventDetailPage({
   const eligibility = canRegisterNow(store, event, session.userId);
 
   function startEdit() {
+    if (isEnded || isOngoing) return;
     setDraft(draftFromEvent(event!));
     setEditing(true);
   }
@@ -1034,9 +1054,27 @@ export default function EventDetailPage({
                 Live / Ongoing
               </Badge>
             )}
-            {canEdit ? (
+            {canManageEvent ? (
               <div className="flex flex-wrap items-center gap-2">
-                {editing ? (
+                {isEnded ? (
+                  <Badge tone="mute" className="h-8 px-3 text-[12px] font-semibold border border-border/80 inline-flex items-center">
+                    Event Ended (Read-Only)
+                  </Badge>
+                ) : isOngoing ? (
+                  /* When an event has started, users can't register, and the event ONLY can end! Other options do not work / are hidden */
+                  <Button
+                    variant="danger"
+                    className="h-8 px-3 text-[12px] flex items-center gap-1 font-semibold shadow-sm"
+                    onClick={() => {
+                      endEvent(event.id, session.userId);
+                      setPublishFlash("Event ended. Status marked Completed, and attendance is now closed.");
+                    }}
+                    title="End this event now and close attendance"
+                  >
+                    <CheckCircle2 size={13} />
+                    End Event
+                  </Button>
+                ) : editing ? (
                   <>
                     <Button
                       variant="ghost"
@@ -1055,37 +1093,23 @@ export default function EventDetailPage({
                   </>
                 ) : (
                   <>
-                    {/* Start / End Event Controls */}
-                    {canPublish && (
-                      event.status === "ongoing" || isEventOngoing(event) ? (
-                        <Button
-                          variant="danger"
-                          className="h-8 px-3 text-[12px] flex items-center gap-1 font-semibold"
-                          onClick={() => {
-                            endEvent(event.id, session.userId);
-                            setPublishFlash("Event ended. Status marked Completed, and attendance is now closed.");
-                          }}
-                          title="End this event now and close attendance"
-                        >
-                          <CheckCircle2 size={13} />
-                          End Event
-                        </Button>
-                      ) : event.status !== "completed" && event.status !== "cancelled" ? (
-                        <Button
-                          variant="green"
-                          className="h-8 px-3 text-[12px] flex items-center gap-1.5 font-bold shadow-sm"
-                          onClick={() => {
-                            startEvent(event.id, session.userId);
-                            setPublishFlash("Event started! Event status is now Ongoing and attendance can be taken.");
-                          }}
-                          title="Start event now - transitions to Ongoing and allows attendance"
-                        >
-                          <Play size={13} className="fill-current" />
-                          Start Event
-                        </Button>
-                      ) : null
+                    {/* Start Event Control (Only before event starts!) */}
+                    {event.status !== "cancelled" && (
+                      <Button
+                        variant="green"
+                        className="h-8 px-3 text-[12px] flex items-center gap-1.5 font-bold shadow-sm"
+                        onClick={() => {
+                          startEvent(event.id, session.userId);
+                          setPublishFlash("Event started! Event status is now Ongoing and attendance can be taken.");
+                        }}
+                        title="Start event now - transitions to Ongoing and allows attendance"
+                      >
+                        <Play size={13} className="fill-current" />
+                        Start Event
+                      </Button>
                     )}
 
+                    {/* Publish / Stop Registration (Only before event starts!) */}
                     {canPublish && (
                       event.status === "registration_open" ? (
                         <Button
@@ -1109,6 +1133,7 @@ export default function EventDetailPage({
                         </Button>
                       )
                     )}
+
                     <Button
                       variant="secondary"
                       className="h-8 px-3 text-[12px]"
@@ -1117,13 +1142,16 @@ export default function EventDetailPage({
                     >
                       Customize Form 📋
                     </Button>
-                    <Button
-                      variant="primary"
-                      className="h-8 px-3 text-[12px]"
-                      onClick={startEdit}
-                    >
-                      Edit Details
-                    </Button>
+
+                    {canEdit && (
+                      <Button
+                        variant="primary"
+                        className="h-8 px-3 text-[12px]"
+                        onClick={startEdit}
+                      >
+                        Edit Details
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
@@ -1157,7 +1185,7 @@ export default function EventDetailPage({
                   </Button>
                 </Link>
               )}
-              {canPublish && (
+              {canManageEvent && (
                 <Button
                   variant="ghost"
                   className="h-8 px-3 text-[12px] border border-red-500/40 text-red-400 hover:bg-red-500/10 font-semibold"
@@ -1313,10 +1341,10 @@ export default function EventDetailPage({
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <TerminalPanel
           title="event.details"
-          meta={editing ? "editing" : event.status}
-          accent={editing ? "orange" : undefined}
+          meta={editing ? "editing" : isEnded ? "ended" : isOngoing ? "ongoing" : event.status}
+          accent={editing ? "orange" : isOngoing ? "green" : undefined}
         >
-          {editing && draft && canEdit ? (
+          {editing && draft && canEdit && !isEnded && !isOngoing ? (
             <div className="grid gap-3 md:grid-cols-2">
               <div className="md:col-span-2 rounded-[10px] border border-border/80 bg-bg p-3 shadow-[var(--shadow-sm)]">
                 <FieldLabel>Event Scope / Hierarchy</FieldLabel>
@@ -1758,7 +1786,17 @@ export default function EventDetailPage({
           ) : (
             <>
               {detailsReadonly}
-              {canEdit ? (
+              {isEnded ? (
+                <div className="mt-4 flex items-center justify-between gap-2 pt-2 border-t border-border/60 text-xs text-text-dim">
+                  <span>This event has ended and is in read-only archive mode. Details cannot be edited.</span>
+                  <Badge tone="mute">Event Ended</Badge>
+                </div>
+              ) : isOngoing ? (
+                <div className="mt-4 flex items-center justify-between gap-2 pt-2 border-t border-border/60 text-xs text-emerald-400">
+                  <span>Event is currently live. Details are locked while the event is ongoing.</span>
+                  <Badge tone="green">Live / Ongoing</Badge>
+                </div>
+              ) : canEdit ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/60">
                   <Button variant="ghost" onClick={startEdit}>
                     Edit details
@@ -1784,13 +1822,17 @@ export default function EventDetailPage({
                 <div>
                   <p className="font-semibold">Registration</p>
                   <p className="text-[12px] text-text-dim">
-                    {regForm
-                      ? `${regForm.title} · ${regForm.status}`
-                      : "Not created yet"}
+                    {isEnded
+                      ? "Registration closed (Event Ended)"
+                      : isOngoing
+                        ? "Registration closed (Event Ongoing)"
+                        : regForm
+                          ? `${regForm.title} · ${regForm.status}`
+                          : "Not created yet"}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {canEdit ? (
+                  {canEdit && !isEnded && !isOngoing ? (
                     <Button
                       variant="primary"
                       onClick={() => ensureForm("registration")}
@@ -1798,12 +1840,12 @@ export default function EventDetailPage({
                       {regForm ? "Manage form" : "Create form"}
                     </Button>
                   ) : null}
-                  {regForm?.status === "open" ? (
+                  {regForm?.status === "open" && !isEnded && !isOngoing ? (
                     <Link href={`/f/${regForm.id}`}>
                       <Button variant="ghost">Public fill</Button>
                     </Link>
                   ) : null}
-                  {canEdit && regForm ? (
+                  {canEdit && regForm && !isEnded && !isOngoing ? (
                     <Button
                       variant="ghost"
                       onClick={() =>
@@ -1819,7 +1861,7 @@ export default function EventDetailPage({
                 </div>
               </div>
 
-              {regForm?.status === "open" ? (
+              {regForm?.status === "open" && !isEnded && !isOngoing ? (
                 <FormSharePanel formId={regForm.id} title="Registration link" />
               ) : null}
 

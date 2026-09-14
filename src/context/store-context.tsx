@@ -119,6 +119,7 @@ import {
 } from "@/lib/comms/outbound";
 import type {
   Announcement,
+  AttendanceRecord,
   AttendanceSession,
   AttendanceStatus,
   BrandKit,
@@ -2899,16 +2900,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Certificate already issued." };
             return s;
           }
-          const att = s.attendance.find(
+          const ev = s.events.find((e) => e.id === eventId);
+          let att = s.attendance.find(
             (a) => a.eventId === eventId && a.userId === userId,
           );
+          const isOrganizer = ev?.organizerId === userId || ev?.facultyId === userId || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+          const userProf = s.profiles.find((p) => p.id === userId);
+          const isSpeaker = ev?.hosts && ev.hosts.some((h) => h.name && userProf?.fullName && h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase());
+          const isVolunteer = (att && att.status === "volunteer") || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+          const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
+
           if (
-            !att ||
-            !(
-              att.status === "present" ||
-              att.status === "late" ||
-              att.status === "volunteer" ||
-              att.status === "speaker"
+            !isAutoPresent &&
+            (!att ||
+              !(
+                att.status === "present" ||
+                att.status === "late" ||
+                att.status === "volunteer" ||
+                att.status === "speaker"
+              )
             )
           ) {
             result = {
@@ -2917,7 +2927,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             };
             return s;
           }
-          const ev = s.events.find((e) => e.id === eventId);
+          if (isAutoPresent && !att) {
+            const autoAtt: AttendanceRecord = {
+              id: genUuid(),
+              eventId,
+              userId,
+              registrationId: s.registrations.find((r) => r.eventId === eventId && r.userId === userId)?.id || `reg-auto-${userId}`,
+              status: isSpeaker ? "speaker" : isVolunteer ? "volunteer" : "present",
+              method: "manual",
+              checkedInBy: s.session.userId,
+              checkedInAt: new Date().toISOString(),
+            };
+            s = { ...s, attendance: [autoAtt, ...s.attendance] };
+            att = autoAtt;
+          }
           const ch = s.chapters.find((c) => c.id === ev?.chapterId);
           const prefix = (ch?.slug?.slice(0, 3) || "ELE").toUpperCase();
           const certificateId = `CERT-${prefix}-2026-${Date.now().toString().slice(-4)}`;

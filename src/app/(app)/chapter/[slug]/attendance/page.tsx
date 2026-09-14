@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
-import { CheckCircle2, ChevronDown, Play, Users, X, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, Play, Users, X, XCircle, Crown, Mic, Sparkles } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import {
@@ -106,7 +106,7 @@ export default function ChapterAttendancePage({
     | "elevates_id"
   >("registered_recent");
   const [online, setOnline] = useState(true);
-  const [rosterTab, setRosterTab] = useState<"approved" | "waitlist" | "chapter">("approved");
+  const [rosterTab, setRosterTab] = useState<"approved" | "team" | "waitlist" | "chapter">("approved");
   const [isOnSpotOpen, setIsOnSpotOpen] = useState(false);
   const [onSpotSearch, setOnSpotSearch] = useState("");
   const [isVolunteerModalOpen, setIsVolunteerModalOpen] = useState(false);
@@ -446,6 +446,165 @@ export default function ChapterAttendancePage({
       );
     });
   }, [chapterStudents, volunteerSearch]);
+
+  const eventTeam = useMemo(() => {
+    if (!currentEvent) return [];
+    const team: Array<{
+      id: string;
+      userId?: string;
+      fullName: string;
+      email: string;
+      elevatesId?: string;
+      department: string;
+      year: string;
+      role: "coordinator" | "speaker" | "volunteer";
+      roleLabel: string;
+      isStudentMember: boolean;
+    }> = [];
+
+    // Coordinators
+    if (currentEvent.organizerId) {
+      const p = store.profiles.find((pr) => pr.id === currentEvent.organizerId);
+      team.push({
+        id: `coord-${currentEvent.organizerId}`,
+        userId: currentEvent.organizerId,
+        fullName: p?.fullName || "Lead Organizer",
+        email: p?.email || "—",
+        elevatesId: p?.elevatesId,
+        department: p?.department || "Coordinator",
+        year: p?.year || "—",
+        role: "coordinator",
+        roleLabel: "Lead Event Coordinator",
+        isStudentMember: Boolean(p),
+      });
+    }
+
+    if (currentEvent.facultyId && currentEvent.facultyId !== currentEvent.organizerId) {
+      const p = store.profiles.find((pr) => pr.id === currentEvent.facultyId);
+      team.push({
+        id: `fac-${currentEvent.facultyId}`,
+        userId: currentEvent.facultyId,
+        fullName: p?.fullName || "Faculty Coordinator",
+        email: p?.email || "—",
+        elevatesId: p?.elevatesId,
+        department: p?.department || "Faculty",
+        year: p?.year || "—",
+        role: "coordinator",
+        roleLabel: "Faculty Coordinator",
+        isStudentMember: Boolean(p),
+      });
+    }
+
+    const orgs = [
+      ...(Array.isArray(currentEvent.organizers) ? currentEvent.organizers : []),
+      ...(Array.isArray(currentEvent.organizer) ? currentEvent.organizer : []),
+    ];
+    orgs.forEach((o, i) => {
+      const oName = o.name?.trim();
+      if (!oName) return;
+      const p = store.profiles.find(
+        (pr) => pr.fullName.toLowerCase() === oName.toLowerCase(),
+      );
+      if (!team.some((t) => t.fullName.toLowerCase() === oName.toLowerCase())) {
+        team.push({
+          id: `org-${i}-${oName}`,
+          userId: p?.id,
+          fullName: p?.fullName || oName,
+          email: p?.email || "—",
+          elevatesId: p?.elevatesId,
+          department: p?.department || "Coordinator",
+          year: p?.year || "—",
+          role: "coordinator",
+          roleLabel: "Co-Organizer",
+          isStudentMember: Boolean(p),
+        });
+      }
+    });
+
+    if (Array.isArray(currentEvent.managingStudentIds)) {
+      currentEvent.managingStudentIds.forEach((mId) => {
+        if (!team.some((t) => t.userId === mId)) {
+          const p = store.profiles.find((pr) => pr.id === mId);
+          team.push({
+            id: `mgmt-${mId}`,
+            userId: mId,
+            fullName: p?.fullName || "Management Student",
+            email: p?.email || "—",
+            elevatesId: p?.elevatesId,
+            department: p?.department || "Operations",
+            year: p?.year || "—",
+            role: "coordinator",
+            roleLabel: "Managing Team",
+            isStudentMember: Boolean(p),
+          });
+        }
+      });
+    }
+
+    // Speakers
+    const hosts = Array.isArray(currentEvent.hosts) ? currentEvent.hosts : [];
+    hosts.forEach((h, i) => {
+      const hName = h.name?.trim();
+      if (!hName) return;
+      const p = store.profiles.find(
+        (pr) =>
+          pr.fullName.toLowerCase() === hName.toLowerCase() ||
+          pr.email.toLowerCase() === hName.toLowerCase(),
+      );
+      if (!team.some((t) => t.fullName.toLowerCase() === hName.toLowerCase())) {
+        team.push({
+          id: `spk-${i}-${hName}`,
+          userId: p?.id,
+          fullName: p?.fullName || hName,
+          email: p?.email || "—",
+          elevatesId: p?.elevatesId,
+          department: p?.department || "Speaker",
+          year: p?.year || "—",
+          role: "speaker",
+          roleLabel: h.role ? `Speaker (${h.role})` : "Session Speaker",
+          isStudentMember: Boolean(p),
+        });
+      }
+    });
+
+    // Volunteers from attendance
+    const volAtts = store.attendance.filter(
+      (a) => a.eventId === eventId && a.status === "volunteer",
+    );
+    volAtts.forEach((va) => {
+      if (!team.some((t) => t.userId === va.userId)) {
+        const p = store.profiles.find((pr) => pr.id === va.userId);
+        team.push({
+          id: `vol-${va.userId}`,
+          userId: va.userId,
+          fullName: p?.fullName || "Volunteer Student",
+          email: p?.email || "—",
+          elevatesId: p?.elevatesId,
+          department: p?.department || "Volunteer",
+          year: p?.year || "—",
+          role: "volunteer",
+          roleLabel: "Operations Volunteer",
+          isStudentMember: Boolean(p),
+        });
+      }
+    });
+
+    return team;
+  }, [currentEvent, eventId, store.profiles, store.attendance]);
+
+  const filteredTeam = useMemo(() => {
+    const q = rosterQuery.trim().toLowerCase();
+    if (!q) return eventTeam;
+    return eventTeam.filter((m) => {
+      return (
+        m.fullName.toLowerCase().includes(q) ||
+        m.email.toLowerCase().includes(q) ||
+        m.roleLabel.toLowerCase().includes(q) ||
+        m.department.toLowerCase().includes(q) ||
+        (m.elevatesId && m.elevatesId.toLowerCase().includes(q))
+      );
+    });
+  }, [eventTeam, rosterQuery]);
 
   useEffect(() => {
     setOfflineQueue(loadOfflineQueue(eventId));
@@ -1456,9 +1615,11 @@ export default function ChapterAttendancePage({
         meta={
           rosterTab === "approved"
             ? `${filteredRoster.length}${rosterQuery ? ` / ${approvedRegs.length}` : ""} approved`
-            : rosterTab === "waitlist"
-              ? `${filteredWaitlist.length}${rosterQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
-              : `${filteredChapterStudents.length}${rosterQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
+            : rosterTab === "team"
+              ? `${filteredTeam.length}${rosterQuery ? ` / ${eventTeam.length}` : ""} event team`
+              : rosterTab === "waitlist"
+                ? `${filteredWaitlist.length}${rosterQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
+                : `${filteredChapterStudents.length}${rosterQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
         }
         className="mt-4"
       >
@@ -1470,9 +1631,11 @@ export default function ChapterAttendancePage({
               placeholder={
                 rosterTab === "approved"
                   ? "Search name, email, or QR..."
-                  : rosterTab === "waitlist"
-                    ? "Search waitlisted student..."
-                    : "Search any student in chapter..."
+                  : rosterTab === "team"
+                    ? "Search coordinator, speaker, or volunteer..."
+                    : rosterTab === "waitlist"
+                      ? "Search waitlisted student..."
+                      : "Search any student in chapter..."
               }
               disabled={!hasEvent}
               aria-label="Filter directory"
@@ -1485,15 +1648,16 @@ export default function ChapterAttendancePage({
               <select
                 value={rosterTab}
                 onChange={(e) => {
-                  setRosterTab(e.target.value as "approved" | "waitlist" | "chapter");
+                  setRosterTab(e.target.value as "approved" | "team" | "waitlist" | "chapter");
                   setRosterQuery("");
                 }}
                 aria-label="Filter roster category"
                 className="h-8 rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated text-text text-xs font-medium px-2.5 pr-7 outline-none cursor-pointer transition-colors focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/40"
               >
                 <option value="approved">Approved Attendees ({approvedRegs.length})</option>
+                <option value="team">Event Team & Speakers ({eventTeam.length})</option>
                 <option value="waitlist">Waitlist ({waitlistedRegs.length})</option>
-                <option value="chapter">All Students ({chapterStudents.length})</option>
+                <option value="chapter">On-Spot Chapter Directory ({chapterStudents.length})</option>
               </select>
             )}
 
@@ -1669,20 +1833,22 @@ export default function ChapterAttendancePage({
                 )}
                 {filteredRoster.map((reg) => {
                   const user = store.profiles.find((p) => p.id === reg.userId);
+                  const teamMember = eventTeam.find((t) => t.userId === reg.userId);
+                  const isAutoPresent = Boolean(teamMember);
                   const userAttRecords = store.attendance.filter(
                     (a) => a.registrationId === reg.id,
                   );
 
                   const singleAtt = userAttRecords[0];
                   const attendedSessionsCount = attendanceSessions.filter((sess) =>
-                    userAttRecords.some(
+                    isAutoPresent || userAttRecords.some(
                       (a) =>
                         (a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name) &&
                         (a.status === "present" || a.status === "late" || a.status === "volunteer" || a.status === "speaker"),
                     ),
                   ).length;
 
-                  const isFullyComplete = attendedSessionsCount === attendanceSessions.length;
+                  const isFullyComplete = isAutoPresent || attendedSessionsCount === attendanceSessions.length;
                   const cert = store.certificates.find(
                     (c) => c.eventId === reg.eventId && c.userId === reg.userId,
                   );
@@ -1690,7 +1856,19 @@ export default function ChapterAttendancePage({
                   return (
                     <tr key={reg.id} className="border-b border-border/50">
                       <td className="py-3">
-                        <p className="font-normal text-text">{user?.fullName}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-normal text-text">{user?.fullName}</p>
+                          {teamMember && (
+                            <span className={cn(
+                              "inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold border",
+                              teamMember.role === "speaker" && "bg-purple-500/15 text-purple-400 border-purple-500/30",
+                              teamMember.role === "coordinator" && "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+                              teamMember.role === "volunteer" && "bg-amber-500/15 text-amber-500 border-amber-500/30",
+                            )}>
+                              {teamMember.role === "speaker" ? "Speaker · Auto" : teamMember.role === "coordinator" ? "Coordinator · Auto" : "Volunteer · Auto"}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[11px] text-text-mute">{user?.email}</p>
                       </td>
 
@@ -1709,7 +1887,7 @@ export default function ChapterAttendancePage({
                               <td key={sess.id} className="py-3 text-center">
                                 {sessRecord ? (
                                   <div className="inline-flex items-center gap-1">
-                                    <Badge tone={sessRecord.status === "present" ? "green" : "orange"}>
+                                    <Badge tone={sessRecord.status === "present" || sessRecord.status === "speaker" || sessRecord.status === "volunteer" ? "green" : "orange"}>
                                       {sessRecord.status}
                                     </Badge>
                                     {!isReadOnly && (
@@ -1739,6 +1917,10 @@ export default function ChapterAttendancePage({
                                       </Button>
                                     )}
                                   </div>
+                                ) : isAutoPresent ? (
+                                  <Badge tone="green">
+                                    ✓ Present (Auto)
+                                  </Badge>
                                 ) : !isReadOnly ? (
                                   <Button
                                     variant="ghost"
@@ -1776,7 +1958,7 @@ export default function ChapterAttendancePage({
                             {singleAtt ? (
                               <Badge
                                 tone={
-                                  singleAtt.status === "present"
+                                  singleAtt.status === "present" || singleAtt.status === "speaker"
                                     ? "green"
                                     : singleAtt.status === "volunteer"
                                       ? "orange"
@@ -1785,6 +1967,10 @@ export default function ChapterAttendancePage({
                               >
                                 {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
                               </Badge>
+                            ) : isAutoPresent ? (
+                              <Badge tone="green">
+                                ✓ Present ({teamMember?.role})
+                              </Badge>
                             ) : (
                               <Badge tone="orange">not checked in</Badge>
                             )}
@@ -1792,8 +1978,10 @@ export default function ChapterAttendancePage({
                           <td className="py-3">
                             {isReadOnly ? (
                               <span className="font-mono text-[11px] text-text-dim">
-                                {singleAtt ? (singleAtt.method || "verified") : "—"}
+                                {singleAtt ? (singleAtt.method || "verified") : isAutoPresent ? "session-lead" : "—"}
                               </span>
+                            ) : isAutoPresent ? (
+                              <span className="text-[11px] text-emerald-400 font-medium">Auto-Present</span>
                             ) : !singleAtt ? (
                               <div className="flex flex-wrap gap-2">
                                 <Button
@@ -1842,7 +2030,7 @@ export default function ChapterAttendancePage({
                             <Badge tone="green">Issued · {cert.certificateId}</Badge>
                           ) : (singleAtt?.status === "volunteer" || userAttRecords.some((a) => a.status === "volunteer")) ? (
                             <span className="text-[11px] text-text-dim">Volunteer</span>
-                          ) : !isReadOnly && (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
+                          ) : !isReadOnly && (isMultiSession ? isFullyComplete : Boolean(isAutoPresent || (singleAtt && singleAtt.status === "present"))) ? (
                             <Button
                               variant="orange"
                               className="h-7 text-[11px]"
@@ -1873,6 +2061,82 @@ export default function ChapterAttendancePage({
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {rosterTab === "team" && (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[700px] text-[12px]">
+              <thead>
+                <tr className="border-b border-border text-left text-[11px] text-text-mute">
+                  <th className="pb-2">Team Member</th>
+                  <th className="pb-2">Event Role</th>
+                  <th className="pb-2">Department / Year</th>
+                  <th className="pb-2">Elevates ID</th>
+                  <th className="pb-2 text-right">Attendance Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTeam.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-text-dim">
+                      No coordinators or speakers found matching &quot;{rosterQuery}&quot;.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredTeam.map((member) => (
+                    <tr key={member.id} className="border-b border-border/50">
+                      <td className="py-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-semibold text-text">{member.fullName}</p>
+                          {member.role === "speaker" && member.isStudentMember && (
+                            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-400 border border-purple-500/30">
+                              Student Speaker
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-text-mute">{member.email}</p>
+                      </td>
+                      <td className="py-3">
+                        {member.role === "coordinator" ? (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                            <Crown size={11} className="mr-1" /> {member.roleLabel}
+                          </span>
+                        ) : member.role === "speaker" ? (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                            <Mic size={11} className="mr-1" /> {member.roleLabel}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                            <Sparkles size={11} className="mr-1" /> {member.roleLabel}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 text-[11px] text-text-dim">
+                        {member.department} {member.year !== "—" ? `· Year ${member.year}` : ""}
+                      </td>
+                      <td className="py-3 font-mono text-[11px] text-text-dim">
+                        {member.elevatesId || "—"}
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="inline-flex flex-col items-end">
+                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present (Auto-Present)
+                          </span>
+                          <span className="text-[10px] text-text-dim mt-0.5">
+                            {member.role === "speaker"
+                              ? "Session Speaker · Managing Session"
+                              : member.role === "coordinator"
+                                ? "Host / Coordinator · Auto-Marked"
+                                : "Event Volunteer · Operations"}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

@@ -30,10 +30,10 @@ import {
 import { defaultFormsForEvent, getEventForm, mintQrCode } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
-import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell, AlertCircle, Ban, Play } from "lucide-react";
+import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell, AlertCircle, Ban, Play, Crown, Mic, Sparkles, XCircle } from "lucide-react";
 import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
 import { EventRemindersPanel } from "@/components/domain/event-reminders-panel";
-import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
+import type { EventAttendanceSession, EventItem, EventStatus, Profile, RegistrationStatus, Visibility } from "@/types";
 
 
 function Stat({
@@ -215,6 +215,8 @@ export default function EventDetailPage({
   const [studentSearch, setStudentSearch] = useState("");
   const [studentStatusFilter, setStudentStatusFilter] = useState<string>("all");
   const [studentDeptFilter, setStudentDeptFilter] = useState<string>("all");
+  const [directoryRoleFilter, setDirectoryRoleFilter] = useState<string>("all");
+  const [directoryAttendanceFilter, setDirectoryAttendanceFilter] = useState<string>("all");
   const [registerOpen, setRegisterOpen] = useState(false);
 
   const allCategories = useMemo(() => {
@@ -246,6 +248,370 @@ export default function EventDetailPage({
     [store.registrations, event],
   );
 
+  const eventAttendanceRecords = useMemo(() => {
+    if (!event) return [];
+    return store.attendance.filter((a) => a.eventId === event.id);
+  }, [store.attendance, event]);
+
+  const eventDirectory = useMemo(() => {
+    if (!event) return [];
+
+    const peopleMap = new Map<string, {
+      id: string;
+      key: string;
+      userId?: string;
+      fullName: string;
+      department: string;
+      year: string;
+      email: string;
+      phone?: string;
+      elevatesId?: string;
+      role: "attendee" | "coordinator" | "speaker" | "volunteer";
+      roleLabel: string;
+      isStudentMember: boolean;
+      registrationStatus?: RegistrationStatus;
+      regId?: string;
+      registeredAt?: string;
+      attendanceStatus: "present" | "absent" | "not_checked_in";
+      attendanceNote?: string;
+      isAutoPresent: boolean;
+      rep?: Profile;
+    }>();
+
+    // 1. Speakers / Hosts (event.hosts)
+    const validHosts = Array.isArray(event.hosts) ? event.hosts : [];
+    validHosts.forEach((host, idx) => {
+      const hName = host.name?.trim();
+      if (!hName) return;
+      const lowerName = hName.toLowerCase();
+      const prof = store.profiles.find(
+        (p) =>
+          p.fullName?.trim().toLowerCase() === lowerName ||
+          p.email?.trim().toLowerCase() === lowerName,
+      );
+
+      const key = prof?.id ? `user-${prof.id}` : `speaker-${idx}-${lowerName}`;
+      peopleMap.set(key, {
+        id: key,
+        key,
+        userId: prof?.id,
+        fullName: prof?.fullName || hName,
+        department: prof?.department || "Speaker",
+        year: prof?.year || "—",
+        email: prof?.email || "—",
+        phone: prof?.phone,
+        elevatesId: prof?.elevatesId,
+        role: "speaker",
+        roleLabel: host.role?.trim() ? `Speaker (${host.role.trim()})` : "Session Speaker",
+        isStudentMember: Boolean(prof),
+        attendanceStatus: "present",
+        attendanceNote: "Session Speaker (Conducting Session)",
+        isAutoPresent: true,
+      });
+    });
+
+    // 2. Coordinators / Organizers
+    // 2a. Primary Organizer
+    if (event.organizerId) {
+      const orgProf = store.profiles.find((p) => p.id === event.organizerId);
+      const key = `user-${event.organizerId}`;
+      if (!peopleMap.has(key)) {
+        peopleMap.set(key, {
+          id: key,
+          key,
+          userId: event.organizerId,
+          fullName: orgProf?.fullName || "Lead Coordinator",
+          department: orgProf?.department || "Coordinator",
+          year: orgProf?.year || "—",
+          email: orgProf?.email || "—",
+          phone: orgProf?.phone,
+          elevatesId: orgProf?.elevatesId,
+          role: "coordinator",
+          roleLabel: "Lead Event Coordinator",
+          isStudentMember: Boolean(orgProf),
+          attendanceStatus: "present",
+          attendanceNote: "Managing Event & Session Operations",
+          isAutoPresent: true,
+        });
+      }
+    }
+
+    // 2b. Faculty Coordinator
+    if (event.facultyId) {
+      const facProf = store.profiles.find((p) => p.id === event.facultyId);
+      const key = `user-${event.facultyId}`;
+      if (!peopleMap.has(key)) {
+        peopleMap.set(key, {
+          id: key,
+          key,
+          userId: event.facultyId,
+          fullName: facProf?.fullName || "Faculty Coordinator",
+          department: facProf?.department || "Faculty",
+          year: facProf?.year || "—",
+          email: facProf?.email || "—",
+          phone: facProf?.phone,
+          elevatesId: facProf?.elevatesId,
+          role: "coordinator",
+          roleLabel: "Faculty Coordinator",
+          isStudentMember: Boolean(facProf),
+          attendanceStatus: "present",
+          attendanceNote: "Faculty Oversight (Auto-Present)",
+          isAutoPresent: true,
+        });
+      }
+    }
+
+    // 2c. Additional Organizers
+    const extraOrgs = [
+      ...(Array.isArray(event.organizers) ? event.organizers : []),
+      ...(Array.isArray(event.organizer) ? event.organizer : []),
+    ];
+    extraOrgs.forEach((org, idx) => {
+      const oName = org.name?.trim();
+      if (!oName) return;
+      const lowerName = oName.toLowerCase();
+      const prof = store.profiles.find(
+        (p) =>
+          p.fullName?.trim().toLowerCase() === lowerName ||
+          p.email?.trim().toLowerCase() === lowerName,
+      );
+      const key = prof?.id ? `user-${prof.id}` : `org-${idx}-${lowerName}`;
+      if (!peopleMap.has(key)) {
+        peopleMap.set(key, {
+          id: key,
+          key,
+          userId: prof?.id,
+          fullName: prof?.fullName || oName,
+          department: prof?.department || "Coordinator",
+          year: prof?.year || "—",
+          email: prof?.email || "—",
+          phone: prof?.phone,
+          elevatesId: prof?.elevatesId,
+          role: "coordinator",
+          roleLabel: "Event Co-Organizer",
+          isStudentMember: Boolean(prof),
+          attendanceStatus: "present",
+          attendanceNote: "Coordinating Session",
+          isAutoPresent: true,
+        });
+      }
+    });
+
+    // 2d. Managing Team Students
+    if (Array.isArray(event.managingStudentIds)) {
+      event.managingStudentIds.forEach((mId) => {
+        const prof = store.profiles.find((p) => p.id === mId);
+        const key = `user-${mId}`;
+        if (!peopleMap.has(key)) {
+          peopleMap.set(key, {
+            id: key,
+            key,
+            userId: mId,
+            fullName: prof?.fullName || "Management Student",
+            department: prof?.department || "Operations",
+            year: prof?.year || "—",
+            email: prof?.email || "—",
+            phone: prof?.phone,
+            elevatesId: prof?.elevatesId,
+            role: "coordinator",
+            roleLabel: "Event Managing Team",
+            isStudentMember: Boolean(prof),
+            attendanceStatus: "present",
+            attendanceNote: "Managing Event Logistics",
+            isAutoPresent: true,
+          });
+        }
+      });
+    }
+
+    // 3. Volunteers
+    const volunteerRecords = eventAttendanceRecords.filter((a) => a.status === "volunteer");
+    volunteerRecords.forEach((vol) => {
+      const prof = store.profiles.find((p) => p.id === vol.userId);
+      const key = `user-${vol.userId}`;
+      const existing = peopleMap.get(key);
+      if (existing) {
+        if (existing.role === "attendee") {
+          existing.role = "volunteer";
+          existing.roleLabel = "Event Volunteer";
+          existing.attendanceStatus = "present";
+          existing.attendanceNote = "Operations Volunteer (Managing Session)";
+          existing.isAutoPresent = true;
+        }
+      } else {
+        peopleMap.set(key, {
+          id: key,
+          key,
+          userId: vol.userId,
+          fullName: prof?.fullName || "Volunteer Student",
+          department: prof?.department || "Volunteer",
+          year: prof?.year || "—",
+          email: prof?.email || "—",
+          phone: prof?.phone,
+          elevatesId: prof?.elevatesId,
+          role: "volunteer",
+          roleLabel: "Event Volunteer",
+          isStudentMember: Boolean(prof),
+          attendanceStatus: "present",
+          attendanceNote: "Operations Volunteer (Managing Session)",
+          isAutoPresent: true,
+        });
+      }
+    });
+
+    // 4. Registered Students (Attendees)
+    regs.forEach((reg) => {
+      const user = store.profiles.find((p) => p.id === reg.userId);
+      const rep = reg.representativeId
+        ? store.profiles.find((p) => p.id === reg.representativeId)
+        : undefined;
+
+      const userKey = reg.userId ? `user-${reg.userId}` : `reg-${reg.id}`;
+      const existing = peopleMap.get(userKey);
+
+      const userAttRecords = eventAttendanceRecords.filter(
+        (a) => a.registrationId === reg.id || (reg.userId && a.userId === reg.userId),
+      );
+      const hasPresentAtt = userAttRecords.some(
+        (a) =>
+          a.status === "present" ||
+          a.status === "late" ||
+          a.status === "volunteer" ||
+          a.status === "speaker",
+      );
+
+      if (existing) {
+        existing.regId = reg.id;
+        existing.registrationStatus = reg.status;
+        existing.registeredAt = reg.createdAt;
+        if (rep && !existing.rep) existing.rep = rep;
+      } else {
+        const isPresent = hasPresentAtt;
+        const attStatus: "present" | "absent" | "not_checked_in" = isPresent
+          ? "present"
+          : isEnded
+            ? "absent"
+            : "not_checked_in";
+
+        const attNote = isPresent
+          ? userAttRecords.some((a) => a.status === "late")
+            ? "Verified (Late)"
+            : "Verified Present"
+          : isEnded
+            ? "Absent (Did Not Check In)"
+            : "Not Checked In Yet";
+
+        peopleMap.set(userKey, {
+          id: userKey,
+          key: userKey,
+          userId: reg.userId,
+          fullName: user?.fullName || reg.guestName || "Anonymous Student",
+          department: user?.department || "Unassigned",
+          year: user?.year || "—",
+          email: user?.email || reg.guestEmail || "—",
+          phone: user?.phone || "—",
+          elevatesId: user?.elevatesId,
+          role: "attendee",
+          roleLabel: "Student Attendee",
+          isStudentMember: Boolean(user),
+          registrationStatus: reg.status,
+          regId: reg.id,
+          registeredAt: reg.createdAt,
+          attendanceStatus: attStatus,
+          attendanceNote: attNote,
+          isAutoPresent: false,
+          rep,
+        });
+      }
+    });
+
+    return Array.from(peopleMap.values());
+  }, [event, regs, eventAttendanceRecords, store.profiles, isEnded]);
+
+  const directoryStats = useMemo(() => {
+    const total = eventDirectory.length;
+    const presentCount = eventDirectory.filter((p) => p.attendanceStatus === "present").length;
+    const absentCount = eventDirectory.filter((p) => p.attendanceStatus !== "present").length;
+    const attendeesCount = eventDirectory.filter((p) => p.role === "attendee").length;
+    const coordinatorsCount = eventDirectory.filter((p) => p.role === "coordinator").length;
+    const speakersCount = eventDirectory.filter((p) => p.role === "speaker").length;
+    const volunteersCount = eventDirectory.filter((p) => p.role === "volunteer").length;
+    return {
+      total,
+      presentCount,
+      absentCount,
+      attendeesCount,
+      coordinatorsCount,
+      speakersCount,
+      volunteersCount,
+    };
+  }, [eventDirectory]);
+
+  const availableDepts = useMemo(() => {
+    const set = new Set<string>();
+    eventDirectory.forEach((s) => {
+      if (s.department && s.department !== "Unassigned" && s.department !== "Speaker" && s.department !== "Coordinator" && s.department !== "Faculty" && s.department !== "Operations" && s.department !== "Volunteer") {
+        set.add(s.department);
+      }
+    });
+    return Array.from(set).sort();
+  }, [eventDirectory]);
+
+  const [showRemindersModal, setShowRemindersModal] = useState(false);
+
+  const eventReminders = useMemo(() => {
+    if (!event) return [];
+    return (store.eventReminders ?? []).filter(
+      (r) =>
+        r.eventId === event.id ||
+        r.eventId === `evt-${event.id}` ||
+        (event.slug && r.eventId === event.slug),
+    );
+  }, [store.eventReminders, event]);
+
+  const filteredDirectory = useMemo(() => {
+    const q = studentSearch.trim().toLowerCase();
+    return eventDirectory.filter((item) => {
+      if (directoryRoleFilter !== "all" && item.role !== directoryRoleFilter) {
+        return false;
+      }
+      if (studentStatusFilter !== "all") {
+        if (!item.registrationStatus || item.registrationStatus !== studentStatusFilter) {
+          return false;
+        }
+      }
+      if (directoryAttendanceFilter !== "all") {
+        if (directoryAttendanceFilter === "present" && item.attendanceStatus !== "present") {
+          return false;
+        }
+        if (directoryAttendanceFilter === "absent" && item.attendanceStatus === "present") {
+          return false;
+        }
+      }
+      if (studentDeptFilter !== "all" && item.department !== studentDeptFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.fullName.toLowerCase().includes(q) ||
+        item.department.toLowerCase().includes(q) ||
+        item.year.toLowerCase().includes(q) ||
+        item.email.toLowerCase().includes(q) ||
+        item.roleLabel.toLowerCase().includes(q) ||
+        item.attendanceStatus.toLowerCase().includes(q) ||
+        (item.registrationStatus && item.registrationStatus.toLowerCase().includes(q)) ||
+        (item.elevatesId && item.elevatesId.toLowerCase().includes(q))
+      );
+    });
+  }, [
+    eventDirectory,
+    studentSearch,
+    directoryRoleFilter,
+    studentStatusFilter,
+    directoryAttendanceFilter,
+    studentDeptFilter,
+  ]);
+
   const registeredStudents = useMemo(() => {
     return regs.map((reg) => {
       const user = store.profiles.find((p) => p.id === reg.userId);
@@ -266,26 +632,6 @@ export default function EventDetailPage({
       };
     });
   }, [regs, store.profiles]);
-
-  const availableDepts = useMemo(() => {
-    const set = new Set<string>();
-    registeredStudents.forEach((s) => {
-      if (s.department && s.department !== "Unassigned") set.add(s.department);
-    });
-    return Array.from(set).sort();
-  }, [registeredStudents]);
-
-  const [showRemindersModal, setShowRemindersModal] = useState(false);
-
-  const eventReminders = useMemo(() => {
-    if (!event) return [];
-    return (store.eventReminders ?? []).filter(
-      (r) =>
-        r.eventId === event.id ||
-        r.eventId === `evt-${event.id}` ||
-        (event.slug && r.eventId === event.slug),
-    );
-  }, [store.eventReminders, event]);
 
   const filteredRegisteredStudents = useMemo(() => {
     const q = studentSearch.trim().toLowerCase();
@@ -2104,11 +2450,53 @@ export default function EventDetailPage({
       ) : null}
 
       <TerminalPanel
-        title="student.directory"
-        meta={`${filteredRegisteredStudents.length} of ${regs.length} registrations`}
+        title="event.directory"
+        meta={`${filteredDirectory.length} of ${eventDirectory.length} event participants (${directoryStats.presentCount} present)`}
         accent={isFaculty ? "cyan" : undefined}
       >
         <div className="space-y-4">
+          {/* Quick Metrics Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="rounded-[10px] border border-border/70 bg-bg p-3 shadow-[var(--shadow-sm)]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim">
+                Total Directory
+              </span>
+              <p className="mt-1 text-xl font-bold text-text">{directoryStats.total}</p>
+              <p className="mt-0.5 text-[11px] text-text-dim">
+                {directoryStats.attendeesCount} attendees · {directoryStats.coordinatorsCount + directoryStats.speakersCount + directoryStats.volunteersCount} staff
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-emerald-500/30 bg-emerald-500/5 p-3 shadow-[var(--shadow-sm)]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 size={11} /> Present / Attended
+              </span>
+              <p className="mt-1 text-xl font-bold text-emerald-400">{directoryStats.presentCount}</p>
+              <p className="mt-0.5 text-[11px] text-emerald-500/80">
+                Verified & Auto-Present
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-border/70 bg-bg p-3 shadow-[var(--shadow-sm)]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-dim flex items-center gap-1">
+                <Clock size={11} /> {isEnded ? "Absent" : "Not Checked In"}
+              </span>
+              <p className="mt-1 text-xl font-bold text-text-dim">{directoryStats.absentCount}</p>
+              <p className="mt-0.5 text-[11px] text-text-dim">
+                {isEnded ? "Did not attend" : "Check-in pending"}
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-purple-500/30 bg-purple-500/5 p-3 shadow-[var(--shadow-sm)]">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-purple-400 flex items-center gap-1">
+                <Mic size={11} /> Session Leads
+              </span>
+              <p className="mt-1 text-xl font-bold text-purple-400">
+                {directoryStats.coordinatorsCount + directoryStats.speakersCount + directoryStats.volunteersCount}
+              </p>
+              <p className="mt-0.5 text-[11px] text-purple-400/80">
+                {directoryStats.speakersCount} spk · {directoryStats.coordinatorsCount} coord · {directoryStats.volunteersCount} vol
+              </p>
+            </div>
+          </div>
+
           {/* Search and Filters Bar */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative flex-1">
@@ -2116,17 +2504,39 @@ export default function EventDetailPage({
               <Input
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder="Search by student name, department, academic year, email..."
+                placeholder="Search by name, role, department, academic year, email..."
                 className="pl-8 h-9 text-xs"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select
-                value={studentStatusFilter}
-                onChange={(e) => setStudentStatusFilter(e.target.value)}
+                value={directoryRoleFilter}
+                onChange={(e) => setDirectoryRoleFilter(e.target.value)}
                 className="h-9 text-xs min-w-[130px]"
               >
-                <option value="all">All Statuses</option>
+                <option value="all">All Roles ({eventDirectory.length})</option>
+                <option value="attendee">Attendees ({directoryStats.attendeesCount})</option>
+                <option value="coordinator">Coordinators ({directoryStats.coordinatorsCount})</option>
+                <option value="speaker">Speakers ({directoryStats.speakersCount})</option>
+                <option value="volunteer">Volunteers ({directoryStats.volunteersCount})</option>
+              </Select>
+
+              <Select
+                value={directoryAttendanceFilter}
+                onChange={(e) => setDirectoryAttendanceFilter(e.target.value)}
+                className="h-9 text-xs min-w-[140px]"
+              >
+                <option value="all">All Attendance</option>
+                <option value="present">Present ({directoryStats.presentCount})</option>
+                <option value="absent">Absent / Unchecked ({directoryStats.absentCount})</option>
+              </Select>
+
+              <Select
+                value={studentStatusFilter}
+                onChange={(e) => setStudentStatusFilter(e.target.value)}
+                className="h-9 text-xs min-w-[125px]"
+              >
+                <option value="all">All Reg Statuses</option>
                 <option value="approved">Approved</option>
                 <option value="pending">Pending</option>
                 <option value="reviewed">Reviewed</option>
@@ -2149,12 +2559,14 @@ export default function EventDetailPage({
                 </Select>
               ) : null}
 
-              {(studentSearch || studentStatusFilter !== "all" || studentDeptFilter !== "all") ? (
+              {(studentSearch || directoryRoleFilter !== "all" || directoryAttendanceFilter !== "all" || studentStatusFilter !== "all" || studentDeptFilter !== "all") ? (
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => {
                     setStudentSearch("");
+                    setDirectoryRoleFilter("all");
+                    setDirectoryAttendanceFilter("all");
                     setStudentStatusFilter("all");
                     setStudentDeptFilter("all");
                   }}
@@ -2167,25 +2579,27 @@ export default function EventDetailPage({
           </div>
 
           {/* Table or Empty State */}
-          {!regs.length ? (
+          {!eventDirectory.length ? (
             <div className="rounded-[12px] border border-dashed border-border/80 bg-bg p-8 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-bg-panel text-text-dim">
                 <Users size={20} />
               </div>
-              <p className="mt-3 text-sm font-semibold text-text">No student registrations yet</p>
+              <p className="mt-3 text-sm font-semibold text-text">No event participants yet</p>
               <p className="mt-1 text-xs text-text-dim max-w-sm mx-auto">
-                When students register for this event, their names, departments, academic years, and registration statuses will appear here.
+                When students register or session leads/coordinators are configured for this event, they will appear here.
               </p>
             </div>
-          ) : !filteredRegisteredStudents.length ? (
+          ) : !filteredDirectory.length ? (
             <div className="rounded-[12px] border border-dashed border-border/80 bg-bg p-8 text-center">
-              <p className="text-sm font-medium text-text">No registered students match your search</p>
-              <p className="mt-1 text-xs text-text-dim">Try modifying your keyword or status filter.</p>
+              <p className="text-sm font-medium text-text">No participants match your search</p>
+              <p className="mt-1 text-xs text-text-dim">Try modifying your keyword, role, or attendance status filter.</p>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setStudentSearch("");
+                  setDirectoryRoleFilter("all");
+                  setDirectoryAttendanceFilter("all");
                   setStudentStatusFilter("all");
                   setStudentDeptFilter("all");
                 }}
@@ -2200,21 +2614,23 @@ export default function EventDetailPage({
                 <thead>
                   <tr className="border-b border-border bg-bg-panel/60 font-medium text-text-dim">
                     <th className="py-2.5 px-3 w-10">#</th>
-                    <th className="py-2.5 px-3">Student Name</th>
+                    <th className="py-2.5 px-3">Participant</th>
+                    <th className="py-2.5 px-3">Event Role</th>
                     <th className="py-2.5 px-3">Department</th>
                     <th className="py-2.5 px-3">Academic Year</th>
                     <th className="py-2.5 px-3">Email Address</th>
-                    <th className="py-2.5 px-3">Status</th>
-                    <th className="py-2.5 px-3">Registered At</th>
+                    <th className="py-2.5 px-3">Registration</th>
+                    <th className="py-2.5 px-3">Attendance</th>
+                    <th className="py-2.5 px-3">Registered / Added</th>
                     {canApprove && (
                       <th className="py-2.5 px-3 text-right">Actions</th>
                     )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {filteredRegisteredStudents.map((item, idx) => (
+                  {filteredDirectory.map((item, idx) => (
                     <tr
-                      key={item.reg.id}
+                      key={item.key}
                       className="transition-colors hover:bg-bg-panel/50"
                     >
                       <td className="py-2.5 px-3 text-text-mute font-mono text-[11px]">
@@ -2222,9 +2638,16 @@ export default function EventDetailPage({
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="min-w-[140px]">
-                          <p className="font-semibold text-text">
-                            {item.fullName}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-text">
+                              {item.fullName}
+                            </span>
+                            {item.role === "speaker" && item.isStudentMember && (
+                              <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-400 border border-purple-500/30">
+                                Student Speaker
+                              </span>
+                            )}
+                          </div>
                           {item.elevatesId ? (
                             <p className="font-mono text-[10px] text-text-mute">
                               {item.elevatesId}
@@ -2238,6 +2661,34 @@ export default function EventDetailPage({
                         </div>
                       </td>
                       <td className="py-2.5 px-3">
+                        {item.role === "coordinator" ? (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              <Crown size={11} className="mr-1" /> Coordinator
+                            </span>
+                            <p className="text-[10px] text-text-dim mt-0.5">{item.roleLabel}</p>
+                          </div>
+                        ) : item.role === "speaker" ? (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              <Mic size={11} className="mr-1" /> Speaker
+                            </span>
+                            <p className="text-[10px] text-text-dim mt-0.5">{item.roleLabel}</p>
+                          </div>
+                        ) : item.role === "volunteer" ? (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              <Sparkles size={11} className="mr-1" /> Volunteer
+                            </span>
+                            <p className="text-[10px] text-text-dim mt-0.5">{item.roleLabel}</p>
+                          </div>
+                        ) : (
+                          <Badge tone="mute">
+                            <Users size={10} className="mr-1 inline" /> Attendee
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
                         <span className="inline-block rounded-[6px] border border-border/80 bg-bg-panel px-2 py-0.5 text-[11px] font-medium text-text">
                           {item.department}
                         </span>
@@ -2249,45 +2700,116 @@ export default function EventDetailPage({
                         {item.email}
                       </td>
                       <td className="py-2.5 px-3">
-                        <Badge tone={regStatusTone(item.status)}>
-                          {item.status.replaceAll("_", " ")}
-                        </Badge>
+                        {item.registrationStatus ? (
+                          <Badge tone={regStatusTone(item.registrationStatus)}>
+                            {item.registrationStatus.replaceAll("_", " ")}
+                          </Badge>
+                        ) : (
+                          <span className="text-[11px] text-text-mute font-medium">Event Staff</span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {item.isAutoPresent ? (
+                          item.role === "speaker" ? (
+                            <div>
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present
+                              </span>
+                              <p className="text-[10px] text-purple-400 font-medium mt-0.5">
+                                Speaker · Session Lead
+                              </p>
+                            </div>
+                          ) : item.role === "coordinator" ? (
+                            <div>
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present
+                              </span>
+                              <p className="text-[10px] text-cyan-400 font-medium mt-0.5">
+                                Coordinator · Session Host
+                              </p>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present
+                              </span>
+                              <p className="text-[10px] text-amber-400 font-medium mt-0.5">
+                                Volunteer · Operations
+                              </p>
+                            </div>
+                          )
+                        ) : item.attendanceStatus === "present" ? (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present
+                            </span>
+                            <p className="text-[10px] text-emerald-400/80 mt-0.5">
+                              {item.attendanceNote || "Verified Attendee"}
+                            </p>
+                          </div>
+                        ) : item.attendanceStatus === "absent" ? (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              <XCircle size={12} className="mr-1 text-rose-400" /> Absent
+                            </span>
+                            <p className="text-[10px] text-rose-400/80 mt-0.5">
+                              Did not check in
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium bg-bg-panel text-text-dim border border-border/80">
+                              <Clock size={12} className="mr-1 text-text-dim" /> Not Checked In
+                            </span>
+                            <p className="text-[10px] text-text-dim mt-0.5">
+                              Pending check-in
+                            </p>
+                          </div>
+                        )}
                       </td>
                       <td className="py-2.5 px-3 text-text-mute text-[11px]">
-                        {new Date(item.reg.createdAt).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
+                        {item.registeredAt ? (
+                          new Date(item.registeredAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        ) : (
+                          <span className="text-text-dim font-mono">—</span>
+                        )}
                       </td>
                       {canApprove && (
                         <td className="py-2.5 px-3 text-right">
-                          {item.status === "waitlisted" ? (
+                          {item.regId && item.registrationStatus === "waitlisted" ? (
                             <Button
                               variant="green"
                               className="h-6 px-2 text-[11px]"
-                              onClick={() => handleRegAction(item.reg.id, "approved")}
+                              onClick={() => handleRegAction(item.regId!, "approved")}
                             >
                               Approve Seat
                             </Button>
-                          ) : item.status === "approved" ? (
+                          ) : item.regId && item.registrationStatus === "approved" ? (
                             <Button
                               variant="ghost"
                               className="h-6 px-2 text-[11px] text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                              onClick={() => handleRegAction(item.reg.id, "rejected")}
+                              onClick={() => handleRegAction(item.regId!, "rejected")}
                               title="Release seat if student does not attend"
                             >
                               Release / No-Show
                             </Button>
-                          ) : item.status === "rejected" ? (
+                          ) : item.regId && item.registrationStatus === "rejected" ? (
                             <Button
                               variant="ghost"
                               className="h-6 px-2 text-[11px] text-[var(--accent)]"
-                              onClick={() => handleRegAction(item.reg.id, "approved")}
+                              onClick={() => handleRegAction(item.regId!, "approved")}
                             >
                               Re-admit
                             </Button>
-                          ) : null}
+                          ) : (
+                            <span className="text-[11px] text-text-dim">
+                              {item.role === "attendee" ? "—" : "Event Leader"}
+                            </span>
+                          )}
                         </td>
                       )}
                     </tr>

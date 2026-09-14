@@ -9,19 +9,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState } from "@/lib/events";
+import { isOpenToAllEvent, isEventVisibleToUser, canRegisterNow, getEventRegistrationState, canPublishEvent } from "@/lib/events";
+import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { hasPermission } from "@/lib/permissions";
 import { isFacultyRole } from "@/lib/access";
-import { Search, Sparkles, Calendar, ArrowRight } from "lucide-react";
+import { Search, Sparkles, Calendar, ArrowRight, Ban, Play } from "lucide-react";
 import type { EventItem } from "@/types";
 
 type FilterTab = "all" | "open_reg" | "workshop" | "challenge";
 
 export default function OpenEventsPage() {
-  const { store } = useStore();
+  const { store, updateEvent, createForm, setFormStatus } = useStore();
   const { session } = useCurrentUser();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
@@ -29,6 +30,42 @@ export default function OpenEventsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
   const canCreate = hasPermission(store, session.roleKey, "event.create");
+
+  function handlePublishEvent(ev: EventItem) {
+    const existing = getEventForm(store, ev.id, "registration");
+    if (!existing) {
+      const template = defaultFormsForEvent(
+        ev.id,
+        ev.chapterId,
+        ev.title,
+        ev,
+      ).find((f) => f.purpose === "registration");
+      if (template) {
+        createForm({
+          ...template,
+          id: template.id,
+          status: "open",
+        });
+      }
+    } else if (existing.status !== "open") {
+      setFormStatus(existing.id, "open");
+    }
+    updateEvent(ev.id, {
+      status: "registration_open",
+      publishedAt: new Date().toISOString(),
+      registrationStart: new Date().toISOString(),
+    });
+  }
+
+  function handleStopEvent(ev: EventItem) {
+    const existing = getEventForm(store, ev.id, "registration");
+    if (existing && existing.status === "open") {
+      setFormStatus(existing.id, "closed");
+    }
+    updateEvent(ev.id, {
+      status: "registration_closed",
+    });
+  }
 
   // All events open across chapters / colleges
   const allOpenEvents = useMemo(() => {
@@ -226,7 +263,7 @@ export default function OpenEventsPage() {
                   meta={`${chapter ? chapter.college : "Elevates"} · open for all participants`}
                   hideStatus={true}
                   footer={
-                    <>
+                    <div className="flex flex-wrap items-center gap-2">
                       {isFacultyRole(session.roleKey) ? (
                         <Link href={eventHref}>
                           <Button variant="primary" className="h-9 px-4">
@@ -252,6 +289,15 @@ export default function OpenEventsPage() {
                             Open Event
                           </Button>
                         </Link>
+                      ) : regState.status === "upcoming" || regState.isUpcoming ? (
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
+                          disabled
+                          title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
+                        >
+                          Registration Not Started
+                        </Button>
                       ) : regState.isClosed ? (
                         <Button
                           variant="ghost"
@@ -259,7 +305,7 @@ export default function OpenEventsPage() {
                           disabled
                           title={regState.reason || "Registration is closed"}
                         >
-                          Registration Closed
+                          {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
                         </Button>
                       ) : regState.isWaitlist ? (
                         <Button
@@ -278,7 +324,32 @@ export default function OpenEventsPage() {
                           Register
                         </Button>
                       )}
-                    </>
+
+                      {/* Management Controls: Publish & Stop */}
+                      {canPublishEvent(session.roleKey, ev, session.userId) ? (
+                        ev.status === "registration_open" ? (
+                          <Button
+                            variant="danger"
+                            className="h-9 px-3 text-xs flex items-center gap-1"
+                            onClick={() => handleStopEvent(ev)}
+                            title="Stop registration for this event"
+                          >
+                            <Ban size={13} />
+                            Stop Registration
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="orange"
+                            className="h-9 px-3 text-xs flex items-center gap-1"
+                            onClick={() => handlePublishEvent(ev)}
+                            title="Publish / Open registration for this event"
+                          >
+                            <Play size={13} />
+                            Publish Event
+                          </Button>
+                        )
+                      ) : null}
+                    </div>
                   }
                 />
               );

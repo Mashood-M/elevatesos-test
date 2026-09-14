@@ -50,11 +50,22 @@ export function TicketCard({
           ) : (
             <Badge tone="mute">Campus Exclusive</Badge>
           )}
-          {!hideStatus && (
-            <Badge tone={statusTone[event.status] ?? "mute"}>
-              {event.status.replaceAll("_", " ")}
-            </Badge>
-          )}
+          {!hideStatus && (() => {
+            const isUpcoming =
+              event.status === "registration_open" &&
+              Boolean(event.registrationStart && new Date(event.registrationStart).getTime() > Date.now());
+            if (isUpcoming) {
+              return <Badge tone="orange">Registration Upcoming</Badge>;
+            }
+            if (event.status === "registration_closed") {
+              return <Badge tone="magenta">Registration Stopped</Badge>;
+            }
+            return (
+              <Badge tone={statusTone[event.status] ?? "mute"}>
+                {event.status.replaceAll("_", " ")}
+              </Badge>
+            );
+          })()}
         </div>
       </div>
       <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-text-dim">

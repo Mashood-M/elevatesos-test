@@ -11,6 +11,7 @@ export interface EventRegistrationState {
   canRegister: boolean;
   isWaitlist: boolean;
   isClosed: boolean;
+  isUpcoming: boolean;
   approvedCount: number;
   waitlistedCount: number;
   capacity: number;
@@ -57,11 +58,6 @@ export function getEventRegistrationState(
     : 0;
 
   const st = (event.status || "").toLowerCase();
-  const isExplicitlyClosed =
-    st === "draft" ||
-    st === "completed" ||
-    st === "cancelled" ||
-    st === "registration_closed";
 
   if (st === "completed" || st === "cancelled") {
     return {
@@ -70,6 +66,7 @@ export function getEventRegistrationState(
       canRegister: false,
       isWaitlist: false,
       isClosed: true,
+      isUpcoming: false,
       approvedCount,
       waitlistedCount,
       capacity,
@@ -84,13 +81,14 @@ export function getEventRegistrationState(
     };
   }
 
-  if (isExplicitlyClosed) {
+  if (st === "registration_closed") {
     return {
       status: "closed",
-      label: "Registration Closed",
+      label: "Registration Stopped",
       canRegister: false,
       isWaitlist: false,
       isClosed: true,
+      isUpcoming: false,
       approvedCount,
       waitlistedCount,
       capacity,
@@ -98,10 +96,26 @@ export function getEventRegistrationState(
       seatsLeft,
       waitlistSeatsLeft,
       hasWaitlist,
-      reason:
-        st === "draft"
-          ? "This event is currently in draft mode and not published."
-          : "Registration is closed for this event.",
+      reason: "Registration has been stopped by the event organizer.",
+    };
+  }
+
+  if (st === "draft") {
+    return {
+      status: "closed",
+      label: "Draft",
+      canRegister: false,
+      isWaitlist: false,
+      isClosed: true,
+      isUpcoming: false,
+      approvedCount,
+      waitlistedCount,
+      capacity,
+      waitlistCapacity,
+      seatsLeft,
+      waitlistSeatsLeft,
+      hasWaitlist,
+      reason: "This event is currently in draft mode and not published.",
     };
   }
 
@@ -109,12 +123,20 @@ export function getEventRegistrationState(
   if (event.registrationStart) {
     const start = new Date(event.registrationStart).getTime();
     if (Number.isFinite(start) && nowMs < start) {
+      const formattedTime = new Date(event.registrationStart).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
       return {
         status: "upcoming",
         label: "Registration Upcoming",
         canRegister: false,
         isWaitlist: false,
         isClosed: false,
+        isUpcoming: true,
         approvedCount,
         waitlistedCount,
         capacity,
@@ -122,7 +144,7 @@ export function getEventRegistrationState(
         seatsLeft,
         waitlistSeatsLeft,
         hasWaitlist,
-        reason: "Registration has not opened yet.",
+        reason: `Registration has not opened yet. It opens on ${formattedTime}.`,
       };
     }
   }
@@ -136,6 +158,7 @@ export function getEventRegistrationState(
         canRegister: false,
         isWaitlist: false,
         isClosed: true,
+        isUpcoming: false,
         approvedCount,
         waitlistedCount,
         capacity,
@@ -156,6 +179,7 @@ export function getEventRegistrationState(
       canRegister: true,
       isWaitlist: false,
       isClosed: false,
+      isUpcoming: false,
       approvedCount,
       waitlistedCount,
       capacity,
@@ -175,6 +199,7 @@ export function getEventRegistrationState(
         canRegister: true,
         isWaitlist: true,
         isClosed: false,
+        isUpcoming: false,
         approvedCount,
         waitlistedCount,
         capacity,
@@ -191,6 +216,7 @@ export function getEventRegistrationState(
         canRegister: false,
         isWaitlist: false,
         isClosed: true,
+        isUpcoming: false,
         approvedCount,
         waitlistedCount,
         capacity,
@@ -210,6 +236,7 @@ export function getEventRegistrationState(
       canRegister: false,
       isWaitlist: false,
       isClosed: true,
+      isUpcoming: false,
       approvedCount,
       waitlistedCount,
       capacity,
@@ -459,5 +486,36 @@ export function getAllEventCategories(storeCategories?: string[]): string[] {
     }
   }
   return result;
+}
+
+/**
+ * Checks if a user has permission to publish or stop an event's registration.
+ * Allows HQ roles (founder, hq_admin), campus leads, chapter executives, event managers, and the organizer.
+ */
+export function canPublishEvent(
+  userRoleKey?: string,
+  event?: { organizerId?: string; chapterId?: string },
+  sessionUserId?: string,
+): boolean {
+  if (!userRoleKey) return false;
+  if (userRoleKey === "founder" || userRoleKey === "hq_admin" || userRoleKey === "campus_lead") {
+    return true;
+  }
+  if (
+    userRoleKey === "chairman" ||
+    userRoleKey === "vice_chairman" ||
+    userRoleKey === "secretary" ||
+    userRoleKey === "joint_secretary" ||
+    userRoleKey === "elevates_coordinator" ||
+    userRoleKey === "technical_lead" ||
+    userRoleKey === "media_lead" ||
+    userRoleKey === "innovation_lead"
+  ) {
+    return true;
+  }
+  if (sessionUserId && event?.organizerId && sessionUserId === event.organizerId) {
+    return true;
+  }
+  return false;
 }
 

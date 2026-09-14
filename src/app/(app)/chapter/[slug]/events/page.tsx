@@ -13,7 +13,7 @@ import { EventManagerCreateDialog } from "@/components/domain/event-manager-dial
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
-import { canRegisterNow, isEventVisibleToUser, getEventRegistrationState } from "@/lib/events";
+import { canRegisterNow, isEventVisibleToUser, getEventRegistrationState, canPublishEvent } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -21,11 +21,12 @@ import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import type { EventItem, EventRegistration, EventStatus } from "@/types";
 
 
-type StatusChip = "all" | "registration_open" | "draft" | "completed";
+type StatusChip = "all" | "registration_open" | "registration_closed" | "draft" | "completed";
 
 const STATUS_CHIPS: { key: StatusChip; label: string }[] = [
   { key: "all", label: "All" },
   { key: "registration_open", label: "Open" },
+  { key: "registration_closed", label: "Stopped" },
   { key: "draft", label: "Draft" },
   { key: "completed", label: "Completed" },
 ];
@@ -68,9 +69,8 @@ export default function ChapterEventsPage({
   const canReview = hasPermission(store, session.roleKey, "registration.review");
   const canManage =
     canCreate || hasPermission(store, session.roleKey, "event.manage");
-  // Only HQ Founder and Campus Lead can publish events (move draft → registration_open)
   const canPublish =
-    session.roleKey === "founder" || session.roleKey === "campus_lead";
+    canPublishEvent(session.roleKey, undefined, session.userId) || canManage;
 
   useEffect(() => {
     if (searchParams.get("create") === "1" && canCreate) {
@@ -141,16 +141,32 @@ export default function ChapterEventsPage({
         chapter!.id,
         eventItem.title,
         eventItem,
-      ).find((f) => f.purpose === "registration")!;
-      createForm({
-        ...template,
-        id: template.id,
-        status: "open",
-      });
+      ).find((f) => f.purpose === "registration");
+      if (template) {
+        createForm({
+          ...template,
+          id: template.id,
+          status: "open",
+        });
+      }
     } else if (existing.status !== "open") {
       setFormStatus(existing.id, "open");
     }
-    updateEvent(eventItem.id, { status: "registration_open" });
+    updateEvent(eventItem.id, {
+      status: "registration_open",
+      publishedAt: new Date().toISOString(),
+      registrationStart: new Date().toISOString(),
+    });
+  }
+
+  function stopEventFromList(eventItem: EventItem) {
+    const existing = getEventForm(store, eventItem.id, "registration");
+    if (existing && existing.status === "open") {
+      setFormStatus(existing.id, "closed");
+    }
+    updateEvent(eventItem.id, {
+      status: "registration_closed",
+    });
   }
 
   return (
@@ -451,7 +467,7 @@ export default function ChapterEventsPage({
                   hideStatus={!canManage}
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
-                    <>
+                    <div className="flex flex-wrap items-center gap-2">
                       {isFacultyRole(session.roleKey) ? (
                         <div className="flex items-center gap-2">
                           <Link href={`/chapter/${slug}/events/${ev.id}`}>
@@ -478,28 +494,21 @@ export default function ChapterEventsPage({
                                 : "Registered"}
                           </Button>
                         </Link>
-                      ) : ev.status === "draft" && canPublish ? (
-                        <Button
-                          variant="orange"
-                          className="h-9 px-4"
-                          onClick={() => publishEventFromList(ev)}
-                        >
-                          Publish → Open Registration
-                        </Button>
-                      ) : ev.status === "draft" && canManage ? (
-                        <Button
-                          variant="ghost"
-                          className="h-9 px-4 text-text-dim cursor-default"
-                          disabled
-                        >
-                          Draft (pending publish)
-                        </Button>
                       ) : regState.status === "ended" ? (
                         <Link href={`/chapter/${slug}/events/${ev.id}`}>
                           <Button variant="primary" className="h-9 px-4">
                             Open event
                           </Button>
                         </Link>
+                      ) : regState.status === "upcoming" || regState.isUpcoming ? (
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
+                          disabled
+                          title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
+                        >
+                          Registration Not Started
+                        </Button>
                       ) : regState.isClosed ? (
                         <Button
                           variant="ghost"
@@ -507,7 +516,7 @@ export default function ChapterEventsPage({
                           disabled
                           title={regState.reason || "Registration is closed"}
                         >
-                          Registration Closed
+                          {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
                         </Button>
                       ) : regState.isWaitlist ? (
                         <Button
@@ -526,6 +535,30 @@ export default function ChapterEventsPage({
                           Register
                         </Button>
                       )}
+
+                      {/* Management Controls: Publish & Stop Registration Buttons for each event */}
+                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) ? (
+                        ev.status === "registration_open" ? (
+                          <Button
+                            variant="danger"
+                            className="h-9 px-3 text-xs"
+                            onClick={() => stopEventFromList(ev)}
+                            title="Stop registration immediately for this event"
+                          >
+                            Stop Registration
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="orange"
+                            className="h-9 px-3 text-xs"
+                            onClick={() => publishEventFromList(ev)}
+                            title="Publish / Open registration for this event"
+                          >
+                            Publish Event
+                          </Button>
+                        )
+                      ) : null}
+
                       {secondary && !isFacultyRole(session.roleKey) ? (
                         <Link
                           href={secondary.href}
@@ -534,7 +567,7 @@ export default function ChapterEventsPage({
                           {secondary.label}
                         </Link>
                       ) : null}
-                    </>
+                    </div>
                   }
                 />
               );

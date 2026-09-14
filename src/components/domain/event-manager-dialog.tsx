@@ -81,6 +81,13 @@ export interface CmsEventItem {
   waitlistCapacity?: number;
   coverImage: string;
   featured: boolean;
+  registrationStartDate?: string;
+  registrationStartTime?: string;
+  isoRegistrationStart?: string;
+  registrationEndDate?: string;
+  registrationEndTime?: string;
+  isoRegistrationEnd?: string;
+  publishImmediately?: boolean;
   platform?: PlatformCaseStudyRef;
   peerLabSlug?: string;
   peerLabTitle?: string;
@@ -321,6 +328,13 @@ export function createBlankCmsEvent(
     endTime,
     isoStartDate,
     isoEndDate,
+    registrationStartDate: formatDisplayDate(getTodayDateKey()),
+    registrationStartTime: formatDisplayTime(getCurrentTimeKey()),
+    isoRegistrationStart: new Date().toISOString(),
+    registrationEndDate: endDate,
+    registrationEndTime: endTime,
+    isoRegistrationEnd: isoEndDate,
+    publishImmediately: true,
     venue: "Main Seminar Hall",
     locationName: "",
     organizer: [{ name: "ELEVATES" }],
@@ -844,6 +858,91 @@ export function EventEditor({
             </Field>
           </div>
 
+          {/* Registration Scheduling & Publishing */}
+          <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 space-y-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar size={16} className="text-[var(--accent)]" />
+                <div>
+                  <h4 className="text-xs font-bold uppercase text-text tracking-wide">
+                    Registration Window & Scheduling
+                  </h4>
+                  <p className="text-[11px] text-text-dim">
+                    Configure when students can register. If published with a future date, registration is automatically scheduled.
+                  </p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-text bg-bg px-2.5 py-1.5 rounded-[var(--radius-md)] border border-border">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-[var(--accent)]"
+                  checked={d.publishImmediately !== false}
+                  onChange={(e) => u({ publishImmediately: e.target.checked })}
+                />
+                <span>Publish Immediately</span>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Registration Opens Date">
+                <DatePickerInput
+                  value={d.registrationStartDate || d.startDate || d.isoStartDate}
+                  min={getTodayDateKey()}
+                  onChange={(dateKey, displayDate) => {
+                    const timeKey = parseToTimeKey(d.registrationStartTime || "10:00 AM", d.isoRegistrationStart);
+                    u({
+                      registrationStartDate: displayDate,
+                      isoRegistrationStart: new Date(`${dateKey}T${timeKey}:00`).toISOString(),
+                    });
+                  }}
+                />
+              </Field>
+              <Field label="Registration Opens Time">
+                <TimePickerInput
+                  value={d.registrationStartTime || "10:00 AM"}
+                  onChange={(timeKey, displayTime) => {
+                    const dateKey = parseToDateKey(d.registrationStartDate, d.isoRegistrationStart) || getTodayDateKey();
+                    u({
+                      registrationStartTime: displayTime,
+                      isoRegistrationStart: new Date(`${dateKey}T${timeKey}:00`).toISOString(),
+                    });
+                  }}
+                />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Registration Closes Date">
+                <DatePickerInput
+                  value={d.registrationEndDate || d.endDate || d.isoEndDate}
+                  align="right"
+                  min={parseToDateKey(d.registrationStartDate, d.isoRegistrationStart) || getTodayDateKey()}
+                  onChange={(dateKey, displayDate) => {
+                    const timeKey = parseToTimeKey(d.registrationEndTime || d.endTime || "04:00 PM", d.isoRegistrationEnd);
+                    u({
+                      registrationEndDate: displayDate,
+                      isoRegistrationEnd: new Date(`${dateKey}T${timeKey}:00`).toISOString(),
+                    });
+                  }}
+                />
+              </Field>
+              <Field label="Registration Closes Time">
+                <TimePickerInput
+                  value={d.registrationEndTime || d.endTime || "04:00 PM"}
+                  align="right"
+                  isEndTime={true}
+                  onChange={(timeKey, displayTime) => {
+                    const dateKey = parseToDateKey(d.registrationEndDate, d.isoRegistrationEnd) || parseToDateKey(d.endDate, d.isoEndDate) || getTodayDateKey();
+                    u({
+                      registrationEndTime: displayTime,
+                      isoRegistrationEnd: new Date(`${dateKey}T${timeKey}:00`).toISOString(),
+                    });
+                  }}
+                />
+              </Field>
+            </div>
+          </div>
+
           <Field label="Venue">
             <TInput
               value={d.venue}
@@ -1038,16 +1137,25 @@ export function EventManagerCreateDialog({
           : saved.format === "Multi-Campus"
           ? "hybrid"
           : "in_person",
-      registrationStart: new Date().toISOString(),
-      registrationEnd: endsAt,
+      registrationStart:
+        saved.isoRegistrationStart ||
+        (saved.registrationStartDate
+          ? new Date(`${saved.registrationStartDate} ${saved.registrationStartTime || "10:00 AM"}`).toISOString()
+          : new Date().toISOString()),
+      registrationEnd:
+        saved.isoRegistrationEnd ||
+        (saved.registrationEndDate
+          ? new Date(`${saved.registrationEndDate} ${saved.registrationEndTime || "04:00 PM"}`).toISOString()
+          : endsAt),
       status:
         saved.status === "Completed"
           ? "completed"
           : saved.status === "Cancelled"
           ? "cancelled"
-          : saved.status === "Ongoing"
+          : saved.publishImmediately !== false
           ? "registration_open"
           : "draft",
+      publishedAt: saved.publishImmediately !== false ? new Date().toISOString() : undefined,
       certificateEnabled: true,
       ticketNo: `NO. ${String(chapterEvents.length + 10).padStart(2, "0")}`,
       category: finalCategory,

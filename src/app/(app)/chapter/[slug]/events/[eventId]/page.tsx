@@ -21,11 +21,12 @@ import {
   DEFAULT_EVENT_CATEGORIES,
   getAllEventCategories,
   getEventRegistrationState,
+  canPublishEvent,
 } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
-import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell } from "lucide-react";
+import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell, AlertCircle, Ban, Play } from "lucide-react";
 import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
 import { EventRemindersPanel } from "@/components/domain/event-reminders-panel";
 import type { EventAttendanceSession, EventItem, EventStatus, RegistrationStatus, Visibility } from "@/types";
@@ -172,7 +173,7 @@ export default function EventDetailPage({
   );
   const isOps = canEdit || canReview || canApprove;
   const canPublish =
-    session.roleKey === "founder" || session.roleKey === "campus_lead" || canEdit;
+    canPublishEvent(session.roleKey, event, session.userId) || isOps;
   const isFacultyMonitor = isFaculty && !isOps;
   const isStudentView = !isOps && !isFacultyMonitor && !isFaculty;
 
@@ -464,12 +465,14 @@ export default function EventDetailPage({
         chapter!.id,
         event!.title,
         event!,
-      ).find((f) => f.purpose === "registration")!;
-      createForm({
-        ...template,
-        id: template.id,
-        status: "open",
-      });
+      ).find((f) => f.purpose === "registration");
+      if (template) {
+        createForm({
+          ...template,
+          id: template.id,
+          status: "open",
+        });
+      }
       setPublishFlash("Published — registration form created and opened.");
     } else if (existing.status !== "open") {
       setFormStatus(existing.id, "open");
@@ -477,7 +480,23 @@ export default function EventDetailPage({
     } else {
       setPublishFlash("Published — registration is open.");
     }
-    updateEvent(event!.id, { status: "registration_open" });
+    updateEvent(event!.id, {
+      status: "registration_open",
+      publishedAt: new Date().toISOString(),
+      registrationStart: new Date().toISOString(),
+    });
+  }
+
+  function stopRegistration() {
+    setPublishFlash("");
+    const existing = getEventForm(store, event!.id, "registration");
+    if (existing && existing.status === "open") {
+      setFormStatus(existing.id, "closed");
+    }
+    updateEvent(event!.id, {
+      status: "registration_closed",
+    });
+    setPublishFlash("Registration stopped. Students can no longer register.");
   }
 
   function handleRegAction(regId: string, status: RegistrationStatus) {
@@ -707,13 +726,39 @@ export default function EventDetailPage({
                 <Badge tone="mute">Event Completed</Badge>
               ) : event.status === "cancelled" ? (
                 <Badge tone="magenta">Event Cancelled</Badge>
-              ) : event.status === "draft" && canPublish ? (
+              ) : event.status === "registration_closed" ? (
                 <Button
-                  variant="orange"
-                  className="h-8 px-3 text-[12px]"
-                  onClick={() => publishEvent()}
+                  variant="ghost"
+                  className="h-8 px-3 text-[12px] opacity-75 cursor-not-allowed border border-border"
+                  disabled
                 >
-                  Publish → Open Registration
+                  Registration Stopped
+                </Button>
+              ) : regState.status === "upcoming" || regState.isUpcoming ? (
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3 text-[12px] opacity-80 cursor-not-allowed border border-border"
+                  disabled
+                  title={regState.reason || `Registration opens on ${new Date(event.registrationStart).toLocaleString()}`}
+                >
+                  Registration Not Started
+                </Button>
+              ) : regState.isClosed ? (
+                <Button
+                  variant="ghost"
+                  className="h-8 px-3 text-[12px] opacity-75 cursor-not-allowed border border-border"
+                  disabled
+                  title={regState.reason || "Registration is closed"}
+                >
+                  Registration Closed
+                </Button>
+              ) : regState.isWaitlist ? (
+                <Button
+                  variant="secondary"
+                  className="h-8 px-3 text-[12px] border-amber-500/40 text-amber-500 font-semibold"
+                  onClick={() => setRegisterOpen(true)}
+                >
+                  Join Waiting List
                 </Button>
               ) : (
                 <Button
@@ -727,6 +772,29 @@ export default function EventDetailPage({
             </div>
           }
         />
+
+        {(regState.status === "upcoming" || regState.isUpcoming) && (
+          <div className="mb-4 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-500 flex items-center gap-2.5">
+            <Clock size={16} className="shrink-0" />
+            <div>
+              <p className="font-semibold">Registration Not Started</p>
+              <p className="text-text-dim text-[11px] mt-0.5">
+                {regState.reason || `Registration for this event will open on ${formatDateTime(event.registrationStart)}.`}
+              </p>
+            </div>
+          </div>
+        )}
+        {event.status === "registration_closed" && (
+          <div className="mb-4 rounded-[var(--radius)] border border-red-500/30 bg-red-500/10 p-3.5 text-xs text-red-400 flex items-center gap-2.5">
+            <AlertCircle size={16} className="shrink-0" />
+            <div>
+              <p className="font-semibold">Registration Stopped</p>
+              <p className="text-text-dim text-[11px] mt-0.5">
+                Registration has been stopped by the event organizer.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-4">
@@ -948,16 +1016,28 @@ export default function EventDetailPage({
                   </>
                 ) : (
                   <>
-                    {(event.status === "draft" ||
-                      event.status === "pending_approval" ||
-                      event.status === "approved") && (
-                      <Button
-                        variant="orange"
-                        className="h-8 px-3 text-[12px]"
-                        onClick={publishEvent}
-                      >
-                        Publish
-                      </Button>
+                    {canPublish && (
+                      event.status === "registration_open" ? (
+                        <Button
+                          variant="danger"
+                          className="h-8 px-3 text-[12px] flex items-center gap-1"
+                          onClick={stopRegistration}
+                          title="Stop registration immediately for this event"
+                        >
+                          <Ban size={13} />
+                          Stop Registration
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="orange"
+                          className="h-8 px-3 text-[12px] flex items-center gap-1"
+                          onClick={publishEvent}
+                          title="Publish event and open registration"
+                        >
+                          <Play size={13} />
+                          {event.status === "registration_closed" ? "Reopen Registration" : "Publish Event"}
+                        </Button>
+                      )
                     )}
                     <Button
                       variant="secondary"
@@ -1021,6 +1101,81 @@ export default function EventDetailPage({
                   onClick={publishEvent}
                 >
                   Publish Event → Open Registration
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {event.status === "registration_closed" && (
+        <div className="mb-5 rounded-[var(--radius)] border border-red-500/30 bg-red-500/10 p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/20 text-red-400 text-sm font-bold">
+                ⏹
+              </span>
+              <div>
+                <p className="text-[13px] font-semibold text-text">
+                  Registration Stopped
+                </p>
+                <p className="text-[11px] text-text-dim">
+                  Registration has been stopped for this event. Students can view event details but cannot submit new registrations.
+                </p>
+              </div>
+            </div>
+            {canPublish && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="orange"
+                  className="h-8 px-4 text-[12px] font-semibold shadow-sm"
+                  onClick={publishEvent}
+                >
+                  Publish Event → Reopen Registration
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {event.status === "registration_open" && (regState.status === "upcoming" || regState.isUpcoming) && (
+        <div className="mb-5 rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/10 p-4 shadow-[var(--shadow-sm)]">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20 text-amber-500 text-sm font-bold">
+                ⏰
+              </span>
+              <div>
+                <p className="text-[13px] font-semibold text-text">
+                  Auto-Registration Scheduled
+                </p>
+                <p className="text-[11px] text-text-dim">
+                  Event is published. Registration will automatically open on <strong className="text-text">{formatDateTime(event.registrationStart)}</strong>.
+                </p>
+              </div>
+            </div>
+            {canPublish && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="orange"
+                  className="h-8 px-4 text-[12px] font-semibold shadow-sm"
+                  onClick={() => {
+                    updateEvent(event.id, {
+                      registrationStart: new Date().toISOString(),
+                    });
+                    setPublishFlash("Registration opened immediately!");
+                  }}
+                  title="Open registration right now without waiting for schedule"
+                >
+                  Open Registration Now
+                </Button>
+                <Button
+                  variant="danger"
+                  className="h-8 px-3 text-[12px]"
+                  onClick={stopRegistration}
+                >
+                  Stop Registration
                 </Button>
               </div>
             )}

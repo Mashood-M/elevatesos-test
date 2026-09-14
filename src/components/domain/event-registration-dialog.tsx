@@ -198,16 +198,24 @@ export function EventRegistrationDialog({
       title={
         activeReg
           ? "Event Registration"
-          : regState?.isWaitlist
-            ? "Join Event Waiting List"
-            : "Confirm Direct Registration"
+          : regState?.status === "upcoming" || regState?.isUpcoming
+            ? "Registration Not Started"
+            : regState?.isClosed
+              ? (event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed")
+              : regState?.isWaitlist
+                ? "Join Event Waiting List"
+                : "Confirm Direct Registration"
       }
       description={
         activeReg
           ? "You are registered for this event."
-          : regState?.isWaitlist
-            ? "All direct seats are full. Join the waiting list in first-registered priority order."
-            : "Direct registration with instant seat confirmation — no approval request needed."
+          : regState?.status === "upcoming" || regState?.isUpcoming
+            ? (regState?.reason || `Registration has not opened yet. It will open on ${formatDateTime(event.registrationStart)}.`)
+            : regState?.isClosed
+              ? (regState?.reason || "Registration is closed for this event.")
+              : regState?.isWaitlist
+                ? "All direct seats are full. Join the waiting list in first-registered priority order."
+                : "Direct registration with instant seat confirmation — no approval request needed."
       }
       className="max-w-lg"
     >
@@ -313,12 +321,24 @@ export function EventRegistrationDialog({
         ) : (
           /* REGISTRATION CONFIRMATION FORM */
           <div className="space-y-4">
-            {/* CAPACITY / WAITLIST STATUS BANNER */}
-            {regState?.isClosed ? (
+            {/* CAPACITY / WAITLIST / UPCOMING STATUS BANNER */}
+            {regState?.status === "upcoming" || regState?.isUpcoming ? (
+              <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-500 flex items-start gap-2">
+                <Clock size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Registration Not Started</p>
+                  <p className="mt-0.5 text-text-dim leading-relaxed">
+                    {regState.reason || `Registration has not opened yet. It will open on ${formatDateTime(event.registrationStart)}.`}
+                  </p>
+                </div>
+              </div>
+            ) : regState?.isClosed ? (
               <div className="rounded-[10px] border border-red-500/30 bg-red-500/10 p-3 text-[12px] text-red-400 flex items-start gap-2">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold">Registration Closed</p>
+                  <p className="font-semibold">
+                    {event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
+                  </p>
                   <p className="mt-0.5 text-text-dim leading-relaxed">
                     {regState.reason || "Registration has closed for this event."}
                   </p>
@@ -446,14 +466,23 @@ export function EventRegistrationDialog({
               >
                 Cancel
               </Button>
-              {regState?.isClosed ? (
+              {regState?.status === "upcoming" || regState?.isUpcoming ? (
                 <Button
                   type="button"
                   variant="secondary"
                   className="h-10 px-5 font-semibold text-sm cursor-not-allowed opacity-60"
                   disabled
                 >
-                  Registration Closed
+                  Registration Not Started
+                </Button>
+              ) : regState?.isClosed ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-10 px-5 font-semibold text-sm cursor-not-allowed opacity-60"
+                  disabled
+                >
+                  {event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
                 </Button>
               ) : (
                 <Button

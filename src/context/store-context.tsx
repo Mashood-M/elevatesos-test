@@ -1185,7 +1185,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Registration not found." };
             return s;
           }
-          let nextStatus = status;
+          const nextStatus = status;
           if (status === "approved") {
             const actorRole = s.session.roleKey;
             const isAuthorized =
@@ -1920,8 +1920,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
         }
         const nextTitle = safe.title ?? prev.title;
-        const updatedEvent = { ...prev, ...safe, id: prev.id, chapterId: prev.chapterId };
-        const isRegistrationOpen = updatedEvent.status === "registration_open";
+        const isRegistrationOpen = safe.status === "registration_open";
+        const isRegistrationClosed = safe.status === "registration_closed";
+        const publishedAt =
+          safe.publishedAt ??
+          (isRegistrationOpen ? (prev.publishedAt || new Date().toISOString()) : prev.publishedAt);
+        const updatedEvent = {
+          ...prev,
+          ...safe,
+          id: prev.id,
+          chapterId: prev.chapterId,
+          publishedAt,
+        };
         setStore((s) => ({
           ...s,
           events: s.events.map((e) =>
@@ -1931,6 +1941,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ? (s.forms ?? []).map((f) =>
                 f.eventId === id || f.eventId === `evt-${id}` || `evt-${f.eventId}` === id
                   ? { ...f, status: "open" as const, updatedAt: new Date().toISOString() }
+                  : f,
+              )
+            : isRegistrationClosed
+            ? (s.forms ?? []).map((f) =>
+                f.eventId === id || f.eventId === `evt-${id}` || `evt-${f.eventId}` === id
+                  ? { ...f, status: "closed" as const, updatedAt: new Date().toISOString() }
                   : f,
               )
             : s.forms,
@@ -1956,6 +1972,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             void runPersist(
               persistForm({ ...f, status: "open", updatedAt: new Date().toISOString() }),
               { errorMessage: `Failed to open form "${f.title}"` },
+            );
+          });
+        } else if (isRegistrationClosed) {
+          const linkedForms = (store.forms ?? []).filter(
+            (f) => f.eventId === id || f.eventId === `evt-${id}` || `evt-${f.eventId}` === id,
+          );
+          linkedForms.forEach((f) => {
+            void runPersist(
+              persistForm({ ...f, status: "closed", updatedAt: new Date().toISOString() }),
+              { errorMessage: `Failed to close form "${f.title}"` },
             );
           });
         }
@@ -2105,9 +2131,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               message:
                 st === "draft"
                   ? "This event is currently in draft mode and not published."
-                  : st === "completed"
-                    ? "This event has already ended."
-                    : "Registration is not open for this event.",
+                  : st === "registration_closed"
+                    ? "Registration has been stopped by the event organizer."
+                    : st === "completed"
+                      ? "This event has already ended."
+                      : "Registration is not open for this event.",
             };
             return s;
           }
@@ -2115,9 +2143,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (event.registrationStart) {
             const start = new Date(event.registrationStart).getTime();
             if (Number.isFinite(start) && now < start) {
+              const formattedTime = new Date(event.registrationStart).toLocaleString("en-IN", {
+                timeZone: "Asia/Kolkata",
+                day: "2-digit",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              });
               result = {
                 ok: false,
-                message: "Registration has not opened yet.",
+                message: `Registration has not opened yet. It will open on ${formattedTime}.`,
               };
               return s;
             }

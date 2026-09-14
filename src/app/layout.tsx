@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { StoreProvider } from "@/context/store-context";
-import { InactivityTimer } from "@/components/auth/inactivity-timer";
 import { OfflineIndicator } from "@/components/ui/offline-indicator";
 import "./globals.css";
 
@@ -25,7 +24,6 @@ export default function RootLayout({
     <html lang="en" className="h-full" suppressHydrationWarning>
       <body className="min-h-full antialiased">
         <StoreProvider>
-          <InactivityTimer />
           <OfflineIndicator />
           {children}
         </StoreProvider>

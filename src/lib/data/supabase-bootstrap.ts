@@ -179,28 +179,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("chapter_standard_checks").select("*"),
       supabase.from("event_reminders").select("*"),
       Promise.race([
-        supabase.auth.getSession().catch((err: any) => {
-          if (
-            err?.code === "refresh_token_not_found" ||
-            err?.message?.includes("Refresh Token")
-          ) {
-            void supabase.auth.signOut().catch(() => {});
-          }
-          return null;
-        }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+        supabase.auth.getSession().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
       ]),
       Promise.race([
-        supabase.auth.getUser().catch((err: any) => {
-          if (
-            err?.code === "refresh_token_not_found" ||
-            err?.message?.includes("Refresh Token")
-          ) {
-            void supabase.auth.signOut().catch(() => {});
-          }
-          return null;
-        }),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+        supabase.auth.getUser().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
       ]),
     ]);
 

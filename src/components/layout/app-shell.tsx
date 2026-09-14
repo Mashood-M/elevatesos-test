@@ -256,7 +256,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <RoleSwitcher />
           <div className="flex items-center justify-between gap-2 px-0.5">
             <Link
-              href={profile ? `/profile/${profile.elevatesId || profile.id}` : "/login"}
+              href={profile ? `/profile/${profile.elevatesId || profile.id}` : (session.userId ? `/profile/${session.userId}` : "#")}
               className="flex min-w-0 flex-1 items-center gap-2.5 transition hover:opacity-80"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--charcoal-900)] text-[10px] font-bold text-white">
@@ -357,7 +357,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 ) : null}
               </Link>
               <Link
-                href={profile ? `/profile/${profile.elevatesId || profile.id}` : "/login"}
+                href={profile ? `/profile/${profile.elevatesId || profile.id}` : (session.userId ? `/profile/${session.userId}` : "#")}
                 className="flex h-10 items-center gap-2 rounded-full bg-bg py-1 pl-1 pr-1 sm:pr-3 shadow-[var(--shadow-sm)]"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--charcoal-900)] text-[10px] font-bold text-white">

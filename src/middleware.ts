@@ -164,32 +164,21 @@ export async function middleware(request: NextRequest) {
       c.name.includes("supabase")
   );
 
-  // Unauthenticated user or invalid session accessing protected route
+  // Unauthenticated user accessing protected route
   if (isProtectedApp && !user) {
-    // Only allow through on genuine network errors / offline mode with existing cookies,
-    // NEVER when the user failed authentication with invalid / expired tokens.
-    if (isNetworkError && hasAuthCookie) {
+    // If the incoming request has auth cookies, allow it through so that the client-side
+    // Supabase browser client can perform token refresh and store hydration.
+    if (hasAuthCookie) {
       supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
       supabaseResponse.headers.set("Pragma", "no-cache");
       return supabaseResponse;
     }
 
-    // Explicit invalid/expired session or missing auth cookies → redirect to /login cleanly
+    // No auth cookies present at all → redirect to /login
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    // Delete stale auth cookies so browser does not loop with invalid refresh tokens
-    request.cookies.getAll().forEach((c) => {
-      if (
-        c.name.startsWith("sb-") ||
-        c.name.includes("auth-token") ||
-        c.name.includes("supabase")
-      ) {
-        redirectResponse.cookies.delete(c.name);
-      }
-    });
-    return redirectResponse;
+    return NextResponse.redirect(redirectUrl);
   }
 
   // Prevent back-button caching of protected app pages after sign out

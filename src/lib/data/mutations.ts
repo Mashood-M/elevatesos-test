@@ -55,6 +55,9 @@ function broadcastMutation(type: string, data: any, resultData?: any) {
     case "attendance":
       broadcastChange("attendance", "UPDATE", payload);
       break;
+    case "delete_attendance":
+      broadcastChange("attendance", "DELETE", undefined, data);
+      break;
     case "bulk_attendance":
       broadcastChange("attendance", "UPDATE", data?.records || payload);
       break;
@@ -254,6 +257,9 @@ export async function deleteRegistrationRemote(id: string): Promise<MutationResu
 // 6. Attendance & Certificates
 export async function persistAttendance(attendance: AttendanceRecord | Partial<AttendanceRecord> | Record<string, any>): Promise<MutationResult> {
   return sendMutation("attendance", attendance);
+}
+export async function deleteAttendanceRemote(id: string): Promise<MutationResult> {
+  return sendMutation("delete_attendance", { id });
 }
 export async function persistBulkAttendance(records: (AttendanceRecord | Record<string, any>)[]): Promise<MutationResult> {
   return sendMutation("bulk_attendance", { records });

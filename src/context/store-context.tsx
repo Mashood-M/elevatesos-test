@@ -42,6 +42,7 @@ import {
   persistRegistration,
   deleteRegistrationRemote,
   persistAttendance,
+  deleteAttendanceRemote,
   persistBulkAttendance,
   persistCertificate,
   persistForm,
@@ -170,6 +171,7 @@ type StoreContextValue = {
     status: RegistrationStatus,
     actorId: string,
   ) => { ok: true; status: RegistrationStatus } | { ok: false; message: string };
+  deleteRegistration: (id: string) => Promise<boolean>;
   checkIn: (
     registrationId: string,
     status: AttendanceStatus,
@@ -195,6 +197,7 @@ type StoreContextValue = {
     session?: AttendanceSession,
     sessionName?: string,
   ) => CheckInResult;
+  deleteAttendance: (attendanceId: string) => Promise<boolean>;
 
 
   createTask: (input: {
@@ -925,9 +928,7 @@ function maybeIssueCert(
     !event?.certificateEnabled ||
     !(
       status === "present" ||
-      status === "late" ||
-      status === "volunteer" ||
-      status === "speaker"
+      status === "late"
     ) ||
     s.certificates.some((c) => c.eventId === eventId && c.userId === userId)
   ) {
@@ -941,9 +942,7 @@ function maybeIssueCert(
         a.eventId === eventId &&
         a.userId === userId &&
         (a.status === "present" ||
-          a.status === "late" ||
-          a.status === "volunteer" ||
-          a.status === "speaker"),
+          a.status === "late"),
     );
     const requiredSessions = event.attendanceSessions.filter((sess) => sess.isRequired !== false);
     const attendedAll = requiredSessions.every((reqSess) =>
@@ -1355,7 +1354,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return s;
           }
           const existing = s.attendance.find(
-            (a) => a.registrationId === registrationId && (a.sessionId === session || a.session === session),
+            (a) =>
+              a.registrationId === registrationId &&
+              (a.sessionId === session ||
+                a.session === session ||
+                (session === "single" && (!a.sessionId || a.sessionId === "sess-1")) ||
+                (session === "sess-1" && (!a.sessionId || a.sessionId === "single")) ||
+                (!session && a.eventId === activeReg.eventId)),
           );
           if (existing && existing.status === "present") {
             result = {
@@ -1481,7 +1486,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const existingAtt = s.attendance.find(
             (a) =>
               a.registrationId === regId &&
-              (a.sessionId === session || a.session === session),
+              (a.sessionId === session ||
+                a.session === session ||
+                (session === "single" && (!a.sessionId || a.sessionId === "sess-1")) ||
+                (session === "sess-1" && (!a.sessionId || a.sessionId === "single")) ||
+                (!session && a.eventId === eventId)),
           );
 
           if (existingAtt && existingAtt.status === "present") {
@@ -1626,6 +1635,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
         return result;
+      },
+
+      deleteAttendance: async (attendanceId: string) => {
+        let deleted = false;
+        setStore((s) => {
+          const existing = s.attendance.find((a) => a.id === attendanceId);
+          if (!existing) return s;
+          deleted = true;
+          const nextAttendance = s.attendance.filter((a) => a.id !== attendanceId);
+          void runPersist(deleteAttendanceRemote(attendanceId), {
+            errorMessage: `Failed to delete attendance ${attendanceId}`,
+            rollback: () => {
+              setStore((prev) => ({
+                ...prev,
+                attendance: [...prev.attendance, existing],
+              }));
+            },
+          });
+          return {
+            ...s,
+            attendance: nextAttendance,
+          };
+        });
+        return deleted;
+      },
+
+      deleteRegistration: async (id: string) => {
+        let deleted = false;
+        setStore((s) => {
+          const existing = s.registrations.find((r) => r.id === id);
+          if (!existing) return s;
+          deleted = true;
+          const nextRegistrations = s.registrations.filter((r) => r.id !== id);
+          const nextAttendance = s.attendance.filter((a) => a.registrationId !== id);
+          void runPersist(deleteRegistrationRemote(id), {
+            errorMessage: `Failed to delete registration ${id}`,
+            rollback: () => {
+              setStore((prev) => ({
+                ...prev,
+                registrations: [...prev.registrations, existing],
+              }));
+            },
+          });
+          return {
+            ...s,
+            registrations: nextRegistrations,
+            attendance: nextAttendance,
+          };
+        });
+        return deleted;
       },
 
       createTask: (input) => {

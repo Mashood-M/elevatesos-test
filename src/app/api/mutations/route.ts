@@ -551,11 +551,24 @@ export async function POST(req: Request) {
     // 5. REGISTRATION MUTATIONS
     if (type === "registration") {
       const reg = data;
-      const regId = isUuid(reg.id) ? reg.id : genUuid();
+      let regId = isUuid(reg.id) ? reg.id : genUuid();
       let validUserId = null;
       if (isUuid(reg.userId)) {
         const { data: prof } = await admin.from("profiles").select("id").eq("id", reg.userId).maybeSingle();
         if (prof) validUserId = prof.id;
+      }
+
+      // Check if registration already exists for (event_id, user_id) to prevent duplicate rows
+      if (validUserId && isUuid(reg.eventId)) {
+        const { data: existingReg } = await admin
+          .from("event_registrations")
+          .select("id")
+          .eq("event_id", reg.eventId)
+          .eq("user_id", validUserId)
+          .maybeSingle();
+        if (existingReg) {
+          regId = existingReg.id;
+        }
       }
 
       // Security check: If registration status is being approved manually, only Campus Lead or Super Admin can approve
@@ -692,6 +705,17 @@ export async function POST(req: Request) {
       ]);
 
       return NextResponse.json({ ok: true, id: attId });
+    }
+
+    if (type === "delete_attendance") {
+      const { id } = data;
+      if (isUuid(id)) {
+        await Promise.allSettled([
+          admin.from("attendance_records").delete().eq("id", id),
+          admin.from("attendance").delete().eq("id", id),
+        ]);
+      }
+      return NextResponse.json({ ok: true });
     }
 
     if (type === "bulk_attendance") {

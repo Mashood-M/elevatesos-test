@@ -7,8 +7,9 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
-import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
+import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
+import { CheckCircle2, ChevronDown, Users, X, XCircle } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import {
@@ -32,7 +33,7 @@ export default function ChapterAttendancePage({
 }) {
   const { slug } = use(params);
   const searchParams = useSearchParams();
-  const { store, checkIn, updateAttendance, quickRegisterAndCheckIn, issueCertificate, updateEvent } = useStore();
+  const { store, checkIn, updateAttendance, quickRegisterAndCheckIn, deleteAttendance, deleteRegistration, issueCertificate, updateEvent } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
@@ -70,14 +71,12 @@ export default function ChapterAttendancePage({
   const [selectedEvent, setSelectedEvent] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [qrInput, setQrInput] = useState("");
-  const [method, setMethod] = useState<
-    "qr" | "manual" | "bulk" | "representative"
-  >("qr");
-  const [status, setStatus] = useState<AttendanceStatus>("present");
+  const method: "qr" | "manual" | "bulk" | "representative" = "qr";
+  const status: AttendanceStatus = "present";
   const [flash, setFlash] = useState<DeskMessage | null>(null);
   const [bulkText, setBulkText] = useState("");
   const [selectedRegs, setSelectedRegs] = useState<string[]>([]);
-  const [offlineDesk, setOfflineDesk] = useState(false);
+  const offlineDesk = false;
   const [offlineQueue, setOfflineQueue] = useState<OfflineCheckInItem[]>([]);
   const [rosterQuery, setRosterQuery] = useState("");
   const [attendanceSort, setAttendanceSort] = useState<
@@ -93,6 +92,20 @@ export default function ChapterAttendancePage({
   const [rosterTab, setRosterTab] = useState<"approved" | "waitlist" | "chapter">("approved");
   const [isOnSpotOpen, setIsOnSpotOpen] = useState(false);
   const [onSpotSearch, setOnSpotSearch] = useState("");
+  const [isVolunteerModalOpen, setIsVolunteerModalOpen] = useState(false);
+  const [volunteerSearch, setVolunteerSearch] = useState("");
+  const [volunteerPendingId, setVolunteerPendingId] = useState<string | null>(null);
+  const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "volunteer">("all");
+  const [isAttendanceMenuOpen, setIsAttendanceMenuOpen] = useState(false);
+  const [popNotification, setPopNotification] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!popNotification) return;
+    const timer = setTimeout(() => {
+      setPopNotification(null);
+    }, 3200);
+    return () => clearTimeout(timer);
+  }, [popNotification]);
 
   const isFaculty = isFacultyRole(session.roleKey);
 
@@ -181,9 +194,9 @@ export default function ChapterAttendancePage({
   }, [store.registrations, eventId]);
 
   const approvedRegs = useMemo(() => {
-    let regs = eventRegistrations.filter((r) => r.status === "approved");
+    let raw = eventRegistrations.filter((r) => r.status === "approved");
     if (session.roleKey === "class_representative" && myClassCohort) {
-      regs = regs.filter((reg) => {
+      raw = raw.filter((reg) => {
         const user = store.profiles.find((p) => p.id === reg.userId);
         if (!user) return false;
         const matchDept =
@@ -199,6 +212,16 @@ export default function ChapterAttendancePage({
           myClassCohort.section.trim().toLowerCase();
         return matchDept && matchYear && matchSec;
       });
+    }
+
+    // Deduplicate by userId so each attendee is strictly unique in the directory
+    const seen = new Set<string>();
+    const regs: typeof raw = [];
+    for (const r of raw) {
+      if (!seen.has(r.userId)) {
+        seen.add(r.userId);
+        regs.push(r);
+      }
     }
     return regs;
   }, [eventRegistrations, store.profiles, session.roleKey, myClassCohort]);
@@ -223,6 +246,29 @@ export default function ChapterAttendancePage({
           user?.elevatesId?.toLowerCase().includes(q) ||
           reg.qrCode.toLowerCase().includes(q)
         );
+      });
+    }
+
+    // 1b. Filter by attendance status if selected
+    if (attendanceFilter !== "all") {
+      list = list.filter((reg) => {
+        const userAttRecords = store.attendance.filter((att) => att.registrationId === reg.id);
+        const att = isMultiSession
+          ? userAttRecords.find(
+              (r) =>
+                r.sessionId === activeSessionObj?.id ||
+                r.session === activeSessionObj?.id ||
+                r.sessionName === activeSessionObj?.name,
+            )
+          : userAttRecords[0];
+
+        if (attendanceFilter === "present") {
+          return att?.status === "present";
+        }
+        if (attendanceFilter === "volunteer") {
+          return att?.status === "volunteer";
+        }
+        return true;
       });
     }
 
@@ -305,6 +351,7 @@ export default function ChapterAttendancePage({
   }, [
     approvedRegs,
     rosterQuery,
+    attendanceFilter,
     attendanceSort,
     store.profiles,
     store.attendance,
@@ -354,6 +401,27 @@ export default function ChapterAttendancePage({
     });
   }, [chapterStudents, onSpotSearch]);
 
+  const volunteerCount = useMemo(() => {
+    if (!eventId) return 0;
+    return store.attendance.filter(
+      (a) => a.eventId === eventId && a.status === "volunteer",
+    ).length;
+  }, [store.attendance, eventId]);
+
+  const filteredVolunteerStudents = useMemo(() => {
+    const q = volunteerSearch.trim().toLowerCase();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((student) => {
+      return (
+        student.fullName.toLowerCase().includes(q) ||
+        student.email.toLowerCase().includes(q) ||
+        student.department?.toLowerCase().includes(q) ||
+        student.year?.toLowerCase().includes(q) ||
+        student.elevatesId?.toLowerCase().includes(q)
+      );
+    });
+  }, [chapterStudents, volunteerSearch]);
+
   useEffect(() => {
     setOfflineQueue(loadOfflineQueue(eventId));
   }, [eventId]);
@@ -389,26 +457,48 @@ export default function ChapterAttendancePage({
 
   const stats = useMemo(() => {
     const checked = store.attendance.filter((a) => a.eventId === eventId);
+    const approvedUserIds = new Set(approvedRegs.map((r) => r.userId));
+    
+    // Deduplicate by distinct approved student (userId) to accurately count unique attendees
+    const uniqueCheckedInUserIds = new Set(
+      checked
+        .filter(
+          (a) =>
+            approvedUserIds.has(a.userId) &&
+            (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
+        )
+        .map((a) => a.userId)
+        .filter(Boolean),
+    );
+
+    const uniquePresentUserIds = new Set(
+      checked
+        .filter((a) => approvedUserIds.has(a.userId) && a.status === "present")
+        .map((a) => a.userId)
+        .filter(Boolean),
+    );
+
     const currentSessionChecked = checked.filter(
-      (a) => (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id) && (a.status === "present" || a.status === "late"),
+      (a) => (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id) && (a.status === "present"),
     );
 
     // Full completion: attended all required sessions
     const fullyAttended = approvedRegs.filter((r) => {
-      const userRecords = checked.filter((a) => a.registrationId === r.id && (a.status === "present" || a.status === "late"));
+      const userRecords = checked.filter((a) => a.registrationId === r.id && (a.status === "present"));
       return attendanceSessions.every((sess) =>
         userRecords.some((a) => a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name),
       );
     });
 
+    const absentCount = Math.max(0, approvedRegs.length - uniqueCheckedInUserIds.size);
+
     return {
       approved: approvedRegs.length,
       currentSessionCount: currentSessionChecked.length,
       fullyAttendedCount: fullyAttended.length,
-      checkedIn: checked.length,
-      present: checked.filter((a) => a.status === "present").length,
-      late: checked.filter((a) => a.status === "late").length,
-      absent: checked.filter((a) => a.status === "absent").length,
+      checkedIn: uniqueCheckedInUserIds.size,
+      present: uniquePresentUserIds.size,
+      absent: absentCount,
     };
   }, [store.attendance, eventId, approvedRegs, attendanceSessions, activeSessionObj]);
 
@@ -432,7 +522,7 @@ export default function ChapterAttendancePage({
   };
 
   const runCheckIn = useCallback(
-    (registrationId: string, m: typeof method, sessId?: string, sessName?: string) => {
+    (registrationId: string, m: "qr" | "manual" | "bulk" | "representative" = "qr", sessId?: string, sessName?: string) => {
       const { eventId: eid, status: st, userId, activeSessionId: currentSessId, activeSessionName: currentSessName } = deskRef.current;
       const targetId = sessId ?? currentSessId;
       const targetName = sessName ?? currentSessName;
@@ -469,6 +559,84 @@ export default function ChapterAttendancePage({
       return true;
     },
     [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles],
+  );
+
+  const handleAddVolunteer = useCallback(
+    async (studentId: string, _studentName: string) => {
+      if (!eventId) {
+        setPopNotification({ tone: "err", text: "Select an event first." });
+        return;
+      }
+      if (volunteerPendingId) return;
+      setVolunteerPendingId(studentId);
+      try {
+        const reg = store.registrations.find(
+          (r) => r.eventId === eventId && r.userId === studentId,
+        );
+        if (reg) {
+          const res = updateAttendance(
+            reg.id,
+            "volunteer",
+            session.userId,
+            activeSessionObj?.id,
+            activeSessionObj?.name,
+          );
+          if (res.ok) {
+            setPopNotification({ tone: "ok", text: "New volunteer is added" });
+          } else {
+            setPopNotification({ tone: "err", text: res.message });
+          }
+        } else {
+          const res = quickRegisterAndCheckIn(
+            eventId,
+            studentId,
+            "volunteer",
+            "manual",
+            session.userId,
+            activeSessionObj?.id,
+            activeSessionObj?.name,
+          );
+          if (res.ok) {
+            setPopNotification({ tone: "ok", text: "New volunteer is added" });
+          } else {
+            setPopNotification({ tone: "err", text: res.message });
+          }
+        }
+      } finally {
+        setVolunteerPendingId(null);
+      }
+    },
+    [eventId, store.registrations, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj, volunteerPendingId],
+  );
+
+  const handleRemoveVolunteer = useCallback(
+    async (studentId: string, _studentName: string) => {
+      if (!eventId) return;
+      if (volunteerPendingId) return;
+      setVolunteerPendingId(studentId);
+      try {
+        // 1. Delete all attendance records for this volunteer in this event
+        const attRecords = store.attendance.filter(
+          (a) => a.eventId === eventId && a.userId === studentId,
+        );
+        for (const att of attRecords) {
+          await deleteAttendance(att.id);
+        }
+
+        // 2. Delete registration for this student in this event so they are also removed from the event directory
+        const regs = store.registrations.filter(
+          (r) => r.eventId === eventId && r.userId === studentId,
+        );
+        for (const reg of regs) {
+          await deleteRegistration(reg.id);
+        }
+
+        setPopNotification({ tone: "ok", text: "Volunteer removed" });
+      } finally {
+        setVolunteerPendingId(null);
+      }
+    },
+    [eventId, store.attendance, store.registrations, deleteAttendance, deleteRegistration, volunteerPendingId],
   );
 
   const handleQrScan = useCallback(
@@ -621,7 +789,11 @@ export default function ChapterAttendancePage({
         }
       }
       const existing = store.attendance.find(
-        (a) => a.registrationId === reg.id && (a.sessionId === sessId || a.session === sessId),
+        (a) =>
+          a.registrationId === reg.id &&
+          (isMultiSession
+            ? (a.sessionId === sessId || a.session === sessId || a.sessionName === sessName)
+            : a.eventId === eid),
       );
       if (existing) {
         const result = updateAttendance(
@@ -816,7 +988,6 @@ export default function ChapterAttendancePage({
   return (
     <div>
       <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
         title={isReadOnly ? "Attendance Overview" : "Attendance Desk"}
 
         actions={
@@ -846,7 +1017,7 @@ export default function ChapterAttendancePage({
       />
 
       {/* Top Stats Bar in clean ERP styling */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className={cn("mb-4 grid grid-cols-2 gap-3", isMultiSession ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4")}>
         <Stat label="Approved Students" value={stats.approved} />
         {isMultiSession ? (
           <>
@@ -859,25 +1030,10 @@ export default function ChapterAttendancePage({
           <>
             <Stat label="Checked In" value={stats.checkedIn} />
             <Stat label="Present" value={stats.present} accent="green" />
-            <Stat label="Late" value={stats.late} accent="orange" />
             <Stat label="Absent" value={stats.absent} />
           </>
         )}
       </div>
-
-
-
-      {isCampusLead && !isFaculty && (
-        <div className="mb-4 flex justify-end">
-          <Button
-            variant="orange"
-            className="h-8 text-xs font-semibold px-3 shadow-xs"
-            onClick={() => setIsOnSpotOpen(true)}
-          >
-            + On-Spot Student Check-in
-          </Button>
-        </div>
-      )}
 
       {/* Class Representative Scope Banner */}
       {session.roleKey === "class_representative" && myClassCohort && (
@@ -994,7 +1150,6 @@ export default function ChapterAttendancePage({
             [
               currentEvent?.title,
               isMultiSession ? `Session: ${activeSessionObj?.name}` : undefined,
-              offlineDesk || !online ? "queue" : "live",
             ]
               .filter(Boolean)
               .join(" · ") || undefined
@@ -1044,96 +1199,28 @@ export default function ChapterAttendancePage({
             </div>
           ) : null}
 
-          <div className="grid max-w-3xl gap-3 md:grid-cols-3">
-            <div>
-              <FieldLabel>Event</FieldLabel>
-              <Select
-                value={eventId}
-                onChange={(e) => {
-                  setSelectedEvent(e.target.value);
-                  setFlash(null);
-                  setSelectedRegs([]);
-                  setRosterQuery("");
-                  setAttendanceSort("registered_recent");
-                }}
-              >
-                {events.length === 0 ? (
-                  <option value="">No events</option>
-                ) : (
-                  events.map((ev) => (
-                    <option key={ev.id} value={ev.id}>
-                      {ev.title} · {ev.status.replaceAll("_", " ")}
-                    </option>
-                  ))
-                )}
-              </Select>
-            </div>
-            <div>
-              <FieldLabel>Method</FieldLabel>
-              <Select
-                value={method}
-                onChange={(e) =>
-                  setMethod(
-                    e.target.value as
-                    | "qr"
-                    | "manual"
-                    | "bulk"
-                    | "representative",
-                  )
-                }
-              >
-                <option value="qr">QR scan</option>
-                <option value="manual">Manual (directory table)</option>
-                <option value="representative">Class representative</option>
-                <option value="bulk">Bulk list</option>
-              </Select>
-            </div>
-            <div>
-              <FieldLabel>Status</FieldLabel>
-              <Select
-                value={status}
-                onChange={(e) =>
-                  setStatus(e.target.value as AttendanceStatus)
-                }
-              >
-                <option value="present">Present</option>
-                <option value="late">Late</option>
-                <option value="absent">Absent</option>
-                <option value="volunteer">Volunteer</option>
-                <option value="speaker">Speaker</option>
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/70 pt-3">
-            <label className="flex items-center gap-2 text-[12px] text-text-dim">
-              <input
-                type="checkbox"
-                checked={offlineDesk}
-                disabled={!hasEvent}
-                onChange={(e) => setOfflineDesk(e.target.checked)}
-                className="accent-[var(--accent)]"
-              />
-              Queue scans locally
-            </label>
-            <Badge tone={online && !offlineDesk ? "green" : "orange"}>
-              {offlineDesk || !online ? "queue" : "live"}
-            </Badge>
-            {offlineQueue.length ? (
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-text-dim">
-                  {offlineQueue.length} queued
-                </span>
-                <Button
-                  variant="ghost"
-                  className="h-7 text-[11px]"
-                  disabled={!online}
-                  onClick={syncOffline}
-                >
-                  Sync to cloud
-                </Button>
-              </div>
-            ) : null}
+          <div className="max-w-md">
+            <FieldLabel>Event</FieldLabel>
+            <Select
+              value={eventId}
+              onChange={(e) => {
+                setSelectedEvent(e.target.value);
+                setFlash(null);
+                setSelectedRegs([]);
+                setRosterQuery("");
+                setAttendanceSort("registered_recent");
+              }}
+            >
+              {events.length === 0 ? (
+                <option value="">No events</option>
+              ) : (
+                events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.title} · {ev.status.replaceAll("_", " ")}
+                  </option>
+                ))
+              )}
+            </Select>
           </div>
 
           {flash ? (
@@ -1149,114 +1236,46 @@ export default function ChapterAttendancePage({
             </p>
           ) : null}
 
-          {/* QR Scanner Mode */}
-          {method === "qr" ? (
-            <div className="mt-4 border-t border-border/70 pt-4">
-              {isMultiSession ? (
-                <div className="mb-3 flex items-center justify-between rounded-[var(--radius)] border border-border/80 bg-bg-panel px-3 py-2 text-[12px]">
-                  <span className="text-text">
-                    Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
-                    {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
-                  </span>
-                  <Badge tone="green">Ready</Badge>
-                </div>
-              ) : null}
-
-              <QrScanner onScan={onCameraScan} active={method === "qr"} disabled={!hasEvent} />
-
-              <div className="mt-4 flex max-w-md gap-2">
-                <Input
-                  placeholder="Or paste / type QR code..."
-                  value={qrInput}
-                  disabled={!hasEvent}
-                  onChange={(e) => setQrInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
-                  aria-label="QR Code input"
-                />
-                <Button
-                  variant="orange"
-                  disabled={!hasEvent || !qrInput.trim()}
-                  onClick={() => handleQrScan()}
-                >
-                  Verify
-                </Button>
+          {/* QR Scanner & Manual Input Side-by-Side */}
+          <div className="mt-4 border-t border-border/70 pt-4">
+            {isMultiSession ? (
+              <div className="mb-3 flex items-center justify-between rounded-[var(--radius)] border border-border/80 bg-bg-panel px-3 py-2 text-[12px]">
+                <span className="text-text">
+                  Scanning for: <strong className="text-[var(--accent)]">{activeSessionObj.name}</strong>
+                  {activeSessionObj.time ? ` (${activeSessionObj.time})` : ""}
+                </span>
+                <Badge tone="green">Ready</Badge>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {method === "manual" ? (
-            <p className="mt-4 border-t border-border/70 pt-4 text-[13px] text-text-dim">
-              Use the directory below — click Check in or toggle status per student.
-            </p>
-          ) : null}
-
-          {method === "bulk" ? (
-            <div className="mt-4 max-w-xl space-y-2 border-t border-border/70 pt-4">
-              <FieldLabel>
-                One QR code or email per line {isMultiSession ? `(${activeSessionObj.name})` : ""}
-              </FieldLabel>
-              <TextArea
-                rows={4}
-                value={bulkText}
-                disabled={!hasEvent}
-                onChange={(e) => setBulkText(e.target.value)}
-                placeholder={"QR-ELV-DECODE-001\nuser@elevates.live\n..."}
-              />
-              <Button
-                variant="orange"
-                disabled={!hasEvent}
-                onClick={handleBulk}
-              >
-                Process bulk {isMultiSession ? `(${activeSessionObj.name})` : ""}
-              </Button>
-            </div>
-          ) : null}
-
-          {method === "representative" ? (
-            <div className="mt-4 max-w-xl border-t border-border/70 pt-4">
-              <p className="mb-2 text-[12px] text-text-dim">
-                Select students to check in together {isMultiSession ? `for ${activeSessionObj.name}` : ""}:
-              </p>
-              <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto rounded-[var(--radius)] border border-border/80 bg-bg-panel p-2">
-                {approvedRegs.map((reg) => {
-                  const user = store.profiles.find((p) => p.id === reg.userId);
-                  const att = store.attendance.find(
-                    (a) =>
-                      a.registrationId === reg.id &&
-                      (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id),
-                  );
-                  return (
-                    <li key={reg.id} className="flex items-center justify-between text-[12px] border-b border-border/40 pb-1.5 last:border-0">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          disabled={Boolean(att) || !hasEvent}
-                          checked={selectedRegs.includes(reg.id)}
-                          onChange={(e) => {
-                            setSelectedRegs((ids) =>
-                              e.target.checked
-                                ? [...ids, reg.id]
-                                : ids.filter((id) => id !== reg.id),
-                            );
-                          }}
-                        />
-                        <span className="font-medium text-text">{user?.fullName}</span>
-                        <span className="text-text-mute">({user?.year} · {user?.department?.split(" ")[0]})</span>
-                      </label>
-                      {att ? <Badge tone="green">{att.status}</Badge> : <Badge tone="mute">unmarked</Badge>}
-                    </li>
-                  );
-                })}
-              </ul>
-              <Button
-                variant="orange"
-                disabled={!hasEvent || selectedRegs.length === 0}
-                onClick={handleRepresentative}
-              >
-                Check in selected ({selectedRegs.length})
-              </Button>
-            </div>
-          ) : null}
+            <QrScanner
+              onScan={onCameraScan}
+              active={true}
+              disabled={!hasEvent}
+              sideContent={
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Or paste / type QR code..."
+                    value={qrInput}
+                    disabled={!hasEvent}
+                    onChange={(e) => setQrInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleQrScan()}
+                    aria-label="QR Code input"
+                    className="h-9 text-xs"
+                  />
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    className="h-9 px-4 text-xs font-semibold shrink-0"
+                    disabled={!hasEvent || !qrInput.trim()}
+                    onClick={() => handleQrScan()}
+                  >
+                    Verify
+                  </Button>
+                </div>
+              }
+            />
+          </div>
         </TerminalPanel>
       )}
 
@@ -1290,43 +1309,34 @@ export default function ChapterAttendancePage({
             />
           </div>
 
-          {(isCampusLead || isFaculty) && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                type="button"
-                variant={rosterTab === "approved" ? "orange" : "ghost"}
-                className={cn("h-8 text-[12px] px-3", rosterTab !== "approved" && "border border-border/70")}
-                onClick={() => {
-                  setRosterTab("approved");
+          <div className="flex flex-wrap items-center gap-2">
+            {(isCampusLead || isFaculty) && (
+              <select
+                value={rosterTab}
+                onChange={(e) => {
+                  setRosterTab(e.target.value as "approved" | "waitlist" | "chapter");
                   setRosterQuery("");
                 }}
+                aria-label="Filter roster category"
+                className="h-8 rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated text-text text-xs font-medium px-2.5 pr-7 outline-none cursor-pointer transition-colors focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/40"
               >
-                Approved Attendees ({approvedRegs.length})
-              </Button>
-              <Button
+                <option value="approved">Approved Attendees ({approvedRegs.length})</option>
+                <option value="waitlist">Waitlist ({waitlistedRegs.length})</option>
+                <option value="chapter">All Students ({chapterStudents.length})</option>
+              </select>
+            )}
+
+            {hasEvent && !isReadOnly && (
+              <button
                 type="button"
-                variant={rosterTab === "waitlist" ? "orange" : "ghost"}
-                className={cn("h-8 text-[12px] px-3", rosterTab !== "waitlist" && "border border-border/70")}
-                onClick={() => {
-                  setRosterTab("waitlist");
-                  setRosterQuery("");
-                }}
+                className="h-8 px-2.5 text-xs font-medium rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated hover:border-border text-text hover:text-orange-500 transition-colors flex items-center gap-1.5 shrink-0"
+                onClick={() => setIsVolunteerModalOpen(true)}
               >
-                Waitlist / Pending ({waitlistedRegs.length})
-              </Button>
-              <Button
-                type="button"
-                variant={rosterTab === "chapter" ? "orange" : "ghost"}
-                className={cn("h-8 text-[12px] px-3", rosterTab !== "chapter" && "border border-border/70")}
-                onClick={() => {
-                  setRosterTab("chapter");
-                  setRosterQuery("");
-                }}
-              >
-                All Chapter Students ({chapterStudents.length})
-              </Button>
-            </div>
-          )}
+                <Users className="w-3.5 h-3.5 text-orange-500" />
+                <span>+ Volunteer Student</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {rosterTab === "approved" && (
@@ -1347,7 +1357,94 @@ export default function ChapterAttendancePage({
                     </>
                   ) : (
                     <>
-                      <th className="pb-2">Attendance</th>
+                      <th className="pb-2">
+                        <div className="relative inline-block">
+                          <button
+                            type="button"
+                            onClick={() => setIsAttendanceMenuOpen((prev) => !prev)}
+                            className={cn(
+                              "inline-flex items-center gap-1 font-semibold text-[11px] transition-colors py-0.5 px-1.5 rounded -ml-1.5",
+                              attendanceFilter !== "all"
+                                ? "bg-orange-500/15 text-orange-500 hover:bg-orange-500/25"
+                                : "text-text-mute hover:text-text hover:bg-bg-elevated",
+                            )}
+                            title="Filter by attendance status"
+                          >
+                            <span>Attendance</span>
+                            {attendanceFilter !== "all" && (
+                              <span className="text-[10px] font-bold capitalize">
+                                ({attendanceFilter})
+                              </span>
+                            )}
+                            <ChevronDown className="w-3 h-3 opacity-70" />
+                          </button>
+
+                          {isAttendanceMenuOpen && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-20"
+                                onClick={() => setIsAttendanceMenuOpen(false)}
+                              />
+                              <div className="absolute left-0 top-full mt-1 z-30 min-w-[150px] rounded-[var(--radius)] border border-border bg-bg-panel p-1 shadow-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAttendanceFilter("all");
+                                    setIsAttendanceMenuOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-xs rounded transition-colors flex items-center justify-between",
+                                    attendanceFilter === "all"
+                                      ? "bg-orange-500/15 text-orange-500 font-medium"
+                                      : "hover:bg-bg-elevated text-text",
+                                  )}
+                                >
+                                  <span>All Attendees</span>
+                                  <span className="text-[10px] text-text-dim">
+                                    {approvedRegs.length}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAttendanceFilter("present");
+                                    setIsAttendanceMenuOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-xs rounded transition-colors flex items-center justify-between",
+                                    attendanceFilter === "present"
+                                      ? "bg-green-500/15 text-green-500 font-medium"
+                                      : "hover:bg-bg-elevated text-text",
+                                  )}
+                                >
+                                  <span>Present</span>
+                                  <span className="text-[10px] text-text-dim">
+                                    {stats.present}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAttendanceFilter("volunteer");
+                                    setIsAttendanceMenuOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-xs rounded transition-colors flex items-center justify-between",
+                                    attendanceFilter === "volunteer"
+                                      ? "bg-orange-500/15 text-orange-500 font-medium"
+                                      : "hover:bg-bg-elevated text-text",
+                                  )}
+                                >
+                                  <span>Volunteer</span>
+                                  <span className="text-[10px] text-text-dim">
+                                    {volunteerCount}
+                                  </span>
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </th>
                       <th className="pb-2">{isReadOnly ? "Method" : "Action"}</th>
                     </>
                   )}
@@ -1411,7 +1508,7 @@ export default function ChapterAttendancePage({
                   return (
                     <tr key={reg.id} className="border-b border-border/50">
                       <td className="py-3">
-                        <p className="font-medium text-text">{user?.fullName}</p>
+                        <p className="font-normal text-text">{user?.fullName}</p>
                         <p className="text-[11px] text-text-mute">{user?.email}</p>
                       </td>
 
@@ -1484,35 +1581,17 @@ export default function ChapterAttendancePage({
                         <>
                           <td className="py-3">
                             {singleAtt ? (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge tone={singleAtt.status === "present" ? "green" : "orange"}>
-                                  {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
-                                </Badge>
-                                {!isReadOnly && (
-                                  <Select
-                                    className="h-8 w-auto text-[11px]"
-                                    value={singleAtt.status}
-                                    onChange={(e) => {
-                                      const result = updateAttendance(
-                                        reg.id,
-                                        e.target.value as AttendanceStatus,
-                                        session.userId,
-                                      );
-                                      setFlash(
-                                        result.ok
-                                          ? { tone: "ok", text: `Updated ${user?.fullName}` }
-                                          : { tone: "err", text: result.message },
-                                      );
-                                    }}
-                                  >
-                                    <option value="present">Present</option>
-                                    <option value="late">Late</option>
-                                    <option value="absent">Absent</option>
-                                    <option value="volunteer">Volunteer</option>
-                                    <option value="speaker">Speaker</option>
-                                  </Select>
-                                )}
-                              </div>
+                              <Badge
+                                tone={
+                                  singleAtt.status === "present"
+                                    ? "green"
+                                    : singleAtt.status === "volunteer"
+                                      ? "orange"
+                                      : "mute"
+                                }
+                              >
+                                {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
+                              </Badge>
                             ) : (
                               <Badge tone="orange">not checked in</Badge>
                             )}
@@ -1566,6 +1645,8 @@ export default function ChapterAttendancePage({
                         <td className="py-3">
                           {cert ? (
                             <Badge tone="green">Issued · {cert.certificateId}</Badge>
+                          ) : (singleAtt?.status === "volunteer" || userAttRecords.some((a) => a.status === "volunteer")) ? (
+                            <span className="text-[11px] text-text-dim">Volunteer</span>
                           ) : !isReadOnly && (isMultiSession ? isFullyComplete : Boolean(singleAtt && singleAtt.status === "present")) ? (
                             <Button
                               variant="orange"
@@ -1770,6 +1851,144 @@ export default function ChapterAttendancePage({
         )}
       </TerminalPanel>
 
+      {/* Volunteer Students Modal */}
+      {isVolunteerModalOpen && !isReadOnly && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-2.5 sm:p-4 backdrop-blur-sm">
+          <div className="flex flex-col w-full max-w-xl max-h-[90dvh] rounded-[var(--radius)] border border-border bg-bg-panel p-4 sm:p-5 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
+                  <Users className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-text text-sm sm:text-base">
+                    Volunteer Students
+                  </h3>
+                  <p className="text-[11px] text-text-dim">
+                    Assign or remove chapter students as event volunteers
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVolunteerModalOpen(false);
+                  setVolunteerSearch("");
+                }}
+                className="rounded-full p-1.5 text-text-dim hover:bg-bg-elevated hover:text-text transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Search filter */}
+            <div className="pt-3 pb-2 shrink-0">
+              <Input
+                value={volunteerSearch}
+                onChange={(e) => setVolunteerSearch(e.target.value)}
+                placeholder="Search chapter students by name, email, or ID..."
+                className="w-full text-xs"
+                autoFocus
+              />
+            </div>
+
+            {/* Student list */}
+            <div className="overflow-y-auto flex-1 divide-y divide-border/40 min-h-[220px] max-h-[50vh] pr-1">
+              {filteredVolunteerStudents.length === 0 ? (
+                <div className="py-12 text-center text-xs text-text-dim">
+                  No students found matching &ldquo;{volunteerSearch}&rdquo;
+                </div>
+              ) : (
+                filteredVolunteerStudents.map((student) => {
+                  const volunteerAtt = store.attendance.find(
+                    (a) => a.eventId === eventId && a.userId === student.id && a.status === "volunteer",
+                  );
+                  const isVolunteer = Boolean(volunteerAtt);
+
+                  return (
+                    <div
+                      key={student.id}
+                      className="flex items-center justify-between gap-3 py-2.5 px-1 hover:bg-bg-elevated/40 rounded transition-colors"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium text-text truncate">
+                            {student.fullName}
+                          </p>
+                          {isVolunteer && (
+                            <span className="rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
+                              ✓ Volunteer
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-text-dim mt-0.5 truncate">
+                          <span>{student.email}</span>
+                          {student.department && (
+                            <>
+                              <span>•</span>
+                              <span>{student.department} {student.year ? `(${student.year})` : ""}</span>
+                            </>
+                          )}
+                          {student.elevatesId && (
+                            <>
+                              <span>•</span>
+                              <span className="font-mono text-[10px] text-text-dim">{student.elevatesId}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0">
+                        {isVolunteer ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            disabled={volunteerPendingId === student.id}
+                            className="h-7 px-3 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-500/10 border border-red-500/25 transition-colors disabled:opacity-50"
+                            onClick={() => handleRemoveVolunteer(student.id, student.fullName)}
+                          >
+                            {volunteerPendingId === student.id ? "Removing..." : "Remove"}
+                          </Button>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="orange"
+                            disabled={volunteerPendingId === student.id}
+                            className="h-7 px-3 text-xs font-semibold shadow-xs disabled:opacity-50"
+                            onClick={() => handleAddVolunteer(student.id, student.fullName)}
+                          >
+                            {volunteerPendingId === student.id ? "Adding..." : "+ Add"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer summary */}
+            <div className="border-t border-border pt-3 mt-2 flex items-center justify-between text-xs text-text-dim shrink-0">
+              <span>
+                {volunteerCount} active {volunteerCount === 1 ? "volunteer" : "volunteers"}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-7 px-3 text-xs border border-border"
+                onClick={() => {
+                  setIsVolunteerModalOpen(false);
+                  setVolunteerSearch("");
+                }}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* On-Spot Chapter Student Check-in Dialog */}
       {isOnSpotOpen && !isReadOnly && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-2.5 sm:p-4 backdrop-blur-sm">
@@ -1894,6 +2113,46 @@ export default function ChapterAttendancePage({
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Pop Notification (Toast) */}
+      {popNotification && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={cn(
+            "fixed bottom-6 right-6 z-[70] flex items-center gap-3 rounded-xl border px-4 py-3 shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in slide-in-from-bottom-4",
+            popNotification.tone === "ok"
+              ? "border-emerald-500/30 bg-[#0c1a14]/95 text-emerald-100 shadow-emerald-950/40"
+              : "border-red-500/30 bg-[#1c0f12]/95 text-red-100 shadow-red-950/40",
+          )}
+        >
+          <div
+            className={cn(
+              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+              popNotification.tone === "ok"
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "bg-red-500/20 text-red-400",
+            )}
+          >
+            {popNotification.tone === "ok" ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+          </div>
+          <p className="text-xs font-medium tracking-tight">
+            {popNotification.text}
+          </p>
+          <button
+            type="button"
+            onClick={() => setPopNotification(null)}
+            className="ml-2 rounded-md p-1 text-text-dim hover:text-text hover:bg-white/5 transition-colors"
+            aria-label="Close notification"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>

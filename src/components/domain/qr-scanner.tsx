@@ -37,10 +37,12 @@ export function QrScanner({
   onScan,
   active,
   disabled,
+  sideContent,
 }: {
   onScan: (code: string) => void;
   active: boolean;
   disabled?: boolean;
+  sideContent?: React.ReactNode;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const onScanRef = useRef(onScan);
@@ -393,48 +395,54 @@ export function QrScanner({
   return (
     <div className="space-y-3">
       {/* Scanner Controls Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        {sideContent && (
+          <div className="w-full sm:w-auto sm:min-w-[320px] max-w-md">
+            {sideContent}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             type="button"
             variant={running ? "ghost" : "orange"}
             disabled={disabled}
             onClick={() => setRunning((v) => !v)}
-            className="h-9 px-4 text-xs font-semibold"
+            className="h-9 px-4 text-xs font-semibold shrink-0"
           >
             {running ? "■ Stop Camera" : "📷 Start Camera Scan"}
           </Button>
+
+          {running && (
+            <div className="flex items-center gap-1.5">
+              {/* Zoom Button (if supported by phone lens) */}
+              {supportsZoom && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 px-2.5 text-[11px] font-mono border border-border/70 text-text hover:text-[var(--accent)]"
+                  onClick={toggleZoom}
+                  title="Toggle 1x / 2x Zoom"
+                >
+                  {zoomLevel === 1 ? "1x" : "2x"} Zoom
+                </Button>
+              )}
+
+              {/* Switch Camera / Lens */}
+              {videoDevices.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 px-2.5 text-[11px] border border-border/70 text-text-dim hover:text-text"
+                  onClick={cycleCamera}
+                  title="Switch camera lens"
+                >
+                  ⇄ Switch Lens
+                </Button>
+              )}
+            </div>
+          )}
         </div>
-
-        {running && (
-          <div className="flex items-center gap-1.5">
-            {/* Zoom Button (if supported by phone lens) */}
-            {supportsZoom && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-2.5 text-[11px] font-mono border border-border/70 text-text hover:text-[var(--accent)]"
-                onClick={toggleZoom}
-                title="Toggle 1x / 2x Zoom"
-              >
-                {zoomLevel === 1 ? "1x" : "2x"} Zoom
-              </Button>
-            )}
-
-            {/* Switch Camera / Lens */}
-            {videoDevices.length > 1 && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-2.5 text-[11px] border border-border/70 text-text-dim hover:text-text"
-                onClick={cycleCamera}
-                title="Switch camera lens"
-              >
-                ⇄ Switch Lens
-              </Button>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Square Camera Viewfinder */}
@@ -517,11 +525,11 @@ export function QrScanner({
           <p className="font-semibold">Camera Notice</p>
           <p className="mt-0.5 text-[11px] opacity-90">{error}</p>
         </div>
-      ) : (
-        <p className="text-[11px] text-text-mute">
-          Position the student&apos;s registration QR code inside the square frame. Or type/paste the code below.
+      ) : running ? (
+        <p className="text-[11px] text-text-mute text-center">
+          Position the student&apos;s registration QR code inside the square frame.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

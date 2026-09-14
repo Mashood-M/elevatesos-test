@@ -1410,34 +1410,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let activeReg = reg;
           let nextRegistrations = s.registrations;
           if (reg.status !== "approved") {
-            const actorRole = s.userRoles.find((ur) => ur.userId === actorId)?.roleKey;
-            const canActorApprove =
-              actorRole === "campus_lead" ||
-              actorRole === "chairman" ||
-              actorRole === "founder" ||
-              actorRole === "hq_admin";
-
-            if (canActorApprove) {
-              const approvedReg = {
-                ...reg,
-                status: "approved" as const,
-                approvedBy: actorId,
-                qrCode: reg.qrCode || mintQrCode(reg.eventId, reg.userId),
-              };
-              activeReg = approvedReg;
-              nextRegistrations = s.registrations.map((r) =>
-                r.id === reg.id ? approvedReg : r,
-              );
-              void runPersist(persistRegistration(approvedReg), {
-                errorMessage: `Auto-approval failed for registration ${registrationId}`,
-              });
-            } else {
-              result = {
-                ok: false,
-                message: "Only approved registrations can check in.",
-              };
-              return s;
-            }
+            const approvedReg = {
+              ...reg,
+              status: "approved" as const,
+              approvedBy: actorId,
+              qrCode: reg.qrCode || mintQrCode(reg.eventId, reg.userId),
+            };
+            activeReg = approvedReg;
+            nextRegistrations = s.registrations.map((r) =>
+              r.id === reg.id ? approvedReg : r,
+            );
+            void runPersist(persistRegistration(approvedReg), {
+              errorMessage: `Auto-approval failed for registration ${registrationId}`,
+            });
           }
           if (expectedEventId && activeReg.eventId !== expectedEventId) {
             result = {

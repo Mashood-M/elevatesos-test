@@ -27,7 +27,7 @@ import {
   isEventBeforeStart,
   isAttendanceTakeable,
 } from "@/lib/events";
-import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
+import { defaultFormsForEvent, getEventForm, mintQrCode } from "@/lib/forms/helpers";
 import { hasPermission } from "@/lib/permissions";
 import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
 import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell, AlertCircle, Ban, Play } from "lucide-react";
@@ -950,41 +950,34 @@ export default function EventDetailPage({
                     You are on the waiting list in first-registered priority order. If registered members do not attend the event, the event coordinator will approve seats from the waiting list.
                   </p>
                 ) : null}
-                {myReg.status === "approved" && myReg.qrCode ? (
-                  <div className="rounded-[14px] border border-border bg-bg px-4 py-5">
-                    <p className="text-center text-[11px] font-medium uppercase tracking-wider text-text-mute">
-                      Your check-in QR
-                    </p>
-                    <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
-                      <QRCode
-                        value={myReg.qrCode}
-                        size={190}
-                        level="M"
-                        style={{ height: "auto", maxWidth: "100%", width: 190 }}
-                      />
-                    </div>
-                    <p className="mt-3 break-all text-center font-[family-name:var(--font-mono)] text-[12px] font-semibold tracking-wide text-text">
-                      {myReg.qrCode}
-                    </p>
-                    <p className="mt-1 text-center text-[12px] text-text-dim">
-                      Show this at the door, or copy the code for desk check-in.
-                    </p>
-                    <div className="mt-3 flex justify-center">
-                      <Button
-                        variant="ghost"
-                        className="h-9 px-4"
-                        onClick={() => copyQr(myReg.qrCode)}
-                      >
-                        {qrCopied ? "Copied" : "Copy code"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-                {myReg.status === "approved" && !myReg.qrCode ? (
-                  <p className="text-[13px] text-text-dim">
-                    Approved — check-in code will appear here when minted.
+                <div className="rounded-[14px] border border-border bg-bg px-4 py-5">
+                  <p className="text-center text-[11px] font-medium uppercase tracking-wider text-text-mute">
+                    Your check-in QR
                   </p>
-                ) : null}
+                  <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
+                    <QRCode
+                      value={myReg.qrCode || mintQrCode(event.id, myReg.userId)}
+                      size={190}
+                      level="M"
+                      style={{ height: "auto", maxWidth: "100%", width: 190 }}
+                    />
+                  </div>
+                  <p className="mt-3 break-all text-center font-[family-name:var(--font-mono)] text-[12px] font-semibold tracking-wide text-text">
+                    {myReg.qrCode || mintQrCode(event.id, myReg.userId)}
+                  </p>
+                  <p className="mt-1 text-center text-[12px] text-text-dim">
+                    Show this at the door to directly mark your attendance.
+                  </p>
+                  <div className="mt-3 flex justify-center">
+                    <Button
+                      variant="ghost"
+                      className="h-9 px-4"
+                      onClick={() => copyQr(myReg.qrCode || mintQrCode(event.id, myReg.userId))}
+                    >
+                      {qrCopied ? "Copied" : "Copy code"}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
             {event.status === "completed" && fbForm?.status === "open" ? (

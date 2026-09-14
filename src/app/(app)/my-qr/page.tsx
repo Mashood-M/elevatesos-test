@@ -7,6 +7,7 @@ import { useStore, useCurrentUser } from "@/context/store-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { mintQrCode } from "@/lib/forms/helpers";
 
 // Render QR code using the installed `qrcode` package via canvas
 function useQrCanvas(value: string, size: number) {
@@ -41,10 +42,10 @@ export default function MyQrPage() {
   const [selectedEventId, setSelectedEventId] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
 
-  // Events this student is registered for (approved)
+  // Events this student is registered for
   const myRegistrations = useMemo(() => {
     return store.registrations.filter(
-      (r) => r.userId === session.userId && r.status === "approved",
+      (r) => r.userId === session.userId && r.status !== "rejected",
     );
   }, [store.registrations, session.userId]);
 
@@ -65,7 +66,9 @@ export default function MyQrPage() {
   }, [myEvents, selectedEventId]);
 
   const selected = myEvents.find((m) => m.event.id === selectedEventId);
-  const qrValue = selected?.registration.qrCode ?? "";
+  const qrValue =
+    selected?.registration.qrCode ||
+    (selected ? mintQrCode(selected.event.id, session.userId) : "");
 
   const { canvasRef, ready, error } = useQrCanvas(qrValue, fullscreen ? 420 : 280);
 
@@ -168,9 +171,9 @@ export default function MyQrPage() {
       {myEvents.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-8 text-center">
           <QrCode size={32} className="mx-auto mb-3 text-text-mute opacity-40" />
-          <p className="text-[14px] font-medium text-text-dim">No approved registrations</p>
+          <p className="text-[14px] font-medium text-text-dim">No event registrations</p>
           <p className="mt-1 text-[13px] text-text-mute">
-            Register for an event first — once approved, your QR code will appear here.
+            Register for an event first — your ticket QR code will appear here.
           </p>
         </div>
       ) : (

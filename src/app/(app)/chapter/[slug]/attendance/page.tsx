@@ -738,23 +738,10 @@ export default function ChapterAttendancePage({
           (r.qrCode?.trim().toLowerCase() === code.toLowerCase() ||
             r.id?.trim().toLowerCase() === code.toLowerCase()) &&
           r.eventId === eid &&
-          r.status === "approved",
+          r.status !== "rejected",
       );
 
-      // If not approved, check if waitlisted or pending (Campus Lead can auto-approve)
-      if (!reg && isCampusLead) {
-        const pendingReg = store.registrations.find(
-          (r) =>
-            (r.qrCode?.trim().toLowerCase() === code.toLowerCase() ||
-              r.id?.trim().toLowerCase() === code.toLowerCase()) &&
-            r.eventId === eid,
-        );
-        if (pendingReg) {
-          reg = pendingReg;
-        }
-      }
-
-      // If not found by registration QR directly, check if it matches an approved attendee's Elevates ID, email, or profile ID
+      // If not found by registration QR directly, check if it matches an attendee's Elevates ID, email, or profile ID
       if (!reg) {
         const matchedProfile = store.profiles.find(
           (p) =>
@@ -767,20 +754,26 @@ export default function ChapterAttendancePage({
             (r) =>
               r.eventId === eid &&
               r.userId === matchedProfile.id &&
-              (r.status === "approved" ||
-                (isCampusLead && (r.status === "waitlisted" || r.status === "pending"))),
+              r.status !== "rejected",
           );
         }
       }
 
-      // If not found by registration QR, check if it's an Elevates ID, email, or profile ID of a chapter student
-      if (!reg && isCampusLead) {
-        const studentProf = chapterStudents.find(
-          (p) =>
-            p.elevatesId?.toLowerCase() === code.toLowerCase() ||
-            p.email?.toLowerCase() === code.toLowerCase() ||
-            p.id === code,
-        );
+      // If not registered for this event yet, check if it matches a chapter or campus student: on-spot register & mark attendance
+      if (!reg) {
+        const studentProf =
+          chapterStudents.find(
+            (p) =>
+              p.elevatesId?.toLowerCase() === code.toLowerCase() ||
+              p.email?.toLowerCase() === code.toLowerCase() ||
+              p.id === code,
+          ) ||
+          store.profiles.find(
+            (p) =>
+              p.elevatesId?.toLowerCase() === code.toLowerCase() ||
+              p.email?.toLowerCase() === code.toLowerCase() ||
+              p.id === code,
+          );
         if (studentProf) {
           const res = quickRegisterAndCheckIn(
             eid,
@@ -794,7 +787,7 @@ export default function ChapterAttendancePage({
           if (res.ok) {
             setFlash({
               tone: "ok",
-              text: `On-spot verified: ${studentProf.fullName} (${studentProf.elevatesId || "ID"}) checked in [${sessName}]!`,
+              text: `Scanned & marked present: ${studentProf.fullName} (${studentProf.elevatesId || "ID"}) [${sessName}]!`,
             });
           } else {
             setFlash({ tone: "err", text: res.message });
@@ -807,9 +800,7 @@ export default function ChapterAttendancePage({
       if (!reg) {
         setFlash({
           tone: "err",
-          text: isCampusLead
-            ? "Student or QR not found for this event or chapter."
-            : "QR not found for this event (must be approved).",
+          text: "Student or QR not found for this event.",
         });
         return;
       }
@@ -837,6 +828,16 @@ export default function ChapterAttendancePage({
             ? (a.sessionId === sessId || a.session === sessId || a.sessionName === sessName)
             : a.eventId === eid),
       );
+      if (existing && existing.status === "present") {
+        const user = store.profiles.find((p) => p.id === reg.userId);
+        setFlash({
+          tone: "ok",
+          text: `Already marked present: ${user?.fullName || "Attendee"} [${sessName}]`,
+        });
+        setQrInput("");
+        return;
+      }
+
       if (existing) {
         const result = updateAttendance(
           reg.id,
@@ -845,13 +846,21 @@ export default function ChapterAttendancePage({
           sessId,
           sessName,
         );
+        const user = store.profiles.find((p) => p.id === reg.userId);
         setFlash(
           result.ok
-            ? { tone: "ok", text: `Updated ${sessName} status to ${st}` }
+            ? { tone: "ok", text: `Marked present: ${user?.fullName || "Attendee"} [${sessName}]` }
             : { tone: "err", text: result.message },
         );
       } else {
-        runCheckIn(reg.id, "qr", sessId, sessName);
+        const ok = runCheckIn(reg.id, "qr", sessId, sessName);
+        if (ok) {
+          const user = store.profiles.find((p) => p.id === reg.userId);
+          setFlash({
+            tone: "ok",
+            text: `Marked present: ${user?.fullName || "Attendee"} [${sessName}]`,
+          });
+        }
       }
       setQrInput("");
     },
@@ -878,7 +887,7 @@ export default function ChapterAttendancePage({
         (r) =>
           r.qrCode === item.qrCode &&
           r.eventId === item.eventId &&
-          r.status === "approved",
+          r.status !== "rejected",
       );
       if (reg) {
         const res = checkIn(
@@ -915,18 +924,19 @@ export default function ChapterAttendancePage({
       let reg = store.registrations.find(
         (r) =>
           r.eventId === eventId &&
-          r.status === "approved" &&
-          (r.qrCode.toLowerCase() === line.toLowerCase() ||
+          r.status !== "rejected" &&
+          (r.qrCode?.toLowerCase() === line.toLowerCase() ||
             store.profiles.find((p) => p.id === r.userId)?.email.toLowerCase() ===
             line.toLowerCase() ||
             store.profiles.find((p) => p.id === r.userId)?.elevatesId?.toLowerCase() ===
             line.toLowerCase()),
       );
-      if (!reg && isCampusLead) {
+      if (!reg) {
         reg = store.registrations.find(
           (r) =>
             r.eventId === eventId &&
-            (r.qrCode.toLowerCase() === line.toLowerCase() ||
+            r.status !== "rejected" &&
+            (r.qrCode?.toLowerCase() === line.toLowerCase() ||
               store.profiles.find((p) => p.id === r.userId)?.email.toLowerCase() ===
               line.toLowerCase() ||
               store.profiles.find((p) => p.id === r.userId)?.elevatesId?.toLowerCase() ===

@@ -868,23 +868,14 @@ export default function ChapterAttendancePage({
 
 
       {isCampusLead && !isFaculty && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-xs text-orange-400">
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-orange-400 animate-pulse" />
-            <span>
-              <strong>Campus Lead Attendance Desk:</strong> Full Chapter Authority &mdash; You have access to take attendance for <strong>any student enrolled in {chapter?.name || "this chapter"}</strong> across all departments and academic years.
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge tone="orange">Chapter-Wide Authority</Badge>
-            <Button
-              variant="orange"
-              className="h-6 text-[11px] px-2"
-              onClick={() => setIsOnSpotOpen(true)}
-            >
-              + On-Spot Student Check-in
-            </Button>
-          </div>
+        <div className="mb-4 flex justify-end">
+          <Button
+            variant="orange"
+            className="h-8 text-xs font-semibold px-3 shadow-xs"
+            onClick={() => setIsOnSpotOpen(true)}
+          >
+            + On-Spot Student Check-in
+          </Button>
         </div>
       )}
 
@@ -1281,46 +1272,6 @@ export default function ChapterAttendancePage({
         }
         className="mt-4"
       >
-        {(isCampusLead || isFaculty) && (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 border-b border-border/70 pb-3">
-            <Button
-              type="button"
-              variant={rosterTab === "approved" ? "orange" : "ghost"}
-              className={cn("h-7 text-[12px] px-3", rosterTab !== "approved" && "border border-border/70")}
-              onClick={() => {
-                setRosterTab("approved");
-                setRosterQuery("");
-              }}
-            >
-              Approved Attendees ({approvedRegs.length})
-            </Button>
-            <Button
-              type="button"
-              variant={rosterTab === "waitlist" ? "orange" : "ghost"}
-              className={cn("h-7 text-[12px] px-3", rosterTab !== "waitlist" && "border border-border/70")}
-              onClick={() => {
-                setRosterTab("waitlist");
-                setRosterQuery("");
-              }}
-            >
-              Waitlist / Pending ({waitlistedRegs.length})
-            </Button>
-            <Button
-              type="button"
-              variant={rosterTab === "chapter" ? "orange" : "ghost"}
-              className={cn("h-7 text-[12px] px-3", rosterTab !== "chapter" && "border border-border/70")}
-              onClick={() => {
-                setRosterTab("chapter");
-                setRosterQuery("");
-              }}
-            >
-              All Chapter Students ({chapterStudents.length})
-            </Button>
-          </div>
-        )}
-
-
-
         <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:max-w-md">
             <Input
@@ -1339,43 +1290,43 @@ export default function ChapterAttendancePage({
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {rosterTab === "approved" && (
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-medium text-text-dim">Sort:</span>
-                <Select
-                  className="h-9 text-xs w-auto min-w-[170px]"
-                  value={attendanceSort}
-                  onChange={(e) =>
-                    setAttendanceSort(
-                      e.target.value as typeof attendanceSort,
-                    )
-                  }
-                  disabled={!hasEvent}
-                  aria-label="Sort attendance directory"
-                >
-                  <option value="registered_recent">Recently Registered</option>
-                  <option value="registered_oldest">Oldest Registered</option>
-                  <option value="present_first">✓ Present First</option>
-                  <option value="not_present_first">✕ Not Present First</option>
-                  <option value="name_asc">Name (A → Z)</option>
-                  <option value="name_desc">Name (Z → A)</option>
-                  <option value="elevates_id">Elevates ID</option>
-                </Select>
-              </div>
-            )}
-
-            {!isReadOnly && isCampusLead && (
+          {(isCampusLead || isFaculty) && (
+            <div className="flex flex-wrap items-center gap-1.5">
               <Button
-                variant="ghost"
-                className="h-9 text-xs border border-dashed border-border hover:border-orange-500/50"
-                onClick={() => setIsOnSpotOpen(true)}
-                disabled={!hasEvent}
+                type="button"
+                variant={rosterTab === "approved" ? "orange" : "ghost"}
+                className={cn("h-8 text-[12px] px-3", rosterTab !== "approved" && "border border-border/70")}
+                onClick={() => {
+                  setRosterTab("approved");
+                  setRosterQuery("");
+                }}
               >
-                + On-Spot Check-in
+                Approved Attendees ({approvedRegs.length})
               </Button>
-            )}
-          </div>
+              <Button
+                type="button"
+                variant={rosterTab === "waitlist" ? "orange" : "ghost"}
+                className={cn("h-8 text-[12px] px-3", rosterTab !== "waitlist" && "border border-border/70")}
+                onClick={() => {
+                  setRosterTab("waitlist");
+                  setRosterQuery("");
+                }}
+              >
+                Waitlist / Pending ({waitlistedRegs.length})
+              </Button>
+              <Button
+                type="button"
+                variant={rosterTab === "chapter" ? "orange" : "ghost"}
+                className={cn("h-8 text-[12px] px-3", rosterTab !== "chapter" && "border border-border/70")}
+                onClick={() => {
+                  setRosterTab("chapter");
+                  setRosterQuery("");
+                }}
+              >
+                All Chapter Students ({chapterStudents.length})
+              </Button>
+            </div>
+          )}
         </div>
 
         {rosterTab === "approved" && (

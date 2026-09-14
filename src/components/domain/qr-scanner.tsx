@@ -49,7 +49,6 @@ export function QrScanner({
   const [scannedSuccess, setScannedSuccess] = useState(false);
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
-  const [camRes, setCamRes] = useState<string>("");
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -85,7 +84,6 @@ export function QrScanner({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setCamRes("");
     setSupportsZoom(false);
   }, []);
 
@@ -199,12 +197,6 @@ export function QrScanner({
       video.setAttribute("playsinline", "true");
       video.setAttribute("muted", "true");
       video.setAttribute("autoplay", "true");
-
-      video.onloadedmetadata = () => {
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-          setCamRes(`${video.videoWidth}×${video.videoHeight}`);
-        }
-      };
 
       video.srcObject = stream;
 
@@ -412,13 +404,6 @@ export function QrScanner({
           >
             {running ? "■ Stop Camera" : "📷 Start Camera Scan"}
           </Button>
-
-          {running && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
-              <span>Live {camRes ? `(${camRes})` : ""}</span>
-            </span>
-          )}
         </div>
 
         {running && (
@@ -513,12 +498,6 @@ export function QrScanner({
             </div>
           </div>
 
-          {/* Bottom Guidance Pill */}
-          <div className="pointer-events-none absolute bottom-3 inset-x-0 flex justify-center">
-            <span className="rounded-full bg-black/75 px-3 py-1 text-[10px] font-medium text-white/90 backdrop-blur-md shadow-sm border border-white/10">
-              Center QR code • Hold 15-25cm away
-            </span>
-          </div>
         </div>
       ) : null}
 

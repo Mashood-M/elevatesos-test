@@ -23,7 +23,10 @@ import type {
   FormTemplate,
   EosDoctrine,
   DeveloperScope,
+  VolunteerGroup,
+  VolunteerAssignment,
 } from "@/types";
+import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 
 const defaultBrandKit: BrandKit = {
   logoUrl: "/logo.svg",
@@ -89,6 +92,8 @@ function emptyStore(): ElevatesStore {
     activityLogs: [],
     inviteTokens: [],
     eventReminders: [],
+    volunteerGroups: [],
+    volunteerAssignments: [],
     session: {
       userId: "",
       roleKey: "student" as RoleKey,
@@ -144,6 +149,9 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       { data: laAppRows },
       { data: standardCheckRows },
       { data: reminderRows },
+      { data: vgRows },
+      { data: vgmRows },
+      { data: vaRows },
       sessionRes,
       userRes,
     ] = await Promise.all([
@@ -178,6 +186,9 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("leadership_applications").select("*"),
       supabase.from("chapter_standard_checks").select("*"),
       supabase.from("event_reminders").select("*"),
+      supabase.from("volunteer_groups").select("*"),
+      supabase.from("volunteer_group_members").select("*"),
+      supabase.from("volunteer_assignments").select("*"),
       Promise.race([
         supabase.auth.getSession().catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
@@ -598,6 +609,73 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         createdAt: la.createdAt ?? la.created_at ?? undefined,
       }));
 
+    let vgRowsFinal = vgRows ?? [];
+    let vgmRowsFinal = vgmRows ?? [];
+    let vaRowsFinal = vaRows ?? [];
+
+    if (vgRowsFinal.length === 0 && vaRowsFinal.length === 0 && typeof window !== "undefined") {
+      try {
+        const volRes = await fetch("/api/mutations?type=volunteer_data");
+        if (volRes.ok) {
+          const volJson = await volRes.json();
+          if (volJson.ok) {
+            if (Array.isArray(volJson.groups)) vgRowsFinal = volJson.groups;
+            if (Array.isArray(volJson.groupMembers)) vgmRowsFinal = volJson.groupMembers;
+            if (Array.isArray(volJson.assignments)) vaRowsFinal = volJson.assignments;
+          }
+        }
+      } catch (volErr) {
+        console.warn("[Elevates Bootstrap] Could not fetch volunteer fallback:", volErr);
+      }
+    }
+
+    const volunteerGroups: VolunteerGroup[] = vgRowsFinal.map((vg: Record<string, any>) => {
+      const memberSet = new Set<string>(Array.isArray(vg.memberIds ?? vg.member_ids) ? (vg.memberIds ?? vg.member_ids) : []);
+      const customPowers: Record<string, any> = { ...(vg.customMemberPowers ?? vg.custom_member_powers ?? {}) };
+
+      vgmRowsFinal.filter((m: any) => (m.groupId ?? m.group_id) === vg.id).forEach((m: any) => {
+        const uid = m.userId ?? m.user_id;
+        if (uid) memberSet.add(uid);
+        const cp = m.customPowers ?? m.custom_powers;
+        if (cp && uid) {
+          customPowers[uid] = cp;
+        }
+      });
+
+      return {
+        id: vg.id,
+        chapterId: vg.chapterId ?? vg.chapter_id,
+        name: vg.name,
+        description: vg.description ?? undefined,
+        groupType: vg.groupType ?? vg.group_type ?? "listed",
+        eventId: vg.eventId ?? vg.event_id ?? undefined,
+        validFrom: vg.validFrom ?? vg.valid_from ?? undefined,
+        validTo: vg.validTo ?? vg.valid_to ?? undefined,
+        powers: vg.powers ?? DEFAULT_VOLUNTEER_POWERS,
+        memberIds: Array.from(memberSet),
+        customMemberPowers: customPowers,
+        createdBy: vg.createdBy ?? vg.created_by ?? undefined,
+        createdAt: vg.createdAt ?? vg.created_at ?? undefined,
+        updatedAt: vg.updatedAt ?? vg.updated_at ?? undefined,
+      };
+    });
+
+    const volunteerAssignments: VolunteerAssignment[] = vaRowsFinal.map((va: Record<string, any>) => ({
+      id: va.id,
+      chapterId: va.chapterId ?? va.chapter_id,
+      userId: va.userId ?? va.user_id,
+      eventId: va.eventId ?? va.event_id ?? undefined,
+      groupId: va.groupId ?? va.group_id ?? undefined,
+      tag: va.tag || "Volunteer",
+      powers: va.powers ?? DEFAULT_VOLUNTEER_POWERS,
+      validFrom: va.validFrom ?? va.valid_from ?? undefined,
+      validTo: va.validTo ?? va.valid_to ?? undefined,
+      status: va.status || "active",
+      createdBy: va.createdBy ?? va.created_by ?? undefined,
+      createdAt: va.createdAt ?? va.created_at ?? undefined,
+      updatedAt: va.updatedAt ?? va.updated_at ?? undefined,
+    }));
+
     const eventPermissions =
       epRows?.map((ep: Record<string, any>) => ({
         id: ep.id,
@@ -920,6 +998,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         leadershipTerms,
         leadershipAssignments,
         leadershipApplications,
+        volunteerGroups,
+        volunteerAssignments,
         clusters,
         events,
         projects,

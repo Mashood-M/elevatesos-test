@@ -435,6 +435,50 @@ export interface EventPermission {
   expiresAt?: string;
 }
 
+export interface VolunteerPowers {
+  canTakeAttendance: boolean;  // Take QR attendance & mark present/absent
+  canScanQr: boolean;          // Access QR camera scanner
+  canVerifyTickets: boolean;   // Verify student registration tickets & passes
+  canRegisterWalkins: boolean; // Add walk-ins on spot at venue
+  canManageTasks: boolean;     // Check off operational tasks/checklists
+  canViewRoster: boolean;      // View attendee list and registration details
+}
+
+export type VolunteerGroupType = "listed" | "temp";
+
+export interface VolunteerGroup {
+  id: string;
+  chapterId: string;
+  name: string;
+  description?: string;
+  groupType: VolunteerGroupType; // "listed" (reusable pool) or "temp" (event-specific squad)
+  eventId?: string;              // linked event if temp or event-specific
+  validFrom?: string;            // ISO date string
+  validTo?: string;              // ISO date string
+  powers: VolunteerPowers;       // group default powers
+  memberIds: string[];           // array of user IDs
+  customMemberPowers?: Record<string, Partial<VolunteerPowers>>; // individual power overrides per member
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface VolunteerAssignment {
+  id: string;
+  chapterId: string;
+  userId: string;
+  eventId?: string;              // specific event or undefined for chapter-wide
+  groupId?: string;              // linked volunteer group if assigned via group
+  tag: string;                   // tag label e.g. "Volunteer", "Registration Desk", "Stage Crew"
+  powers: VolunteerPowers;       // resolved or assigned powers
+  validFrom?: string;            // start of validity window
+  validTo?: string;              // end of validity window
+  status: "active" | "inactive" | "expired";
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 
 
 export type FormFieldType =
@@ -893,6 +937,8 @@ export interface ElevatesStore {
   chapterInviteCodes?: ChapterInviteCode[];
   peerLabs?: Record<string, any>[];
   eventReminders?: EventReminder[];
+  volunteerGroups: VolunteerGroup[];
+  volunteerAssignments: VolunteerAssignment[];
   // ── SUPABASE-STORED PRESETS & SYSTEM DATA ──────────────────────────────────
   standardDepartments: string[];
   guidelineCategories: string[];

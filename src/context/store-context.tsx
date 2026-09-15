@@ -28,6 +28,7 @@ import {
 } from "@/lib/data/realtime-sync";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import { isUuid, genUuid } from "@/lib/uuid";
+import { remoteMutate } from "@/lib/data/mutations";
 import {
   persistOrganization,
   persistOrgSettingsPatch,
@@ -165,7 +166,12 @@ import type {
   TaskStatus,
   UserRole,
   UserRoleAssignmentInput,
+  VolunteerAssignment,
+  VolunteerGroup,
+  VolunteerGroupType,
+  VolunteerPowers,
 } from "@/types";
+import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 
 type CheckInResult = { ok: true } | { ok: false; message: string };
 
@@ -471,6 +477,36 @@ type StoreContextValue = {
     patch: Partial<Pick<LeadershipAssignment, "userId" | "roleKey" | "title">>,
   ) => boolean;
   removeLeadershipAssignment: (id: string) => boolean;
+  createVolunteerGroup: (input: {
+    chapterId: string;
+    name: string;
+    description?: string;
+    groupType?: VolunteerGroupType;
+    eventId?: string;
+    validFrom?: string;
+    validTo?: string;
+    powers?: VolunteerPowers;
+    memberIds?: string[];
+    customMemberPowers?: Record<string, Partial<VolunteerPowers>>;
+  }) => VolunteerGroup | null;
+  updateVolunteerGroup: (id: string, patch: Partial<VolunteerGroup>) => boolean;
+  deleteVolunteerGroup: (id: string) => boolean;
+  addVolunteerToGroup: (groupId: string, userId: string, customPowers?: Partial<VolunteerPowers>) => boolean;
+  removeVolunteerFromGroup: (groupId: string, userId: string) => boolean;
+  updateVolunteerMemberPowers: (groupId: string, userId: string, customPowers: Partial<VolunteerPowers> | null) => boolean;
+  assignVolunteerToEvent: (input: {
+    chapterId: string;
+    userId: string;
+    eventId?: string;
+    groupId?: string;
+    tag?: string;
+    powers?: VolunteerPowers;
+    validFrom?: string;
+    validTo?: string;
+    status?: "active" | "inactive" | "expired";
+  }) => VolunteerAssignment | null;
+  removeVolunteerAssignment: (id: string) => boolean;
+  updateVolunteerAssignmentPowers: (id: string, powers: VolunteerPowers) => boolean;
   createProject: (
     input: Partial<Project> & { chapterId: string; title: string },
   ) => Project;
@@ -1098,6 +1134,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       activityLogs: [],
       inviteTokens: [],
       eventReminders: [],
+      volunteerGroups: [],
+      volunteerAssignments: [],
       session: {
         userId: "",
         roleKey: "student",
@@ -5233,6 +5271,258 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }));
           },
         });
+        return true;
+      },
+      createVolunteerGroup: (input) => {
+        const id = genUuid();
+        const group: VolunteerGroup = {
+          id,
+          chapterId: input.chapterId,
+          name: input.name.trim(),
+          description: input.description?.trim() || undefined,
+          groupType: input.groupType || "listed",
+          eventId: input.eventId || undefined,
+          validFrom: input.validFrom || undefined,
+          validTo: input.validTo || undefined,
+          powers: input.powers || { ...DEFAULT_VOLUNTEER_POWERS },
+          memberIds: input.memberIds || [],
+          customMemberPowers: input.customMemberPowers || {},
+          createdBy: store.session.userId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: [...(s.volunteerGroups || []), group],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_group_created",
+              "volunteer_group",
+              group.id,
+              `Created volunteer group "${group.name}" (${group.groupType}) on ${new Date().toLocaleString()}`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        broadcastChange("volunteer_groups", "INSERT", group);
+        void remoteMutate("volunteer_group", group);
+        return group;
+      },
+
+      updateVolunteerGroup: (id, patch) => {
+        const existing = (store.volunteerGroups || []).find((g) => g.id === id);
+        if (!existing) return false;
+
+        const next: VolunteerGroup = {
+          ...existing,
+          ...patch,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === id ? next : g)),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_group_updated",
+              "volunteer_group",
+              id,
+              `Updated volunteer group "${next.name}" on ${new Date().toLocaleString()}`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        broadcastChange("volunteer_groups", "UPDATE", next);
+        void remoteMutate("volunteer_group", next);
+        return true;
+      },
+
+      deleteVolunteerGroup: (id) => {
+        const existing = (store.volunteerGroups || []).find((g) => g.id === id);
+        if (!existing) return false;
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).filter((g) => g.id !== id),
+          volunteerAssignments: (s.volunteerAssignments || []).filter((a) => a.groupId !== id),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_group_deleted",
+              "volunteer_group",
+              id,
+              `Deleted volunteer group "${existing.name}" on ${new Date().toLocaleString()}`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        broadcastChange("volunteer_groups", "DELETE", existing);
+        void remoteMutate("delete_volunteer_group", { id });
+        return true;
+      },
+
+      addVolunteerToGroup: (groupId, userId, customPowers) => {
+        const group = (store.volunteerGroups || []).find((g) => g.id === groupId);
+        if (!group) return false;
+        if (group.memberIds.includes(userId)) return false;
+
+        const nextMembers = [...group.memberIds, userId];
+        const nextCustom = { ...group.customMemberPowers };
+        if (customPowers) {
+          nextCustom[userId] = customPowers;
+        }
+
+        const nextGroup: VolunteerGroup = {
+          ...group,
+          memberIds: nextMembers,
+          customMemberPowers: nextCustom,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === groupId ? nextGroup : g)),
+        }));
+
+        broadcastChange("volunteer_groups", "UPDATE", nextGroup);
+        void remoteMutate("volunteer_group", nextGroup);
+        void remoteMutate("volunteer_group_member", {
+          groupId,
+          userId,
+          chapterId: group.chapterId,
+          customPowers,
+        });
+        return true;
+      },
+
+      removeVolunteerFromGroup: (groupId, userId) => {
+        const group = (store.volunteerGroups || []).find((g) => g.id === groupId);
+        if (!group) return false;
+
+        const nextMembers = group.memberIds.filter((id) => id !== userId);
+        const nextCustom = { ...group.customMemberPowers };
+        delete nextCustom[userId];
+
+        const nextGroup: VolunteerGroup = {
+          ...group,
+          memberIds: nextMembers,
+          customMemberPowers: nextCustom,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === groupId ? nextGroup : g)),
+        }));
+
+        broadcastChange("volunteer_groups", "UPDATE", nextGroup);
+        void remoteMutate("volunteer_group", nextGroup);
+        void remoteMutate("remove_volunteer_group_member", { groupId, userId });
+        return true;
+      },
+
+      updateVolunteerMemberPowers: (groupId, userId, customPowers) => {
+        const group = (store.volunteerGroups || []).find((g) => g.id === groupId);
+        if (!group) return false;
+
+        const nextCustom = { ...group.customMemberPowers };
+        if (!customPowers) {
+          delete nextCustom[userId];
+        } else {
+          nextCustom[userId] = customPowers;
+        }
+
+        const nextGroup: VolunteerGroup = {
+          ...group,
+          customMemberPowers: nextCustom,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === groupId ? nextGroup : g)),
+        }));
+
+        broadcastChange("volunteer_groups", "UPDATE", nextGroup);
+        void remoteMutate("volunteer_group", nextGroup);
+        return true;
+      },
+
+      assignVolunteerToEvent: (input) => {
+        const id = genUuid();
+        const assignment: VolunteerAssignment = {
+          id,
+          chapterId: input.chapterId,
+          userId: input.userId,
+          eventId: input.eventId || undefined,
+          groupId: input.groupId || undefined,
+          tag: input.tag || "Volunteer",
+          powers: input.powers || { ...DEFAULT_VOLUNTEER_POWERS },
+          validFrom: input.validFrom || undefined,
+          validTo: input.validTo || undefined,
+          status: input.status || "active",
+          createdBy: store.session.userId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerAssignments: [...(s.volunteerAssignments || []), assignment],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_assigned",
+              "volunteer_assignment",
+              assignment.id,
+              `Assigned volunteer to event on ${new Date().toLocaleString()}`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        broadcastChange("volunteer_assignments", "INSERT", assignment);
+        void remoteMutate("volunteer_assignment", assignment);
+        return assignment;
+      },
+
+      removeVolunteerAssignment: (id) => {
+        const existing = (store.volunteerAssignments || []).find((a) => a.id === id);
+        if (!existing) return false;
+
+        setStore((s) => ({
+          ...s,
+          volunteerAssignments: (s.volunteerAssignments || []).filter((a) => a.id !== id),
+        }));
+
+        broadcastChange("volunteer_assignments", "DELETE", existing);
+        void remoteMutate("delete_volunteer_assignment", { id });
+        return true;
+      },
+
+      updateVolunteerAssignmentPowers: (id, powers) => {
+        const existing = (store.volunteerAssignments || []).find((a) => a.id === id);
+        if (!existing) return false;
+
+        const next: VolunteerAssignment = {
+          ...existing,
+          powers,
+          updatedAt: new Date().toISOString(),
+        };
+
+        setStore((s) => ({
+          ...s,
+          volunteerAssignments: (s.volunteerAssignments || []).map((a) => (a.id === id ? next : a)),
+        }));
+
+        broadcastChange("volunteer_assignments", "UPDATE", next);
+        void remoteMutate("volunteer_assignment", next);
         return true;
       },
       createProject: (input) => {

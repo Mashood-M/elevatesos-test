@@ -26,6 +26,7 @@ import {
   type OfflineCheckInItem,
 } from "@/lib/attendance/offline-queue";
 import { hasPermission } from "@/lib/permissions";
+import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { cohortRepIds } from "@/lib/forms/helpers";
 import { cn, formatDateTime } from "@/lib/utils";
 import type { AttendanceStatus, ClassCohort, EventAttendanceSession } from "@/types";
@@ -141,17 +142,6 @@ export default function ChapterAttendancePage({
     );
   }, [session.roleKey, session.userId, store.userRoles, store.leadershipAssignments, store.roles]);
 
-  const canVerify =
-    isCampusLead ||
-    isVolunteerUser ||
-    hasPermission(
-      store,
-      session.roleKey,
-      "attendance.verify",
-    );
-
-  const isReadOnly = isFaculty || (!canVerify && !isCampusLead);
-
   const queryEventId = searchParams.get("eventId");
 
   const events = useMemo(() => {
@@ -163,18 +153,11 @@ export default function ChapterAttendancePage({
         "registration_open",
         "registration_closed",
         "completed",
-        "approved",
       ].includes(e.status),
     );
-    let list = preferred.length ? preferred : chapterEvents;
-    if (queryEventId) {
-      const linked = chapterEvents.find((e) => e.id === queryEventId);
-      if (linked && !list.some((e) => e.id === linked.id)) {
-        list = [linked, ...list];
-      }
-    }
-    return list;
-  }, [store.events, chapter, queryEventId]);
+    const fallback = chapterEvents.filter((e) => !preferred.includes(e));
+    return [...preferred, ...fallback];
+  }, [chapter, store.events]);
 
   useEffect(() => {
     if (!queryEventId) return;
@@ -186,6 +169,28 @@ export default function ChapterAttendancePage({
 
   const eventId = selectedEvent || events[0]?.id || "";
   const hasEvent = Boolean(eventId);
+
+  const volunteerPowers = useMemo(() => {
+    return getUserVolunteerPowers(store, session.userId, eventId);
+  }, [store, session.userId, eventId]);
+
+  const canVerify =
+    isCampusLead ||
+    isVolunteerUser ||
+    volunteerPowers.powers.canTakeAttendance ||
+    volunteerPowers.powers.canScanQr ||
+    hasPermission(
+      store,
+      session.roleKey,
+      "attendance.verify",
+    );
+
+  const canRegisterWalkins =
+    isCampusLead ||
+    volunteerPowers.powers.canRegisterWalkins ||
+    hasPermission(store, session.roleKey, "registration.approve");
+
+  const isReadOnly = isFaculty || (!canVerify && !isCampusLead);
   const currentEvent = store.events.find((e) => e.id === eventId);
   const attendanceTakeable = useMemo(
     () => isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead }),
@@ -1304,7 +1309,7 @@ export default function ChapterAttendancePage({
           activeSessionObj.name,
         );
         if (res.ok) ok++;
-      } else if (isCampusLead) {
+      } else if (isCampusLead || canRegisterWalkins) {
         const studentProf = chapterStudents.find(
           (p) =>
             p.email.toLowerCase() === line.toLowerCase() ||
@@ -1397,11 +1402,16 @@ export default function ChapterAttendancePage({
     <div>
       <PageHeader
         title={isReadOnly ? "Attendance Overview" : "Attendance Desk"}
-
         actions={
           !isReadOnly ? (
-            <div className="flex items-center gap-2">
-              {isCampusLead && hasEvent && (
+            <div className="flex flex-wrap items-center gap-2">
+              {volunteerPowers.isVolunteer && !isCampusLead && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mr-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Volunteer: {volunteerPowers.effectiveTag}
+                </span>
+              )}
+              {(isCampusLead || canRegisterWalkins) && hasEvent && (
                 <Button
                   variant="orange"
                   className="text-xs"

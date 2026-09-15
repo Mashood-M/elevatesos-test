@@ -118,6 +118,24 @@ function broadcastMutation(type: string, data: any, resultData?: any) {
     case "delete_leadership_assignment":
       broadcastChange("leadership_assignments", "DELETE", undefined, data);
       break;
+    case "volunteer_group":
+      broadcastChange("volunteer_groups", "UPDATE", payload);
+      break;
+    case "delete_volunteer_group":
+      broadcastChange("volunteer_groups", "DELETE", undefined, data);
+      break;
+    case "volunteer_group_member":
+      broadcastChange("volunteer_group_members", "UPDATE", payload);
+      break;
+    case "remove_volunteer_group_member":
+      broadcastChange("volunteer_group_members", "DELETE", undefined, data);
+      break;
+    case "volunteer_assignment":
+      broadcastChange("volunteer_assignments", "UPDATE", payload);
+      break;
+    case "delete_volunteer_assignment":
+      broadcastChange("volunteer_assignments", "DELETE", undefined, data);
+      break;
     case "leadership_application":
     case "leadership_application_status":
       broadcastChange("leadership_applications", "UPDATE", payload);
@@ -201,6 +219,8 @@ export async function sendMutation<T = any>(type: string, data: any): Promise<Mu
   }
   return { ok: false, error: "Environment not supported" };
 }
+
+export const remoteMutate = sendMutation;
 
 // 0. Organization
 export async function persistOrganization(org: any): Promise<MutationResult> {

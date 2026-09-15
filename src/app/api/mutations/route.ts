@@ -44,6 +44,26 @@ export async function GET(req: Request) {
         assignments: assignments ?? [],
       });
     }
+    if (type === "volunteer_data") {
+      const { data: groups } = await admin
+        .from("volunteer_groups")
+        .select("*")
+        .order("created_at", { ascending: false });
+      const { data: groupMembers } = await admin
+        .from("volunteer_group_members")
+        .select("*")
+        .order("created_at", { ascending: false });
+      const { data: assignments } = await admin
+        .from("volunteer_assignments")
+        .select("*")
+        .order("created_at", { ascending: false });
+      return NextResponse.json({
+        ok: true,
+        groups: groups ?? [],
+        groupMembers: groupMembers ?? [],
+        assignments: assignments ?? [],
+      });
+    }
     if (type === "validate_invite") {
       const token = searchParams.get("token")?.trim();
       if (!token) {
@@ -2330,6 +2350,117 @@ export async function POST(req: Request) {
           entity_id: id,
           meta: JSON.stringify({ status, reviewedAt: new Date().toISOString() }),
         });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── VOLUNTEER & DELEGATED POWERS MUTATIONS ──
+    if (type === "volunteer_group") {
+      const g = data;
+      const id = isUuid(g.id) ? g.id : genUuid();
+      if (!isUuid(g.chapterId)) {
+        return NextResponse.json({ ok: false, error: "Valid chapterId UUID is required" }, { status: 400 });
+      }
+      const { error } = await admin.from("volunteer_groups").upsert({
+        id,
+        chapter_id: g.chapterId,
+        name: g.name,
+        description: g.description || null,
+        group_type: g.groupType || "listed",
+        event_id: isUuid(g.eventId) ? g.eventId : null,
+        valid_from: g.validFrom || null,
+        valid_to: g.validTo || null,
+        powers: g.powers,
+        member_ids: Array.isArray(g.memberIds) ? g.memberIds.filter(isUuid) : [],
+        custom_member_powers: g.customMemberPowers || {},
+        created_by: isUuid(g.createdBy) ? g.createdBy : null,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.error("Mutation error (volunteer_group):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (type === "delete_volunteer_group") {
+      const { id } = data;
+      const { error } = await admin.from("volunteer_groups").delete().eq("id", id);
+      if (error) {
+        console.error("Mutation error (delete_volunteer_group):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "volunteer_group_member") {
+      const { groupId, userId, chapterId, customPowers } = data;
+      if (!isUuid(groupId) || !isUuid(userId) || !isUuid(chapterId)) {
+        return NextResponse.json({ ok: false, error: "Valid UUIDs are required for group, user, and chapter" }, { status: 400 });
+      }
+      const { error } = await admin.from("volunteer_group_members").upsert(
+        {
+          group_id: groupId,
+          user_id: userId,
+          chapter_id: chapterId,
+          custom_powers: customPowers || null,
+        },
+        { onConflict: "group_id,user_id" }
+      );
+      if (error) {
+        console.error("Mutation error (volunteer_group_member):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "remove_volunteer_group_member") {
+      const { groupId, userId } = data;
+      const { error } = await admin
+        .from("volunteer_group_members")
+        .delete()
+        .eq("group_id", groupId)
+        .eq("user_id", userId);
+      if (error) {
+        console.error("Mutation error (remove_volunteer_group_member):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "volunteer_assignment") {
+      const a = data;
+      const id = isUuid(a.id) ? a.id : genUuid();
+      if (!isUuid(a.chapterId) || !isUuid(a.userId) || !isUuid(a.eventId)) {
+        return NextResponse.json({ ok: false, error: "Valid UUIDs required for chapterId, userId, and eventId" }, { status: 400 });
+      }
+      const { error } = await admin.from("volunteer_assignments").upsert({
+        id,
+        chapter_id: a.chapterId,
+        user_id: a.userId,
+        event_id: a.eventId,
+        group_id: isUuid(a.groupId) ? a.groupId : null,
+        tag: a.tag || "Volunteer",
+        powers: a.powers,
+        valid_from: a.validFrom || null,
+        valid_to: a.validTo || null,
+        status: a.status || "active",
+        created_by: isUuid(a.createdBy) ? a.createdBy : null,
+        updated_at: new Date().toISOString(),
+      });
+      if (error) {
+        console.error("Mutation error (volunteer_assignment):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (type === "delete_volunteer_assignment") {
+      const { id } = data;
+      const { error } = await admin.from("volunteer_assignments").delete().eq("id", id);
+      if (error) {
+        console.error("Mutation error (delete_volunteer_assignment):", error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
       return NextResponse.json({ ok: true });
     }

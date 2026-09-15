@@ -727,6 +727,8 @@ export function normalizeStore(store: ElevatesStore): ElevatesStore {
     outboundMessages: store.outboundMessages ?? [],
     inviteTokens: store.inviteTokens ?? [],
     eventReminders: store.eventReminders ?? [],
+    volunteerGroups: store.volunteerGroups ?? [],
+    volunteerAssignments: store.volunteerAssignments ?? [],
   };
 }
 

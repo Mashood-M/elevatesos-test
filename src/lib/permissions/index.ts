@@ -1,4 +1,5 @@
 import type { ElevatesStore, PermissionKey, RoleKey } from "@/types";
+export * from "@/lib/volunteers";
 
 export function getRoleByKey(store: ElevatesStore, key: RoleKey) {
   return store.roles.find((r) => r.key === key);

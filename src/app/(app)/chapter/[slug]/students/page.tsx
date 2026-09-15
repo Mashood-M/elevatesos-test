@@ -20,6 +20,7 @@ import {
   X,
   Shield,
   GraduationCap,
+  Tag,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isSuperAdmin } from "@/lib/permissions";
+import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId, cohortRepIds } from "@/lib/forms/helpers";
 import { roleKeyLabel } from "@/lib/leadership";
@@ -51,6 +53,7 @@ interface ChapterMemberItem {
     label: string;
     tone: "orange" | "cyan" | "green" | "magenta" | "mute";
   };
+  volunteerTag?: string;
   collectedAt: string;
   createdAt?: string;
   joinedAt?: string;
@@ -210,6 +213,8 @@ export default function ChapterStudentsPage({
         store.leadershipTerms ?? [],
       );
 
+      const vol = getUserVolunteerPowers(store, p.id);
+
       let status: "claimed" | "unclaimed" | "pending" = "claimed";
       if ((p.status as unknown as string) === "disabled") status = "unclaimed";
       else if ((p.status as unknown as string) === "pending") status = "pending";
@@ -227,6 +232,7 @@ export default function ChapterStudentsPage({
         interests: p.interests || [],
         status,
         roleInfo,
+        volunteerTag: vol.isVolunteer ? vol.effectiveTag : undefined,
         collectedAt: new Date().toISOString().split("T")[0],
         createdAt: p.createdAt,
         joinedAt: p.joinedAt || p.createdAt,
@@ -822,6 +828,12 @@ export default function ChapterStudentsPage({
                                 <Badge tone={stu.roleInfo.tone}>
                                   {stu.roleInfo.label}
                                 </Badge>
+                              )}
+                              {stu.volunteerTag && (
+                                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 text-[10px] font-bold">
+                                  <Tag size={9} />
+                                  {stu.volunteerTag}
+                                </span>
                               )}
                               {(stu.createdAt || stu.joinedAt) ? (
                                 <span className="font-mono text-[10px] text-text-mute">

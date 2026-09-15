@@ -22,6 +22,7 @@ import {
 } from "@/lib/forms/helpers";
 import { withDerivedProgression } from "@/lib/eos/progression";
 import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
+import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { formatDateTime, initials } from "@/lib/utils";
 import type { Profile } from "@/types";
 
@@ -173,6 +174,10 @@ export default function ProfilePage({
   const chapter = store.chapters.find((c) => c.id === profile.chapterId);
   const profileUserId = profile.id;
 
+  const volPowers = useMemo(() => {
+    return getUserVolunteerPowers(store, profileUserId || cleanId);
+  }, [store, profileUserId, cleanId]);
+
   const isVolunteer = useMemo(() => {
     const hasUr = store.userRoles.some(
       (ur) =>
@@ -185,8 +190,8 @@ export default function ProfilePage({
         (la.userId === profileUserId || la.userId === cleanId) &&
         la.roleKey === "volunteer",
     );
-    return hasUr || hasLa;
-  }, [store.userRoles, store.leadershipAssignments, store.roles, profileUserId, cleanId]);
+    return volPowers.isVolunteer || hasUr || hasLa;
+  }, [volPowers.isVolunteer, store.userRoles, store.leadershipAssignments, store.roles, profileUserId, cleanId]);
 
   type RoleWithTimestamp = { role: (typeof store.roles)[0]; createdAt: string | undefined };
   const rolesWithUr: RoleWithTimestamp[] = store.userRoles
@@ -381,13 +386,15 @@ export default function ProfilePage({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="font-bold text-sm text-text">Chapter Volunteer Desk</p>
+                <p className="font-bold text-sm text-text">
+                  Volunteer Tag: {volPowers.effectiveTag || "Active Volunteer"}
+                </p>
                 <span className="rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
-                  Active Volunteer
+                  Delegated Powers
                 </span>
               </div>
               <p className="text-xs text-text-dim mt-0.5">
-                Appointed volunteer for {chapter.name}. You are authorized to scan attendee QR codes and take attendance for chapter events.
+                Active volunteer for {chapter.name}. You hold delegated event authority (attendance check-in & event operations).
               </p>
             </div>
           </div>

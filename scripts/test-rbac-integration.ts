@@ -66,6 +66,90 @@ async function runTests() {
   const ekcResolvedForHQ = resolveChapter(mockStore as any, "mes-chapter", "founder", "ch-1");
   assert(ekcResolvedForHQ?.id === "ch-2", "HQ user can resolve any active Chapter data");
 
+  // 5. VOLUNTEER TAG & DELEGATED POWERS INTEGRATION
+  console.log("\n--- 5. Volunteer Tag & Delegated Powers ---");
+  const { getUserVolunteerPowers } = await import("../src/lib/volunteers");
+
+  const testStore = {
+    ...mockStore,
+    profiles: [
+      { id: "u-student", fullName: "Regular Student", chapterId: "ch-1" },
+      { id: "u-vol-1", fullName: "Desk Volunteer", chapterId: "ch-1" },
+      { id: "u-vol-2", fullName: "Custom Volunteer", chapterId: "ch-1" },
+    ],
+    userRoles: [
+      { userId: "u-student", roleKey: "student", chapterId: "ch-1" },
+      { userId: "u-vol-1", roleKey: "student", chapterId: "ch-1" },
+      { userId: "u-vol-2", roleKey: "student", chapterId: "ch-1" },
+    ],
+    leadershipAssignments: [],
+    events: [
+      { id: "ev-1", chapterId: "ch-1", title: "Hackathon" },
+      { id: "ev-2", chapterId: "ch-1", title: "Workshop" },
+    ],
+    volunteerGroups: [
+      {
+        id: "vg-desk",
+        chapterId: "ch-1",
+        name: "Check-in Desk Squad",
+        groupType: "listed",
+        powers: {
+          canTakeAttendance: true,
+          canScanQr: true,
+          canVerifyTickets: true,
+          canRegisterWalkins: false,
+          canManageTasks: false,
+          canViewRoster: true,
+        },
+        memberIds: ["u-vol-1", "u-vol-2"],
+        customMemberPowers: {
+          "u-vol-2": {
+            canRegisterWalkins: true,
+          },
+        },
+      },
+      {
+        id: "vg-temp",
+        chapterId: "ch-1",
+        name: "Temp Workshop Squad",
+        groupType: "temp",
+        eventId: "ev-2",
+        powers: {
+          canTakeAttendance: true,
+          canScanQr: false,
+          canVerifyTickets: false,
+          canRegisterWalkins: false,
+          canManageTasks: true,
+          canViewRoster: false,
+        },
+        memberIds: ["u-vol-1"],
+      },
+    ],
+    volunteerAssignments: [],
+  };
+
+  const studentPowers = getUserVolunteerPowers(testStore as any, "u-student");
+  assert(!studentPowers.isVolunteer, "Regular student without volunteer tag is not recognized as volunteer");
+  assert(!studentPowers.powers.canTakeAttendance, "Regular student cannot take attendance");
+
+  const vol1Powers = getUserVolunteerPowers(testStore as any, "u-vol-1");
+  assert(vol1Powers.isVolunteer, "Vol 1 in listed group has volunteer tag");
+  assert(vol1Powers.powers.canTakeAttendance, "Vol 1 inherits canTakeAttendance power from group");
+  assert(vol1Powers.powers.canScanQr, "Vol 1 inherits canScanQr power from group");
+  assert(!vol1Powers.powers.canRegisterWalkins, "Vol 1 does not have canRegisterWalkins (group default false)");
+  assert(vol1Powers.effectiveTag === "Check-in Desk Squad", "Vol 1 effective tag matches group name");
+
+  const vol2Powers = getUserVolunteerPowers(testStore as any, "u-vol-2");
+  assert(vol2Powers.isVolunteer, "Vol 2 in listed group has volunteer tag");
+  assert(vol2Powers.powers.canRegisterWalkins, "Vol 2 individual override grants canRegisterWalkins");
+
+  // Event scoping test for temp group
+  const vol1Event2Powers = getUserVolunteerPowers(testStore as any, "u-vol-1", "ev-2");
+  assert(vol1Event2Powers.powers.canManageTasks, "Vol 1 inherits canManageTasks for assigned event ev-2");
+
+  const vol1Event1Powers = getUserVolunteerPowers(testStore as any, "u-vol-1", "ev-1");
+  assert(!vol1Event1Powers.powers.canManageTasks, "Vol 1 does not have canManageTasks for unlinked event ev-1");
+
   // SUMMARY
   console.log("\n==================================================");
   console.log(`  RESULTS: ${passed} PASSED | ${failed} FAILED`);

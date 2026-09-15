@@ -73,7 +73,6 @@ export type RegistrationStatus =
   | "waitlisted";
 export type AttendanceStatus =
   | "present"
-  | "late"
   | "absent"
   | "volunteer"
   | "speaker";
@@ -393,6 +392,7 @@ export interface EventItem {
   mediaTeamMode?: "permanent" | "temporary";
   managingStudentIds?: string[];
   mediaStudentIds?: string[];
+  volunteerStudentIds?: string[];
   reminders?: EventReminder[];
 }
 

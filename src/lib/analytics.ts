@@ -63,7 +63,7 @@ export function calculateChapterActivityScore(
       const atts = store.attendance.filter(
         (a) =>
           a.eventId === ev.id &&
-          ["present", "late", "volunteer", "speaker"].includes(a.status),
+          ["present", "volunteer", "speaker"].includes(a.status),
       );
 
       const eventAttendancePercentage = (atts.length / seats) * 100;
@@ -113,7 +113,7 @@ export function calculateMonthlyActivityScores(
       const atts = store.attendance.filter(
         (a) =>
           a.eventId === ev.id &&
-          ["present", "late", "volunteer", "speaker"].includes(a.status),
+          ["present", "volunteer", "speaker"].includes(a.status),
       );
 
       eventPercentagesSum += (atts.length / seats) * 100;

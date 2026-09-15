@@ -22,7 +22,6 @@ export function buildStudentEventReportHtml(
   const present = attendance.filter(
     (a) =>
       a.status === "present" ||
-      a.status === "late" ||
       a.status === "volunteer" ||
       a.status === "speaker",
   ).length;

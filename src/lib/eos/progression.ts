@@ -38,7 +38,6 @@ export function deriveEngagementTier(
         (a) =>
           a.userId === userId &&
           (a.status === "present" ||
-            a.status === "late" ||
             a.status === "volunteer" ||
             a.status === "speaker"),
       )
@@ -66,7 +65,7 @@ export function deriveJourneyStage(
   const attended = store.attendance.filter(
     (a) =>
       a.userId === userId &&
-      (a.status === "present" || a.status === "late"),
+      (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
   );
   if (attended.length >= 2) return "hands_on";
   if (attended.length >= 1) return "workshop";
@@ -126,8 +125,8 @@ export function workshopNominateCandidates(
     if (
       !(
         a.status === "present" ||
-        a.status === "late" ||
-        a.status === "volunteer"
+        a.status === "volunteer" ||
+        a.status === "speaker"
       )
     ) {
       continue;

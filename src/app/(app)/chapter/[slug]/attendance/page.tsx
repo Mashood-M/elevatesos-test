@@ -112,7 +112,7 @@ export default function ChapterAttendancePage({
   const [isVolunteerModalOpen, setIsVolunteerModalOpen] = useState(false);
   const [volunteerSearch, setVolunteerSearch] = useState("");
   const [volunteerPendingId, setVolunteerPendingId] = useState<string | null>(null);
-  const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "volunteer">("all");
+  const [attendanceFilter, setAttendanceFilter] = useState<"all" | "present" | "absent" | "volunteer">("all");
   const [isAttendanceMenuOpen, setIsAttendanceMenuOpen] = useState(false);
   const [popNotification, setPopNotification] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
@@ -188,8 +188,8 @@ export default function ChapterAttendancePage({
   const hasEvent = Boolean(eventId);
   const currentEvent = store.events.find((e) => e.id === eventId);
   const attendanceTakeable = useMemo(
-    () => isAttendanceTakeable(currentEvent),
-    [currentEvent],
+    () => isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead }),
+    [currentEvent, isCampusLead],
   );
   const isOngoing = currentEvent ? isEventOngoing(currentEvent) : false;
   const isEnded = currentEvent ? isEventEnded(currentEvent) : false;
@@ -272,196 +272,6 @@ export default function ChapterAttendancePage({
       (r) => r.status === "waitlisted" || r.status === "pending" || r.status === "reviewed",
     );
   }, [eventRegistrations]);
-
-  const filteredRoster = useMemo(() => {
-    let list = approvedRegs;
-
-    // 1. Filter by search query
-    const q = rosterQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((reg) => {
-        const user = store.profiles.find((p) => p.id === reg.userId);
-        return (
-          user?.fullName.toLowerCase().includes(q) ||
-          user?.email.toLowerCase().includes(q) ||
-          user?.elevatesId?.toLowerCase().includes(q) ||
-          reg.qrCode.toLowerCase().includes(q)
-        );
-      });
-    }
-
-    // 1b. Filter by attendance status if selected
-    if (attendanceFilter !== "all") {
-      list = list.filter((reg) => {
-        const userAttRecords = store.attendance.filter((att) => att.registrationId === reg.id);
-        const att = isMultiSession
-          ? userAttRecords.find(
-              (r) =>
-                r.sessionId === activeSessionObj?.id ||
-                r.session === activeSessionObj?.id ||
-                r.sessionName === activeSessionObj?.name,
-            )
-          : userAttRecords[0];
-
-        if (attendanceFilter === "present") {
-          return att?.status === "present";
-        }
-        if (attendanceFilter === "volunteer") {
-          return att?.status === "volunteer";
-        }
-        return true;
-      });
-    }
-
-    // 2. Sort students
-    list = [...list].sort((a, b) => {
-      const userA = store.profiles.find((p) => p.id === a.userId);
-      const userB = store.profiles.find((p) => p.id === b.userId);
-
-      const recordsA = store.attendance.filter((att) => att.registrationId === a.id);
-      const recordsB = store.attendance.filter((att) => att.registrationId === b.id);
-
-      const attA = isMultiSession
-        ? recordsA.find(
-            (r) =>
-              r.sessionId === activeSessionObj?.id ||
-              r.session === activeSessionObj?.id ||
-              r.sessionName === activeSessionObj?.name,
-          )
-        : recordsA[0];
-      const attB = isMultiSession
-        ? recordsB.find(
-            (r) =>
-              r.sessionId === activeSessionObj?.id ||
-              r.session === activeSessionObj?.id ||
-              r.sessionName === activeSessionObj?.name,
-          )
-        : recordsB[0];
-
-      const isPresentA =
-        attA &&
-        (attA.status === "present" ||
-          attA.status === "volunteer" ||
-          attA.status === "speaker");
-      const isPresentB =
-        attB &&
-        (attB.status === "present" ||
-          attB.status === "volunteer" ||
-          attB.status === "speaker");
-
-      const isNotPresentA = !attA || attA.status === "absent";
-      const isNotPresentB = !attB || attB.status === "absent";
-
-      if (attendanceSort === "present_first") {
-        if (isPresentA && !isPresentB) return -1;
-        if (!isPresentA && isPresentB) return 1;
-        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
-      }
-
-      if (attendanceSort === "not_present_first") {
-        if (isNotPresentA && !isNotPresentB) return -1;
-        if (!isNotPresentA && isNotPresentB) return 1;
-        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
-      }
-
-      if (attendanceSort === "name_asc") {
-        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
-      }
-
-      if (attendanceSort === "name_desc") {
-        return (userB?.fullName || "").localeCompare(userA?.fullName || "");
-      }
-
-      if (attendanceSort === "elevates_id") {
-        return (userA?.elevatesId || "").localeCompare(userB?.elevatesId || "");
-      }
-
-      if (attendanceSort === "registered_oldest") {
-        return (
-          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
-        );
-      }
-
-      // Default: registered_recent (newest registrations first)
-      return (
-        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-      );
-    });
-
-    return list;
-  }, [
-    approvedRegs,
-    rosterQuery,
-    attendanceFilter,
-    attendanceSort,
-    store.profiles,
-    store.attendance,
-    isMultiSession,
-    activeSessionObj,
-  ]);
-
-  const filteredWaitlist = useMemo(() => {
-    const q = rosterQuery.trim().toLowerCase();
-    if (!q) return waitlistedRegs;
-    return waitlistedRegs.filter((reg) => {
-      const user = store.profiles.find((p) => p.id === reg.userId);
-      return (
-        user?.fullName.toLowerCase().includes(q) ||
-        user?.email.toLowerCase().includes(q) ||
-        user?.elevatesId?.toLowerCase().includes(q) ||
-        reg.qrCode.toLowerCase().includes(q)
-      );
-    });
-  }, [waitlistedRegs, rosterQuery, store.profiles]);
-
-  const filteredChapterStudents = useMemo(() => {
-    const q = rosterQuery.trim().toLowerCase();
-    if (!q) return chapterStudents;
-    return chapterStudents.filter((student) => {
-      return (
-        student.fullName.toLowerCase().includes(q) ||
-        student.email.toLowerCase().includes(q) ||
-        student.department?.toLowerCase().includes(q) ||
-        student.year?.toLowerCase().includes(q) ||
-        student.elevatesId?.toLowerCase().includes(q)
-      );
-    });
-  }, [chapterStudents, rosterQuery]);
-
-  const filteredOnSpotStudents = useMemo(() => {
-    const q = onSpotSearch.trim().toLowerCase();
-    if (!q) return chapterStudents.slice(0, 30);
-    return chapterStudents.filter((student) => {
-      return (
-        student.fullName.toLowerCase().includes(q) ||
-        student.email.toLowerCase().includes(q) ||
-        student.department?.toLowerCase().includes(q) ||
-        student.year?.toLowerCase().includes(q) ||
-        student.elevatesId?.toLowerCase().includes(q)
-      );
-    });
-  }, [chapterStudents, onSpotSearch]);
-
-  const volunteerCount = useMemo(() => {
-    if (!eventId) return 0;
-    return store.attendance.filter(
-      (a) => a.eventId === eventId && a.status === "volunteer",
-    ).length;
-  }, [store.attendance, eventId]);
-
-  const filteredVolunteerStudents = useMemo(() => {
-    const q = volunteerSearch.trim().toLowerCase();
-    if (!q) return chapterStudents;
-    return chapterStudents.filter((student) => {
-      return (
-        student.fullName.toLowerCase().includes(q) ||
-        student.email.toLowerCase().includes(q) ||
-        student.department?.toLowerCase().includes(q) ||
-        student.year?.toLowerCase().includes(q) ||
-        student.elevatesId?.toLowerCase().includes(q)
-      );
-    });
-  }, [chapterStudents, volunteerSearch]);
 
   const eventTeam = useMemo(() => {
     if (!currentEvent) return [];
@@ -583,16 +393,19 @@ export default function ChapterAttendancePage({
       }
     });
 
-    // Volunteers from attendance
-    const volAtts = store.attendance.filter(
-      (a) => a.eventId === eventId && a.status === "volunteer",
-    );
-    volAtts.forEach((va) => {
-      if (!team.some((t) => t.userId === va.userId)) {
-        const p = store.profiles.find((pr) => pr.id === va.userId);
+    // Volunteers from volunteerStudentIds and attendance
+    const volIds = new Set([
+      ...(currentEvent.volunteerStudentIds || []),
+      ...store.attendance
+        .filter((a) => a.eventId === eventId && a.status === "volunteer")
+        .map((a) => a.userId),
+    ]);
+    volIds.forEach((vUserId) => {
+      if (!team.some((t) => t.userId === vUserId)) {
+        const p = store.profiles.find((pr) => pr.id === vUserId);
         team.push({
-          id: `vol-${va.userId}`,
-          userId: va.userId,
+          id: `vol-${vUserId}`,
+          userId: vUserId,
           fullName: p?.fullName || "Volunteer Student",
           email: p?.email || "—",
           elevatesId: p?.elevatesId,
@@ -607,6 +420,218 @@ export default function ChapterAttendancePage({
 
     return team;
   }, [currentEvent, eventId, store.profiles, store.attendance]);
+
+  const filteredRoster = useMemo(() => {
+    let list = approvedRegs;
+
+    // 1. Filter by search query
+    const q = rosterQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((reg) => {
+        const user = store.profiles.find((p) => p.id === reg.userId);
+        return (
+          user?.fullName.toLowerCase().includes(q) ||
+          user?.email.toLowerCase().includes(q) ||
+          user?.elevatesId?.toLowerCase().includes(q) ||
+          reg.qrCode.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    // 1b. Filter by attendance status if selected
+    if (attendanceFilter !== "all") {
+      list = list.filter((reg) => {
+        const isTeam = eventTeam.some((t) => t.userId === reg.userId);
+        const userAttRecords = store.attendance.filter((att) => att.registrationId === reg.id);
+        const att = isMultiSession
+          ? userAttRecords.find(
+              (r) =>
+                r.sessionId === activeSessionObj?.id ||
+                r.session === activeSessionObj?.id ||
+                r.sessionName === activeSessionObj?.name,
+            )
+          : userAttRecords[0];
+
+        const isExplicitAbsent = att?.status === "absent";
+        const isPresent = !isExplicitAbsent && (
+          att?.status === "present" ||
+          att?.status === "volunteer" ||
+          att?.status === "speaker" ||
+          isTeam
+        );
+
+        if (attendanceFilter === "present") {
+          return isPresent;
+        }
+        if (attendanceFilter === "volunteer") {
+          return (
+            att?.status === "volunteer" ||
+            Boolean(currentEvent?.volunteerStudentIds?.includes(reg.userId)) ||
+            eventTeam.some((t) => t.userId === reg.userId && t.role === "volunteer")
+          );
+        }
+        if (attendanceFilter === "absent") {
+          return !isPresent;
+        }
+        return true;
+      });
+    }
+
+    // 2. Sort students
+    list = [...list].sort((a, b) => {
+      const userA = store.profiles.find((p) => p.id === a.userId);
+      const userB = store.profiles.find((p) => p.id === b.userId);
+
+      const recordsA = store.attendance.filter((att) => att.registrationId === a.id);
+      const recordsB = store.attendance.filter((att) => att.registrationId === b.id);
+
+      const attA = isMultiSession
+        ? recordsA.find(
+            (r) =>
+              r.sessionId === activeSessionObj?.id ||
+              r.session === activeSessionObj?.id ||
+              r.sessionName === activeSessionObj?.name,
+          )
+        : recordsA[0];
+      const attB = isMultiSession
+        ? recordsB.find(
+            (r) =>
+              r.sessionId === activeSessionObj?.id ||
+              r.session === activeSessionObj?.id ||
+              r.sessionName === activeSessionObj?.name,
+          )
+        : recordsB[0];
+
+      const isPresentA =
+        attA &&
+        (attA.status === "present" ||
+          attA.status === "volunteer" ||
+          attA.status === "speaker");
+      const isPresentB =
+        attB &&
+        (attB.status === "present" ||
+          attB.status === "volunteer" ||
+          attB.status === "speaker");
+
+      const isNotPresentA = !attA || attA.status === "absent";
+      const isNotPresentB = !attB || attB.status === "absent";
+
+      if (attendanceSort === "present_first") {
+        if (isPresentA && !isPresentB) return -1;
+        if (!isPresentA && isPresentB) return 1;
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "not_present_first") {
+        if (isNotPresentA && !isNotPresentB) return -1;
+        if (!isNotPresentA && isNotPresentB) return 1;
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "name_asc") {
+        return (userA?.fullName || "").localeCompare(userB?.fullName || "");
+      }
+
+      if (attendanceSort === "name_desc") {
+        return (userB?.fullName || "").localeCompare(userA?.fullName || "");
+      }
+
+      if (attendanceSort === "elevates_id") {
+        return (userA?.elevatesId || "").localeCompare(userB?.elevatesId || "");
+      }
+
+      if (attendanceSort === "registered_oldest") {
+        return (
+          new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()
+        );
+      }
+
+      // Default: registered_recent (newest registrations first)
+      return (
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+    });
+
+    return list;
+  }, [
+    approvedRegs,
+    rosterQuery,
+    attendanceFilter,
+    attendanceSort,
+    store.profiles,
+    store.attendance,
+    isMultiSession,
+    activeSessionObj,
+    eventTeam,
+    currentEvent,
+  ]);
+
+  const filteredWaitlist = useMemo(() => {
+    const q = rosterQuery.trim().toLowerCase();
+    if (!q) return waitlistedRegs;
+    return waitlistedRegs.filter((reg) => {
+      const user = store.profiles.find((p) => p.id === reg.userId);
+      return (
+        user?.fullName.toLowerCase().includes(q) ||
+        user?.email.toLowerCase().includes(q) ||
+        user?.elevatesId?.toLowerCase().includes(q) ||
+        reg.qrCode.toLowerCase().includes(q)
+      );
+    });
+  }, [waitlistedRegs, rosterQuery, store.profiles]);
+
+  const filteredChapterStudents = useMemo(() => {
+    const q = rosterQuery.trim().toLowerCase();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((student) => {
+      return (
+        student.fullName.toLowerCase().includes(q) ||
+        student.email.toLowerCase().includes(q) ||
+        student.department?.toLowerCase().includes(q) ||
+        student.year?.toLowerCase().includes(q) ||
+        student.elevatesId?.toLowerCase().includes(q)
+      );
+    });
+  }, [chapterStudents, rosterQuery]);
+
+  const filteredOnSpotStudents = useMemo(() => {
+    const q = onSpotSearch.trim().toLowerCase();
+    if (!q) return chapterStudents.slice(0, 30);
+    return chapterStudents.filter((student) => {
+      return (
+        student.fullName.toLowerCase().includes(q) ||
+        student.email.toLowerCase().includes(q) ||
+        student.department?.toLowerCase().includes(q) ||
+        student.year?.toLowerCase().includes(q) ||
+        student.elevatesId?.toLowerCase().includes(q)
+      );
+    });
+  }, [chapterStudents, onSpotSearch]);
+
+  const volunteerCount = useMemo(() => {
+    if (!eventId || !currentEvent) return 0;
+    const volIds = new Set([
+      ...(currentEvent.volunteerStudentIds || []),
+      ...store.attendance
+        .filter((a) => a.eventId === eventId && a.status === "volunteer")
+        .map((a) => a.userId),
+    ]);
+    return volIds.size;
+  }, [store.attendance, eventId, currentEvent]);
+
+  const filteredVolunteerStudents = useMemo(() => {
+    const q = volunteerSearch.trim().toLowerCase();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((student) => {
+      return (
+        student.fullName.toLowerCase().includes(q) ||
+        student.email.toLowerCase().includes(q) ||
+        student.department?.toLowerCase().includes(q) ||
+        student.year?.toLowerCase().includes(q) ||
+        student.elevatesId?.toLowerCase().includes(q)
+      );
+    });
+  }, [chapterStudents, volunteerSearch]);
 
   const filteredTeam = useMemo(() => {
     const q = rosterQuery.trim().toLowerCase();
@@ -660,6 +685,7 @@ export default function ChapterAttendancePage({
     const approvedUserIds = new Set(approvedRegs.map((r) => r.userId));
     
     // Deduplicate by distinct approved student (userId) to accurately count unique attendees
+    // Volunteers and speakers are marked and counted as present
     const uniqueCheckedInUserIds = new Set(
       checked
         .filter(
@@ -673,24 +699,43 @@ export default function ChapterAttendancePage({
 
     const uniquePresentUserIds = new Set(
       checked
-        .filter((a) => approvedUserIds.has(a.userId) && a.status === "present")
+        .filter(
+          (a) =>
+            approvedUserIds.has(a.userId) &&
+            (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
+        )
         .map((a) => a.userId)
         .filter(Boolean),
     );
 
+    // Also include team members (speakers, volunteers) in present count if not marked absent
+    eventTeam.forEach((member) => {
+      if (member.userId && approvedUserIds.has(member.userId)) {
+        const att = checked.find((a) => a.userId === member.userId);
+        if (!att || att.status !== "absent") {
+          uniquePresentUserIds.add(member.userId);
+          uniqueCheckedInUserIds.add(member.userId);
+        }
+      }
+    });
+
     const currentSessionChecked = checked.filter(
-      (a) => (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id) && (a.status === "present"),
+      (a) =>
+        (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id) &&
+        (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
     );
 
     // Full completion: attended all required sessions
     const fullyAttended = approvedRegs.filter((r) => {
-      const userRecords = checked.filter((a) => a.registrationId === r.id && (a.status === "present"));
+      const userRecords = checked.filter(
+        (a) => a.registrationId === r.id && (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
+      );
       return attendanceSessions.every((sess) =>
         userRecords.some((a) => a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name),
       );
     });
 
-    const absentCount = Math.max(0, approvedRegs.length - uniqueCheckedInUserIds.size);
+    const absentCount = Math.max(0, approvedRegs.length - uniquePresentUserIds.size);
 
     return {
       approved: approvedRegs.length,
@@ -700,7 +745,21 @@ export default function ChapterAttendancePage({
       present: uniquePresentUserIds.size,
       absent: absentCount,
     };
-  }, [store.attendance, eventId, approvedRegs, attendanceSessions, activeSessionObj]);
+  }, [store.attendance, eventId, approvedRegs, attendanceSessions, activeSessionObj, eventTeam]);
+
+  const unscannedCount = useMemo(() => {
+    if (!eventId) return 0;
+    return approvedRegs.filter((reg) => {
+      const existing = store.attendance.find(
+        (a) =>
+          a.registrationId === reg.id &&
+          (isMultiSession
+            ? (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id || a.sessionName === activeSessionObj?.name)
+            : a.eventId === eventId),
+      );
+      return !existing;
+    }).length;
+  }, [eventId, approvedRegs, store.attendance, isMultiSession, activeSessionObj]);
 
   const deskRef = useRef({
     eventId,
@@ -731,7 +790,7 @@ export default function ChapterAttendancePage({
         return false;
       }
       const targetEvent = store.events.find((e) => e.id === eid);
-      const takeable = isAttendanceTakeable(targetEvent);
+      const takeable = isAttendanceTakeable(targetEvent, Date.now(), { isCampusLead });
       if (!takeable.allowed) {
         setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
         return false;
@@ -764,7 +823,7 @@ export default function ChapterAttendancePage({
       });
       return true;
     },
-    [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles, store.events],
+    [checkIn, session.roleKey, myClassCohort, store.registrations, store.profiles, store.events, isCampusLead],
   );
 
   const handleAddVolunteer = useCallback(
@@ -773,7 +832,7 @@ export default function ChapterAttendancePage({
         setPopNotification({ tone: "err", text: "Select an event first." });
         return;
       }
-      const takeable = isAttendanceTakeable(currentEvent);
+      const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
       if (!takeable.allowed) {
         setPopNotification({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
         return;
@@ -781,19 +840,28 @@ export default function ChapterAttendancePage({
       if (volunteerPendingId) return;
       setVolunteerPendingId(studentId);
       try {
+        // 1. Add student to event's volunteerStudentIds list
+        const prevVolIds = currentEvent?.volunteerStudentIds || [];
+        if (!prevVolIds.includes(studentId)) {
+          await updateEvent(eventId, {
+            volunteerStudentIds: [...prevVolIds, studentId],
+          });
+        }
+
+        // 2. Mark attendance as present (volunteers are marked as present)
         const reg = store.registrations.find(
           (r) => r.eventId === eventId && r.userId === studentId,
         );
         if (reg) {
           const res = updateAttendance(
             reg.id,
-            "volunteer",
+            "present",
             session.userId,
             activeSessionObj?.id,
             activeSessionObj?.name,
           );
           if (res.ok) {
-            setPopNotification({ tone: "ok", text: "New volunteer is added" });
+            setPopNotification({ tone: "ok", text: "New volunteer is added and marked present" });
           } else {
             setPopNotification({ tone: "err", text: res.message });
           }
@@ -801,14 +869,14 @@ export default function ChapterAttendancePage({
           const res = quickRegisterAndCheckIn(
             eventId,
             studentId,
-            "volunteer",
+            "present",
             "manual",
             session.userId,
             activeSessionObj?.id,
             activeSessionObj?.name,
           );
           if (res.ok) {
-            setPopNotification({ tone: "ok", text: "New volunteer is added" });
+            setPopNotification({ tone: "ok", text: "New volunteer is added and marked present" });
           } else {
             setPopNotification({ tone: "err", text: res.message });
           }
@@ -817,7 +885,7 @@ export default function ChapterAttendancePage({
         setVolunteerPendingId(null);
       }
     },
-    [eventId, store.registrations, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj, volunteerPendingId],
+    [eventId, currentEvent, updateEvent, isCampusLead, store.registrations, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj, volunteerPendingId],
   );
 
   const handleRemoveVolunteer = useCallback(
@@ -826,7 +894,15 @@ export default function ChapterAttendancePage({
       if (volunteerPendingId) return;
       setVolunteerPendingId(studentId);
       try {
-        // 1. Delete all attendance records for this volunteer in this event
+        // 1. Remove from event's volunteerStudentIds
+        const prevVolIds = currentEvent?.volunteerStudentIds || [];
+        if (prevVolIds.includes(studentId)) {
+          await updateEvent(eventId, {
+            volunteerStudentIds: prevVolIds.filter((id) => id !== studentId),
+          });
+        }
+
+        // 2. Delete attendance records for this volunteer in this event
         const attRecords = store.attendance.filter(
           (a) => a.eventId === eventId && a.userId === studentId,
         );
@@ -834,7 +910,7 @@ export default function ChapterAttendancePage({
           await deleteAttendance(att.id);
         }
 
-        // 2. Delete registration for this student in this event so they are also removed from the event directory
+        // 3. Delete registration for this student in this event
         const regs = store.registrations.filter(
           (r) => r.eventId === eventId && r.userId === studentId,
         );
@@ -847,8 +923,97 @@ export default function ChapterAttendancePage({
         setVolunteerPendingId(null);
       }
     },
-    [eventId, store.attendance, store.registrations, deleteAttendance, deleteRegistration, volunteerPendingId],
+    [eventId, currentEvent, updateEvent, store.attendance, store.registrations, deleteAttendance, deleteRegistration, volunteerPendingId],
   );
+
+  const handleToggleTeamMemberAttendance = useCallback(
+    async (memberUserId: string, targetStatus: "present" | "absent") => {
+      if (!eventId) return;
+      const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
+      if (!takeable.allowed) {
+        setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be modified at this time." });
+        return;
+      }
+      const reg = store.registrations.find((r) => r.eventId === eventId && r.userId === memberUserId);
+      const memberProf = store.profiles.find((p) => p.id === memberUserId);
+      if (reg) {
+        const res = updateAttendance(
+          reg.id,
+          targetStatus,
+          session.userId,
+          activeSessionObj?.id,
+          activeSessionObj?.name,
+        );
+        if (res.ok) {
+          setFlash({
+            tone: "ok",
+            text: `Attendance updated to ${targetStatus === "present" ? "Present" : "Absent"} for ${memberProf?.fullName || "team member"}.`,
+          });
+        } else {
+          setFlash({ tone: "err", text: res.message });
+        }
+      } else {
+        const res = quickRegisterAndCheckIn(
+          eventId,
+          memberUserId,
+          targetStatus,
+          "manual",
+          session.userId,
+          activeSessionObj?.id,
+          activeSessionObj?.name,
+        );
+        if (res.ok) {
+          setFlash({
+            tone: "ok",
+            text: `Attendance updated to ${targetStatus === "present" ? "Present" : "Absent"} for ${memberProf?.fullName || "team member"}.`,
+          });
+        } else {
+          setFlash({ tone: "err", text: res.message });
+        }
+      }
+    },
+    [eventId, currentEvent, isCampusLead, store.registrations, store.profiles, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj],
+  );
+
+  const handleMarkAllUnscannedAbsent = useCallback(async () => {
+    if (!eventId || !currentEvent) return;
+    const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
+    if (!takeable.allowed) {
+      setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be modified at this time." });
+      return;
+    }
+    const unscanned = approvedRegs.filter((reg) => {
+      const existing = store.attendance.find(
+        (a) =>
+          a.registrationId === reg.id &&
+          (isMultiSession
+            ? (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id)
+            : a.eventId === eventId),
+      );
+      return !existing;
+    });
+    if (unscanned.length === 0) {
+      setFlash({ tone: "ok", text: "All approved students already have attendance recorded." });
+      return;
+    }
+    let count = 0;
+    for (const reg of unscanned) {
+      const res = checkIn(
+        reg.id,
+        "absent",
+        "manual",
+        session.userId,
+        eventId,
+        activeSessionObj?.id,
+        activeSessionObj?.name,
+      );
+      if (res.ok) count++;
+    }
+    setFlash({
+      tone: "ok",
+      text: `Marked ${count} unscanned attendee${count === 1 ? "" : "s"} as Absent.`,
+    });
+  }, [eventId, currentEvent, isCampusLead, approvedRegs, store.attendance, isMultiSession, activeSessionObj, checkIn, session.userId]);
 
   const handleQrScan = useCallback(
     (codeOverride?: string) => {
@@ -890,7 +1055,7 @@ export default function ChapterAttendancePage({
         return;
       }
       const targetEvent = store.events.find((e) => e.id === eid);
-      const takeable = isAttendanceTakeable(targetEvent);
+      const takeable = isAttendanceTakeable(targetEvent, Date.now(), { isCampusLead });
       if (!takeable.allowed) {
         setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
         return;
@@ -1051,7 +1216,7 @@ export default function ChapterAttendancePage({
 
   function syncOffline() {
     if (!online || !offlineQueue.length || !eventId) return;
-    const takeable = isAttendanceTakeable(currentEvent);
+    const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
     if (!takeable.allowed) {
       setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
       return;
@@ -1067,7 +1232,7 @@ export default function ChapterAttendancePage({
       if (reg) {
         const res = checkIn(
           reg.id,
-          item.status as AttendanceStatus,
+          "present",
           "qr",
           session.userId,
           item.eventId,
@@ -1089,7 +1254,7 @@ export default function ChapterAttendancePage({
       .filter(Boolean);
     if (!lines.length) return;
     if (!eventId || !currentEvent) return;
-    const takeable = isAttendanceTakeable(currentEvent);
+    const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
     if (!takeable.allowed) {
       setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
       return;
@@ -1131,7 +1296,7 @@ export default function ChapterAttendancePage({
         }
         const res = checkIn(
           reg.id,
-          status,
+          "present",
           "bulk",
           session.userId,
           eventId,
@@ -1150,7 +1315,7 @@ export default function ChapterAttendancePage({
           const res = quickRegisterAndCheckIn(
             eventId,
             studentProf.id,
-            status,
+            "present",
             "bulk",
             session.userId,
             activeSessionObj.id,
@@ -1166,7 +1331,7 @@ export default function ChapterAttendancePage({
 
   function handleRepresentative() {
     if (!selectedRegs.length || !eventId || !currentEvent) return;
-    const takeable = isAttendanceTakeable(currentEvent);
+    const takeable = isAttendanceTakeable(currentEvent, Date.now(), { isCampusLead });
     if (!takeable.allowed) {
       setFlash({ tone: "err", text: takeable.reason || "Attendance cannot be taken at this time." });
       return;
@@ -1175,7 +1340,7 @@ export default function ChapterAttendancePage({
     for (const regId of selectedRegs) {
       const res = checkIn(
         regId,
-        status,
+        "present",
         "representative",
         session.userId,
         eventId,
@@ -1476,7 +1641,9 @@ export default function ChapterAttendancePage({
                   ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                   : isBefore
                     ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-                    : "border-red-500/40 bg-red-500/10 text-red-300",
+                    : isCampusLead
+                      ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
+                      : "border-red-500/40 bg-red-500/10 text-red-300",
               )}
             >
               <div className="flex items-start sm:items-center gap-2.5">
@@ -1487,6 +1654,8 @@ export default function ChapterAttendancePage({
                   </span>
                 ) : isBefore ? (
                   <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 mt-0.5 sm:mt-0" />
+                ) : isCampusLead ? (
+                  <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-400 mt-0.5 sm:mt-0" />
                 ) : (
                   <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-red-400 mt-0.5 sm:mt-0" />
                 )}
@@ -1497,12 +1666,16 @@ export default function ChapterAttendancePage({
                         ? "Event is Currently Ongoing · Attendance Active"
                         : isBefore
                           ? "Event Has Not Started Yet · Attendance Locked"
-                          : "Event Concluded · Attendance Closed"}
+                          : isCampusLead
+                            ? "Event Concluded · Campus Lead Edit Mode Active"
+                            : "Event Concluded · Attendance Closed"}
                     </span>
-                    <Badge tone={isOngoing ? "green" : isBefore ? "orange" : "mute"}>
+                    <Badge tone={isOngoing ? "green" : isBefore ? "orange" : isCampusLead ? "cyan" : "mute"}>
                       {currentEvent.status === "ongoing"
                         ? "Live Ongoing"
-                        : currentEvent.status.replace("_", " ")}
+                        : isCampusLead && !isBefore && !isOngoing
+                          ? "Lead Edit Mode"
+                          : currentEvent.status.replace("_", " ")}
                     </Badge>
                   </div>
                   <p className="mt-0.5 text-[11px] opacity-90">
@@ -1510,7 +1683,9 @@ export default function ChapterAttendancePage({
                       ? "Attendance can only be taken while the event is ongoing. Real-time verification is active."
                       : isBefore
                         ? `Attendance cannot be taken before the event starts. Scheduled: ${formatDateTime(currentEvent.startsAt)}. Start the event manually or wait for scheduled time.`
-                        : `This event ended on ${formatDateTime(currentEvent.endsAt || currentEvent.startsAt)}. Attendance cannot be taken after the event has ended.`}
+                        : isCampusLead
+                          ? `This event ended on ${formatDateTime(currentEvent.endsAt || currentEvent.startsAt)}. As Campus Lead, you can update and finalize attendance records (Present / Absent) after event conclusion.`
+                          : `This event ended on ${formatDateTime(currentEvent.endsAt || currentEvent.startsAt)}. Attendance cannot be taken after the event has ended.`}
                   </p>
                 </div>
               </div>
@@ -1677,6 +1852,18 @@ export default function ChapterAttendancePage({
               </select>
             )}
 
+            {isCampusLead && hasEvent && unscannedCount > 0 && attendanceTakeable.allowed && rosterTab === "approved" && (
+              <button
+                type="button"
+                onClick={handleMarkAllUnscannedAbsent}
+                className="h-8 px-2.5 text-xs font-medium rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors flex items-center gap-1.5 shrink-0"
+                title="Mark all unscanned approved students as absent"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Mark Unscanned Absent ({unscannedCount})</span>
+              </button>
+            )}
+
             {hasEvent && !isReadOnly && (
               <button
                 type="button"
@@ -1787,6 +1974,24 @@ export default function ChapterAttendancePage({
                                 <button
                                   type="button"
                                   onClick={() => {
+                                    setAttendanceFilter("absent");
+                                    setIsAttendanceMenuOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full text-left px-2.5 py-1.5 text-xs rounded transition-colors flex items-center justify-between",
+                                    attendanceFilter === "absent"
+                                      ? "bg-red-500/15 text-red-500 font-medium"
+                                      : "hover:bg-bg-elevated text-text",
+                                  )}
+                                >
+                                  <span>Absent</span>
+                                  <span className="text-[10px] text-text-dim">
+                                    {stats.absent}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
                                     setAttendanceFilter("volunteer");
                                     setIsAttendanceMenuOpen(false);
                                   }}
@@ -1860,7 +2065,7 @@ export default function ChapterAttendancePage({
                     isAutoPresent || userAttRecords.some(
                       (a) =>
                         (a.sessionId === sess.id || a.session === sess.id || a.sessionName === sess.name) &&
-                        (a.status === "present" || a.status === "late" || a.status === "volunteer" || a.status === "speaker"),
+                        (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
                     ),
                   ).length;
 
@@ -1903,8 +2108,8 @@ export default function ChapterAttendancePage({
                               <td key={sess.id} className="py-3 text-center">
                                 {sessRecord ? (
                                   <div className="inline-flex items-center gap-1">
-                                    <Badge tone={sessRecord.status === "present" || sessRecord.status === "speaker" || sessRecord.status === "volunteer" ? "green" : "orange"}>
-                                      {sessRecord.status}
+                                    <Badge tone={sessRecord.status === "present" || sessRecord.status === "speaker" || sessRecord.status === "volunteer" ? "green" : "mute"}>
+                                      {sessRecord.status === "present" ? "Present" : sessRecord.status === "absent" ? "Absent" : sessRecord.status}
                                     </Badge>
                                     {!isReadOnly && (
                                       <Button
@@ -1934,9 +2139,22 @@ export default function ChapterAttendancePage({
                                     )}
                                   </div>
                                 ) : isAutoPresent ? (
-                                  <Badge tone="green">
-                                    ✓ Present (Auto)
-                                  </Badge>
+                                  <div className="inline-flex items-center gap-1">
+                                    <Badge tone="green">
+                                      ✓ Present (Auto)
+                                    </Badge>
+                                    {isCampusLead && (
+                                      <Button
+                                        variant="ghost"
+                                        className="h-6 px-1 text-[10px]"
+                                        disabled={!attendanceTakeable.allowed}
+                                        title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                                        onClick={() => handleToggleTeamMemberAttendance(reg.userId, "absent")}
+                                      >
+                                        ⇄
+                                      </Button>
+                                    )}
+                                  </div>
                                 ) : !isReadOnly ? (
                                   <Button
                                     variant="ghost"
@@ -1974,21 +2192,25 @@ export default function ChapterAttendancePage({
                             {singleAtt ? (
                               <Badge
                                 tone={
-                                  singleAtt.status === "present" || singleAtt.status === "speaker"
+                                  singleAtt.status === "present" || singleAtt.status === "speaker" || singleAtt.status === "volunteer"
                                     ? "green"
-                                    : singleAtt.status === "volunteer"
-                                      ? "orange"
-                                      : "mute"
+                                    : "mute"
                                 }
                               >
-                                {singleAtt.status} · {formatDateTime(singleAtt.checkedInAt)}
+                                {singleAtt.status === "present"
+                                  ? `Present · ${formatDateTime(singleAtt.checkedInAt)}`
+                                  : singleAtt.status === "absent"
+                                    ? "Absent"
+                                    : `${singleAtt.status} · ${formatDateTime(singleAtt.checkedInAt)}`}
                               </Badge>
                             ) : isAutoPresent ? (
                               <Badge tone="green">
                                 ✓ Present ({teamMember?.role})
                               </Badge>
+                            ) : isEnded ? (
+                              <Badge tone="mute">Absent (Unscanned)</Badge>
                             ) : (
-                              <Badge tone="orange">not checked in</Badge>
+                              <Badge tone="orange">Not checked in</Badge>
                             )}
                           </td>
                           <td className="py-3">
@@ -1997,8 +2219,67 @@ export default function ChapterAttendancePage({
                                 {singleAtt ? (singleAtt.method || "verified") : isAutoPresent ? "session-lead" : "—"}
                               </span>
                             ) : isAutoPresent ? (
-                              <span className="text-[11px] text-emerald-400 font-medium">Auto-Present</span>
-                            ) : !singleAtt ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-emerald-400 font-medium">Auto-Present</span>
+                                {isCampusLead && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-[11px] border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                    disabled={!attendanceTakeable.allowed}
+                                    title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                                    onClick={() => handleToggleTeamMemberAttendance(reg.userId, "absent")}
+                                  >
+                                    Mark Absent
+                                  </Button>
+                                )}
+                              </div>
+                            ) : singleAtt ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] font-mono text-text-dim">
+                                  {singleAtt.method || "manual"}
+                                </span>
+                                {isCampusLead && (
+                                  singleAtt.status === "present" ? (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px] border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                      disabled={!attendanceTakeable.allowed}
+                                      title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                                      onClick={() => {
+                                        const res = updateAttendance(reg.id, "absent", session.userId);
+                                        if (!res.ok) {
+                                          setFlash({ tone: "err", text: res.message });
+                                        } else {
+                                          setFlash({ tone: "ok", text: `Marked ${user?.fullName || "student"} absent.` });
+                                        }
+                                      }}
+                                    >
+                                      Mark Absent
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px] border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                      disabled={!attendanceTakeable.allowed}
+                                      title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                                      onClick={() => {
+                                        const res = updateAttendance(reg.id, "present", session.userId);
+                                        if (!res.ok) {
+                                          setFlash({ tone: "err", text: res.message });
+                                        } else {
+                                          setFlash({ tone: "ok", text: `Marked ${user?.fullName || "student"} present.` });
+                                        }
+                                      }}
+                                    >
+                                      Mark Present
+                                    </Button>
+                                  )
+                                )}
+                              </div>
+                            ) : (
                               <div className="flex flex-wrap gap-2">
                                 <Button
                                   variant="ghost"
@@ -2007,7 +2288,7 @@ export default function ChapterAttendancePage({
                                   title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                                   onClick={() => runCheckIn(reg.id, "manual")}
                                 >
-                                  Check in
+                                  Mark Present
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -2024,16 +2305,14 @@ export default function ChapterAttendancePage({
                                     );
                                     setFlash(
                                       result.ok
-                                        ? { tone: "ok", text: "Marked absent" }
+                                        ? { tone: "ok", text: `Marked ${user?.fullName || "student"} absent.` }
                                         : { tone: "err", text: result.message },
                                     );
                                   }}
                                 >
-                                  Mark absent
+                                  Mark Absent
                                 </Button>
                               </div>
-                            ) : (
-                              <span className="text-[11px] text-text-dim">Checked in</span>
                             )}
                           </td>
                         </>
@@ -2102,7 +2381,18 @@ export default function ChapterAttendancePage({
                     </td>
                   </tr>
                 ) : (
-                  filteredTeam.map((member) => (
+                  filteredTeam.map((member) => {
+                  const memberAttRecord = store.attendance.find(
+                    (a) =>
+                      a.eventId === eventId &&
+                      a.userId === member.userId &&
+                      (isMultiSession
+                        ? (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id || a.sessionName === activeSessionObj?.name)
+                        : true),
+                  );
+                  const isExplicitAbsent = memberAttRecord?.status === "absent";
+
+                  return (
                     <tr key={member.id} className="border-b border-border/50">
                       <td className="py-3">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -2137,21 +2427,55 @@ export default function ChapterAttendancePage({
                         {member.elevatesId || "—"}
                       </td>
                       <td className="py-3 text-right">
-                        <div className="inline-flex flex-col items-end">
-                          <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                            <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present (Auto-Present)
-                          </span>
-                          <span className="text-[10px] text-text-dim mt-0.5">
-                            {member.role === "speaker"
-                              ? "Session Speaker · Managing Session"
-                              : member.role === "coordinator"
-                                ? "Host / Coordinator · Auto-Marked"
-                                : "Event Volunteer · Operations"}
-                          </span>
+                        <div className="inline-flex items-center gap-2.5 justify-end">
+                          <div className="inline-flex flex-col items-end">
+                            {isExplicitAbsent ? (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+                                <XCircle size={12} className="mr-1 text-red-400" /> Absent
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present {memberAttRecord ? "(Verified)" : "(Auto)"}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-text-dim mt-0.5">
+                              {member.role === "speaker"
+                                ? "Session Speaker · Managing Session"
+                                : member.role === "coordinator"
+                                  ? "Host / Coordinator · Auto-Marked"
+                                  : "Event Volunteer · Operations"}
+                            </span>
+                          </div>
+
+                          {isCampusLead && member.userId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={cn(
+                                "h-7 px-2.5 text-[11px] border shrink-0 font-medium",
+                                isExplicitAbsent
+                                  ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                                  : "border-red-500/40 text-red-400 hover:bg-red-500/10",
+                              )}
+                              disabled={!attendanceTakeable.allowed}
+                              title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                              onClick={() => {
+                                if (member.userId) {
+                                  handleToggleTeamMemberAttendance(
+                                    member.userId,
+                                    isExplicitAbsent ? "present" : "absent",
+                                  );
+                                }
+                              }}
+                            >
+                              {isExplicitAbsent ? "Mark Present" : "Mark Absent"}
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))
+                  );
+                })
                 )}
               </tbody>
             </table>
@@ -2376,10 +2700,12 @@ export default function ChapterAttendancePage({
                 </div>
               ) : (
                 filteredVolunteerStudents.map((student) => {
-                  const volunteerAtt = store.attendance.find(
-                    (a) => a.eventId === eventId && a.userId === student.id && a.status === "volunteer",
+                  const isVolunteer = Boolean(
+                    currentEvent?.volunteerStudentIds?.includes(student.id) ||
+                    store.attendance.some(
+                      (a) => a.eventId === eventId && a.userId === student.id && a.status === "volunteer",
+                    ),
                   );
-                  const isVolunteer = Boolean(volunteerAtt);
 
                   return (
                     <div
@@ -2510,8 +2836,8 @@ export default function ChapterAttendancePage({
                     ? store.attendance.some(
                       (a) =>
                         a.registrationId === studReg.id &&
-                        (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id) &&
-                        (a.status === "present" || a.status === "late"),
+                        (a.sessionId === activeSessionObj.id || a.session === activeSessionObj.id || a.sessionName === activeSessionObj.name) &&
+                        (a.status === "present" || a.status === "volunteer" || a.status === "speaker"),
                     )
                     : false;
 

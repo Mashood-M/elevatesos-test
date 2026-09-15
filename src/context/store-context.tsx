@@ -928,6 +928,34 @@ function syncActiveTermUserRoles(
   return userRoles;
 }
 
+function isCampusLeadActor(
+  s: ElevatesStore,
+  actorId?: string,
+): boolean {
+  const role = s.session.roleKey;
+  if (
+    role === "campus_lead" ||
+    role === "chairman" ||
+    role === "founder" ||
+    role === "hq_admin" ||
+    role === "elevates_coordinator" ||
+    role === "faculty_coordinator"
+  ) {
+    return true;
+  }
+  if (!actorId) return false;
+  return (s.userRoles ?? []).some(
+    (ur) =>
+      ur.userId === actorId &&
+      (ur.roleKey === "campus_lead" ||
+        ur.roleKey === "chairman" ||
+        ur.roleKey === "founder" ||
+        ur.roleKey === "hq_admin" ||
+        ur.roleKey === "elevates_coordinator" ||
+        ur.roleKey === "faculty_coordinator"),
+  );
+}
+
 function maybeIssueCert(
   s: ElevatesStore,
   eventId: string,
@@ -939,7 +967,8 @@ function maybeIssueCert(
     !event?.certificateEnabled ||
     !(
       status === "present" ||
-      status === "late"
+      status === "volunteer" ||
+      status === "speaker"
     ) ||
     s.certificates.some((c) => c.eventId === eventId && c.userId === userId)
   ) {
@@ -953,7 +982,8 @@ function maybeIssueCert(
         a.eventId === eventId &&
         a.userId === userId &&
         (a.status === "present" ||
-          a.status === "late"),
+          a.status === "volunteer" ||
+          a.status === "speaker"),
     );
     const requiredSessions = event.attendanceSessions.filter((sess) => sess.isRequired !== false);
     const attendedAll = requiredSessions.every((reqSess) =>
@@ -1403,7 +1433,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const targetEventId = expectedEventId || reg.eventId;
           const ev = s.events.find((e) => e.id === targetEventId || e.id === reg.eventId);
           if (ev) {
-            const takeable = isAttendanceTakeable(ev);
+            const isLead = isCampusLeadActor(s, actorId);
+            const takeable = isAttendanceTakeable(ev, Date.now(), { isCampusLead: isLead });
             if (!takeable.allowed) {
               result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
               return s;
@@ -1517,7 +1548,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             result = { ok: false, message: "Event not found." };
             return s;
           }
-          const takeable = isAttendanceTakeable(event);
+          const isLead = isCampusLeadActor(s, actorId);
+          const takeable = isAttendanceTakeable(event, Date.now(), { isCampusLead: isLead });
           if (!takeable.allowed) {
             result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
             return s;
@@ -1637,15 +1669,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateAttendance: (registrationId, status, actorId, session = "single", sessionName) => {
         let result: CheckInResult = { ok: true };
         setStore((s) => {
-          const existing = s.attendance.find(
-            (a) => a.registrationId === registrationId && (a.sessionId === session || a.session === session),
-          );
           const reg = s.registrations.find((r) => r.id === registrationId);
-          const eventId = reg?.eventId || existing?.eventId;
-          if (eventId) {
-            const ev = s.events.find((e) => e.id === eventId);
+          const eventId = reg?.eventId;
+          const existing = s.attendance.find(
+            (a) =>
+              (a.registrationId === registrationId || (eventId && a.eventId === eventId && a.userId === reg?.userId)) &&
+              (a.sessionId === session ||
+                a.session === session ||
+                (session === "single" && (!a.sessionId || a.sessionId === "sess-1" || a.sessionId === "single")) ||
+                (!session && (!a.sessionId || a.sessionId === "sess-1" || a.sessionId === "single"))),
+          );
+          const targetEventId = eventId || existing?.eventId;
+          if (targetEventId) {
+            const ev = s.events.find((e) => e.id === targetEventId);
             if (ev) {
-              const takeable = isAttendanceTakeable(ev);
+              const isLead = isCampusLeadActor(s, actorId);
+              const takeable = isAttendanceTakeable(ev, Date.now(), { isCampusLead: isLead });
               if (!takeable.allowed) {
                 result = { ok: false, message: takeable.reason || "Attendance cannot be taken at this time." };
                 return s;
@@ -1695,7 +1734,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               certificates: newCerts,
             };
           }
-          const record = { ...existing, status, checkedInBy: actorId };
+          const record = { ...existing, status, checkedInBy: actorId, checkedInAt: new Date().toISOString() };
           const attendance = s.attendance.map((a) =>
             a.id === existing.id
               ? record
@@ -2908,7 +2947,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const isOrganizer = ev?.organizerId === userId || ev?.facultyId === userId || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
           const userProf = s.profiles.find((p) => p.id === userId);
           const isSpeaker = ev?.hosts && ev.hosts.some((h) => h.name && userProf?.fullName && h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase());
-          const isVolunteer = (att && att.status === "volunteer") || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+          const isVolunteer =
+            (att && att.status === "volunteer") ||
+            (ev?.volunteerStudentIds && ev.volunteerStudentIds.includes(userId)) ||
+            (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
           const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
 
           if (
@@ -2916,7 +2958,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             (!att ||
               !(
                 att.status === "present" ||
-                att.status === "late" ||
                 att.status === "volunteer" ||
                 att.status === "speaker"
               )
@@ -2924,7 +2965,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ) {
             result = {
               ok: false,
-              message: "Requires verified attendance (present/late/volunteer/speaker).",
+              message: "Requires verified attendance (present).",
             };
             return s;
           }
@@ -2934,7 +2975,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               eventId,
               userId,
               registrationId: s.registrations.find((r) => r.eventId === eventId && r.userId === userId)?.id || `reg-auto-${userId}`,
-              status: isSpeaker ? "speaker" : isVolunteer ? "volunteer" : "present",
+              status: "present",
               method: "manual",
               checkedInBy: s.session.userId,
               checkedInAt: new Date().toISOString(),

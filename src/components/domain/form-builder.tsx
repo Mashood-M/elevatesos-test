@@ -273,7 +273,7 @@ export function FormBuilder({
         (a) =>
           a.eventId === eventId &&
           a.userId === session.userId &&
-          ["present", "late", "volunteer", "speaker"].includes(a.status),
+          ["present", "volunteer", "speaker"].includes(a.status),
       ),
     [store.attendance, eventId, session.userId],
   );

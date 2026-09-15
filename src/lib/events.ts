@@ -616,21 +616,26 @@ export function isEventBeforeStart(
 
 /**
  * Checks whether attendance can be taken for an event.
- * Attendance can ONLY be taken during the event (while it is ongoing/live).
- * Before the event starts and after the event ends, attendance is not takeable.
+ * Attendance can be taken during the event (while it is ongoing/live).
+ * Campus Leads are also authorized to review and update/change attendance after the event has ended.
  */
 export function isAttendanceTakeable(
   event: EventItem | undefined | null,
   nowMs: number = Date.now(),
+  options?: { isCampusLead?: boolean } | boolean,
 ): { allowed: boolean; reason?: string } {
   if (!event) {
     return { allowed: false, reason: "Event not found." };
   }
+  const isCampusLead = typeof options === "boolean" ? options : Boolean(options?.isCampusLead);
   const st = (event.status || "").toLowerCase();
   if (st === "ongoing") {
     return { allowed: true };
   }
   if (st === "completed") {
+    if (isCampusLead) {
+      return { allowed: true };
+    }
     return {
       allowed: false,
       reason: "Attendance cannot be taken because this event has already ended.",
@@ -654,6 +659,9 @@ export function isAttendanceTakeable(
   }
 
   if (isEventEnded(event, nowMs)) {
+    if (isCampusLead) {
+      return { allowed: true };
+    }
     return {
       allowed: false,
       reason: "Attendance cannot be taken after the event has ended.",

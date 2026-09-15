@@ -475,7 +475,6 @@ export default function EventDetailPage({
       const hasPresentAtt = userAttRecords.some(
         (a) =>
           a.status === "present" ||
-          a.status === "late" ||
           a.status === "volunteer" ||
           a.status === "speaker",
       );
@@ -494,9 +493,7 @@ export default function EventDetailPage({
             : "not_checked_in";
 
         const attNote = isPresent
-          ? userAttRecords.some((a) => a.status === "late")
-            ? "Verified (Late)"
-            : "Verified Present"
+          ? "Verified Present"
           : isEnded
             ? "Absent (Did Not Check In)"
             : "Not Checked In Yet";

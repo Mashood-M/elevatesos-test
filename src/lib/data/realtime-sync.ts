@@ -41,6 +41,7 @@ import type {
 export const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "student",
+  "volunteer",
   "faculty_coordinator",
   "class_representative",
   "campus_lead",

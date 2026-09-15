@@ -80,6 +80,12 @@ function resolveMemberRole(
     (la) => termIds.has(la.termId) && la.userId === profileId,
   );
   if (leadAssign) {
+    if (leadAssign.roleKey === "volunteer") {
+      return {
+        label: "Volunteer",
+        tone: "green",
+      };
+    }
     return {
       label: leadAssign.title || roleKeyLabel(leadAssign.roleKey),
       tone: "cyan",
@@ -92,6 +98,9 @@ function resolveMemberRole(
     const rk = uRole.roleKey as RoleKey;
     if (rk === "campus_lead" || rk === "chairman") {
       return { label: "Campus Lead", tone: "orange" };
+    }
+    if (rk === "volunteer") {
+      return { label: "Volunteer", tone: "green" };
     }
     if (rk === "faculty_coordinator") {
       return { label: "Faculty Coordinator", tone: "magenta" };

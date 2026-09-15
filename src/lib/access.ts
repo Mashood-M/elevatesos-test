@@ -171,6 +171,7 @@ export function canAccessPath(
       "attendance",
       "classes",
       "leadership",
+      "volunteer-team",
       "tasks",
       "resources",
       "calendar",
@@ -180,9 +181,12 @@ export function canAccessPath(
     if (firstSeg && opsRoots.includes(firstSeg)) {
       if (
         roleKey === "class_representative" &&
-        (firstSeg === "certificates" || firstSeg === "leadership" || firstSeg === "classes")
+        (firstSeg === "certificates" || firstSeg === "leadership" || firstSeg === "volunteer-team" || firstSeg === "classes")
       ) {
         return false;
+      }
+      if (roleKey === "volunteer" && (firstSeg === "attendance" || firstSeg === "leadership" || firstSeg === "volunteer-team")) {
+        return true;
       }
       return isExecutiveRole(roleKey) || isFacultyRole(roleKey);
     }
@@ -267,9 +271,9 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
     { title: "Attendance", subtitle: "Check-in & QR", href: `${base}/attendance`, access: "executive" },
     { title: "Classes", subtitle: "Class sections", href: `${base}/classes`, access: "executive" },
     {
-      title: "Leadership",
-      subtitle: "Chapter leadership",
-      href: `${base}/leadership`,
+      title: "Volunteer Team",
+      subtitle: "Chapter volunteer team",
+      href: `${base}/volunteer-team`,
       access: "executive",
     },
     { title: "Tasks", subtitle: "Ops tasks", href: `${base}/tasks`, access: "executive" },
@@ -304,7 +308,7 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
   ];
 
   const chapterMember =
-    isExecutiveRole(roleKey) || isFacultyRole(roleKey) || roleKey === "student";
+    isExecutiveRole(roleKey) || isFacultyRole(roleKey) || roleKey === "student" || roleKey === "volunteer";
 
   return all.filter((item) => {
     if (item.href === "/hq/users") return isSuperAdmin(roleKey);

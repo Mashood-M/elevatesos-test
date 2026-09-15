@@ -205,7 +205,7 @@ export function navGroupsForRole(
           { href: `${base}/students`, label: "Student Directory", icon: I.students },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
           ...(roleKey !== "class_representative"
-            ? [{ href: `${base}/leadership`, label: "Leadership", icon: I.leadership }]
+            ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
             : []),
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
@@ -222,6 +222,43 @@ export function navGroupsForRole(
         items: [
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Notifications", icon: I.alerts },
+          { href: "/referrals", label: "Referrals", icon: I.referrals },
+        ],
+      },
+    ];
+  }
+
+  // Volunteer Role
+  if (roleKey === "volunteer") {
+    const eventsHref = slug ? `${base}/events` : "/events";
+    const announcementsHref = slug ? `${base}/announcements` : "/announcements";
+    return [
+      {
+        label: "Volunteer Desk",
+        items: [
+          { href: `${base}/attendance`, label: "Take Attendance", icon: I.attendance },
+          { href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership },
+        ],
+      },
+      {
+        label: "Explore",
+        items: [
+          { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
+          { href: eventsHref, label: "Events", icon: I.events },
+          { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
+          { href: `${base}/projects`, label: "Projects", icon: I.projects },
+          {
+            href: announcementsHref,
+            label: "Announcements",
+            icon: I.announcements,
+          },
+          { href: "/notifications", label: "Notifications", icon: I.alerts },
+        ],
+      },
+      {
+        label: "My Account",
+        items: [
+          { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/referrals", label: "Referrals", icon: I.referrals },
         ],
       },

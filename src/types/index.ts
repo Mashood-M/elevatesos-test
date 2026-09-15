@@ -21,7 +21,8 @@ export type RoleKey =
   | "student"
   | "alumni"
   | "guest"
-  | "industry_mentor";
+  | "industry_mentor"
+  | "volunteer";
 
 export type PermissionKey =
   | "org.manage"

@@ -26,6 +26,24 @@ export async function GET(req: Request) {
       }
       return NextResponse.json({ ok: true, data: data ?? [] });
     }
+    if (type === "leadership_data") {
+      const { data: terms, error: tErr } = await admin
+        .from("leadership_terms")
+        .select("*")
+        .order("created_at", { ascending: false });
+      const { data: assignments, error: aErr } = await admin
+        .from("leadership_assignments")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (tErr || aErr) {
+        return NextResponse.json({ ok: false, error: tErr?.message || aErr?.message }, { status: 500 });
+      }
+      return NextResponse.json({
+        ok: true,
+        terms: terms ?? [],
+        assignments: assignments ?? [],
+      });
+    }
     if (type === "validate_invite") {
       const token = searchParams.get("token")?.trim();
       if (!token) {
@@ -1365,9 +1383,60 @@ export async function POST(req: Request) {
     if (type === "leadership_assignment") {
       const la = data;
       const laId = isUuid(la.id) ? la.id : genUuid();
+      let termId = isUuid(la.termId) ? la.termId : null;
+
+      // Fallback: look up chapter from user's profile if termId is invalid/missing
+      let chapterId: string | null = isUuid(la.chapterId) ? la.chapterId : null;
+      if (!chapterId && la.userId && isUuid(la.userId)) {
+        const { data: prof } = await admin
+          .from("profiles")
+          .select("chapter_id")
+          .eq("id", la.userId)
+          .maybeSingle();
+        chapterId = prof?.chapter_id ?? null;
+      }
+
+      if (!termId && chapterId) {
+        const { data: termRow } = await admin
+          .from("leadership_terms")
+          .select("id")
+          .eq("chapter_id", chapterId)
+          .eq("status", "active")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        termId = termRow?.id ?? null;
+      }
+
+      // If chapter still doesn't have an active term row in DB, auto-create one
+      if (!termId && chapterId) {
+        termId = genUuid();
+        await admin.from("leadership_terms").insert({
+          id: termId,
+          chapter_id: chapterId,
+          academic_year: "2025-26",
+          title: "Permanent Volunteer Team",
+          start_date: new Date().toISOString().slice(0, 10),
+          end_date: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+          status: "active",
+          handover_notes: "Auto-initialized chapter volunteer & leadership team",
+        });
+      }
+
+      if (!termId) {
+        // Ultimate fallback to canonical active term if available
+        const { data: anyTerm } = await admin
+          .from("leadership_terms")
+          .select("id")
+          .eq("status", "active")
+          .limit(1)
+          .maybeSingle();
+        termId = anyTerm?.id ?? null;
+      }
+
       const { error } = await admin.from("leadership_assignments").upsert({
         id: laId,
-        term_id: isUuid(la.termId) ? la.termId : null,
+        term_id: termId,
         user_id: isUuid(la.userId) ? la.userId : null,
         role_key: la.roleKey,
         title: la.title,
@@ -1377,13 +1446,79 @@ export async function POST(req: Request) {
         console.error("Mutation error (leadership_assignment):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
+
+      // Automatically sync user_roles in Supabase
+      if (la.userId && isUuid(la.userId) && la.roleKey) {
+        try {
+          const { data: roleRow } = await admin
+            .from("roles")
+            .select("id")
+            .eq("key", la.roleKey)
+            .maybeSingle();
+
+          if (!chapterId && termId) {
+            const { data: termRow } = await admin
+              .from("leadership_terms")
+              .select("chapter_id")
+              .eq("id", termId)
+              .maybeSingle();
+            chapterId = termRow?.chapter_id ?? null;
+          }
+
+          const { data: existingUrList } = await admin
+            .from("user_roles")
+            .select("id")
+            .eq("user_id", la.userId)
+            .eq("role_key", la.roleKey);
+
+          if (existingUrList && existingUrList.length > 0) {
+            await admin.from("user_roles").update({
+              chapter_id: chapterId,
+              leadership_term_id: termId,
+              role_id: roleRow?.id ?? null,
+              is_permanent: true,
+            }).eq("id", existingUrList[0].id);
+          } else {
+            await admin.from("user_roles").insert({
+              user_id: la.userId,
+              role_key: la.roleKey,
+              role_id: roleRow?.id ?? null,
+              chapter_id: chapterId,
+              leadership_term_id: termId,
+              is_permanent: true,
+            });
+          }
+        } catch (urErr) {
+          console.warn("Could not sync user_roles for assignment:", urErr);
+        }
+      }
+
       return NextResponse.json({ ok: true, id: laId });
     }
 
     if (type === "delete_leadership_assignment") {
-      const { id } = data;
+      const { id, userId, roleKey } = data;
+      const targetRoleKey = roleKey || "volunteer";
+
       if (isUuid(id)) {
+        const { data: assignment } = await admin
+          .from("leadership_assignments")
+          .select("user_id, role_key, term_id")
+          .eq("id", id)
+          .maybeSingle();
+
         await admin.from("leadership_assignments").delete().eq("id", id);
+
+        if (assignment?.user_id && assignment?.role_key) {
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("user_id", assignment.user_id)
+            .eq("role_key", assignment.role_key);
+        }
+      } else if (userId && isUuid(userId)) {
+        await admin.from("leadership_assignments").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
+        await admin.from("user_roles").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
       }
       return NextResponse.json({ ok: true });
     }

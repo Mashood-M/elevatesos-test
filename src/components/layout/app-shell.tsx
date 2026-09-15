@@ -88,6 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const highestRoleLabel = useMemo(() => {
     const ROLE_PRIORITY = [
       "student",
+      "volunteer",
       "faculty_coordinator",
       "class_representative",
       "campus_lead",

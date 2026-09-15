@@ -904,6 +904,7 @@ function upsertUserRoleForAssignment(
     id: `ur-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     userId: assignment.userId,
     roleId: role.id,
+    roleKey: assignment.roleKey,
     chapterId: term.chapterId,
     leadershipTermId: term.id,
   };
@@ -4968,35 +4969,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true;
       },
       addLeadershipAssignment: (input) => {
-        const term = store.leadershipTerms.find((t) => t.id === input.termId);
-        if (!term) return null;
+        const memberProfile = store.profiles.find((p) => p.id === input.userId);
+        let term = store.leadershipTerms.find((t) => t.id === input.termId);
+        if (!term && memberProfile?.chapterId) {
+          term = store.leadershipTerms.find((t) => t.chapterId === memberProfile.chapterId && t.status === "active")
+            ?? store.leadershipTerms.find((t) => t.chapterId === memberProfile.chapterId);
+        }
+        if (!term) {
+          const chId = memberProfile?.chapterId || "";
+          term = {
+            id: (input.termId && input.termId !== "term-default") ? input.termId : genUuid(),
+            chapterId: chId,
+            academicYear: "2025-26",
+            title: "Volunteer Team",
+            startDate: new Date().toISOString().slice(0, 10),
+            endDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+            status: "active",
+          };
+        }
+        const resolvedTerm = term;
         const title = input.title.trim();
         if (!title || !input.userId) return null;
         if (!isAssignableLeadershipRole(input.roleKey)) return null;
         const memberOk = store.profiles.some(
-          (p) => p.id === input.userId && p.chapterId === term.chapterId,
+          (p) => p.id === input.userId && (!resolvedTerm.chapterId || p.chapterId === resolvedTerm.chapterId),
         );
         if (!memberOk) return null;
         if (isSingletonLeadershipRole(input.roleKey)) {
           const taken = store.leadershipAssignments.some(
-            (a) => a.termId === input.termId && a.roleKey === input.roleKey,
+            (a) => a.termId === resolvedTerm.id && a.roleKey === input.roleKey,
           );
           if (taken) return null;
         }
         const assignmentId = genUuid();
         const assignment: LeadershipAssignment = {
           id: assignmentId,
-          termId: input.termId,
+          termId: resolvedTerm.id,
           userId: input.userId,
           roleKey: input.roleKey,
           title,
           createdAt: new Date().toISOString(),
         };
-        const memberProfile = store.profiles.find((p) => p.id === input.userId);
         setStore((s) => {
+          const nextTerms = s.leadershipTerms.some((t) => t.id === resolvedTerm.id)
+            ? s.leadershipTerms
+            : [...s.leadershipTerms, resolvedTerm];
           let userRoles = s.userRoles;
-          if (term.status === "active") {
-            userRoles = upsertUserRoleForAssignment(s, term, assignment);
+          if (resolvedTerm.status === "active") {
+            userRoles = upsertUserRoleForAssignment(s, resolvedTerm, assignment);
           }
           let nextSession = s.session;
           if (input.userId === s.session.userId || input.userId === s.session.authUserId) {
@@ -5010,6 +5030,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           return {
             ...s,
+            leadershipTerms: nextTerms,
             leadershipAssignments: [...s.leadershipAssignments, assignment],
             userRoles,
             session: nextSession,

@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useState } from "react";
 import { resolveMediaUrl } from "@/lib/data/media";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit3, Globe, Link2, Mail, Phone, Trash2 } from "lucide-react";
+import { Edit3, Globe, Link2, Mail, Phone, Trash2, QrCode } from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -171,19 +171,36 @@ export default function ProfilePage({
   }
 
   const chapter = store.chapters.find((c) => c.id === profile.chapterId);
+  const profileUserId = profile.id;
+
+  const isVolunteer = useMemo(() => {
+    const hasUr = store.userRoles.some(
+      (ur) =>
+        (ur.userId === profileUserId || ur.userId === cleanId) &&
+        (ur.roleKey === "volunteer" ||
+          store.roles.find((r) => r.id === ur.roleId)?.key === "volunteer"),
+    );
+    const hasLa = store.leadershipAssignments.some(
+      (la) =>
+        (la.userId === profileUserId || la.userId === cleanId) &&
+        la.roleKey === "volunteer",
+    );
+    return hasUr || hasLa;
+  }, [store.userRoles, store.leadershipAssignments, store.roles, profileUserId, cleanId]);
+
   type RoleWithTimestamp = { role: (typeof store.roles)[0]; createdAt: string | undefined };
   const rolesWithUr: RoleWithTimestamp[] = store.userRoles
-    .filter((ur) => ur.userId === id)
+    .filter((ur) => ur.userId === profileUserId || ur.userId === cleanId)
     .map((ur) => {
       const r = store.roles.find((role) => role.id === ur.roleId || role.key === ur.roleKey);
       return r ? { role: r, createdAt: ur.createdAt } : null;
     })
     .filter((item): item is RoleWithTimestamp => item !== null);
   const roles = rolesWithUr.map((ru) => ru.role);
-  const certs = store.certificates.filter((c) => c.userId === id);
-  const eventsAttended = store.attendance.filter((a) => a.userId === id);
-  const projects = store.projects.filter((p) => p.teamIds.includes(id));
-  const score = executiveScore(store, id);
+  const certs = store.certificates.filter((c) => c.userId === profileUserId || c.userId === cleanId);
+  const eventsAttended = store.attendance.filter((a) => a.userId === profileUserId || a.userId === cleanId);
+  const projects = store.projects.filter((p) => p.teamIds.includes(profileUserId) || p.teamIds.includes(cleanId));
+  const score = executiveScore(store, profileUserId);
   const classLabel = [
     profile.department,
     profile.year,
@@ -235,6 +252,11 @@ export default function ProfilePage({
                     {profile.elevatesId}
                   </span>
                 )}
+                {isVolunteer && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold tracking-wide">
+                    Volunteer
+                  </span>
+                )}
               </div>
               <p className="mt-1.5 text-sm text-text-dim">
                 {classLabel || "Class not set"}
@@ -264,6 +286,11 @@ export default function ProfilePage({
 
               {/* Badges */}
               <div className="mt-4 flex flex-wrap gap-2">
+                {isVolunteer && (
+                  <Badge tone="green" className="font-bold">
+                    Volunteer
+                  </Badge>
+                )}
                 <Badge tone="cyan">
                   {communityTiers.find(
                     (t: any) => t.key === derived.engagementTier || t.tier === derived.engagementTier,
@@ -300,6 +327,14 @@ export default function ProfilePage({
 
           {/* Action Buttons */}
           <div className="flex shrink-0 items-center gap-2">
+            {isOwn && (isVolunteer || session.roleKey === "volunteer" || hasPermission(store, session.roleKey, "attendance.verify")) && chapter && (
+              <Link href={`/chapter/${chapter.slug}/attendance`}>
+                <Button variant="orange" className="flex items-center gap-2 font-bold shadow-sm">
+                  <QrCode size={14} />
+                  Take Attendance
+                </Button>
+              </Link>
+            )}
             {isOwn && (
               <Link href="/referrals">
                 <Button variant="secondary" className="flex items-center gap-2">
@@ -336,6 +371,34 @@ export default function ProfilePage({
           </div>
         </div>
       </div>
+
+      {/* Volunteer Quick-Access Attendance Panel */}
+      {isVolunteer && chapter && (
+        <div className="mb-6 rounded-[var(--radius-lg)] border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-[var(--shadow-sm)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+              <QrCode size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="font-bold text-sm text-text">Chapter Volunteer Desk</p>
+                <span className="rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                  Active Volunteer
+                </span>
+              </div>
+              <p className="text-xs text-text-dim mt-0.5">
+                Appointed volunteer for {chapter.name}. You are authorized to scan attendee QR codes and take attendance for chapter events.
+              </p>
+            </div>
+          </div>
+          <Link href={`/chapter/${chapter.slug}/attendance`}>
+            <Button variant="orange" className="text-xs font-bold shrink-0 flex items-center gap-2">
+              <QrCode size={13} />
+              Take Attendance →
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid gap-3 sm:grid-cols-4">

@@ -40,7 +40,8 @@ export function canVerifyAttendance(roleKey: RoleKey): boolean {
     roleKey === "media_lead" ||
     roleKey === "media_team" ||
     roleKey === "innovation_lead" ||
-    roleKey === "innovation_team"
+    roleKey === "innovation_team" ||
+    roleKey === "volunteer"
   );
 }
 

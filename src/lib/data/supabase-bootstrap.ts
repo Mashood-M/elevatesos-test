@@ -553,28 +553,50 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       return true;
     });
 
+    let ltRowsFinal = ltRows ?? [];
+    let laRowsFinal = laRows ?? [];
+
+    if ((ltRowsFinal.length === 0 || laRowsFinal.length === 0) && typeof window !== "undefined") {
+      try {
+        const leadRes = await fetch("/api/mutations?type=leadership_data");
+        if (leadRes.ok) {
+          const leadJson = await leadRes.json();
+          if (leadJson.ok) {
+            if (ltRowsFinal.length === 0 && Array.isArray(leadJson.terms)) {
+              ltRowsFinal = leadJson.terms;
+            }
+            if (laRowsFinal.length === 0 && Array.isArray(leadJson.assignments)) {
+              laRowsFinal = leadJson.assignments;
+            }
+          }
+        }
+      } catch (leadErr) {
+        console.warn("[Elevates Bootstrap] Could not fetch leadership fallback:", leadErr);
+      }
+    }
+
     const leadershipTerms =
-      ltRows?.map((lt: Record<string, any>) => ({
+      ltRowsFinal.map((lt: Record<string, any>) => ({
         id: lt.id,
-        chapterId: lt.chapter_id,
-        academicYear: lt.academic_year,
+        chapterId: lt.chapterId ?? lt.chapter_id,
+        academicYear: lt.academicYear ?? lt.academic_year,
         title: lt.title,
-        startDate: lt.start_date,
-        endDate: lt.end_date,
+        startDate: lt.startDate ?? lt.start_date,
+        endDate: lt.endDate ?? lt.end_date,
         status: lt.status,
-        handoverNotes: lt.handover_notes ?? undefined,
-        createdAt: lt.created_at ?? undefined,
-      })) ?? [];
+        handoverNotes: lt.handoverNotes ?? lt.handover_notes ?? undefined,
+        createdAt: lt.createdAt ?? lt.created_at ?? undefined,
+      }));
 
     const leadershipAssignments =
-      laRows?.map((la: Record<string, any>) => ({
+      laRowsFinal.map((la: Record<string, any>) => ({
         id: la.id,
-        termId: la.term_id,
-        userId: la.user_id,
-        roleKey: la.role_key,
+        termId: la.termId ?? la.term_id,
+        userId: la.userId ?? la.user_id,
+        roleKey: la.roleKey ?? la.role_key,
         title: la.title,
-        createdAt: la.created_at ?? undefined,
-      })) ?? [];
+        createdAt: la.createdAt ?? la.created_at ?? undefined,
+      }));
 
     const eventPermissions =
       epRows?.map((ep: Record<string, any>) => ({

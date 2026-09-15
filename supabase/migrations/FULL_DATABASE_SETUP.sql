@@ -1175,6 +1175,16 @@ CREATE POLICY "Executive or HQ write user_roles" ON public.user_roles FOR ALL US
   public.is_hq_user() OR (chapter_id IS NOT NULL AND public.is_chapter_executive(chapter_id))
 );
 
+DROP POLICY IF EXISTS "Public read leadership_terms" ON public.leadership_terms;
+CREATE POLICY "Public read leadership_terms" ON public.leadership_terms FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Manage leadership_terms" ON public.leadership_terms;
+CREATE POLICY "Manage leadership_terms" ON public.leadership_terms FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public read leadership_assignments" ON public.leadership_assignments;
+CREATE POLICY "Public read leadership_assignments" ON public.leadership_assignments FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Manage leadership_assignments" ON public.leadership_assignments;
+CREATE POLICY "Manage leadership_assignments" ON public.leadership_assignments FOR ALL USING (true) WITH CHECK (true);
+
 DROP POLICY IF EXISTS "Public read departments" ON public.departments;
 CREATE POLICY "Public read departments" ON public.departments FOR SELECT USING (true);
 DROP POLICY IF EXISTS "Manage departments" ON public.departments;

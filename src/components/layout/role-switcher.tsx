@@ -38,6 +38,7 @@ const HQ_ROLES: SwitchableRole[] = [
 
 const CHAPTER_ROLES: SwitchableRole[] = [
   { label: "Campus Lead", roleKey: "campus_lead",          isChapterScoped: true },
+  { label: "Volunteer",   roleKey: "volunteer",            isChapterScoped: true },
   { label: "Class Rep",   roleKey: "class_representative", isChapterScoped: true },
   { label: "Faculty",     roleKey: "faculty_coordinator",  isChapterScoped: true },
   { label: "Student",     roleKey: "student",              isChapterScoped: true },
@@ -49,6 +50,7 @@ const ALL_SWITCHABLE_ROLES: SwitchableRole[] = [...HQ_ROLES, ...CHAPTER_ROLES];
 const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "student",
+  "volunteer",
   "faculty_coordinator",
   "class_representative",
   "campus_lead",

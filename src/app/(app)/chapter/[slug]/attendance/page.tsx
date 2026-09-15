@@ -126,8 +126,24 @@ export default function ChapterAttendancePage({
 
   const isFaculty = isFacultyRole(session.roleKey);
 
+  const isVolunteerUser = useMemo(() => {
+    return (
+      session.roleKey === "volunteer" ||
+      store.userRoles.some(
+        (ur) =>
+          ur.userId === session.userId &&
+          (ur.roleKey === "volunteer" ||
+            store.roles.find((r) => r.id === ur.roleId)?.key === "volunteer"),
+      ) ||
+      store.leadershipAssignments.some(
+        (la) => la.userId === session.userId && la.roleKey === "volunteer",
+      )
+    );
+  }, [session.roleKey, session.userId, store.userRoles, store.leadershipAssignments, store.roles]);
+
   const canVerify =
     isCampusLead ||
+    isVolunteerUser ||
     hasPermission(
       store,
       session.roleKey,

@@ -29,7 +29,7 @@ import { hasPermission } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { cohortRepIds } from "@/lib/forms/helpers";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { AttendanceStatus, ClassCohort, EventAttendanceSession, VolunteerGroup } from "@/types";
+import type { AttendanceStatus, ClassCohort, EventAttendanceSession, VolunteerGroup, EventRegistration } from "@/types";
 
 type DeskMessage = { tone: "ok" | "err"; text: string };
 
@@ -130,26 +130,26 @@ export default function ChapterAttendancePage({
 
   const isFaculty = isFacultyRole(session.roleKey);
 
-  const isVolunteerUser = useMemo(() => {
-    return (
-      session.roleKey === "volunteer" ||
-      store.userRoles.some(
-        (ur) =>
-          ur.userId === session.userId &&
-          (ur.roleKey === "volunteer" ||
-            store.roles.find((r) => r.id === ur.roleId)?.key === "volunteer"),
-      ) ||
-      store.leadershipAssignments.some(
-        (la) => la.userId === session.userId && la.roleKey === "volunteer",
-      )
+  const userAssignedVolunteerEventId = useMemo(() => {
+    if (!session.userId || !chapter) return null;
+    const group = (store.volunteerGroups || []).find(
+      (g) => g.chapterId === chapter.id && g.memberIds?.includes(session.userId) && g.eventId,
     );
-  }, [session.roleKey, session.userId, store.userRoles, store.leadershipAssignments, store.roles]);
+    if (group?.eventId) return group.eventId;
+    const direct = store.events.find(
+      (e) => e.chapterId === chapter.id && e.volunteerStudentIds?.includes(session.userId),
+    );
+    return direct?.id ?? null;
+  }, [store.volunteerGroups, store.events, chapter, session.userId]);
 
   const queryEventId = searchParams.get("eventId");
 
   const events = useMemo(() => {
     if (!chapter) return [];
-    const chapterEvents = store.events.filter((e) => e.chapterId === chapter.id);
+    const chapterEvents = store.events
+      .filter((e) => e.chapterId === chapter.id)
+      .slice()
+      .sort((a, b) => new Date(b.startsAt || b.publishedAt || 0).getTime() - new Date(a.startsAt || a.publishedAt || 0).getTime());
     const preferred = chapterEvents.filter((e) =>
       [
         "ongoing",
@@ -163,12 +163,19 @@ export default function ChapterAttendancePage({
   }, [chapter, store.events]);
 
   useEffect(() => {
-    if (!queryEventId) return;
-    const exists = store.events.some(
-      (e) => e.id === queryEventId && e.chapterId === chapter?.id,
-    );
-    if (exists) setSelectedEvent(queryEventId);
-  }, [queryEventId, store.events, chapter?.id]);
+    if (queryEventId) {
+      const exists = store.events.some(
+        (e) => e.id === queryEventId && e.chapterId === chapter?.id,
+      );
+      if (exists) {
+        setSelectedEvent(queryEventId);
+        return;
+      }
+    }
+    if (userAssignedVolunteerEventId && !selectedEvent) {
+      setSelectedEvent(userAssignedVolunteerEventId);
+    }
+  }, [queryEventId, userAssignedVolunteerEventId, selectedEvent, store.events, chapter?.id]);
 
   const eventId = selectedEvent || events[0]?.id || "";
   const hasEvent = Boolean(eventId);
@@ -177,11 +184,18 @@ export default function ChapterAttendancePage({
     return getUserVolunteerPowers(store, session.userId, eventId);
   }, [store, session.userId, eventId]);
 
+  const isAssignedEventVolunteer = useMemo(() => {
+    if (!eventId || !session.userId) return false;
+    const inTeam = (store.volunteerGroups || []).some(
+      (g) => g.chapterId === chapter?.id && g.eventId === eventId && g.memberIds?.includes(session.userId),
+    );
+    const inDirect = Boolean(store.events.find((e) => e.id === eventId)?.volunteerStudentIds?.includes(session.userId));
+    return inTeam || inDirect || volunteerPowers.powers.canTakeAttendance || volunteerPowers.powers.canScanQr;
+  }, [eventId, session.userId, chapter?.id, store.volunteerGroups, store.events, volunteerPowers]);
+
   const canVerify =
     isCampusLead ||
-    isVolunteerUser ||
-    volunteerPowers.powers.canTakeAttendance ||
-    volunteerPowers.powers.canScanQr ||
+    isAssignedEventVolunteer ||
     hasPermission(
       store,
       session.roleKey,
@@ -190,7 +204,7 @@ export default function ChapterAttendancePage({
 
   const canRegisterWalkins =
     isCampusLead ||
-    volunteerPowers.powers.canRegisterWalkins ||
+    (isAssignedEventVolunteer && volunteerPowers.powers.canRegisterWalkins) ||
     hasPermission(store, session.roleKey, "registration.approve");
 
   const isReadOnly = isFaculty || (!canVerify && !isCampusLead);
@@ -243,7 +257,39 @@ export default function ChapterAttendancePage({
   }, [store.registrations, eventId]);
 
   const approvedRegs = useMemo(() => {
-    let raw = eventRegistrations.filter((r) => r.status === "approved");
+    let raw = [...eventRegistrations.filter((r) => r.status === "approved")];
+
+    // Collect all assigned volunteer student IDs for this event (from volunteerStudentIds, assigned volunteer teams, volunteerAssignments)
+    const assignedVolIds = new Set<string>([
+      ...(currentEvent?.volunteerStudentIds || []),
+    ]);
+    (store.volunteerGroups || [])
+      .filter((g) => g.eventId === eventId)
+      .forEach((g) => {
+        (g.memberIds || []).forEach((mId) => assignedVolIds.add(mId));
+      });
+    (store.volunteerAssignments || [])
+      .filter((a) => a.eventId === eventId && a.status === "active")
+      .forEach((a) => assignedVolIds.add(a.userId));
+
+    // Ensure all assigned team volunteers are listed in the roster
+    assignedVolIds.forEach((vUserId) => {
+      if (!raw.some((r) => r.userId === vUserId)) {
+        const u = store.profiles.find((p) => p.id === vUserId);
+        if (u) {
+          raw.push({
+            id: `reg-vol-${vUserId}`,
+            eventId: eventId,
+            userId: vUserId,
+            status: "approved",
+            answers: {},
+            qrCode: u.elevatesId || `VOL-${vUserId.slice(0, 8).toUpperCase()}`,
+            createdAt: new Date().toISOString(),
+          } as EventRegistration);
+        }
+      }
+    });
+
     if (session.roleKey === "class_representative" && myClassCohort) {
       raw = raw.filter((reg) => {
         const user = store.profiles.find((p) => p.id === reg.userId);
@@ -273,7 +319,7 @@ export default function ChapterAttendancePage({
       }
     }
     return regs;
-  }, [eventRegistrations, store.profiles, session.roleKey, myClassCohort]);
+  }, [eventRegistrations, store.profiles, session.roleKey, myClassCohort, currentEvent, eventId, store.volunteerGroups, store.volunteerAssignments]);
 
   const waitlistedRegs = useMemo(() => {
     return eventRegistrations.filter(
@@ -1612,11 +1658,14 @@ export default function ChapterAttendancePage({
                 {events.length === 0 ? (
                   <option value="">No events in this chapter</option>
                 ) : (
-                  events.map((ev) => (
-                    <option key={ev.id} value={ev.id}>
-                      {ev.title} · {ev.status.replaceAll("_", " ")}
-                    </option>
-                  ))
+                  events.map((ev) => {
+                    const isMyAssigned = ev.id === userAssignedVolunteerEventId;
+                    return (
+                      <option key={ev.id} value={ev.id}>
+                        {isMyAssigned ? "★ " : ""}{ev.title} · {ev.status.replaceAll("_", " ")}{isMyAssigned ? " (Your Assigned Event)" : ""}
+                      </option>
+                    );
+                  })
                 )}
               </Select>
             </div>
@@ -1711,11 +1760,14 @@ export default function ChapterAttendancePage({
               {events.length === 0 ? (
                 <option value="">No events</option>
               ) : (
-                events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.title} · {ev.status.replaceAll("_", " ")}
-                  </option>
-                ))
+                events.map((ev) => {
+                  const isMyAssigned = ev.id === userAssignedVolunteerEventId;
+                  return (
+                    <option key={ev.id} value={ev.id}>
+                      {isMyAssigned ? "★ " : ""}{ev.title} · {ev.status.replaceAll("_", " ")}{isMyAssigned ? " (Your Assigned Event)" : ""}
+                    </option>
+                  );
+                })
               )}
             </Select>
           </div>
@@ -2173,7 +2225,7 @@ export default function ChapterAttendancePage({
                               teamMember.role === "coordinator" && "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
                               teamMember.role === "volunteer" && "bg-amber-500/15 text-amber-500 border-amber-500/30",
                             )}>
-                              {teamMember.role === "speaker" ? "Speaker · Auto" : teamMember.role === "coordinator" ? "Coordinator · Auto" : "Volunteer · Auto"}
+                              {teamMember.role === "speaker" ? "Speaker · Auto" : teamMember.role === "coordinator" ? "Coordinator · Auto" : "Volunteer"}
                             </span>
                           )}
                         </div>

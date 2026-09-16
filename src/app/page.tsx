@@ -18,19 +18,6 @@ export default function LandingPage() {
         <p className="font-[family-name:var(--font-display)] text-[20px] font-extrabold tracking-[-0.04em]">
           Elevates
         </p>
-        <nav className="flex items-center gap-4">
-          <Link
-            href="/eos"
-            className="hidden text-[13px] text-white/55 hover:text-white sm:inline"
-          >
-            Playbook
-          </Link>
-          <Link href="/login">
-            <Button variant="orange" className="h-9">
-              Open app
-            </Button>
-          </Link>
-        </nav>
       </header>
 
       <main className="relative mx-auto flex min-h-[calc(100dvh-5.5rem)] max-w-[var(--content-max)] flex-col justify-center px-6 pb-20 pt-10">
@@ -51,13 +38,11 @@ export default function LandingPage() {
               <ArrowRight size={16} />
             </Button>
           </Link>
-          <Link href="/join">
-            <Button
-              variant="ghost"
-              className="h-11 border-white/15 px-5 text-white hover:bg-white/8"
-            >
-              Join a chapter
-            </Button>
+          <Link
+            href="/join"
+            className="inline-flex h-11 items-center justify-center rounded-full border border-white/20 bg-white/10 px-5 text-[13px] font-semibold text-white tracking-[-0.01em] transition hover:bg-white/15 hover:border-white/35 active:scale-95 shadow-[var(--shadow-sm)]"
+          >
+            Join a chapter
           </Link>
         </div>
       </main>

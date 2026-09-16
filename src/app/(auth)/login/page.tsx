@@ -190,7 +190,12 @@ function LoginForm() {
           localStorage.setItem("elevates_active_role_key", roleKey);
           localStorage.setItem("elevates_known_top_role", roleKey);
         }
-        if (chapterId) localStorage.setItem("elevates_active_chapter_id", chapterId);
+        if (chapterId) {
+          localStorage.setItem("elevates_active_chapter_id", chapterId);
+        } else {
+          localStorage.removeItem("elevates_active_chapter_id");
+          localStorage.removeItem("elevates_locked_chapter_id");
+        }
       }
 
       window.location.href = destination;

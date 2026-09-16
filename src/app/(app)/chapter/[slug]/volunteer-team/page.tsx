@@ -1,66 +1,37 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
-import { useAppDialogs } from "@/components/ui/app-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
-import { Stat } from "@/components/ui/stat";
-import { VolunteerPowersModal } from "@/components/chapter/volunteer-powers-modal";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { cn, formatDate, initials } from "@/lib/utils";
 import {
-  DEFAULT_VOLUNTEER_POWERS,
-  VOLUNTEER_POWER_DEFINITIONS,
-  getUserVolunteerPowers,
-} from "@/lib/volunteers";
-import { formatDate, initials } from "@/lib/utils";
-import {
+  ArrowLeftRight,
+  Calendar,
   Check,
-  ChevronRight,
-  Layers,
   Plus,
   QrCode,
   Search,
-  Settings2,
-  Sparkles,
-  Tag,
   Trash2,
   UserPlus,
   Users,
   X,
-  Calendar,
+  AlertCircle,
 } from "lucide-react";
-import type {
-  VolunteerGroup,
-  VolunteerGroupType,
-  VolunteerPowers,
-} from "@/types";
+import type { LeadershipStatus, Profile, VolunteerGroup } from "@/types";
 
-type GroupDraft = {
-  name: string;
-  description: string;
-  groupType: VolunteerGroupType;
-  eventId: string;
-  validFrom: string;
-  validTo: string;
-  powers: VolunteerPowers;
+type ReplacingVolunteerState = {
+  userId: string;
+  studentName: string;
+  teamId: string;
 };
-
-const emptyGroupDraft = (): GroupDraft => ({
-  name: "",
-  description: "",
-  groupType: "listed",
-  eventId: "",
-  validFrom: new Date().toISOString().slice(0, 10),
-  validTo: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-  powers: { ...DEFAULT_VOLUNTEER_POWERS },
-});
 
 export default function ChapterVolunteerTeamPage({
   params,
@@ -70,20 +41,17 @@ export default function ChapterVolunteerTeamPage({
   const { slug } = use(params);
   const {
     store,
+    addLeadershipAssignment,
+    removeLeadershipAssignment,
+    createLeadershipTerm,
     createVolunteerGroup,
     updateVolunteerGroup,
     deleteVolunteerGroup,
     addVolunteerToGroup,
     removeVolunteerFromGroup,
-    updateVolunteerMemberPowers,
-    assignVolunteerToEvent,
-    assignVolunteerGroupToEvent,
-    applyVolunteerPresetToEvent,
-    removeVolunteerAssignment,
+    updateEvent,
   } = useStore();
-
   const { session } = useCurrentUser();
-  const { confirm } = useAppDialogs();
   const chapter = store.chapters.find((c) => c.slug === slug);
 
   const canManage =
@@ -92,123 +60,147 @@ export default function ChapterVolunteerTeamPage({
     session.roleKey === "chairman" ||
     hasPermission(store, session.roleKey, "leadership.manage");
 
-  // Navigation tab
-  const [activeTab, setActiveTab] = useState<"groups" | "directory" | "events">("groups");
-  const [groupTypeFilter, setGroupTypeFilter] = useState<"all" | "presets" | "events" | "listed">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [flash, setFlash] = useState("");
 
-  // Group creation / editing modal
-  const [showGroupModal, setShowGroupModal] = useState(false);
-  const [isPresetModal, setIsPresetModal] = useState(false);
-  const [presetSelectedStudentIds, setPresetSelectedStudentIds] = useState<string[]>([]);
-  const [presetStudentSearch, setPresetStudentSearch] = useState("");
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [groupDraft, setGroupDraft] = useState<GroupDraft>(emptyGroupDraft);
-  const [groupError, setGroupError] = useState("");
+  // Top Bar: Event Selection for Assignment
+  const [selectedEventIdForAssign, setSelectedEventIdForAssign] = useState<string>("");
 
-  // Quick preset application popover target
-  const [applyPresetTargetSquad, setApplyPresetTargetSquad] = useState<VolunteerGroup | null>(null);
-  const [assignPresetTargetGroup, setAssignPresetTargetGroup] = useState<VolunteerGroup | null>(null);
+  // Active Team Tab in Left Card (e.g. Team 1, Team 2, Team 3...)
+  const [activeTeamId, setActiveTeamId] = useState<string>("");
 
-  // Powers modal state (can target a group OR an individual student in a group)
-  const [powersTarget, setPowersTarget] = useState<{
-    type: "group" | "member";
-    groupId: string;
-    userId?: string;
-    title: string;
-    initialPowers: VolunteerPowers;
-    isOverride?: boolean;
-  } | null>(null);
-
-  // Add members to group modal
-  const [addingMembersGroupId, setAddingMembersGroupId] = useState<string | null>(null);
-  const [selectedStudentForGroup, setSelectedStudentForGroup] = useState<string>("");
-  const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
-
-  // Quick event assignment modal (for individual students or unlinked pools)
-  const [assignEventTarget, setAssignEventTarget] = useState<{
-    targetType: "group" | "student";
-    groupId?: string;
-    studentId?: string;
-    title: string;
-  } | null>(null);
-  const [selectedEventId, setSelectedEventId] = useState<string>("");
-  const [assignStudentId, setAssignStudentId] = useState<string>("");
-  const [assignStudentSearch, setAssignStudentSearch] = useState<string>("");
-
-  // Expanded group details
-  const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
+  // Replace Volunteer Modal State
+  const [replacingVolunteer, setReplacingVolunteer] = useState<ReplacingVolunteerState | null>(null);
+  const [replacementStudentId, setReplacementStudentId] = useState<string>("");
 
   function flashMsg(msg: string) {
     setFlash(msg);
-    window.setTimeout(() => setFlash(""), 2500);
+    window.setTimeout(() => setFlash(""), 2800);
   }
 
-  const startAddVolunteerStudent = (targetGroupId?: string) => {
-    if (chapterGroups.length === 0) {
-      flashMsg("Please create a volunteer squad first before adding students.");
-      startCreateGroup("listed");
-      return;
-    }
-    const gid = targetGroupId || chapterGroups[0].id;
-    setAddingMembersGroupId(gid);
-    setSelectedStudentForGroup("");
-    setStudentSearchQuery("");
-  };
+  // Active term for chapter
+  const terms = useMemo(() => {
+    if (!chapter) return [];
+    const rank = (s: LeadershipStatus) =>
+      s === "active" ? 0 : s === "upcoming" ? 1 : 2;
+    return store.leadershipTerms
+      .filter((t) => t.chapterId === chapter.id)
+      .slice()
+      .sort((a, b) => {
+        const r = rank(a.status) - rank(b.status);
+        if (r !== 0) return r;
+        return b.startDate.localeCompare(a.startDate);
+      });
+  }, [store.leadershipTerms, chapter]);
 
-  function toggleGroupExpand(groupId: string) {
-    setExpandedGroupIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(groupId)) next.delete(groupId);
-      else next.add(groupId);
-      return next;
+  const activeTerm = terms.find((t) => t.status === "active") ?? terms[0];
+
+  function ensureActiveTermId(): string {
+    if (!chapter) return "term-default";
+    if (activeTerm?.id) return activeTerm.id;
+    const existing = store.leadershipTerms.find((t) => t.chapterId === chapter.id);
+    if (existing?.id) return existing.id;
+    const created = createLeadershipTerm({
+      chapterId: chapter.id,
+      academicYear: "2025-26",
+      title: "Permanent Volunteer Team",
+      startDate: new Date().toISOString().slice(0, 10),
+      endDate: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+      status: "active",
+      handoverNotes: "Auto-initialized chapter volunteer team",
     });
+    return created?.id ?? "term-default";
   }
 
-  // Chapter-scoped records
-  const chapterGroups = useMemo(() => {
+  // Chapter Events (sorted latest-first)
+  const chapterEvents = useMemo(() => {
+    if (!chapter) return [];
+    return store.events
+      .filter((e) => e.chapterId === chapter.id)
+      .slice()
+      .sort((a, b) => new Date(b.startsAt || b.publishedAt || 0).getTime() - new Date(a.startsAt || a.publishedAt || 0).getTime());
+  }, [store.events, chapter]);
+
+  // Chapter Volunteer Teams / Groups (Tabs: Team 1, Team 2, ...)
+  // Strictly filter to numbered teams (Team 1, Team 2...) created by the campus lead via the [+] button
+  const chapterTeams = useMemo(() => {
     if (!chapter) return [];
     return (store.volunteerGroups || [])
-      .filter((g) => g.chapterId === chapter.id)
+      .filter(
+        (g) =>
+          g.chapterId === chapter.id &&
+          g.groupType === "listed" &&
+          /^Team\s+\d+$/i.test(g.name.trim()),
+      )
       .slice()
-      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      .sort((a, b) => {
+        const numA = parseInt(a.name.replace(/\D/g, ""), 10) || 0;
+        const numB = parseInt(b.name.replace(/\D/g, ""), 10) || 0;
+        if (numA !== numB) return numA - numB;
+        return (a.createdAt || "").localeCompare(b.createdAt || "");
+      });
   }, [store.volunteerGroups, chapter]);
 
-  const chapterPresets = useMemo(() => {
-    return chapterGroups.filter((g) => Boolean(g.isPreset));
-  }, [chapterGroups]);
+  // Keep activeTeamId synchronized with available numbered teams
+  useEffect(() => {
+    if (chapterTeams.length > 0) {
+      if (!activeTeamId || !chapterTeams.some((t) => t.id === activeTeamId)) {
+        setActiveTeamId(chapterTeams[0].id);
+        setSelectedEventIdForAssign(chapterTeams[0].eventId || "");
+      }
+    } else {
+      setActiveTeamId("");
+      setSelectedEventIdForAssign("");
+    }
+  }, [chapterTeams, activeTeamId]);
 
-  const chapterEventSquads = useMemo(() => {
-    return chapterGroups.filter((g) => Boolean(g.eventId));
-  }, [chapterGroups]);
+  // Currently Selected / Active Team
+  const activeTeam: VolunteerGroup | null = useMemo(() => {
+    if (chapterTeams.length === 0) return null;
+    return chapterTeams.find((t) => t.id === activeTeamId) ?? chapterTeams[0];
+  }, [chapterTeams, activeTeamId]);
 
-  const chapterRegularPools = useMemo(() => {
-    return chapterGroups.filter((g) => !g.isPreset && !g.eventId);
-  }, [chapterGroups]);
+  // Event assigned to active team
+  const activeTeamAssignedEvent = useMemo(() => {
+    if (!activeTeam?.eventId) return null;
+    return chapterEvents.find((e) => e.id === activeTeam.eventId) ?? null;
+  }, [activeTeam, chapterEvents]);
 
-  const filteredGroups = useMemo(() => {
-    return chapterGroups.filter((g) => {
-      if (groupTypeFilter === "presets" && !g.isPreset) return false;
-      if (groupTypeFilter === "events" && !g.eventId) return false;
-      if (groupTypeFilter === "listed" && (g.isPreset || g.eventId)) return false;
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase();
-      return (
-        g.name.toLowerCase().includes(q) ||
-        (g.description && g.description.toLowerCase().includes(q))
-      );
-    });
-  }, [chapterGroups, groupTypeFilter, searchQuery]);
+  // When active team changes, sync top event selector
+  useEffect(() => {
+    if (activeTeam) {
+      setSelectedEventIdForAssign(activeTeam.eventId || "");
+    }
+  }, [activeTeam?.id, activeTeam?.eventId]);
 
-  const chapterAssignments = useMemo(() => {
-    if (!chapter) return [];
-    return (store.volunteerAssignments || [])
-      .filter((a) => a.chapterId === chapter.id)
-      .slice()
-      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  }, [store.volunteerAssignments, chapter]);
+  // Active Team Member IDs
+  const activeTeamMemberIds = useMemo(() => {
+    return new Set(activeTeam?.memberIds || []);
+  }, [activeTeam]);
 
+  // Mapping: studentId -> which event & team they are assigned to
+  // Rule: One student or team cannot manage two events at the same time
+  const studentEventMap = useMemo(() => {
+    const map = new Map<string, { eventId: string; eventTitle: string; teamId: string; teamName: string }>();
+
+    for (const t of chapterTeams) {
+      if (t.eventId && t.memberIds) {
+        const ev = chapterEvents.find((e) => e.id === t.eventId);
+        if (ev) {
+          for (const uId of t.memberIds) {
+            if (!map.has(uId)) {
+              map.set(uId, { eventId: ev.id, eventTitle: ev.title, teamId: t.id, teamName: t.name });
+            }
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [chapterTeams, chapterEvents]);
+
+  // Eligible students from the chapter
   const chapterStudents = useMemo(() => {
     if (!chapter) return [];
     return store.profiles
@@ -223,6 +215,19 @@ export default function ChapterVolunteerTeamPage({
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [store.profiles, chapter]);
 
+  // Students available for replacement in active team
+  const availableStudentsForReplacement = useMemo(() => {
+    return chapterStudents.filter((s) => {
+      if (activeTeamMemberIds.has(s.id)) return false;
+      const conflict = studentEventMap.get(s.id);
+      if (conflict && activeTeam?.eventId && conflict.eventId !== activeTeam.eventId) {
+        return false; // Busy with another event
+      }
+      return true;
+    });
+  }, [chapterStudents, activeTeamMemberIds, studentEventMap, activeTeam?.eventId]);
+
+  // Filtered students for search
   const filteredStudents = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return chapterStudents.filter((s) => {
@@ -235,312 +240,252 @@ export default function ChapterVolunteerTeamPage({
     });
   }, [chapterStudents, searchQuery]);
 
-  const currentAddingGroup = useMemo(() => {
-    return chapterGroups.find((g) => g.id === addingMembersGroupId);
-  }, [chapterGroups, addingMembersGroupId]);
-
-  const filteredAddStudents = useMemo(() => {
-    const q = studentSearchQuery.toLowerCase().trim();
-    if (!q) return chapterStudents;
-    return chapterStudents.filter((s) => {
-      return (
-        s.fullName.toLowerCase().includes(q) ||
-        (s.email && s.email.toLowerCase().includes(q)) ||
-        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
-        (s.department && s.department.toLowerCase().includes(q)) ||
-        (s.year && s.year.toLowerCase().includes(q))
-      );
+  // Instant Add New Team (Team 1, Team 2, Team 3...) - NO POPUP, 1-CLICK CREATION
+  function handleQuickAddTeam() {
+    if (!chapter) return;
+    const existingNums = chapterTeams.map((t) => {
+      const m = t.name.match(/\d+/);
+      return m ? parseInt(m[0], 10) : 0;
     });
-  }, [chapterStudents, studentSearchQuery]);
-
-  const filteredAssignStudents = useMemo(() => {
-    const q = assignStudentSearch.toLowerCase().trim();
-    if (!q) return chapterStudents;
-    return chapterStudents.filter((s) => {
-      return (
-        s.fullName.toLowerCase().includes(q) ||
-        (s.email && s.email.toLowerCase().includes(q)) ||
-        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
-        (s.department && s.department.toLowerCase().includes(q)) ||
-        (s.year && s.year.toLowerCase().includes(q))
-      );
+    let nextNumber = 1;
+    while (existingNums.includes(nextNumber)) {
+      nextNumber++;
+    }
+    const teamName = `Team ${nextNumber}`;
+    const created = createVolunteerGroup({
+      chapterId: chapter.id,
+      name: teamName,
+      groupType: "listed",
+      isPreset: true,
+      memberIds: [],
     });
-  }, [chapterStudents, assignStudentSearch]);
 
-  const filteredPresetStudents = useMemo(() => {
-    const q = presetStudentSearch.toLowerCase().trim();
-    if (!q) return chapterStudents;
-    return chapterStudents.filter((s) => {
-      return (
-        s.fullName.toLowerCase().includes(q) ||
-        (s.email && s.email.toLowerCase().includes(q)) ||
-        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
-        (s.department && s.department.toLowerCase().includes(q)) ||
-        (s.year && s.year.toLowerCase().includes(q))
-      );
-    });
-  }, [chapterStudents, presetStudentSearch]);
+    if (created?.id) {
+      setActiveTeamId(created.id);
+      setSelectedEventIdForAssign("");
+      flashMsg(`✓ Created ${teamName}!`);
+    }
+  }
 
-  // Set of student IDs who hold any active volunteer assignment or group membership
-  const volunteerSummaryMap = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        tags: string[];
-        groups: string[];
-        assignmentsCount: number;
-        hasAttendancePower: boolean;
+  // Assign Active Team to Selected Event
+  function handleAssignActiveTeamToEvent() {
+    if (!activeTeam || !chapter) return;
+    if (!selectedEventIdForAssign) {
+      flashMsg(`Please select an event from the dropdown to assign ${activeTeam.name}.`);
+      return;
+    }
+
+    const targetEventId = selectedEventIdForAssign;
+    const oldEventId = activeTeam.eventId;
+
+    // Rule: One team can only be assigned to one event at a time
+    const conflictingTeam = chapterTeams.find(
+      (t) => t.id !== activeTeam.id && t.eventId === targetEventId,
+    );
+    if (conflictingTeam) {
+      const evTitle = chapterEvents.find((e) => e.id === targetEventId)?.title || "event";
+      if (
+        !confirm(
+          `"${evTitle}" is currently assigned to "${conflictingTeam.name}". Do you want to switch it to "${activeTeam.name}"?`,
+        )
+      ) {
+        return;
       }
-    >();
+      updateVolunteerGroup(conflictingTeam.id, { eventId: undefined });
+    }
 
-    for (const s of chapterStudents) {
-      const vol = getUserVolunteerPowers(store, s.id);
-      if (vol.isVolunteer) {
-        map.set(s.id, {
-          tags: vol.activeTags,
-          groups: vol.activeGroups.map((g) => g.name),
-          assignmentsCount: vol.activeAssignments.length,
-          hasAttendancePower: vol.powers.canTakeAttendance || vol.powers.canScanQr,
+    // If changing event, unbind members from old event
+    if (oldEventId && oldEventId !== targetEventId) {
+      const oldEv = chapterEvents.find((e) => e.id === oldEventId);
+      if (oldEv && oldEv.volunteerStudentIds) {
+        const filtered = oldEv.volunteerStudentIds.filter((id) => !activeTeam.memberIds.includes(id));
+        updateEvent(oldEv.id, { volunteerStudentIds: filtered });
+      }
+    }
+
+    updateVolunteerGroup(activeTeam.id, { eventId: targetEventId });
+
+    // Sync team members to target event.volunteerStudentIds
+    if (activeTeam.memberIds.length > 0) {
+      const targetEv = chapterEvents.find((e) => e.id === targetEventId);
+      if (targetEv) {
+        const merged = Array.from(new Set([...(targetEv.volunteerStudentIds || []), ...activeTeam.memberIds]));
+        updateEvent(targetEv.id, { volunteerStudentIds: merged });
+      }
+    }
+
+    const assignedEv = chapterEvents.find((e) => e.id === targetEventId);
+    flashMsg(`✓ Assigned ${activeTeam.name} to "${assignedEv?.title || "event"}"!`);
+  }
+
+  // Clear Event from Active Team (Reset for future events while keeping volunteer roster intact)
+  function handleClearActiveTeamEvent() {
+    if (!activeTeam || !chapter) return;
+    const oldEventId = activeTeam.eventId;
+    if (oldEventId) {
+      const oldEv = chapterEvents.find((e) => e.id === oldEventId);
+      if (oldEv && oldEv.volunteerStudentIds) {
+        const filtered = oldEv.volunteerStudentIds.filter((id) => !activeTeam.memberIds.includes(id));
+        updateEvent(oldEv.id, { volunteerStudentIds: filtered });
+      }
+    }
+    updateVolunteerGroup(activeTeam.id, { eventId: undefined });
+    setSelectedEventIdForAssign("");
+    flashMsg(`✓ Cleared event assignment from ${activeTeam.name}!`);
+  }
+
+  // Add Student to Active Team
+  function handleAddStudentToActiveTeam(student: Profile) {
+    if (!activeTeam || !chapter) return;
+
+    // Conflict check: student cannot manage two events at a time
+    if (activeTeam.eventId) {
+      const conflict = studentEventMap.get(student.id);
+      if (conflict && conflict.eventId !== activeTeam.eventId) {
+        flashMsg(`⚠️ ${student.fullName} is already assigned to "${conflict.eventTitle}" in ${conflict.teamName}. A student cannot manage two events at the same time.`);
+        return;
+      }
+    }
+
+    if (activeTeamMemberIds.has(student.id)) return;
+
+    addVolunteerToGroup(activeTeam.id, student.id);
+
+    // If active team is already assigned to an event, sync event.volunteerStudentIds immediately
+    if (activeTeam.eventId) {
+      const ev = chapterEvents.find((e) => e.id === activeTeam.eventId);
+      if (ev) {
+        const merged = Array.from(new Set([...(ev.volunteerStudentIds || []), student.id]));
+        updateEvent(ev.id, { volunteerStudentIds: merged });
+      }
+    }
+
+    flashMsg(
+      activeTeamAssignedEvent
+        ? `✓ Added ${student.fullName} to ${activeTeam.name} (${activeTeamAssignedEvent.title})!`
+        : `✓ Added ${student.fullName} to ${activeTeam.name}!`,
+    );
+  }
+
+  // Remove Student from Active Team
+  function handleRemoveStudentFromActiveTeam(userId: string, studentName: string) {
+    if (!activeTeam || !chapter) return;
+    removeVolunteerFromGroup(activeTeam.id, userId);
+
+    // Also update event.volunteerStudentIds if team has an assigned event
+    if (activeTeam.eventId) {
+      const ev = chapterEvents.find((e) => e.id === activeTeam.eventId);
+      if (ev && ev.volunteerStudentIds?.includes(userId)) {
+        updateEvent(ev.id, {
+          volunteerStudentIds: ev.volunteerStudentIds.filter((id) => id !== userId),
         });
       }
     }
-    return map;
-  }, [chapterStudents, store]);
 
-  const totalVolunteersCount = volunteerSummaryMap.size;
-
-  if (!chapter) return <p className="text-orange">{"// Chapter not found"}</p>;
-
-  function startCreatePreset() {
-    setEditingGroupId(null);
-    setIsPresetModal(true);
-    setPresetSelectedStudentIds([]);
-    setPresetStudentSearch("");
-    setGroupDraft({
-      name: "",
-      description: "",
-      groupType: "listed",
-      eventId: "",
-      validFrom: new Date().toISOString().slice(0, 10),
-      validTo: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-      powers: { ...DEFAULT_VOLUNTEER_POWERS },
-    });
-    setGroupError("");
-    setShowGroupModal(true);
+    flashMsg(`Removed ${studentName} from ${activeTeam.name}`);
   }
 
-  function startEditPreset(preset: VolunteerGroup) {
-    setEditingGroupId(preset.id);
-    setIsPresetModal(true);
-    setPresetSelectedStudentIds([...preset.memberIds]);
-    setPresetStudentSearch("");
-    setGroupDraft({
-      name: preset.name,
-      description: preset.description || "",
-      groupType: "listed",
-      eventId: "",
-      validFrom: preset.validFrom || new Date().toISOString().slice(0, 10),
-      validTo: preset.validTo || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-      powers: { ...(preset.powers || DEFAULT_VOLUNTEER_POWERS) },
-    });
-    setGroupError("");
-    setShowGroupModal(true);
+  // Replace Volunteer in Active Team
+  function handleConfirmReplace() {
+    if (!replacingVolunteer || !replacementStudentId || !activeTeam) return;
+    const newStudent = store.profiles.find((p) => p.id === replacementStudentId);
+    if (!newStudent) return;
+
+    // Remove old student
+    handleRemoveStudentFromActiveTeam(replacingVolunteer.userId, replacingVolunteer.studentName);
+
+    // Add new student
+    handleAddStudentToActiveTeam(newStudent);
+
+    flashMsg(`✓ Replaced ${replacingVolunteer.studentName} with ${newStudent.fullName}!`);
+    setReplacingVolunteer(null);
+    setReplacementStudentId("");
   }
 
-  function startCreateGroup(type: VolunteerGroupType = "listed") {
-    setEditingGroupId(null);
-    setIsPresetModal(false);
-    setPresetSelectedStudentIds([]);
-    setPresetStudentSearch("");
-    setGroupDraft({
-      name: "",
-      description: "",
-      groupType: type,
-      eventId: "",
-      validFrom: new Date().toISOString().slice(0, 10),
-      validTo: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-      powers: { ...DEFAULT_VOLUNTEER_POWERS },
-    });
-    setGroupError("");
-    setShowGroupModal(true);
-  }
-
-  function startEditGroup(group: VolunteerGroup) {
-    if (group.isPreset) {
-      startEditPreset(group);
-      return;
-    }
-    setEditingGroupId(group.id);
-    setIsPresetModal(false);
-    setPresetSelectedStudentIds([...group.memberIds]);
-    setPresetStudentSearch("");
-    setGroupDraft({
-      name: group.name,
-      description: group.description || "",
-      groupType: group.groupType,
-      eventId: group.eventId || "",
-      validFrom: group.validFrom || new Date().toISOString().slice(0, 10),
-      validTo: group.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-      powers: { ...group.powers },
-    });
-    setGroupError("");
-    setShowGroupModal(true);
-  }
-
-  function handleSaveGroup() {
-    if (!chapter) return;
-    if (!groupDraft.name.trim()) {
-      setGroupError("Group name is required.");
-      return;
-    }
-
-    if (editingGroupId) {
-      updateVolunteerGroup(editingGroupId, {
-        name: groupDraft.name.trim(),
-        description: groupDraft.description.trim(),
-        groupType: groupDraft.groupType,
-        eventId: isPresetModal ? undefined : (groupDraft.eventId || undefined),
-        isPreset: isPresetModal,
-        ...(isPresetModal ? { memberIds: presetSelectedStudentIds } : {}),
-        validFrom: groupDraft.validFrom,
-        validTo: groupDraft.validTo,
-        powers: groupDraft.powers,
-      });
-      flashMsg(isPresetModal ? "✓ Volunteer preset updated!" : "✓ Volunteer squad updated!");
-    } else {
-      createVolunteerGroup({
-        chapterId: chapter.id,
-        name: groupDraft.name.trim(),
-        description: groupDraft.description.trim(),
-        groupType: groupDraft.groupType,
-        eventId: isPresetModal ? undefined : (groupDraft.eventId || undefined),
-        isPreset: isPresetModal,
-        memberIds: isPresetModal ? presetSelectedStudentIds : [],
-        validFrom: groupDraft.validFrom,
-        validTo: groupDraft.validTo,
-        powers: groupDraft.powers,
-      });
-      flashMsg(isPresetModal ? "✓ Volunteer preset created!" : "✓ Volunteer squad created!");
-    }
-
-    setShowGroupModal(false);
-  }
-
-  async function handleDeleteGroup(group: VolunteerGroup) {
-    const isPreset = Boolean(group.isPreset);
-    const ok = await confirm({
-      title: isPreset ? "Delete Volunteer Preset" : "Delete Volunteer Group",
-      description: isPreset
-        ? `Delete preset “${group.name}”? Reusable membership list will be removed.`
-        : `Delete group “${group.name}”? All members will be unassigned from this squad.`,
-      confirmLabel: isPreset ? "Delete Preset" : "Delete Group",
-      danger: true,
-    });
-    if (!ok) return;
-
-    deleteVolunteerGroup(group.id);
-    flashMsg(isPreset ? `Volunteer preset "${group.name}" removed.` : `Volunteer group "${group.name}" removed.`);
-  }
-
-  function handleAddMemberToGroup(groupId: string, studentId: string) {
-    if (!studentId) return;
-    addVolunteerToGroup(groupId, studentId);
-    flashMsg("✓ Added student to volunteer squad!");
-    setSelectedStudentForGroup("");
-  }
-
-  function handleQuickAddMemberToGroup(groupId: string, studentId: string) {
-    if (!studentId) return;
-    addVolunteerToGroup(groupId, studentId);
-    flashMsg("✓ Added student to squad!");
-  }
-
-  async function handleRemoveMemberFromGroup(group: VolunteerGroup, studentId: string) {
-    const student = store.profiles.find((p) => p.id === studentId);
-    const ok = await confirm({
-      title: "Remove from Squad",
-      description: `Remove ${student?.fullName || "this student"} from “${group.name}”?`,
-      confirmLabel: "Remove",
-      danger: true,
-    });
-    if (!ok) return;
-
-    removeVolunteerFromGroup(group.id, studentId);
-    flashMsg("Removed student from squad.");
-  }
-
-  function handleDirectAssignToEvent(group: VolunteerGroup) {
-    if (!group.eventId) return;
-    const event = store.events.find((e) => e.id === group.eventId);
-    assignVolunteerGroupToEvent(group.id, group.eventId);
-    flashMsg(`✓ Assigned all ${group.memberIds.length} squad volunteers directly to ${event?.title || "event"}!`);
-  }
-
-  function handleApplyPresetToSquad(presetId: string, squad: VolunteerGroup) {
-    const preset = chapterPresets.find((p) => p.id === presetId);
-    if (!preset) return;
-    if (squad.eventId) {
-      applyVolunteerPresetToEvent(preset.id, squad.eventId);
-      const ev = store.events.find((e) => e.id === squad.eventId);
-      flashMsg(`✓ Applied preset "${preset.name}" directly to ${ev?.title || "event"}!`);
-    } else {
-      for (const memberId of preset.memberIds) {
-        if (!squad.memberIds.includes(memberId)) {
-          addVolunteerToGroup(squad.id, memberId);
+  // Batch Appoint Selected Students to Active Team
+  function handleBatchAppoint() {
+    if (selectedStudentIds.length === 0 || !activeTeam) return;
+    let count = 0;
+    for (const sId of selectedStudentIds) {
+      if (!activeTeamMemberIds.has(sId)) {
+        const student = store.profiles.find((p) => p.id === sId);
+        if (student) {
+          // Check conflict
+          if (activeTeam.eventId) {
+            const conflict = studentEventMap.get(sId);
+            if (conflict && conflict.eventId !== activeTeam.eventId) {
+              continue; // Skip conflicted students
+            }
+          }
+          handleAddStudentToActiveTeam(student);
+          count++;
         }
       }
-      flashMsg(`✓ Added ${preset.memberIds.length} volunteers from "${preset.name}" to "${squad.name}"!`);
     }
-    setApplyPresetTargetSquad(null);
+    setSelectedStudentIds([]);
+    flashMsg(`✓ Added ${count} student(s) to ${activeTeam.name}!`);
   }
 
-  function handleAssignPresetToEvent(presetId: string, eventId: string) {
-    const preset = chapterPresets.find((p) => p.id === presetId);
-    const event = store.events.find((e) => e.id === eventId);
-    if (!preset || !event) return;
-    applyVolunteerPresetToEvent(preset.id, event.id);
-    flashMsg(`✓ Assigned preset "${preset.name}" directly to ${event.title}!`);
-    setAssignPresetTargetGroup(null);
-    setSelectedEventId("");
+  // Delete Team
+  function handleDeleteTeam(teamId: string, teamName: string) {
+    if (!confirm(`Are you sure you want to delete ${teamName}?`)) return;
+    const teamToDelete = chapterTeams.find((t) => t.id === teamId);
+    if (teamToDelete?.eventId && teamToDelete.memberIds?.length) {
+      const ev = chapterEvents.find((e) => e.id === teamToDelete.eventId);
+      if (ev && ev.volunteerStudentIds) {
+        const filtered = ev.volunteerStudentIds.filter((id) => !teamToDelete.memberIds.includes(id));
+        updateEvent(ev.id, { volunteerStudentIds: filtered });
+      }
+    }
+    deleteVolunteerGroup(teamId);
+    const remaining = chapterTeams.filter((t) => t.id !== teamId);
+    if (remaining.length > 0) {
+      setActiveTeamId(remaining[0].id);
+      setSelectedEventIdForAssign(remaining[0].eventId || "");
+    } else {
+      setActiveTeamId("");
+      setSelectedEventIdForAssign("");
+    }
+    flashMsg(`Deleted ${teamName}`);
   }
 
-  function handleAssignToEvent() {
-    if (!chapter || !assignEventTarget || !selectedEventId) return;
-    const event = store.events.find((e) => e.id === selectedEventId);
-    const eventName = event?.title || "event";
+  if (!chapter) {
+    return (
+      <div className="p-8 text-center text-text-dim">
+        Chapter not found.
+      </div>
+    );
+  }
 
-    if (assignEventTarget.targetType === "group" && assignEventTarget.groupId) {
-      assignVolunteerGroupToEvent(assignEventTarget.groupId, selectedEventId);
-      const group = chapterGroups.find((g) => g.id === assignEventTarget.groupId);
-      flashMsg(`✓ Assigned volunteers from "${group?.name || "squad"}" directly to ${eventName}!`);
-    } else if (assignEventTarget.targetType === "student") {
-      const targetStudentId = assignStudentId || assignEventTarget.studentId;
-      if (!targetStudentId) return;
-      const student = store.profiles.find((p) => p.id === targetStudentId);
-      assignVolunteerToEvent({
-        chapterId: chapter.id,
-        userId: targetStudentId,
-        eventId: selectedEventId,
-        tag: `Volunteer · ${eventName}`,
-        powers: { ...DEFAULT_VOLUNTEER_POWERS },
-        validFrom: event?.startsAt,
-        validTo: event?.endsAt,
-      });
-      flashMsg(`✓ Assigned ${student?.fullName || "student"} directly to ${eventName}!`);
-    }
-
-    setAssignEventTarget(null);
-    setSelectedEventId("");
-    setAssignStudentId("");
-    setAssignStudentSearch("");
+  if (session.roleKey === "class_representative") {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow={chapterEyebrow(session.roleKey, "programs")}
+          title="Volunteer Team"
+        />
+        <TerminalPanel title="access.restricted" accent="orange">
+          <p className="text-sm text-text-dim">
+            Class Representatives do not have permission to manage the chapter volunteer team.
+          </p>
+          <Link
+            href={`/chapter/${slug}`}
+            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
+          >
+            ← Back to chapter
+          </Link>
+        </TerminalPanel>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
+      {/* Top Page Header */}
       <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title="Volunteer Squads & Delegated Powers"
+        eyebrow={chapterEyebrow(session.roleKey, "programs")}
+        title="Volunteer Team"
+        description="Organize reusable volunteer squads, designate event crews, and configure attendance check-in permissions"
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
@@ -549,869 +494,314 @@ export default function ChapterVolunteerTeamPage({
               </span>
             ) : null}
             <Link href={`/chapter/${slug}/attendance`}>
-              <Button variant="orange" className="flex items-center gap-2 font-bold shadow-sm text-xs">
+              <Button variant="orange" className="flex items-center gap-2 font-bold shadow-sm">
                 <QrCode size={14} />
                 Attendance Desk
               </Button>
             </Link>
-            {canManage && (
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={() => startAddVolunteerStudent()}
-                  className="flex items-center gap-1.5 font-bold text-xs border border-border"
-                  title="Search and add students directly to a volunteer squad"
-                >
-                  <UserPlus size={14} className="text-[var(--accent)]" />
-                  + Add Student
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => startCreatePreset()}
-                  className="flex items-center gap-1.5 font-bold text-xs border border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
-                  title="Create reusable volunteer student preset"
-                >
-                  <Sparkles size={14} />
-                  + Create Preset
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => startCreateGroup("listed")}
-                  className="flex items-center gap-1.5 font-bold text-xs"
-                >
-                  <Plus size={14} />
-                  Create Squad
-                </Button>
-              </>
-            )}
           </div>
         }
       />
 
-      {/* Stats Overview in Finexy-light style */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Stat label="Total Active Volunteers" value={totalVolunteersCount} />
-        <Stat label="Volunteer Presets" value={chapterPresets.length} />
-        <Stat label="Event Squads" value={chapterEventSquads.length} />
-        <Stat label="Total Squads" value={chapterGroups.length} />
-      </div>
+      {/* TOP SECTION: Event Selection & Team Assignment Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-[12px] bg-bg-panel border border-border shadow-sm">
 
-      {/* Navigation Tabs & Search Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab("groups")}
-            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition flex items-center gap-1.5 ${
-              activeTab === "groups"
-                ? "bg-[var(--accent)] text-white shadow-sm"
-                : "text-text-dim hover:text-text hover:bg-bg-page"
-            }`}
-          >
-            <Layers size={13} />
-            Volunteer Groups ({chapterGroups.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("directory")}
-            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition flex items-center gap-1.5 ${
-              activeTab === "directory"
-                ? "bg-[var(--accent)] text-white shadow-sm"
-                : "text-text-dim hover:text-text hover:bg-bg-page"
-            }`}
-          >
-            <Users size={13} />
-            Student Directory & Tagging ({chapterStudents.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("events")}
-            className={`px-3 py-1.5 rounded-[10px] text-xs font-bold transition flex items-center gap-1.5 ${
-              activeTab === "events"
-                ? "bg-[var(--accent)] text-white shadow-sm"
-                : "text-text-dim hover:text-text hover:bg-bg-page"
-            }`}
-          >
-            <Calendar size={13} />
-            Event Assignments ({chapterAssignments.length})
-          </button>
-        </div>
+        {/* Left: label + [dropdown][button] as an inline group */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Calendar size={15} className="text-[var(--accent)] shrink-0" />
+          <span className="text-xs font-bold text-text shrink-0">Assign to Event:</span>
 
-        {/* Search Input */}
-        <div className="relative w-full sm:w-64">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-mute" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={
-              activeTab === "groups"
-                ? "Search volunteer groups..."
-                : "Search chapter students..."
-            }
-            className="pl-8 text-xs py-1.5 h-auto"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-mute hover:text-text"
+          {/* Dropdown + Button: same row, separate elements */}
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedEventIdForAssign}
+              onChange={(e) => setSelectedEventIdForAssign(e.target.value)}
+              className="text-xs py-1 h-8 bg-bg min-w-[200px] max-w-xs font-medium"
             >
-              <X size={12} />
-            </button>
-          )}
-        </div>
-      </div>
+              <option value="">-- Select an Event --</option>
+              {chapterEvents.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  {ev.title} {ev.status ? `· [${ev.status}]` : ""}
+                </option>
+              ))}
+            </Select>
 
-      {/* TAB 1: VOLUNTEER GROUPS (PRESETS, EVENT SQUADS, LISTED POOLS) */}
-      {activeTab === "groups" && (
-        <div className="space-y-4">
-          {/* Sub-filters for group types */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-bold text-text-dim uppercase tracking-wider mr-1">
-                Filter:
-              </span>
-              <button
-                type="button"
-                onClick={() => setGroupTypeFilter("all")}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
-                  groupTypeFilter === "all"
-                    ? "bg-bg-page border border-border text-text font-bold"
-                    : "text-text-dim hover:text-text"
-                }`}
+            {canManage && activeTeam && (
+              <Button
+                variant="orange"
+                className="h-8 px-3.5 text-xs flex items-center gap-1.5 font-bold shadow-sm shrink-0"
+                onClick={handleAssignActiveTeamToEvent}
+                disabled={!selectedEventIdForAssign}
+                title={`Assign ${activeTeam.name} to the selected event`}
               >
-                All Groups ({chapterGroups.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupTypeFilter("presets")}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 ${
-                  groupTypeFilter === "presets"
-                    ? "bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold"
-                    : "text-text-dim hover:text-text"
-                }`}
+                <Calendar size={13} />
+                Assign Team
+              </Button>
+            )}
+            {canManage && !activeTeam && (
+              <Button
+                variant="secondary"
+                className="h-8 px-3.5 text-xs flex items-center gap-1.5 font-bold opacity-50 cursor-not-allowed shrink-0"
+                disabled
+                title="Create a team first to assign it to an event"
               >
-                <Sparkles size={11} />
-                Volunteer Presets ({chapterPresets.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupTypeFilter("events")}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
-                  groupTypeFilter === "events"
-                    ? "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold"
-                    : "text-text-dim hover:text-text"
-                }`}
-              >
-                Event Squads ({chapterEventSquads.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupTypeFilter("listed")}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
-                  groupTypeFilter === "listed"
-                    ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold"
-                    : "text-text-dim hover:text-text"
-                }`}
-              >
-                Listed Pools ({chapterRegularPools.length})
-              </button>
-            </div>
-
-            {canManage && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => startAddVolunteerStudent()}
-                  className="text-xs font-bold border border-border h-auto py-1 px-2.5"
-                  title="Search and add students to squad"
-                >
-                  <UserPlus size={13} className="text-[var(--accent)] mr-1 inline" />
-                  + Add Student
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => startCreatePreset()}
-                  className="text-xs text-purple-600 dark:text-purple-400 border border-purple-500/30 h-auto py-1 px-2.5 font-bold hover:bg-purple-500/10 flex items-center gap-1"
-                >
-                  <Sparkles size={12} />
-                  + New Preset
-                </Button>
-                <Button
-                  variant="orange"
-                  onClick={() => startCreateGroup("listed")}
-                  className="text-xs font-bold h-auto py-1 px-2.5"
-                >
-                  + New Squad
-                </Button>
-              </div>
+                <Calendar size={13} />
+                Assign Team
+              </Button>
             )}
           </div>
+        </div>
 
-          {/* Groups List */}
-          {filteredGroups.length === 0 ? (
-            <TerminalPanel title="volunteer.groups" accent="orange">
-              <div className="py-12 text-center space-y-3">
+        {/* Right: current assignment status + clear */}
+        <div className="text-xs text-text-dim shrink-0">
+          {activeTeamAssignedEvent && activeTeam ? (
+            <div className="flex items-center gap-1.5">
+              <span>
+                <strong className="text-text">{activeTeam.name}</strong> is assigned to:{" "}
+                <strong className="text-[var(--accent)]">{activeTeamAssignedEvent.title}</strong>
+              </span>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={handleClearActiveTeamEvent}
+                  className="text-[11px] font-semibold text-text-dim hover:text-red-500 underline cursor-pointer transition"
+                  title="Clear event assignment while keeping team volunteers intact"
+                >
+                  Clear Event
+                </button>
+              )}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Main Split Interface: Appointed Members (Left) vs Student Directory (Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* LEFT PANEL: Volunteer Team with Tabs (Team 1, Team 2... and [+] button) */}
+        <div className="lg:col-span-7 space-y-4">
+          <TerminalPanel
+            title="Volunteer Team"
+            meta={activeTeam ? `${activeTeamMemberIds.size} Appointed in ${activeTeam.name}` : "0 Appointed"}
+            accent="green"
+            action={
+              activeTeam ? (
+                <div className="flex items-center gap-2">
+                  <Badge tone="green" className="font-bold text-[11px] px-2.5 py-0.5">
+                    {activeTeamMemberIds.size} Active Volunteers
+                  </Badge>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTeam(activeTeam.id, activeTeam.name)}
+                      className="text-text-dim hover:text-red-500 p-1 text-xs transition"
+                      title={`Delete ${activeTeam.name}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+              ) : null
+            }
+          >
+            {chapterTeams.length === 0 ? (
+              /* When NO teams have been created yet */
+              <div className="rounded-[12px] border border-dashed border-border/90 bg-bg p-8 text-center space-y-3.5">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
-                  <Layers size={24} />
+                  <Users size={24} />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-text">No Volunteer Groups Found</h4>
-                  <p className="text-xs text-text-dim max-w-md mx-auto mt-1">
-                    Create a <strong>Listed Group</strong> (saved reusable pool) or a <strong>Temp Squad</strong> (for a specific event) to easily assign student volunteers and grant attendance powers.
+                  <h4 className="font-bold text-sm text-text">No Teams Created Yet</h4>
+                  <p className="text-xs text-text-dim max-w-sm mx-auto mt-1">
+                    Click the button below to create <strong>Team 1</strong>. You can then appoint students and assign Team 1 to an event.
                   </p>
                 </div>
                 {canManage && (
                   <Button
                     variant="orange"
-                    onClick={() => startCreateGroup("listed")}
-                    className="text-xs font-bold"
+                    className="h-8 px-4 text-xs font-bold inline-flex items-center gap-1.5 shadow-sm"
+                    onClick={handleQuickAddTeam}
                   >
-                    Create First Volunteer Group
+                    <Plus size={14} strokeWidth={2.8} />
+                    Add Team 1
                   </Button>
                 )}
               </div>
-            </TerminalPanel>
-          ) : (
-            <div className="space-y-4">
-              {filteredGroups.map((group) => {
-                const isExpanded = expandedGroupIds.has(group.id);
-                const isPreset = Boolean(group.isPreset);
-                const isTemp = group.groupType === "temp";
-                const linkedEvent = group.eventId
-                  ? store.events.find((e) => e.id === group.eventId)
-                  : null;
-
-                const activePowersCount = Object.values(group.powers || {}).filter(Boolean).length;
-
-                return (
-                  <div
-                    key={group.id}
-                    className="rounded-[14px] border border-border/80 bg-bg shadow-sm hover:border-border transition overflow-hidden"
-                  >
-                    {/* Main Group Header Row */}
-                    <div className="p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                      <div className="flex items-start gap-3.5 min-w-0">
-                        <button
-                          type="button"
-                          onClick={() => toggleGroupExpand(group.id)}
-                          className="mt-1 flex h-6 w-6 items-center justify-center rounded-md border border-border text-text-mute hover:text-text transition shrink-0"
-                          title={isExpanded ? "Collapse roster" : "Expand roster"}
-                        >
-                          <ChevronRight
-                            size={14}
-                            className={`transition-transform duration-200 ${
-                              isExpanded ? "rotate-90" : ""
-                            }`}
-                          />
-                        </button>
-
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="font-bold text-sm text-text truncate">
-                              {group.name}
-                            </h3>
-                            {isPreset ? (
-                              <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
-                                <Sparkles size={11} /> Preset
-                              </span>
-                            ) : group.eventId ? (
-                              <Badge
-                                tone="amber"
-                                className="font-bold text-[10px] uppercase tracking-wider"
-                              >
-                                Event Squad
-                              </Badge>
-                            ) : isTemp ? (
-                              <Badge
-                                tone="amber"
-                                className="font-bold text-[10px] uppercase tracking-wider"
-                              >
-                                Temp Squad
-                              </Badge>
-                            ) : (
-                              <Badge
-                                tone="green"
-                                className="font-bold text-[10px] uppercase tracking-wider"
-                              >
-                                Listed Pool
-                              </Badge>
-                            )}
-
-                            {linkedEvent && (
-                              <Link
-                                href={`/chapter/${slug}/events/${linkedEvent.id}`}
-                                className="text-[11px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
-                              >
-                                <span>Event: {linkedEvent.title}</span>
-                              </Link>
-                            )}
-                          </div>
-
-                          {group.description && (
-                            <p className="text-xs text-text-dim mt-1 line-clamp-1">
-                              {group.description}
-                            </p>
-                          )}
-
-                          {/* Validity Period & Squad Metadata */}
-                          <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-text-mute">
-                            <span className="flex items-center gap-1">
-                              <Users size={12} className="text-text-dim" />
-                              <strong className="text-text font-mono">
-                                {group.memberIds.length}
-                              </strong>{" "}
-                              {isPreset ? "Students in Preset" : "Volunteers"}
-                            </span>
-
-                            {group.validFrom && !isPreset && (
-                              <span className="flex items-center gap-1">
-                                <Calendar size={12} className="text-text-dim" />
-                                Valid: {formatDate(group.validFrom)}
-                                {group.validTo ? ` → ${formatDate(group.validTo)}` : ""}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Active Powers Badges */}
-                          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-                            {VOLUNTEER_POWER_DEFINITIONS.map((def) => {
-                              const isEnabled = Boolean(group.powers?.[def.key]);
-                              if (!isEnabled) return null;
-                              return (
-                                <span
-                                  key={def.key}
-                                  className="inline-flex items-center gap-1 rounded bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
-                                >
-                                  <Check size={10} />
-                                  {def.badge}
-                                </span>
-                              );
-                            })}
-                            {activePowersCount === 0 && (
-                              <span className="text-[10px] text-text-mute font-mono">
-                                (No active powers configured)
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Group Action Buttons */}
-                      {canManage && (
-                        <div className="flex flex-wrap items-center gap-2 shrink-0 self-start lg:self-center">
-                          {/* Configure Powers Button */}
-                          <Button
-                            variant="ghost"
-                            onClick={() =>
-                              setPowersTarget({
-                                type: "group",
-                                groupId: group.id,
-                                title: `Configure Powers: ${group.name}`,
-                                initialPowers: group.powers || { ...DEFAULT_VOLUNTEER_POWERS },
-                              })
-                            }
-                            className="text-xs py-1 px-2.5 h-auto border border-border hover:border-emerald-500/50 flex items-center gap-1"
-                          >
-                            <Settings2 size={13} className="text-emerald-500" />
-                            Powers ({activePowersCount})
-                          </Button>
-
-                          {/* Add / Manage Members Button */}
-                          <Button
-                            variant="ghost"
-                            onClick={() => {
-                              if (isPreset) {
-                                startEditPreset(group);
-                              } else {
-                                setAddingMembersGroupId(group.id);
-                              }
-                            }}
-                            className="text-xs py-1 px-2.5 h-auto border border-border flex items-center gap-1"
-                          >
-                            <UserPlus size={13} />
-                            {isPreset ? "Edit Students" : "Add Student"}
-                          </Button>
-
-                          {/* Case 1: Reusable Preset -> Assign Preset to Event */}
-                          {isPreset && (
-                            <Button
-                              variant="ghost"
-                              onClick={() => {
-                                setAssignPresetTargetGroup(group);
-                                setSelectedEventId("");
-                              }}
-                              className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/10 font-bold flex items-center gap-1"
-                              title="Directly assign this preset to any event"
-                            >
-                              <Sparkles size={12} />
-                              Assign to Event
-                            </Button>
-                          )}
-
-                          {/* Case 2: Squad has linked event -> DIRECT ASSIGNMENT + Apply Preset */}
-                          {group.eventId && (
-                            <>
-                              {chapterPresets.length > 0 && (
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => setApplyPresetTargetSquad(group)}
-                                  className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 font-semibold hover:bg-purple-500/10 flex items-center gap-1"
-                                  title="Import students from a reusable preset"
-                                >
-                                  <Sparkles size={12} />
-                                  Apply Preset
-                                </Button>
-                              )}
-                              <Button
-                                variant="orange"
-                                onClick={() => handleDirectAssignToEvent(group)}
-                                className="text-xs py-1 px-2.5 h-auto font-bold flex items-center gap-1 shadow-sm"
-                                title={`Directly assign all volunteers to ${linkedEvent?.title || "event"}`}
-                              >
-                                <Check size={12} />
-                                Directly Assign to Event
-                              </Button>
-                            </>
-                          )}
-
-                          {/* Case 3: Regular Listed Pool (no event) -> Assign to Event */}
-                          {!isPreset && !group.eventId && (
-                            <>
-                              {chapterPresets.length > 0 && (
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => setApplyPresetTargetSquad(group)}
-                                  className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 font-semibold hover:bg-purple-500/10 flex items-center gap-1"
-                                  title="Import students from preset into this squad"
-                                >
-                                  <Sparkles size={12} />
-                                  Apply Preset
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                onClick={() =>
-                                  setAssignEventTarget({
-                                    targetType: "group",
-                                    groupId: group.id,
-                                    title: `Assign "${group.name}" to Event`,
-                                  })
-                                }
-                                className="text-xs py-1 px-2.5 h-auto text-[var(--accent)] border border-[var(--accent)]/30 font-semibold"
-                              >
-                                Assign to Event
-                              </Button>
-                            </>
-                          )}
-
-                          {/* Edit Group / Preset */}
-                          <Button
-                            variant="ghost"
-                            onClick={() => (isPreset ? startEditPreset(group) : startEditGroup(group))}
-                            className="text-xs py-1 px-2 h-auto text-text-dim"
-                          >
-                            Edit
-                          </Button>
-
-                          {/* Delete Group */}
-                          <Button
-                            variant="danger"
-                            onClick={() => handleDeleteGroup(group)}
-                            className="text-xs py-1 px-2 h-auto text-red-500"
-                            title={isPreset ? "Delete preset" : "Delete group"}
-                          >
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Expandable Group Members Sub-Panel */}
-                    {isExpanded && (
-                      <div className="border-t border-border/80 bg-bg-page/50 p-4 space-y-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-text flex items-center gap-1.5">
-                            <Users size={13} className="text-[var(--accent)]" />
-                            {isPreset ? "Preset Students" : "Squad Members"} ({group.memberIds.length})
-                          </span>
-                          <div className="flex items-center gap-2">
-                            {canManage && (
-                              <Button
-                                variant="ghost"
-                                onClick={() => {
-                                  if (isPreset) {
-                                    startEditPreset(group);
-                                  } else {
-                                    setAddingMembersGroupId(group.id);
-                                    setSelectedStudentForGroup("");
-                                    setStudentSearchQuery("");
-                                  }
-                                }}
-                                className="text-xs font-bold py-1 px-2.5 h-auto text-[var(--accent)] hover:bg-[var(--accent)]/10 border border-[var(--accent)]/30"
-                              >
-                                <UserPlus size={12} className="inline mr-1" />
-                                {isPreset ? "Edit Preset List" : "+ Add Student"}
-                              </Button>
-                            )}
-                            <span className="text-[11px] text-text-dim hidden sm:inline">
-                              {isPreset
-                                ? "Preset members can be applied to any event with one click."
-                                : "Powers can be adjusted group-wide or individually for each student."}
-                            </span>
-                          </div>
-                        </div>
-
-                        {group.memberIds.length === 0 ? (
-                          <div className="p-6 text-center border border-dashed border-border rounded-[10px] space-y-2">
-                            <p className="text-xs text-text-dim">
-                              No volunteers added to this squad yet.
-                            </p>
-                            {canManage && (
-                              <Button
-                                variant="orange"
-                                onClick={() => setAddingMembersGroupId(group.id)}
-                                className="text-xs font-bold py-1 px-2.5 h-auto"
-                              >
-                                + Add Students to Squad
-                              </Button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                            {group.memberIds.map((userId) => {
-                              const student = store.profiles.find((p) => p.id === userId);
-                              const customPowers = group.customMemberPowers?.[userId];
-                              const isOverridden = Boolean(customPowers);
-                              const effectivePowers = customPowers
-                                ? { ...group.powers, ...customPowers }
-                                : group.powers;
-
-                              return (
-                                <div
-                                  key={userId}
-                                  className="flex items-center justify-between gap-2 p-2.5 rounded-[10px] border border-border bg-bg shadow-2xs"
-                                >
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[10px]">
-                                      {initials(student?.fullName || "Volunteer")}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-1.5">
-                                        <Link
-                                          href={`/profile/${student?.elevatesId || userId}`}
-                                          className="font-bold text-xs text-text truncate hover:text-[var(--accent)] hover:underline"
-                                        >
-                                          {student?.fullName || "Unknown Student"}
-                                        </Link>
-                                        <span className="inline-flex items-center rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 text-[9px] font-bold">
-                                          Volunteer
-                                        </span>
-                                      </div>
-                                      <p className="text-[10px] text-text-mute truncate">
-                                        {student?.elevatesId || student?.email || "Member"}
-                                        {isOverridden && (
-                                          <span className="ml-1 text-amber-500 font-semibold">
-                                            · Custom Powers
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {canManage && (
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {/* Individual Power Checkbox Override */}
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          setPowersTarget({
-                                            type: "member",
-                                            groupId: group.id,
-                                            userId,
-                                            title: `Individual Powers: ${student?.fullName || "Student"}`,
-                                            initialPowers: effectivePowers,
-                                            isOverride: isOverridden,
-                                          })
-                                        }
-                                        className="text-[11px] font-semibold text-text-dim hover:text-[var(--accent)] px-2 py-0.5 rounded border border-border hover:border-[var(--accent)] transition"
-                                        title="Customize individual checkboxes for this student"
-                                      >
-                                        Powers
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveMemberFromGroup(group, userId)}
-                                        className="text-text-mute hover:text-red-500 p-1"
-                                        title="Remove from squad"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 2: STUDENT DIRECTORY & VOLUNTEER TAGGING */}
-      {activeTab === "directory" && (
-        <TerminalPanel
-          title="Student Directory & Volunteer Tagging"
-          meta={`${filteredStudents.length} Students`}
-          accent="orange"
-        >
-          <div className="space-y-3">
-            <p className="text-xs text-text-dim">
-              Volunteers hold a <strong>Volunteer Tag</strong> that grants event and check-in authority without altering their primary student role. Add students to squads or grant delegated event powers below.
-            </p>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-text-dim">
-                    <th className="pb-2.5 font-semibold">Student Name</th>
-                    <th className="pb-2.5 font-semibold">ID / Email</th>
-                    <th className="pb-2.5 font-semibold">Volunteer Tag & Squad</th>
-                    <th className="pb-2.5 font-semibold">Attendance Authority</th>
-                    <th className="pb-2.5 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {filteredStudents.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-text-dim">
-                        No students match your search query.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredStudents.map((student) => {
-                      const summary = volunteerSummaryMap.get(student.id);
-                      const isVol = Boolean(summary);
+            ) : (
+              <>
+                {/* TEAM TABS BAR WITH [+] BUTTON (UNDER VOLUNTEER TEAM LABEL) */}
+                <div className="mb-4 pb-3 border-b border-border">
+                  <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-1">
+                    {chapterTeams.map((team, idx) => {
+                      const isSelected = team.id === activeTeam?.id;
+                      const teamEvent = team.eventId ? chapterEvents.find((e) => e.id === team.eventId) : null;
+                      const displayName = team.name || `Team ${idx + 1}`;
 
                       return (
-                        <tr key={student.id} className="hover:bg-bg-page/40 transition">
-                          <td className="py-3 font-semibold text-text">
-                            <div className="flex items-center gap-2">
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bg-page border border-border text-[10px] font-bold">
-                                {initials(student.fullName)}
-                              </div>
-                              <div>
-                                <Link
-                                  href={`/profile/${student.elevatesId || student.id}`}
-                                  className="hover:text-[var(--accent)] hover:underline"
-                                >
-                                  {student.fullName}
-                                </Link>
-                                <div className="text-[10px] text-text-mute">
-                                  {student.department || "Student"}
-                                  {student.year ? ` · Yr ${student.year}` : ""}
-                                </div>
-                              </div>
-                            </div>
-                          </td>
+                        <button
+                          key={team.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTeamId(team.id);
+                            setSelectedEventIdForAssign(team.eventId || "");
+                          }}
+                          className={cn(
+                            "group flex items-center gap-2 px-3 py-1.5 rounded-[10px] text-xs font-semibold whitespace-nowrap transition-all border shrink-0",
+                            isSelected
+                              ? "bg-[var(--accent)] text-white border-[var(--accent)] shadow-sm font-bold"
+                              : "bg-bg text-text-dim border-border hover:text-text hover:border-text-dim/50 hover:bg-bg-panel",
+                          )}
+                        >
+                          <span>{displayName}</span>
 
-                          <td className="py-3 text-text-dim font-mono text-[11px]">
-                            {student.elevatesId || student.email}
-                          </td>
-
-                          <td className="py-3">
-                            {isVol ? (
-                              <div className="flex flex-wrap items-center gap-1">
-                                {summary?.groups.map((gName) => (
-                                  <span
-                                    key={gName}
-                                    className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold"
-                                  >
-                                    <Tag size={9} />
-                                    {gName}
-                                  </span>
-                                ))}
-                                {summary?.groups.length === 0 && (
-                                  <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">
-                                    Volunteer
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-text-mute">Student</span>
-                            )}
-                          </td>
-
-                          <td className="py-3">
-                            {isVol && summary?.hasAttendancePower ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                                <Check size={12} />
-                                Attendance Desk Active
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-text-mute">—</span>
-                            )}
-                          </td>
-
-                          <td className="py-3 text-right">
-                            {canManage && (
-                              <div className="flex items-center justify-end gap-1.5">
-                                {/* Add to squad button */}
-                                {chapterGroups.length > 0 && (
-                                  <Button
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setSelectedStudentForGroup(student.id);
-                                      setAddingMembersGroupId(chapterGroups[0].id);
-                                    }}
-                                    className="text-[11px] py-1 px-2 h-auto text-text-dim hover:text-text border border-border"
-                                  >
-                                    + Add to Squad
-                                  </Button>
-                                )}
-
-                                {/* Assign to event button */}
-                                <Button
-                                  variant="orange"
-                                  onClick={() => {
-                                    setAssignStudentId(student.id);
-                                    setAssignStudentSearch("");
-                                    setAssignEventTarget({
-                                      targetType: "student",
-                                      studentId: student.id,
-                                      title: `Assign ${student.fullName} as Event Volunteer`,
-                                    });
-                                  }}
-                                  className="text-[11px] py-1 px-2.5 h-auto font-bold"
-                                >
-                                  Assign Event
-                                </Button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
+                          {/* Cross button to delete team instead of count */}
+                          {canManage && (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTeam(team.id, displayName);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.stopPropagation();
+                                  handleDeleteTeam(team.id, displayName);
+                                }
+                              }}
+                              className={cn(
+                                "inline-flex items-center justify-center h-4 w-4 rounded-full transition-colors ml-0.5",
+                                isSelected
+                                  ? "text-white/80 hover:text-white hover:bg-black/25"
+                                  : "text-text-dim hover:text-red-500 hover:bg-red-500/10",
+                              )}
+                              title={`Delete ${displayName}`}
+                            >
+                              <X size={11} strokeWidth={2.5} />
+                            </span>
+                          )}
+                        </button>
                       );
-                    })
+                    })}
+
+                    {/* Instant + Button: Creates Team 2, Team 3... immediately (Zero Form, Icon only) */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={handleQuickAddTeam}
+                        className="flex items-center justify-center h-8 w-8 rounded-[10px] bg-bg border border-dashed border-border hover:border-[var(--accent)] hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 text-text-dim transition shrink-0 shadow-sm"
+                        title={`Add Team ${chapterTeams.length + 1}`}
+                      >
+                        <Plus size={15} strokeWidth={2.8} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* SUBHEADER: Appointed Members in Active Team */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <span className="text-xs font-bold text-text flex items-center gap-1.5">
+                    Appointed Members
+                    <span className="text-text-dim font-normal">
+                      in <strong className="text-text">{activeTeam?.name || "this team"}</strong>
+                    </span>
+                  </span>
+                  {activeTeamAssignedEvent && (
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <span className="text-text-dim">Assigned to:</span>
+                      <span className="font-bold text-[var(--accent)]">{activeTeamAssignedEvent.title}</span>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TerminalPanel>
-      )}
+                </div>
 
-      {/* TAB 3: EVENT VOLUNTEER ASSIGNMENTS */}
-      {activeTab === "events" && (
-        <TerminalPanel
-          title="Active Event Volunteer Assignments"
-          meta={`${chapterAssignments.length} Assignments`}
-          accent="green"
-        >
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-text-dim">
-                Direct event volunteer assignments granting powers for a specific event and validity period.
-              </p>
-              {canManage && chapterStudents.length > 0 && (
-                <Button
-                  variant="orange"
-                  onClick={() => {
-                    setAssignStudentId(chapterStudents[0]?.id || "");
-                    setAssignStudentSearch("");
-                    setAssignEventTarget({
-                      targetType: "student",
-                      studentId: chapterStudents[0]?.id || "",
-                      title: "Assign Event Volunteer",
-                    });
-                  }}
-                  className="text-xs font-bold"
-                >
-                  + Assign Volunteer to Event
-                </Button>
-              )}
-            </div>
-
-            {chapterAssignments.length === 0 ? (
-              <div className="p-8 text-center border border-dashed border-border rounded-[12px] space-y-2">
-                <p className="text-xs text-text-dim">
-                  No event-specific volunteer assignments recorded yet.
-                </p>
-                <p className="text-[11px] text-text-mute">
-                  Assign volunteer squads or individual students to events to see them here.
-                </p>
+            {/* Members Roster of Active Team */}
+            {activeTeamMemberIds.size === 0 ? (
+              <div className="rounded-[12px] border border-dashed border-border/80 bg-bg/50 p-8 text-center space-y-3">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+                  <UserPlus size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-text">
+                    No Volunteers in {activeTeam?.name || "this team"} Yet
+                  </h4>
+                  <p className="text-xs text-text-dim max-w-sm mx-auto mt-1">
+                    Select students from the <strong>Student Directory</strong> on the right and click the orange <strong>+</strong> button to add them into <strong>{activeTeam?.name || "this team"}</strong>.
+                  </p>
+                </div>
               </div>
             ) : (
-              <div className="space-y-2.5">
-                {chapterAssignments.map((a) => {
-                  const student = store.profiles.find((p) => p.id === a.userId);
-                  const event = a.eventId ? store.events.find((e) => e.id === a.eventId) : null;
-                  const group = a.groupId ? chapterGroups.find((g) => g.id === a.groupId) : null;
+              <div className="space-y-3">
+                {Array.from(activeTeamMemberIds).map((userId) => {
+                  const student = store.profiles.find((p) => p.id === userId);
+                  const studentMeta = [
+                    student?.year ? `Yr ${student.year}` : null,
+                    student?.section ? `Sec ${student.section}` : null,
+                    student?.email || "Chapter Member",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
 
                   return (
                     <div
-                      key={a.id}
-                      className="p-3 rounded-[12px] border border-border bg-bg shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      key={userId}
+                      className="rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500/40 transition"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs">
-                          {initials(student?.fullName || "Volunteer")}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs shadow-sm">
+                          {initials(student?.fullName ?? "Volunteer")}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-bold text-xs text-text">
-                              {student?.fullName || "Student"}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 text-[10px] font-bold">
-                              {a.tag || "Volunteer"}
-                            </span>
-                            {event && (
-                              <Link
-                                href={`/chapter/${slug}/events/${event.id}`}
-                                className="text-[11px] text-[var(--accent)] font-semibold hover:underline"
-                              >
-                                Event: {event.title}
-                              </Link>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-mute mt-0.5">
-                            <span>Elevates ID: {student?.elevatesId || "Member"}</span>
-                            {group && <span>· Squad: {group.name}</span>}
-                            {a.validFrom && (
-                              <span>
-                                · Valid: {formatDate(a.validFrom)}
-                                {a.validTo ? ` → ${formatDate(a.validTo)}` : ""}
+                            <Link
+                              href={`/profile/${student?.elevatesId || userId}`}
+                              className="font-bold text-sm text-text hover:text-[var(--accent)] hover:underline truncate"
+                            >
+                              {student?.fullName ?? "Unknown Student"}
+                            </Link>
+                            {student?.elevatesId && (
+                              <span className="font-mono text-[10px] bg-bg-panel border border-border px-1.5 py-0.2 rounded font-semibold text-text-dim shrink-0">
+                                {student.elevatesId}
                               </span>
                             )}
                           </div>
+                          <p className="text-xs text-text-dim mt-0.5 truncate">
+                            {studentMeta}
+                          </p>
                         </div>
                       </div>
 
+                      {/* Action Buttons: Replace & Remove (Sleek Oval Icon Buttons) */}
                       {canManage && (
                         <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          <Button
-                            variant="danger"
-                            onClick={async () => {
-                              const ok = await confirm({
-                                title: "Remove Assignment",
-                                description: `Remove volunteer assignment for ${student?.fullName || "this student"}?`,
-                                confirmLabel: "Remove",
-                                danger: true,
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!activeTeam) return;
+                              setReplacingVolunteer({
+                                userId,
+                                studentName: student?.fullName ?? "Volunteer",
+                                teamId: activeTeam.id,
                               });
-                              if (!ok) return;
-                              removeVolunteerAssignment(a.id);
-                              flashMsg("Assignment removed.");
+                              setReplacementStudentId(availableStudentsForReplacement[0]?.id || "");
                             }}
-                            className="text-xs py-1 px-2 h-auto text-red-500"
+                            className="h-[26px] w-[38px] rounded-full flex items-center justify-center bg-bg-panel hover:bg-bg border border-border hover:border-text-dim/60 text-text hover:text-[var(--accent)] shadow-xs transition active:scale-95 shrink-0"
+                            title={`Replace ${student?.fullName ?? "volunteer"}`}
                           >
-                            Remove
-                          </Button>
+                            <ArrowLeftRight size={13} strokeWidth={2.3} className="text-text hover:text-[var(--accent)] shrink-0" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRemoveStudentFromActiveTeam(
+                                userId,
+                                student?.fullName ?? "Volunteer",
+                              )
+                            }
+                            className="h-[26px] w-[38px] rounded-full flex items-center justify-center bg-[var(--danger)] hover:bg-red-700 text-white shadow-xs transition active:scale-95 shrink-0"
+                            title={`Remove ${student?.fullName ?? "volunteer"}`}
+                          >
+                            <Trash2 size={13} strokeWidth={2.3} className="text-white shrink-0" />
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1419,822 +809,247 @@ export default function ChapterVolunteerTeamPage({
                 })}
               </div>
             )}
-          </div>
-        </TerminalPanel>
-      )}
-
-      {/* DIALOG 1: CREATE / EDIT VOLUNTEER GROUP OR PRESET */}
-      <Dialog
-        open={showGroupModal}
-        onClose={() => setShowGroupModal(false)}
-        title={
-          isPresetModal
-            ? editingGroupId
-              ? "Edit Volunteer Preset"
-              : "Create Volunteer Preset"
-            : editingGroupId
-              ? "Edit Volunteer Group"
-              : "Create Volunteer Group / Squad"
-        }
-        description={
-          isPresetModal
-            ? "Configure a reusable preset of student volunteers with default permissions that can be applied to any event with one click."
-            : "Configure a reusable listed volunteer pool or a temporary event squad with powers."
-        }
-        className="max-w-xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <FieldLabel>{isPresetModal ? "Preset Name" : "Squad / Group Name"}</FieldLabel>
-            <Input
-              value={groupDraft.name}
-              onChange={(e) => setGroupDraft((d) => ({ ...d, name: e.target.value }))}
-              placeholder={
-                isPresetModal
-                  ? "e.g. Core Event Leads, Registration Desk Preset, Stage Crew"
-                  : "e.g. Check-in Desk Squad, Logistics Crew, Hackathon Staff"
-              }
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Description (Optional)</FieldLabel>
-            <TextArea
-              rows={2}
-              value={groupDraft.description}
-              onChange={(e) => setGroupDraft((d) => ({ ...d, description: e.target.value }))}
-              placeholder={
-                isPresetModal
-                  ? "Describe what this volunteer preset is used for across chapter events..."
-                  : "Responsibilities, meeting points, venue checkpoints..."
-              }
-            />
-          </div>
-
-          {!isPresetModal && (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Group Type</FieldLabel>
-                  <Select
-                    value={groupDraft.groupType}
-                    onChange={(e) =>
-                      setGroupDraft((d) => ({ ...d, groupType: e.target.value as VolunteerGroupType }))
-                    }
-                  >
-                    <option value="listed">Listed Group (Reusable Pool)</option>
-                    <option value="temp">Temp Squad (Event-Specific)</option>
-                  </Select>
-                </div>
-
-                <div>
-                  <FieldLabel>Linked Chapter Event (Optional)</FieldLabel>
-                  <Select
-                    value={groupDraft.eventId}
-                    onChange={(e) => setGroupDraft((d) => ({ ...d, eventId: e.target.value }))}
-                  >
-                    <option value="">No linked event (Chapter-wide)</option>
-                    {store.events
-                      .filter((e) => e.chapterId === chapter.id)
-                      .map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.title}
-                        </option>
-                      ))}
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Valid From</FieldLabel>
-                  <Input
-                    type="date"
-                    value={groupDraft.validFrom}
-                    onChange={(e) => setGroupDraft((d) => ({ ...d, validFrom: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Valid Until</FieldLabel>
-                  <Input
-                    type="date"
-                    value={groupDraft.validTo}
-                    onChange={(e) => setGroupDraft((d) => ({ ...d, validTo: e.target.value }))}
-                  />
-                </div>
-              </div>
             </>
           )}
-
-          {/* If Preset Modal, show searchable student multi-select checklist */}
-          {isPresetModal && (
-            <div className="space-y-2 pt-2 border-t border-border">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-text-dim uppercase tracking-wider">
-                  Preset Students ({presetSelectedStudentIds.length} selected)
-                </span>
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setPresetSelectedStudentIds(chapterStudents.map((s) => s.id))}
-                    className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
-                  >
-                    Select All
-                  </button>
-                  <span className="text-text-mute">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setPresetSelectedStudentIds([])}
-                    className="text-[11px] font-semibold text-text-dim hover:text-text"
-                  >
-                    Clear All
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
-                <Input
-                  value={presetStudentSearch}
-                  onChange={(e) => setPresetStudentSearch(e.target.value)}
-                  placeholder="Search students by name, email, department, ID..."
-                  className="pl-8 text-xs py-1 h-auto"
-                />
-                {presetStudentSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setPresetStudentSearch("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              <div className="max-h-52 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg-page/40 p-1">
-                {filteredPresetStudents.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-text-dim">
-                    No students found matching &ldquo;{presetStudentSearch}&rdquo;
-                  </div>
-                ) : (
-                  filteredPresetStudents.map((student) => {
-                    const isSelected = presetSelectedStudentIds.includes(student.id);
-                    return (
-                      <label
-                        key={student.id}
-                        className={`flex items-center justify-between gap-2 p-2 rounded-lg cursor-pointer transition select-none ${
-                          isSelected
-                            ? "bg-[var(--accent)]/10 border border-[var(--accent)]/25"
-                            : "hover:bg-bg"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              setPresetSelectedStudentIds((prev) =>
-                                prev.includes(student.id)
-                                  ? prev.filter((id) => id !== student.id)
-                                  : [...prev, student.id],
-                              );
-                            }}
-                            className="h-3.5 w-3.5 rounded border-border text-[var(--accent)] focus:ring-[var(--accent)]/30 cursor-pointer shrink-0"
-                          />
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg border border-border text-[10px] font-bold">
-                            {initials(student.fullName)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-xs font-semibold text-text truncate">
-                                {student.fullName}
-                              </span>
-                              {student.elevatesId && (
-                                <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-bg border border-border text-text-dim">
-                                  {student.elevatesId}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-text-dim truncate">
-                              {student.email}
-                              {student.department ? ` · ${student.department}` : ""}
-                              {student.year ? ` (Yr ${student.year})` : ""}
-                            </p>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <span className="text-[10px] font-bold text-[var(--accent)] shrink-0 flex items-center gap-1">
-                            <Check size={11} /> Selected
-                          </span>
-                        )}
-                      </label>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Inline Power Checkbox setup */}
-          <div className="space-y-2 pt-2 border-t border-border">
-            <span className="text-[11px] font-bold text-text-dim uppercase tracking-wider block">
-              Default Powers for {isPresetModal ? "Preset" : "Squad"} (Checkboxes)
-            </span>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {VOLUNTEER_POWER_DEFINITIONS.map((def) => {
-                const isChecked = Boolean(groupDraft.powers[def.key]);
-                return (
-                  <label
-                    key={def.key}
-                    className="flex items-start gap-2.5 p-2 rounded-[8px] border border-border bg-bg-page/50 cursor-pointer select-none text-xs"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={() =>
-                        setGroupDraft((d) => ({
-                          ...d,
-                          powers: { ...d.powers, [def.key]: !d.powers[def.key] },
-                        }))
-                      }
-                      className="mt-0.5 h-3.5 w-3.5 rounded border-border text-emerald-500 focus:ring-emerald-500/30 cursor-pointer shrink-0"
-                    />
-                    <div>
-                      <span className="font-bold text-text">{def.label}</span>
-                      <p className="text-[10px] text-text-dim">{def.description}</p>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-
-          {groupError && <p className="text-xs text-[var(--accent)] font-semibold">{groupError}</p>}
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-            <Button variant="ghost" onClick={() => setShowGroupModal(false)} className="text-xs">
-              Cancel
-            </Button>
-            <Button variant="orange" onClick={handleSaveGroup} className="text-xs font-bold">
-              {editingGroupId
-                ? isPresetModal
-                  ? "Save Preset"
-                  : "Save Changes"
-                : isPresetModal
-                  ? "Create Preset"
-                  : "Create Group"}
-            </Button>
-          </div>
+          </TerminalPanel>
         </div>
-      </Dialog>
 
-      {/* DIALOG 2: POWERS CHECKBOX MODAL (GROUP OR INDIVIDUAL OVERRIDE) */}
-      {powersTarget && (
-        <VolunteerPowersModal
-          open={Boolean(powersTarget)}
-          onClose={() => setPowersTarget(null)}
-          title={powersTarget.title}
-          initialPowers={powersTarget.initialPowers}
-          isIndividualOverride={powersTarget.type === "member"}
-          onResetToGroup={() => {
-            if (powersTarget.type === "member" && powersTarget.userId) {
-              updateVolunteerMemberPowers(powersTarget.groupId, powersTarget.userId, null);
-              flashMsg("Reset member to group default powers.");
-            }
-          }}
-          onSave={(newPowers) => {
-            if (powersTarget.type === "group") {
-              updateVolunteerGroup(powersTarget.groupId, { powers: newPowers });
-              flashMsg("✓ Updated group default powers!");
-            } else if (powersTarget.type === "member" && powersTarget.userId) {
-              updateVolunteerMemberPowers(powersTarget.groupId, powersTarget.userId, newPowers);
-              flashMsg("✓ Updated individual volunteer powers!");
-            }
-          }}
-        />
-      )}
-
-      {/* DIALOG 3: ADD STUDENT TO SQUAD */}
-      <Dialog
-        open={Boolean(addingMembersGroupId)}
-        onClose={() => {
-          setAddingMembersGroupId(null);
-          setSelectedStudentForGroup("");
-          setStudentSearchQuery("");
-        }}
-        title="Add Student to Volunteer Squad"
-        description="Search chapter students and appoint them to this volunteer squad."
-        className="max-w-lg"
-      >
-        <div className="space-y-4">
-          {/* Target Squad Selector / Badge */}
-          {chapterGroups.length > 1 ? (
-            <div>
-              <FieldLabel>Target Volunteer Squad</FieldLabel>
-              <Select
-                value={addingMembersGroupId || ""}
-                onChange={(e) => {
-                  setAddingMembersGroupId(e.target.value);
-                  setSelectedStudentForGroup("");
-                }}
-              >
-                {chapterGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name} ({g.isPreset ? "Preset" : g.eventId ? "Event Squad" : "Listed Pool"})
-                  </option>
-                ))}
-              </Select>
-            </div>
-          ) : currentAddingGroup ? (
-            <div className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-bg-page/50">
-              <div className="min-w-0">
-                <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Target Squad</span>
-                <span className="text-xs font-bold text-text truncate">{currentAddingGroup.name}</span>
-              </div>
-              <Badge tone={currentAddingGroup.isPreset ? "magenta" : currentAddingGroup.eventId ? "amber" : "green"}>
-                {currentAddingGroup.isPreset ? "Preset" : currentAddingGroup.eventId ? "Event Squad" : "Listed Pool"}
-              </Badge>
-            </div>
-          ) : null}
-
-          {/* Quick Import from Volunteer Preset Chips */}
-          {chapterPresets.length > 0 && (
-            <div className="p-2.5 rounded-xl border border-purple-500/20 bg-purple-500/5 space-y-1.5">
-              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                <Sparkles size={11} /> Quick Import from Volunteer Preset
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {chapterPresets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => {
-                      if (currentAddingGroup) {
-                        handleApplyPresetToSquad(preset.id, currentAddingGroup);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1 rounded-full bg-bg border border-purple-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-text hover:border-purple-500 hover:text-purple-600 transition shadow-2xs"
-                    title={`Import all ${preset.memberIds.length} students from ${preset.name}`}
-                  >
-                    <span>{preset.name}</span>
-                    <span className="text-[9px] text-text-mute font-mono">({preset.memberIds.length})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Search Bar with Icon and Clear Button */}
-          <div>
-            <FieldLabel>Search Students</FieldLabel>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
-              <Input
-                value={studentSearchQuery}
-                onChange={(e) => setStudentSearchQuery(e.target.value)}
-                placeholder="Search by student name, email, department, year, or ID..."
-                className="pl-9 pr-8 text-xs w-full"
-                autoFocus
+        {/* RIGHT PANEL: Student Directory */}
+        <div className="lg:col-span-5 space-y-4">
+          <TerminalPanel
+            title="Student Directory"
+            meta={`${filteredStudents.length} Students`}
+          >
+            {/* Search Input */}
+            <div className="relative mb-3.5">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim"
               />
-              {studentSearchQuery ? (
+              <Input
+                type="text"
+                placeholder="Search students by name or ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 text-xs bg-bg"
+              />
+              {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setStudentSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5 rounded transition"
-                  title="Clear search"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text"
                 >
                   <X size={13} />
                 </button>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Search Results / Student List */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] text-text-dim px-0.5">
-              <span>
-                {filteredAddStudents.length}{" "}
-                {filteredAddStudents.length === 1 ? "student" : "students"} found
-              </span>
-              {selectedStudentForGroup && (
-                <span className="text-[var(--accent)] font-semibold">1 student selected</span>
               )}
             </div>
 
-            <div className="max-h-60 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg p-1 pr-1.5 shadow-2xs">
-              {filteredAddStudents.length === 0 ? (
-                <div className="py-8 text-center text-xs text-text-dim">
-                  No chapter students found matching &ldquo;{studentSearchQuery}&rdquo;
+            {/* Batch Action Bar if students selected */}
+            {canManage && selectedStudentIds.length > 0 && activeTeam && (
+              <div className="mb-3.5 p-2.5 rounded-[10px] bg-[var(--accent)]/10 border border-[var(--accent)]/30 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-text">
+                  {selectedStudentIds.length} student(s) selected
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="orange"
+                    className="h-7 px-2.5 text-[11px] font-bold"
+                    onClick={handleBatchAppoint}
+                  >
+                    Add to {activeTeam.name}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudentIds([])}
+                    className="text-xs text-text-dim hover:text-text px-1"
+                  >
+                    Clear
+                  </button>
                 </div>
-              ) : (
-                filteredAddStudents.map((s) => {
-                  const isInSquad = Boolean(
-                    currentAddingGroup?.memberIds.includes(s.id),
+              </div>
+            )}
+
+            {/* Students List */}
+            {filteredStudents.length === 0 ? (
+              <div className="p-6 text-center text-xs text-text-dim rounded-[10px] border border-border bg-bg">
+                No students found matching &ldquo;{searchQuery}&rdquo;.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[620px] overflow-y-auto pr-1">
+                {filteredStudents.map((student) => {
+                  const isInActiveTeam = activeTeamMemberIds.has(student.id);
+                  const isChecked = selectedStudentIds.includes(student.id);
+
+                  // Conflict rule: student cannot manage two events at the same time
+                  const conflict = studentEventMap.get(student.id);
+                  const isConflictWithOtherEvent = Boolean(
+                    conflict &&
+                      activeTeam?.eventId &&
+                      conflict.eventId !== activeTeam.eventId,
                   );
-                  const isSelected = selectedStudentForGroup === s.id;
+
+                  const metaLine = [
+                    student.year ? `Yr ${student.year}` : null,
+                    student.section ? `Sec ${student.section}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
 
                   return (
                     <div
-                      key={s.id}
-                      onClick={() => {
-                        if (!isInSquad) {
-                          setSelectedStudentForGroup(s.id);
-                        }
-                      }}
-                      className={`flex items-center justify-between gap-2.5 p-2 rounded-lg transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30"
-                          : isInSquad
-                            ? "opacity-60 bg-bg-page/30 cursor-default"
-                            : "hover:bg-bg-page/70"
-                      }`}
+                      key={student.id}
+                      className={cn(
+                        "flex items-center justify-between gap-3 p-2.5 rounded-[12px] border transition",
+                        isInActiveTeam
+                          ? "bg-emerald-500/[0.04] border-emerald-500/30"
+                          : isConflictWithOtherEvent
+                          ? "bg-amber-500/[0.04] border-amber-500/20 opacity-80"
+                          : "bg-bg border-border hover:border-border/90",
+                      )}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${
-                            isSelected
-                              ? "bg-[var(--accent)] text-white"
-                              : "bg-bg-page border border-border text-text"
-                          }`}
-                        >
-                          {initials(s.fullName)}
+                        {canManage && !isInActiveTeam && !isConflictWithOtherEvent ? (
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedStudentIds((prev) => [...prev, student.id]);
+                              } else {
+                                setSelectedStudentIds((prev) =>
+                                  prev.filter((id) => id !== student.id),
+                                );
+                              }
+                            }}
+                            className="w-4 h-4 rounded border-border accent-[var(--accent)] shrink-0 cursor-pointer"
+                          />
+                        ) : (
+                          <div className="w-4 shrink-0" />
+                        )}
+
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg-panel border border-border text-text font-bold text-xs">
+                          {initials(student.fullName)}
                         </div>
+
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-xs font-semibold text-text truncate">
-                              {s.fullName}
+                            <span className="font-semibold text-xs text-text truncate">
+                              {student.fullName}
                             </span>
-                            {s.elevatesId && (
-                              <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-bg-page border border-border text-text-dim">
-                                {s.elevatesId}
+                            {student.elevatesId && (
+                              <span className="font-mono text-[9px] bg-bg-panel border border-border px-1 py-0.2 rounded text-text-dim shrink-0">
+                                {student.elevatesId}
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-text-dim truncate">
-                            {s.email}
-                            {s.department ? ` · ${s.department}` : ""}
-                            {s.year ? ` (Yr ${s.year})` : ""}
-                          </p>
+                          {metaLine && (
+                            <p className="text-[11px] text-text-dim truncate">
+                              {metaLine}
+                            </p>
+                          )}
                         </div>
                       </div>
 
-                      <div className="shrink-0 flex items-center gap-1.5">
-                        {isInSquad ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">
-                            <Check size={11} /> In Squad
-                          </span>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant={isSelected ? "orange" : "ghost"}
-                            className="text-[11px] py-0.5 px-2 h-7 font-bold border border-border"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (addingMembersGroupId) {
-                                handleQuickAddMemberToGroup(addingMembersGroupId, s.id);
-                              }
-                            }}
-                          >
-                            + Add
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setAddingMembersGroupId(null);
-                setSelectedStudentForGroup("");
-                setStudentSearchQuery("");
-              }}
-              className="text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="orange"
-              disabled={
-                !selectedStudentForGroup ||
-                Boolean(currentAddingGroup?.memberIds.includes(selectedStudentForGroup))
-              }
-              onClick={() => {
-                if (addingMembersGroupId && selectedStudentForGroup) {
-                  handleAddMemberToGroup(addingMembersGroupId, selectedStudentForGroup);
-                }
-              }}
-              className="text-xs font-bold"
-            >
-              Add Selected to Squad
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      {/* DIALOG 4: ASSIGN GROUP OR STUDENT TO EVENT DIRECTLY */}
-      <Dialog
-        open={Boolean(assignEventTarget)}
-        onClose={() => {
-          setAssignEventTarget(null);
-          setSelectedEventId("");
-          setAssignStudentId("");
-          setAssignStudentSearch("");
-        }}
-        title={assignEventTarget?.title || "Assign to Event"}
-        description="Grant delegated event powers directly synchronized with the event schedule."
-        className="max-w-lg"
-      >
-        <div className="space-y-4">
-          <div>
-            <FieldLabel>Select Chapter Event</FieldLabel>
-            <Select
-              value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
-            >
-              <option value="">Select event…</option>
-              {store.events
-                .filter((e) => e.chapterId === chapter.id)
-                .map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.title} ({e.status})
-                  </option>
-                ))}
-            </Select>
-          </div>
-
-          {/* If assigning an individual student, provide search and student selection */}
-          {assignEventTarget?.targetType === "student" && (
-            <div className="space-y-2">
-              <FieldLabel>Student Volunteer</FieldLabel>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
-                <Input
-                  value={assignStudentSearch}
-                  onChange={(e) => setAssignStudentSearch(e.target.value)}
-                  placeholder="Search students by name, email, department, ID..."
-                  className="pl-9 pr-8 text-xs w-full"
-                />
-                {assignStudentSearch ? (
-                  <button
-                    type="button"
-                    onClick={() => setAssignStudentSearch("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5 rounded transition"
-                    title="Clear search"
-                  >
-                    <X size={13} />
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="max-h-44 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg p-1 shadow-2xs">
-                {filteredAssignStudents.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-text-dim">
-                    No chapter students found matching &ldquo;{assignStudentSearch}&rdquo;
-                  </div>
-                ) : (
-                  filteredAssignStudents.map((s) => {
-                    const isSelected = (assignStudentId || assignEventTarget.studentId) === s.id;
-                    return (
-                      <div
-                        key={s.id}
-                        onClick={() => setAssignStudentId(s.id)}
-                        className={`flex items-center justify-between gap-2 p-2 rounded-lg cursor-pointer transition ${
-                          isSelected
-                            ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30 font-semibold"
-                            : "hover:bg-bg-page/70"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div
-                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                              isSelected
-                                ? "bg-[var(--accent)] text-white"
-                                : "bg-bg-page border border-border text-text"
-                            }`}
-                          >
-                            {initials(s.fullName)}
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-xs text-text truncate block">{s.fullName}</span>
-                            <span className="text-[10px] text-text-dim truncate block">
-                              {s.email} {s.elevatesId ? `· ${s.elevatesId}` : ""}
+                      {/* Right Action: In Team Badge or Conflict or Orange Oval + Button */}
+                      {canManage && (
+                        <div className="shrink-0">
+                          {isInActiveTeam ? (
+                            <div className="flex items-center gap-1">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                <Check size={11} strokeWidth={2.5} />
+                                In Team
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemoveStudentFromActiveTeam(student.id, student.fullName)
+                                }
+                                className="text-text-dim hover:text-red-500 p-1"
+                                title={`Remove from ${activeTeam?.name}`}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : isConflictWithOtherEvent ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 max-w-[130px] truncate"
+                              title={`${student.fullName} is in ${conflict?.teamName} (${conflict?.eventTitle}). A student cannot manage two events at the same time.`}
+                            >
+                              <AlertCircle size={10} />
+                              In {conflict?.teamName} ({conflict?.eventTitle})
                             </span>
-                          </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleAddStudentToActiveTeam(student)}
+                              className="flex items-center justify-center w-8 h-8 rounded-full bg-[var(--accent)] hover:bg-[var(--accent)]/90 text-white shadow-sm transition transform active:scale-95"
+                              title={`Add ${student.fullName} to ${activeTeam?.name || "Team"}`}
+                            >
+                              <Plus size={15} strokeWidth={2.8} />
+                            </button>
+                          )}
                         </div>
-                        {isSelected && (
-                          <span className="text-[10px] font-bold text-[var(--accent)] flex items-center gap-1">
-                            <Check size={12} /> Selected
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
-
-          {selectedEventId && (
-            <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-              <Check size={14} className="shrink-0" />
-              <span>
-                Schedule automatically synchronized with event dates (
-                {formatDate(store.events.find((e) => e.id === selectedEventId)?.startsAt || "")}).
-              </span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setAssignEventTarget(null);
-                setSelectedEventId("");
-                setAssignStudentId("");
-                setAssignStudentSearch("");
-              }}
-              className="text-xs"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="orange"
-              disabled={
-                !selectedEventId ||
-                (assignEventTarget?.targetType === "student" &&
-                  !(assignStudentId || assignEventTarget?.studentId))
-              }
-              onClick={handleAssignToEvent}
-              className="text-xs font-bold"
-            >
-              Confirm Assignment
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      {/* DIALOG 5: APPLY PRESET TO SQUAD MODAL */}
-      {applyPresetTargetSquad && (
-        <Dialog
-          open={Boolean(applyPresetTargetSquad)}
-          onClose={() => setApplyPresetTargetSquad(null)}
-          title={`Apply Volunteer Preset to "${applyPresetTargetSquad.name}"`}
-          description={
-            applyPresetTargetSquad.eventId
-              ? "Select a preset to directly assign its students to this event."
-              : "Select a preset to import all its student members into this squad."
-          }
-          className="max-w-md"
-        >
-          <div className="space-y-4">
-            {chapterPresets.length === 0 ? (
-              <div className="p-6 text-center border border-dashed border-border rounded-xl space-y-3">
-                <Sparkles className="mx-auto h-8 w-8 text-purple-500 opacity-80" />
-                <div>
-                  <p className="text-xs font-bold text-text">No Reusable Presets Created Yet</p>
-                  <p className="text-[11px] text-text-dim mt-1">
-                    Create reusable student presets so you can assign teams with one click.
-                  </p>
-                </div>
-                <Button
-                  variant="orange"
-                  onClick={() => {
-                    setApplyPresetTargetSquad(null);
-                    startCreatePreset();
-                  }}
-                  className="text-xs font-bold"
-                >
-                  + Create First Preset
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                {chapterPresets.map((preset) => {
-                  const memberCount = preset.memberIds.length;
-                  return (
-                    <div
-                      key={preset.id}
-                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-bg hover:border-purple-500/50 transition"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-text truncate">
-                            {preset.name}
-                          </span>
-                          <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.2 text-[9px] font-bold">
-                            <Sparkles size={9} /> Preset
-                          </span>
-                        </div>
-                        {preset.description && (
-                          <p className="text-[11px] text-text-dim truncate mt-0.5">
-                            {preset.description}
-                          </p>
-                        )}
-                        <span className="text-[10px] text-text-mute font-mono block mt-1">
-                          {memberCount} {memberCount === 1 ? "student" : "students"} in preset
-                        </span>
-                      </div>
-
-                      <Button
-                        variant="orange"
-                        className="text-xs font-bold shrink-0"
-                        onClick={() => handleApplyPresetToSquad(preset.id, applyPresetTargetSquad)}
-                      >
-                        ⚡ Apply ({memberCount})
-                      </Button>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
+          </TerminalPanel>
+        </div>
+      </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-              <Button
-                variant="ghost"
-                onClick={() => setApplyPresetTargetSquad(null)}
-                className="text-xs"
-              >
-                Close
-              </Button>
+      {/* DIALOG: Replace Volunteer Modal */}
+      <Dialog
+        open={Boolean(replacingVolunteer)}
+        onClose={() => setReplacingVolunteer(null)}
+        title="Replace Volunteer"
+      >
+        <div className="space-y-4 pt-1">
+          <p className="text-xs text-text-dim">
+            Select an available student to replace <strong>{replacingVolunteer?.studentName}</strong> in <strong>{activeTeam?.name}</strong>.
+          </p>
+
+          {availableStudentsForReplacement.length === 0 ? (
+            <div className="p-4 text-center text-xs text-text-dim bg-bg rounded-lg border border-border">
+              No available students found who are not already volunteers.
             </div>
-          </div>
-        </Dialog>
-      )}
-
-      {/* DIALOG 6: ASSIGN PRESET DIRECTLY TO EVENT MODAL */}
-      {assignPresetTargetGroup && (
-        <Dialog
-          open={Boolean(assignPresetTargetGroup)}
-          onClose={() => {
-            setAssignPresetTargetGroup(null);
-            setSelectedEventId("");
-          }}
-          title={`Assign Preset "${assignPresetTargetGroup.name}" to Event`}
-          description="Choose an event. All preset students will be assigned directly without asking for date ranges."
-          className="max-w-md"
-        >
-          <div className="space-y-4">
-            <div>
-              <FieldLabel>Select Chapter Event</FieldLabel>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-text">Choose Replacement Student</label>
               <Select
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
+                value={replacementStudentId}
+                onChange={(e) => setReplacementStudentId(e.target.value)}
+                className="text-xs bg-bg"
               >
-                <option value="">Select an event…</option>
-                {store.events
-                  .filter((e) => e.chapterId === chapter.id)
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.title} ({e.status})
-                    </option>
-                  ))}
+                {availableStudentsForReplacement.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.fullName} {s.elevatesId ? `(${s.elevatesId})` : ""} {s.year ? `· Yr ${s.year}` : ""}
+                  </option>
+                ))}
               </Select>
             </div>
+          )}
 
-            {selectedEventId && (
-              <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-xs text-emerald-600 dark:text-emerald-400 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <Check size={13} />
-                  Direct Event Synchronization
-                </div>
-                <p className="text-[11px] text-text-dim">
-                  All {assignPresetTargetGroup.memberIds.length} preset students will be assigned directly to{" "}
-                  <strong>{store.events.find((e) => e.id === selectedEventId)?.title}</strong> for the event duration (
-                  {formatDate(store.events.find((e) => e.id === selectedEventId)?.startsAt || "")}).
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setAssignPresetTargetGroup(null);
-                  setSelectedEventId("");
-                }}
-                className="text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="orange"
-                disabled={!selectedEventId}
-                onClick={() => handleAssignPresetToEvent(assignPresetTargetGroup.id, selectedEventId)}
-                className="text-xs font-bold"
-              >
-                Assign Directly to Event
-              </Button>
-            </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <Button
+              variant="secondary"
+              className="h-8 px-3 text-xs"
+              onClick={() => setReplacingVolunteer(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="orange"
+              className="h-8 px-4 text-xs font-bold"
+              disabled={availableStudentsForReplacement.length === 0 || !replacementStudentId}
+              onClick={handleConfirmReplace}
+            >
+              Confirm Replacement
+            </Button>
           </div>
-        </Dialog>
-      )}
+        </div>
+      </Dialog>
     </div>
   );
 }

@@ -392,6 +392,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         platform: e.platform ?? undefined,
         caseStudy: e.case_study ?? undefined,
         attendanceSessions: Array.isArray(e.attendance_sessions) ? e.attendance_sessions : undefined,
+        volunteerStudentIds: Array.isArray(e.volunteer_student_ids) ? e.volunteer_student_ids : [],
       })) ?? [],
     );
 
@@ -850,7 +851,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             const rObj = roles.find((r: Record<string, any>) => r.id === ur.role_id || r.id === ur.roleId);
             return (rObj?.key ?? null) as RoleKey | null;
           })
-          .filter((k: RoleKey | null): k is RoleKey => k !== null);
+          .filter((k: RoleKey | null): k is RoleKey => k !== null && (k as string) !== "volunteer");
 
         if (assignedKeys.length === 0) {
           const e = (matchedProfile.email || authUser.email || "").toLowerCase();
@@ -875,16 +876,20 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
 
         if (typeof window !== "undefined") {
           const rawSavedRole = localStorage.getItem("elevates_active_role_key");
-          // "guest" is a logout placeholder — never apply it as an active role
-          if (rawSavedRole === "guest") {
+          // "guest" is a logout placeholder, "volunteer" is an operational tag — never apply as active role
+          if (rawSavedRole === "guest" || rawSavedRole === "volunteer") {
             localStorage.removeItem("elevates_active_role_key");
           }
-          const savedRoleKey = rawSavedRole !== "guest" ? rawSavedRole as RoleKey | null : null;
+          const savedRoleKey = (rawSavedRole !== "guest" && rawSavedRole !== "volunteer") ? rawSavedRole as RoleKey | null : null;
           const savedChapterId = localStorage.getItem("elevates_active_chapter_id");
           const isHqUser = topRoleKey === "founder" || topRoleKey === "hq_admin" || assignedKeys.includes("founder") || assignedKeys.includes("hq_admin");
 
           const roleRank = (k: RoleKey) => ROLE_PRIORITY.indexOf(k);
-          const knownTopRole = localStorage.getItem("elevates_known_top_role") as RoleKey | null;
+          const knownTopRoleRaw = localStorage.getItem("elevates_known_top_role");
+          if (knownTopRoleRaw === "volunteer") {
+            localStorage.removeItem("elevates_known_top_role");
+          }
+          const knownTopRole = (knownTopRoleRaw && knownTopRoleRaw !== "volunteer") ? knownTopRoleRaw as RoleKey | null : null;
 
           // A genuine new promotion happens ONLY when user's top assigned role is strictly higher than previously known top role
           const hasNewPromotion = Boolean(
@@ -905,8 +910,27 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             localStorage.setItem("elevates_active_role_key", topRoleKey);
           }
 
-          if (savedChapterId) {
-            activeChapterId = savedChapterId;
+          const userAllowedChapterIds = [
+            matchedProfile.chapterId,
+            ...userRoleEntries.map((ur: any) => ur.chapterId || ur.chapter_id),
+          ].filter(Boolean);
+
+          if (isHqUser) {
+            if (savedChapterId) {
+              activeChapterId = savedChapterId;
+            }
+          } else if (userAllowedChapterIds.length > 0) {
+            if (savedChapterId && userAllowedChapterIds.includes(savedChapterId)) {
+              activeChapterId = savedChapterId;
+            } else {
+              activeChapterId = userAllowedChapterIds[0];
+              localStorage.setItem("elevates_active_chapter_id", activeChapterId);
+            }
+          } else {
+            // Independent student (no chapter assigned): strictly null, clear stale localStorage
+            activeChapterId = null;
+            localStorage.removeItem("elevates_active_chapter_id");
+            localStorage.removeItem("elevates_locked_chapter_id");
           }
         }
 
@@ -1036,7 +1060,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           expiresAt: t.expires_at ?? undefined,
           isActive: t.is_active ?? true,
         })),
-        chapterInviteCodes: (finalInviteRows ?? []).map((t: Record<string, any>) => {
+        chapterInviteCodes: (finalInviteRows ?? [])
+          .filter((t: Record<string, any>) => {
+            const tokenStr = (t.token ?? "").toUpperCase();
+            return !tokenStr.startsWith("REF-") && Boolean(t.chapter_id);
+          })
+          .map((t: Record<string, any>) => {
           const tokenStr = (t.token ?? "").toUpperCase();
           const matchingLogs = (activityRows ?? []).filter(
             (al: any) =>
@@ -1202,11 +1231,13 @@ export async function createInviteToken(createdById: string): Promise<{
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "chapter_invite_code",
+          type: "student_referral_token",
           data: {
             code: randomToken,
             createdBy: createdById,
             expiresAt,
+            chapterId: null,
+            isReferral: true,
           },
         }),
       });

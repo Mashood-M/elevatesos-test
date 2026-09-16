@@ -188,6 +188,7 @@ export async function POST(req: Request) {
       if (event.platform !== undefined) eventPayload.platform = event.platform;
       if (event.caseStudy !== undefined) eventPayload.case_study = event.caseStudy;
       if (event.attendanceSessions !== undefined) eventPayload.attendance_sessions = event.attendanceSessions;
+      if (event.volunteerStudentIds !== undefined) eventPayload.volunteer_student_ids = event.volunteerStudentIds;
 
       let { error } = await admin.from("events").upsert(eventPayload);
 
@@ -216,50 +217,6 @@ export async function POST(req: Request) {
         }
       }
 
-      // Ensure a volunteer squad is auto-created for this event in database
-      if (eventId && isUuid(eventId) && isUuid(event.chapterId)) {
-        try {
-          const { data: existingGroup } = await admin
-            .from("volunteer_groups")
-            .select("id")
-            .eq("event_id", eventId)
-            .maybeSingle();
-
-          if (!existingGroup) {
-            const volGroupName = `${event.title || "Event"} Volunteers`;
-            const validFrom = event.startsAt || new Date().toISOString();
-            const validTo =
-              event.endsAt ||
-              new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-
-            await admin.from("volunteer_groups").insert({
-              id: genUuid(),
-              chapter_id: event.chapterId,
-              name: volGroupName,
-              description: `Official volunteer team for ${event.title}`,
-              group_type: "temp",
-              event_id: eventId,
-              valid_from: validFrom,
-              valid_to: validTo,
-              powers: {
-                canTakeAttendance: true,
-                canScanQr: true,
-                canVerifyTickets: true,
-                canRegisterWalkins: false,
-                canManageTasks: false,
-                canViewRoster: true,
-              },
-              member_ids: [],
-              custom_member_powers: {},
-              created_by: isUuid(event.organizerId) ? event.organizerId : null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-          }
-        } catch (vgErr) {
-          console.warn("Notice: volunteer squad auto-create on event mutation:", vgErr);
-        }
-      }
 
       await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
       return NextResponse.json({ ok: true, id: eventId });
@@ -2083,8 +2040,65 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
+    if (type === "student_referral_token") {
+      const { id, code, createdBy, expiresAt } = data;
+      const cleanCode = (code || "").trim();
+
+      let creatorId: string | null = null;
+      if (isUuid(createdBy)) {
+        const { data: userExists } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("id", createdBy)
+          .maybeSingle();
+        if (userExists) creatorId = createdBy;
+      }
+      if (!creatorId) {
+        const { data: anyProf } = await admin.from("profiles").select("id").limit(1).maybeSingle();
+        if (anyProf) creatorId = anyProf.id;
+      }
+
+      const insertPayload: Record<string, any> = {
+        token: cleanCode,
+        chapter_id: null,
+        expires_at: expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        is_active: true,
+        uses_count: 0,
+      };
+      if (creatorId) {
+        insertPayload.created_by = creatorId;
+      }
+      if (isUuid(id)) {
+        insertPayload.id = id;
+      }
+
+      let { data: insRow, error: insErr } = await admin
+        .from("invite_tokens")
+        .insert(insertPayload)
+        .select("id")
+        .single();
+
+      if (insErr && insErr.message?.includes("uses_count")) {
+        delete insertPayload.uses_count;
+        const retry = await admin
+          .from("invite_tokens")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+        insRow = retry.data;
+        insErr = retry.error;
+      }
+
+      if (insErr) {
+        console.error("Error inserting student referral token in Supabase:", insErr);
+        return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ ok: true, id: insRow?.id || id });
+    }
+
     if (type === "chapter_invite_code") {
-      const { id, chapterId, code, createdBy, expiresAt } = data;
+      const { id, chapterId, code, createdBy, expiresAt, isReferral } = data;
       const cleanCode = (code || "").trim().toUpperCase();
 
       let creatorId: string | null = null;
@@ -2118,7 +2132,8 @@ export async function POST(req: Request) {
           .maybeSingle();
         if (chapBySlug) validChapterId = chapBySlug.id;
       }
-      if (!validChapterId) {
+      // Only default to firstChap if it's genuinely a chapter invite code, NOT a personal student referral
+      if (!validChapterId && !cleanCode.startsWith("REF-") && !isReferral && chapterId !== null) {
         const { data: firstChap } = await admin
           .from("chapters")
           .select("id")

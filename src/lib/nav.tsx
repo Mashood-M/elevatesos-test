@@ -86,6 +86,7 @@ export type NavGroup = {
 export function navGroupsForRole(
   roleKey: RoleKey,
   chapterSlug = "",
+  isVolunteer = false,
 ): NavGroup[] {
   const slug = chapterSlug || "";
   const base = slug ? `/chapter/${slug}` : "/chapter";
@@ -154,6 +155,7 @@ export function navGroupsForRole(
           { href: base, label: "Chapter Overview", icon: I.home },
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
+          { href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership },
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/students`, label: "Students", icon: I.students },
           { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
@@ -186,6 +188,9 @@ export function navGroupsForRole(
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
           ...(roleKey !== "class_representative"
+            ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
+            : []),
+          ...(roleKey !== "class_representative"
             ? [{ href: `${base}/forms`, label: "Forms", icon: I.forms }]
             : []),
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
@@ -204,9 +209,6 @@ export function navGroupsForRole(
         items: [
           { href: `${base}/students`, label: "Student Directory", icon: I.students },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
-          ...(roleKey !== "class_representative"
-            ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
-            : []),
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
             href: `${base}/announcements`,
@@ -228,47 +230,20 @@ export function navGroupsForRole(
     ];
   }
 
-  // Volunteer Role
-  if (roleKey === "volunteer") {
-    const eventsHref = slug ? `${base}/events` : "/events";
-    const announcementsHref = slug ? `${base}/announcements` : "/announcements";
-    return [
-      {
-        label: "Volunteer Desk",
-        items: [
-          { href: `${base}/attendance`, label: "Take Attendance", icon: I.attendance },
-          { href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership },
-        ],
-      },
-      {
-        label: "Explore",
-        items: [
-          { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
-          { href: eventsHref, label: "Events", icon: I.events },
-          { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
-          { href: `${base}/projects`, label: "Projects", icon: I.projects },
-          {
-            href: announcementsHref,
-            label: "Announcements",
-            icon: I.announcements,
-          },
-          { href: "/notifications", label: "Notifications", icon: I.alerts },
-        ],
-      },
-      {
-        label: "My Account",
-        items: [
-          { href: "/my-qr", label: "My QR Code", icon: I.myQr },
-          { href: "/referrals", label: "Referrals", icon: I.referrals },
-        ],
-      },
-    ];
-  }
-
   // Student
   const eventsHref = slug ? `${base}/events` : "/events";
   const announcementsHref = slug ? `${base}/announcements` : "/announcements";
   return [
+    ...(isVolunteer && slug
+      ? [
+          {
+            label: "Volunteer Desk",
+            items: [
+              { href: `${base}/attendance`, label: "Take Attendance", icon: I.attendance },
+            ],
+          },
+        ]
+      : []),
     {
       label: "Explore",
       items: [

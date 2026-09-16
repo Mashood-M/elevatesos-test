@@ -14,7 +14,6 @@ export const ASSIGNABLE_LEADERSHIP_ROLES: RoleKey[] = [
   "innovation_team",
   "elevates_coordinator",
   "class_representative",
-  "volunteer",
 ];
 
 /** Only one of these per term */

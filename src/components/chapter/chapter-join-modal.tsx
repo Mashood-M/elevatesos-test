@@ -44,7 +44,7 @@ export function ChapterJoinModal({ isOpen, onClose, initialCode = "" }: Props) {
   const cleanCode = inviteCode.trim().toUpperCase();
   const matchingCode =
     (store.chapterInviteCodes ?? []).find((c) => c.code.toUpperCase() === cleanCode) ||
-    (store.inviteTokens ?? []).find((t) => t.token?.toUpperCase() === cleanCode);
+    (store.inviteTokens ?? []).find((t) => !t.token?.toUpperCase().startsWith("REF-") && t.token?.toUpperCase() === cleanCode && t.chapterId);
   const targetChapterId = matchingCode?.chapterId || "";
   const targetChapter = targetChapterId
     ? store.chapters.find((c) => c.id === targetChapterId)

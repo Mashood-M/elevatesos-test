@@ -224,8 +224,10 @@ export function getUserVolunteerPowers(
   // 1. Find matching volunteer groups
   const activeGroups = volunteerGroups.filter((g) => {
     if (!g.memberIds.includes(userId)) return false;
-    // Check event scoping: if eventId is provided, group must match or be unassigned (chapter-wide)
-    if (eventId && g.eventId && g.eventId !== eventId) return false;
+    // Check event scoping: if eventId is provided, the group must be explicitly assigned to this event
+    if (eventId) {
+      if (!g.eventId || g.eventId !== eventId) return false;
+    }
     // Check date validity
     return isWithinValidityPeriod(g.validFrom, g.validTo, targetDate);
   });
@@ -234,21 +236,23 @@ export function getUserVolunteerPowers(
   const activeAssignments = volunteerAssignments.filter((a) => {
     if (a.userId !== userId) return false;
     if (a.status === "inactive" || a.status === "expired") return false;
-    // Check event scoping
-    if (eventId && a.eventId && a.eventId !== eventId) return false;
+    // Check event scoping: if eventId is provided, direct assignment must match
+    if (eventId) {
+      if (!a.eventId || a.eventId !== eventId) return false;
+    }
     // Check date validity
     return isWithinValidityPeriod(a.validFrom, a.validTo, targetDate);
   });
-
-  // Check legacy leadership assignments for fallback compatibility
-  const legacyVolAssignment = store.leadershipAssignments.find(
-    (la) => la.userId === userId && la.roleKey === "volunteer",
-  );
 
   // Check event-level volunteerStudentIds
   const isEventVolStudent = eventId
     ? Boolean(store.events.find((e) => e.id === eventId)?.volunteerStudentIds?.includes(userId))
     : false;
+
+  // Check legacy leadership assignments for fallback compatibility only if no eventId specified
+  const legacyVolAssignment = !eventId
+    ? store.leadershipAssignments.find((la) => la.userId === userId && la.roleKey === "volunteer")
+    : undefined;
 
   const isVolunteer =
     activeGroups.length > 0 ||

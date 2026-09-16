@@ -261,8 +261,8 @@ export default function ChapterIndexPage() {
                               </Link>
                             ) : regState.status === "ended" ? (
                               <Link href={chapter ? `/chapter/${chapter.slug}/events/${ev.id}` : "#"}>
-                                <Button variant="primary" className="h-8 px-3 text-xs">
-                                  Open Event
+                                <Button variant="secondary" className="h-8 px-3 text-xs">
+                                  View Details
                                 </Button>
                               </Link>
                             ) : regState.isClosed ? (

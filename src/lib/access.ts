@@ -108,6 +108,7 @@ export function canAccessPath(
   roleKey: RoleKey,
   chapterSlug?: string,
   authRoleKey?: RoleKey,
+  isVolunteer?: boolean,
 ): boolean {
   // If the authenticated user is an HQ founder or admin testing a role, grant full access
   if (authRoleKey && isHqRole(authRoleKey)) {
@@ -184,6 +185,9 @@ export function canAccessPath(
         (firstSeg === "certificates" || firstSeg === "leadership" || firstSeg === "volunteer-team" || firstSeg === "classes")
       ) {
         return false;
+      }
+      if (firstSeg === "attendance" && isVolunteer) {
+        return true;
       }
       if (roleKey === "volunteer" && (firstSeg === "attendance" || firstSeg === "leadership" || firstSeg === "volunteer-team")) {
         return true;

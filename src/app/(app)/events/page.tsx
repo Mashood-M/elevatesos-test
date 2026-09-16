@@ -71,10 +71,11 @@ export default function OpenEventsPage() {
   const allOpenEvents = useMemo(() => {
     return store.events
       .filter((e) => isOpenToAllEvent(e) && isEventVisibleToUser(e, session.chapterId, session.roleKey))
-      .sort(
-        (a, b) =>
-          new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-      );
+      .sort((a, b) => {
+        const timeB = new Date(b.startsAt || b.publishedAt || 0).getTime();
+        const timeA = new Date(a.startsAt || a.publishedAt || 0).getTime();
+        return timeB - timeA;
+      });
   }, [store.events, session.chapterId, session.roleKey]);
 
   // Filtered by search and category/status tab
@@ -305,28 +306,42 @@ export default function OpenEventsPage() {
                         </Link>
                       ) : regState.status === "ended" ? (
                         <Link href={eventHref}>
-                          <Button variant="primary" className="h-9 px-4">
-                            Open Event
+                          <Button variant="secondary" className="h-9 px-4">
+                            View Details
                           </Button>
                         </Link>
                       ) : regState.status === "upcoming" || regState.isUpcoming ? (
-                        <Button
-                          variant="secondary"
-                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
-                          disabled
-                          title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
-                        >
-                          Registration Not Started
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
+                            disabled
+                            title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
+                          >
+                            Registration Not Started
+                          </Button>
+                          <Link href={eventHref}>
+                            <Button variant="ghost" className="h-9 px-3 text-xs">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
                       ) : regState.isClosed ? (
-                        <Button
-                          variant="ghost"
-                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
-                          disabled
-                          title={regState.reason || "Registration is closed"}
-                        >
-                          {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                            disabled
+                            title={regState.reason || "Registration is closed"}
+                          >
+                            {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
+                          </Button>
+                          <Link href={eventHref}>
+                            <Button variant="ghost" className="h-9 px-3 text-xs">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
                       ) : regState.isWaitlist ? (
                         <Button
                           variant="secondary"

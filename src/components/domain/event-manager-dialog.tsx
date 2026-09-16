@@ -306,7 +306,7 @@ export function createBlankCmsEvent(
 ): CmsEventItem {
   const times = getDefaultUpcomingEventTimes(initialDateKey);
   const startDate = times.displayDate;
-  const endDate = startDate;
+  const endDate = times.displayEndDate || startDate;
   const startTime = times.displayStartTime;
   const endTime = times.displayEndTime;
   const isoStartDate = times.isoStartDate;
@@ -337,8 +337,8 @@ export function createBlankCmsEvent(
     publishImmediately: true,
     venue: "Main Seminar Hall",
     locationName: "",
-    organizer: [{ name: "ELEVATES" }],
-    hosts: [{ name: "", role: "" }],
+    organizer: [],
+    hosts: [],
     topics: [],
     attendeesCount: 0,
     waitlistCapacity: 0,
@@ -1103,6 +1103,32 @@ export function EventManagerCreateDialog({
     }
     if (!endsAt) endsAt = new Date(Date.now() + 7200000).toISOString();
 
+    // Guardrail: Ensure endsAt is strictly at least 1 hour after startsAt
+    const startsAtMs = new Date(startsAt).getTime();
+    let endsAtMs = new Date(endsAt).getTime();
+    if (isNaN(endsAtMs) || endsAtMs <= startsAtMs) {
+      endsAt = new Date(startsAtMs + 2 * 3600 * 1000).toISOString();
+      endsAtMs = new Date(endsAt).getTime();
+    }
+
+    let registrationStart =
+      saved.isoRegistrationStart ||
+      (saved.registrationStartDate
+        ? new Date(`${saved.registrationStartDate} ${saved.registrationStartTime || "10:00 AM"}`).toISOString()
+        : new Date().toISOString());
+
+    let registrationEnd =
+      saved.isoRegistrationEnd ||
+      (saved.registrationEndDate
+        ? new Date(`${saved.registrationEndDate} ${saved.registrationEndTime || "04:00 PM"}`).toISOString()
+        : endsAt);
+
+    const regStartMs = new Date(registrationStart).getTime();
+    let regEndMs = new Date(registrationEnd).getTime();
+    if (isNaN(regEndMs) || regEndMs <= regStartMs) {
+      registrationEnd = endsAt;
+    }
+
     const visibility =
       saved.format === "Campus Exclusive" ? "chapter_only" : "open_to_all";
 
@@ -1137,16 +1163,8 @@ export function EventManagerCreateDialog({
           : saved.format === "Multi-Campus"
           ? "hybrid"
           : "in_person",
-      registrationStart:
-        saved.isoRegistrationStart ||
-        (saved.registrationStartDate
-          ? new Date(`${saved.registrationStartDate} ${saved.registrationStartTime || "10:00 AM"}`).toISOString()
-          : new Date().toISOString()),
-      registrationEnd:
-        saved.isoRegistrationEnd ||
-        (saved.registrationEndDate
-          ? new Date(`${saved.registrationEndDate} ${saved.registrationEndTime || "04:00 PM"}`).toISOString()
-          : endsAt),
+      registrationStart,
+      registrationEnd,
       status:
         saved.status === "Completed"
           ? "completed"

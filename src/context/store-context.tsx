@@ -1280,12 +1280,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hydrated,
       refreshStore,
       setSession: (userId, roleKey, chapterId) => {
+        const effectiveRoleKey = (roleKey === "volunteer" ? "student" : roleKey) as RoleKey;
         if (typeof window !== "undefined") {
-          localStorage.setItem("elevates_active_role_key", roleKey);
+          localStorage.setItem("elevates_active_role_key", effectiveRoleKey);
           localStorage.setItem("elevates_user_selected_role", "true");
           if (chapterId) {
             localStorage.setItem("elevates_active_chapter_id", chapterId);
             localStorage.setItem("elevates_locked_chapter_id", chapterId);
+          } else {
+            localStorage.removeItem("elevates_active_chapter_id");
+            localStorage.removeItem("elevates_locked_chapter_id");
           }
         }
         setStore((s) => {
@@ -1306,10 +1310,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 const rObj = s.roles.find((r) => r.id === ur.roleId);
                 return rObj?.key;
               })
-              .filter(Boolean);
+              .filter((k): k is RoleKey => Boolean(k) && (k as string) !== "volunteer");
 
-            if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(roleKey)) {
-              console.warn(`Permission denied: User ${userId} cannot switch to unassigned role '${roleKey}'`);
+            if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(effectiveRoleKey)) {
+              console.warn(`Permission denied: User ${userId} cannot switch to unassigned role '${effectiveRoleKey}'`);
               return s;
             }
           }
@@ -1318,14 +1322,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...s,
             session: {
               userId,
-              roleKey,
+              roleKey: effectiveRoleKey,
               chapterId,
               authUserId: origAuthUserId,
-              authRoleKey: origAuthRoleKey,
+              authRoleKey: origAuthRoleKey === "volunteer" ? "student" : origAuthRoleKey,
             },
           };
         });
-        broadcastSessionUpdate(userId, roleKey, chapterId);
+        broadcastSessionUpdate(userId, effectiveRoleKey, chapterId);
       },
       updateRegistrationStatus: (id, status, actorId) => {
         let result: {
@@ -2078,35 +2082,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           const defaultReminders = buildDefaultEventReminders(normalized, targetChapterId);
 
-          // Auto-create volunteer squad for the event if it doesn't already exist
-          const defaultVolGroupName = `${normalized.title} Volunteers`;
-          const existingVolGroup = (s.volunteerGroups || []).find(
-            (g) =>
-              g.eventId === eventId ||
-              (g.chapterId === targetChapterId && g.name.toLowerCase() === defaultVolGroupName.toLowerCase()),
-          );
-          const autoVolGroup: VolunteerGroup | null =
-            existingIndex < 0 && !existingVolGroup
-              ? {
-                  id: genUuid(),
-                  chapterId: targetChapterId,
-                  name: defaultVolGroupName,
-                  description: `Official volunteer squad for ${normalized.title}`,
-                  groupType: "temp",
-                  eventId,
-                  validFrom: normalized.startsAt || new Date().toISOString(),
-                  validTo:
-                    normalized.endsAt ||
-                    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
-                  powers: { ...DEFAULT_VOLUNTEER_POWERS },
-                  memberIds: [],
-                  customMemberPowers: {},
-                  createdBy: activeUserId,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                }
-              : null;
-
           return {
             ...s,
             events: [normalized, ...filtered],
@@ -2119,9 +2094,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               existingIndex >= 0
                 ? (s.eventReminders ?? [])
                 : [...defaultReminders, ...(s.eventReminders ?? [])],
-            volunteerGroups: autoVolGroup
-              ? [...(s.volunteerGroups ?? []), autoVolGroup]
-              : s.volunteerGroups,
             activityLogs: [
               log(
                 s.session.userId,
@@ -2130,17 +2102,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 eventId,
                 normalized.title,
               ),
-              ...(autoVolGroup
-                ? [
-                    log(
-                      s.session.userId,
-                      "volunteer_group_created",
-                      "volunteer_group",
-                      autoVolGroup.id,
-                      `Auto-created volunteer squad "${autoVolGroup.name}" for event "${normalized.title}"`,
-                    ),
-                  ]
-                : []),
               ...s.activityLogs,
             ],
           };
@@ -2156,7 +2117,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
                 eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
                 eventReminders: (s.eventReminders ?? []).filter((r) => r.eventId !== eventId),
-                volunteerGroups: (s.volunteerGroups ?? []).filter((g) => g.eventId !== eventId),
               }));
             }
           },
@@ -2173,15 +2133,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 errorMessage: `Failed to persist reminder "${rem.title}"`,
               })
             );
-
-            // Persist auto-created volunteer squad if present in store
-            const createdVolSquad = (store.volunteerGroups || []).find((g) => g.eventId === eventId);
-            if (createdVolSquad) {
-              broadcastChange("volunteer_groups", "INSERT", createdVolSquad);
-              void runPersist(remoteMutate("volunteer_group", createdVolSquad), {
-                errorMessage: `Failed to persist volunteer squad for "${normalized.title}"`,
-              });
-            }
           }
         });
 
@@ -3764,7 +3715,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Fallback: match against inviteTokens if chapterInviteCodes didn't have it
         if (!matchingCode) {
           const matchingToken = (store.inviteTokens ?? []).find(
-            (t) => t.token?.toUpperCase() === cleanCode
+            (t) => !t.token?.toUpperCase().startsWith("REF-") && t.token?.toUpperCase() === cleanCode && t.chapterId
           );
           if (matchingToken) {
             matchingCode = {

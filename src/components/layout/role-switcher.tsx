@@ -38,7 +38,6 @@ const HQ_ROLES: SwitchableRole[] = [
 
 const CHAPTER_ROLES: SwitchableRole[] = [
   { label: "Campus Lead", roleKey: "campus_lead",          isChapterScoped: true },
-  { label: "Volunteer",   roleKey: "volunteer",            isChapterScoped: true },
   { label: "Class Rep",   roleKey: "class_representative", isChapterScoped: true },
   { label: "Faculty",     roleKey: "faculty_coordinator",  isChapterScoped: true },
   { label: "Student",     roleKey: "student",              isChapterScoped: true },
@@ -50,7 +49,6 @@ const ALL_SWITCHABLE_ROLES: SwitchableRole[] = [...HQ_ROLES, ...CHAPTER_ROLES];
 const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "student",
-  "volunteer",
   "faculty_coordinator",
   "class_representative",
   "campus_lead",
@@ -86,7 +84,7 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
-  // Derive actual assigned roles from Supabase user_roles
+  // Derive actual assigned roles from Supabase user_roles (excluding operational tags like volunteer)
   const actualRoleKeys = useMemo<RoleKey[]>(() => {
     const uid = session.authUserId ?? session.userId;
     if (!uid) return [];
@@ -101,12 +99,12 @@ export function RoleSwitcher() {
         const roleObj = store.roles.find((r: any) => r.id === ur.roleId);
         return (roleObj?.key ?? null) as RoleKey | null;
       })
-      .filter((k): k is RoleKey => k !== null);
+      .filter((k): k is RoleKey => k !== null && (k as string) !== "volunteer");
 
-    if (session.authRoleKey && !keys.includes(session.authRoleKey)) {
+    if (session.authRoleKey && session.authRoleKey !== "volunteer" && !keys.includes(session.authRoleKey)) {
       keys.push(session.authRoleKey);
     }
-    if (session.roleKey && !keys.includes(session.roleKey)) {
+    if (session.roleKey && session.roleKey !== "volunteer" && !keys.includes(session.roleKey)) {
       keys.push(session.roleKey);
     }
 
@@ -123,10 +121,10 @@ export function RoleSwitcher() {
 
   const availableRoles = useMemo<SwitchableRole[]>(() => {
     if (isHqUser) {
-      return ALL_SWITCHABLE_ROLES;
+      return ALL_SWITCHABLE_ROLES.filter((r) => r.roleKey !== "volunteer");
     }
     const allowed = new Set(actualRoleKeys);
-    return ALL_SWITCHABLE_ROLES.filter((r) => allowed.has(r.roleKey));
+    return ALL_SWITCHABLE_ROLES.filter((r) => allowed.has(r.roleKey) && r.roleKey !== "volunteer");
   }, [isHqUser, actualRoleKeys]);
 
   const availableHqRoles = useMemo(() => {
@@ -137,7 +135,7 @@ export function RoleSwitcher() {
     return availableRoles.filter((r) => r.isChapterScoped);
   }, [availableRoles]);
 
-  const activeRoleKey = session.roleKey;
+  const activeRoleKey = session.roleKey === "volunteer" ? "student" : session.roleKey;
   const activeInfo = ALL_SWITCHABLE_ROLES.find((r) => r.roleKey === activeRoleKey) ?? {
     label: roleKeyLabel(activeRoleKey),
     roleKey: activeRoleKey,
@@ -146,6 +144,17 @@ export function RoleSwitcher() {
 
   const loggedUserId = session.authUserId || session.userId;
   const currentProfile = store.profiles.find((p) => p.id === loggedUserId);
+
+  // Auto-correct if user's session or localStorage is currently stuck on "volunteer"
+  useEffect(() => {
+    if (session.roleKey === "volunteer") {
+      const fallbackRole: RoleKey = actualRoleKeys.find((k) => k !== "volunteer") || "student";
+      setSession(loggedUserId, fallbackRole, session.chapterId);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("elevates_active_role_key", fallbackRole);
+      }
+    }
+  }, [session.roleKey, actualRoleKeys, loggedUserId, session.chapterId, setSession]);
 
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(() => {
     if (typeof window !== "undefined" && isHqUser) {

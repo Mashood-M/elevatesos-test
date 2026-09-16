@@ -129,17 +129,18 @@ export default function InviteSignUpPage({
       setTokenInfo(info);
       setTokenStatus("valid");
 
-      // Load referrer name and chapter name for display
+      // Load referrer name for display (chapter is only loaded if not a personal referral token)
       const supabase = createClient();
       if (!supabase) return;
+      const isReferralToken = token.toLowerCase().startsWith("ref-");
       const [{ data: referrer }, { data: chapter }] = await Promise.all([
         supabase.from("profiles").select("full_name").eq("id", info.createdBy).maybeSingle(),
-        info.chapterId
+        info.chapterId && !isReferralToken
           ? supabase.from("chapters").select("name").eq("id", info.chapterId).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
       if (referrer?.full_name) setReferrerName(referrer.full_name);
-      if (chapter?.name) setChapterName(chapter.name);
+      if (chapter?.name && !isReferralToken) setChapterName(chapter.name);
     }
     checkToken();
   }, [token]);
@@ -238,20 +239,20 @@ export default function InviteSignUpPage({
         .single();
 
       if (profileError) {
-        // If profile already exists (e.g. upsert on auth trigger), update phone and name
+        // If profile already exists (e.g. upsert on auth trigger), update phone and name, ensure chapter is null
         console.warn("Profile insert error (may be a trigger duplicate):", profileError.message);
         await supabase
           .from("profiles")
-          .update({ phone: cleanPhone, full_name: name })
+          .update({ phone: cleanPhone, full_name: name, chapter_id: null })
           .eq("id", authUser.id);
       }
 
       const profileId = profileData?.id ?? authUser.id;
 
-      // Ensure phone is saved in profiles
+      // Ensure phone and independent student state (chapter_id = null) is saved in profiles
       await supabase
         .from("profiles")
-        .update({ phone: cleanPhone })
+        .update({ phone: cleanPhone, chapter_id: null })
         .eq("id", profileId);
 
       // 3. Assign student role (without chapter assignment until invite code entered)
@@ -279,6 +280,15 @@ export default function InviteSignUpPage({
         email: cleanEmail,
         password,
       });
+
+      // Purge any stale chapter keys left behind in localStorage from other users
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("elevates_active_chapter_id");
+        localStorage.removeItem("elevates_locked_chapter_id");
+        localStorage.removeItem("elevates_user_selected_role");
+        localStorage.setItem("elevates_active_role_key", "student");
+        localStorage.setItem("elevates_known_top_role", "student");
+      }
 
       setLoading(false);
       setSuccess(true);

@@ -148,7 +148,7 @@ export function getDateRelativeLabel(dateKey: string): string {
 export function getDefaultUpcomingEventTimes(baseDateKey?: string) {
   const now = new Date();
   const todayKey = getTodayDateKey();
-  const dateKey = baseDateKey && baseDateKey >= todayKey ? baseDateKey : todayKey;
+  let dateKey = baseDateKey && baseDateKey >= todayKey ? baseDateKey : todayKey;
 
   let startHours = 10;
   let startMinutes = 0;
@@ -165,6 +165,7 @@ export function getDefaultUpcomingEventTimes(baseDateKey?: string) {
     }
     if (h >= 24) {
       // Midnight wrap-around: defaults to 10:00 AM next day
+      dateKey = addDaysToDateKey(todayKey, 1);
       startHours = 10;
       startMinutes = 0;
     } else {
@@ -173,19 +174,27 @@ export function getDefaultUpcomingEventTimes(baseDateKey?: string) {
     }
   }
 
-  const endHours = (startHours + 2) % 24;
+  let endHours = startHours + 2;
+  let endDateKey = dateKey;
+  if (endHours >= 24) {
+    endHours = endHours % 24;
+    endDateKey = addDaysToDateKey(dateKey, 1);
+  }
+
   const startTimeKey = `${String(startHours).padStart(2, "0")}:${String(startMinutes).padStart(2, "0")}`;
   const endTimeKey = `${String(endHours).padStart(2, "0")}:${String(startMinutes).padStart(2, "0")}`;
 
   return {
     dateKey,
     displayDate: formatDisplayDate(dateKey),
+    endDateKey,
+    displayEndDate: formatDisplayDate(endDateKey),
     startTimeKey,
     displayStartTime: formatDisplayTime(startTimeKey),
     endTimeKey,
     displayEndTime: formatDisplayTime(endTimeKey),
     isoStartDate: new Date(`${dateKey}T${startTimeKey}:00`).toISOString(),
-    isoEndDate: new Date(`${dateKey}T${endTimeKey}:00`).toISOString(),
+    isoEndDate: new Date(`${endDateKey}T${endTimeKey}:00`).toISOString(),
   };
 }
 

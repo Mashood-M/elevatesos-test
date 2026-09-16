@@ -179,19 +179,36 @@ export default function ProfilePage({
   }, [store, profileUserId, cleanId]);
 
   const isVolunteer = useMemo(() => {
-    const hasUr = store.userRoles.some(
-      (ur) =>
-        (ur.userId === profileUserId || ur.userId === cleanId) &&
-        (ur.roleKey === "volunteer" ||
-          store.roles.find((r) => r.id === ur.roleId)?.key === "volunteer"),
+    const inTeam = (store.volunteerGroups || []).some(
+      (g) => g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId),
     );
-    const hasLa = store.leadershipAssignments.some(
-      (la) =>
-        (la.userId === profileUserId || la.userId === cleanId) &&
-        la.roleKey === "volunteer",
+    const inEvent = (store.events || []).some(
+      (e) => e.volunteerStudentIds?.includes(profileUserId) || e.volunteerStudentIds?.includes(cleanId),
     );
-    return volPowers.isVolunteer || hasUr || hasLa;
-  }, [volPowers.isVolunteer, store.userRoles, store.leadershipAssignments, store.roles, profileUserId, cleanId]);
+    return volPowers.isVolunteer || inTeam || inEvent;
+  }, [volPowers.isVolunteer, store.volunteerGroups, store.events, profileUserId, cleanId]);
+
+  const volunteerAssignedEvent = useMemo(() => {
+    if (!isVolunteer) return null;
+    const group = (store.volunteerGroups || []).find(
+      (g) => (g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId)) && g.eventId,
+    );
+    if (group?.eventId) {
+      return store.events.find((e) => e.id === group.eventId) ?? null;
+    }
+    const directEvent = (store.events || []).find(
+      (e) => e.volunteerStudentIds?.includes(profileUserId) || e.volunteerStudentIds?.includes(cleanId),
+    );
+    return directEvent ?? null;
+  }, [isVolunteer, store.volunteerGroups, store.events, profileUserId, cleanId]);
+
+  const volunteerTeamName = useMemo(() => {
+    if (!isVolunteer) return null;
+    const group = (store.volunteerGroups || []).find(
+      (g) => g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId),
+    );
+    return group?.name ?? null;
+  }, [isVolunteer, store.volunteerGroups, profileUserId, cleanId]);
 
   type RoleWithTimestamp = { role: (typeof store.roles)[0]; createdAt: string | undefined };
   const rolesWithUr: RoleWithTimestamp[] = store.userRoles
@@ -200,7 +217,7 @@ export default function ProfilePage({
       const r = store.roles.find((role) => role.id === ur.roleId || role.key === ur.roleKey);
       return r ? { role: r, createdAt: ur.createdAt } : null;
     })
-    .filter((item): item is RoleWithTimestamp => item !== null);
+    .filter((item): item is RoleWithTimestamp => item !== null && item.role.key !== "volunteer");
   const roles = rolesWithUr.map((ru) => ru.role);
   const certs = store.certificates.filter((c) => c.userId === profileUserId || c.userId === cleanId);
   const eventsAttended = store.attendance.filter((a) => a.userId === profileUserId || a.userId === cleanId);
@@ -258,8 +275,11 @@ export default function ProfilePage({
                   </span>
                 )}
                 {isVolunteer && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold tracking-wide">
-                    Volunteer
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold tracking-wide"
+                    title={volunteerAssignedEvent ? `Assigned to: ${volunteerAssignedEvent.title}` : "Volunteer"}
+                  >
+                    Volunteer {volunteerAssignedEvent ? `· ${volunteerAssignedEvent.title}` : ""}
                   </span>
                 )}
               </div>
@@ -293,7 +313,7 @@ export default function ProfilePage({
               <div className="mt-4 flex flex-wrap gap-2">
                 {isVolunteer && (
                   <Badge tone="green" className="font-bold">
-                    Volunteer
+                    {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
                   </Badge>
                 )}
                 <Badge tone="cyan">
@@ -387,23 +407,33 @@ export default function ProfilePage({
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-bold text-sm text-text">
-                  Volunteer Tag: {volPowers.effectiveTag || "Active Volunteer"}
+                  Volunteer Tag: {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
                 </p>
-                <span className="rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
-                  Delegated Powers
-                </span>
+                {volunteerAssignedEvent ? (
+                  <span className="rounded-full bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                    Assigned: {volunteerAssignedEvent.title}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
+                    Awaiting Event
+                  </span>
+                )}
               </div>
               <p className="text-xs text-text-dim mt-0.5">
-                Active volunteer for {chapter.name}. You hold delegated event authority (attendance check-in & event operations).
+                {volunteerAssignedEvent
+                  ? `You are assigned to take attendance and manage "${volunteerAssignedEvent.title}".`
+                  : `Member of ${volunteerTeamName || "volunteer team"} for ${chapter.name}. Awaiting event assignment.`}
               </p>
             </div>
           </div>
-          <Link href={`/chapter/${chapter.slug}/attendance`}>
-            <Button variant="orange" className="text-xs font-bold shrink-0 flex items-center gap-2">
-              <QrCode size={13} />
-              Take Attendance →
-            </Button>
-          </Link>
+          {volunteerAssignedEvent && (
+            <Link href={`/chapter/${chapter.slug}/attendance?eventId=${volunteerAssignedEvent.id}`}>
+              <Button variant="orange" className="text-xs font-bold shrink-0 flex items-center gap-2">
+                <QrCode size={13} />
+                Take Attendance →
+              </Button>
+            </Link>
+          )}
         </div>
       )}
 

@@ -64,7 +64,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : isHqRole(session.roleKey)
       ? (store.chapters?.[0]?.slug ?? "")
       : "";
-  const groups = navGroupsForRole(session.roleKey, chapterSlug);
+  const isVolunteer = Boolean(
+    session.userId && (
+      (store.volunteerGroups || []).some((g) => g.memberIds?.includes(session.userId)) ||
+      (store.events || []).some((e) => e.volunteerStudentIds?.includes(session.userId))
+    )
+  );
+  const groups = navGroupsForRole(session.roleKey, chapterSlug, isVolunteer);
   const unread = store.notifications.filter(
     (n) => n.userId === session.userId && !n.read,
   ).length;
@@ -82,13 +88,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * user_roles assignments — used as the permanent role tag in the nav bottom.
    * Priority: founder > hq_admin > campus_lead > class_representative >
    *           faculty_coordinator > student
-   * If they've switched to a lower role (e.g. student view), the tag still
-   * shows their real top role so they always know their authority level.
+   * (Note: Volunteer is an operational team tag, not an institutional role)
    */
   const highestRoleLabel = useMemo(() => {
     const ROLE_PRIORITY = [
       "student",
-      "volunteer",
       "faculty_coordinator",
       "class_representative",
       "campus_lead",
@@ -106,14 +110,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (ur.roleKey) return ur.roleKey as string;
         return store.roles.find((r: any) => r.id === ur.roleId)?.key ?? null;
       })
-      .filter((k): k is string => k !== null);
+      .filter((k): k is string => k !== null && k !== "volunteer");
 
     // Also include the session's authRoleKey if not already present
-    if (session.authRoleKey && !allKeys.includes(session.authRoleKey)) {
+    if (session.authRoleKey && session.authRoleKey !== "volunteer" && !allKeys.includes(session.authRoleKey)) {
       allKeys.push(session.authRoleKey);
     }
 
-    if (allKeys.length === 0) return roleKeyLabel(session.roleKey);
+    const defaultRole = session.roleKey === "volunteer" ? "student" : session.roleKey;
+    if (allKeys.length === 0) return roleKeyLabel(defaultRole);
 
     const best = allKeys.reduce<PR | null>((top, cur) => {
       const curRank = ROLE_PRIORITY.indexOf(cur as PR);
@@ -122,7 +127,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return curRank > ROLE_PRIORITY.indexOf(top) ? (cur as PR) : top;
     }, null);
 
-    return best ? roleKeyLabel(best) : roleKeyLabel(session.roleKey);
+    return best ? roleKeyLabel(best) : roleKeyLabel(defaultRole);
   }, [session, store.userRoles, store.roles]);
 
   async function handleLogout() {

@@ -41,7 +41,6 @@ import type {
 export const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "student",
-  "volunteer",
   "faculty_coordinator",
   "class_representative",
   "campus_lead",
@@ -549,7 +548,7 @@ export function recalculateUserSession(
       const r = roles.find((role) => role.id === ur.roleId);
       return (r?.key ?? null) as RoleKey | null;
     })
-    .filter((k): k is RoleKey => k !== null);
+    .filter((k): k is RoleKey => k !== null && (k as string) !== "volunteer");
 
   if (assignedKeys.length === 0) {
     const e = (matchedProfile?.email || "").toLowerCase();
@@ -577,14 +576,21 @@ export function recalculateUserSession(
   let savedRoleKey: RoleKey | null = null;
   if (typeof window !== "undefined") {
     knownTopRole = localStorage.getItem("elevates_known_top_role") as RoleKey | null;
+    if (knownTopRole === "volunteer") {
+      knownTopRole = null;
+      localStorage.removeItem("elevates_known_top_role");
+    }
     const rawSaved = localStorage.getItem("elevates_active_role_key");
-    if (rawSaved && rawSaved !== "guest") {
+    if (rawSaved && rawSaved !== "guest" && rawSaved !== "volunteer") {
       savedRoleKey = rawSaved as RoleKey;
+    } else if (rawSaved === "volunteer") {
+      localStorage.removeItem("elevates_active_role_key");
     }
   }
 
   // Active role precedence: explicit option override -> current session role -> saved localStorage role -> top role
-  const currentRole = options?.forceRoleKey || session.roleKey || savedRoleKey || topRoleKey;
+  const rawRole = options?.forceRoleKey || session.roleKey || savedRoleKey || topRoleKey;
+  const currentRole = rawRole === "volunteer" ? topRoleKey : rawRole;
   let nextRole: RoleKey = currentRole;
 
   // A genuine new promotion happens ONLY when the user's top assigned role is strictly higher than their previous known top role
@@ -613,16 +619,31 @@ export function recalculateUserSession(
   }
 
   // Active chapter resolution
-  const activeChapterId =
-    userRoleEntries[0]?.chapterId ??
-    matchedProfile?.chapterId ??
-    session.chapterId;
+  const userAllowedChapterIds = [
+    matchedProfile?.chapterId,
+    ...userRoleEntries.map((ur: any) => ur.chapterId || ur.chapter_id),
+  ].filter(Boolean);
+
+  let activeChapterId: string | null = null;
+  if (isHqUser) {
+    activeChapterId = session.chapterId || userAllowedChapterIds[0] || null;
+  } else if (userAllowedChapterIds.length > 0) {
+    activeChapterId = session.chapterId && userAllowedChapterIds.includes(session.chapterId)
+      ? session.chapterId
+      : userAllowedChapterIds[0];
+  } else {
+    // Independent student (no chapter assigned): strictly null
+    activeChapterId = null;
+  }
 
   if (typeof window !== "undefined") {
     localStorage.setItem("elevates_active_role_key", nextRole);
     localStorage.setItem("elevates_known_top_role", topRoleKey);
     if (activeChapterId) {
       localStorage.setItem("elevates_active_chapter_id", activeChapterId);
+    } else {
+      localStorage.removeItem("elevates_active_chapter_id");
+      localStorage.removeItem("elevates_locked_chapter_id");
     }
   }
 
@@ -632,7 +653,7 @@ export function recalculateUserSession(
     roleKey: nextRole,
     authUserId: session.authUserId || targetUid,
     authRoleKey: topRoleKey,
-    chapterId: activeChapterId,
+    chapterId: activeChapterId ?? undefined,
   };
 }
 
@@ -1471,6 +1492,9 @@ export function setupRealtimeSync(options: {
               }
               if (data.chapterId) {
                 localStorage.setItem("elevates_active_chapter_id", data.chapterId);
+              } else if (data.chapterId === null) {
+                localStorage.removeItem("elevates_active_chapter_id");
+                localStorage.removeItem("elevates_locked_chapter_id");
               }
             }
             return {
@@ -1479,7 +1503,7 @@ export function setupRealtimeSync(options: {
                 ...prev.session,
                 userId: data.userId || prev.session.userId,
                 roleKey: data.roleKey || prev.session.roleKey,
-                chapterId: data.chapterId ?? prev.session.chapterId,
+                chapterId: data.chapterId !== undefined ? data.chapterId : prev.session.chapterId,
               },
             };
           });

@@ -17,6 +17,13 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
       ? (store.chapters[0]?.slug ?? "")
       : "";
 
+  const isVolunteer = Boolean(
+    userId && (
+      (store.volunteerGroups || []).some((g) => g.memberIds?.includes(userId)) ||
+      (store.events || []).some((e) => e.volunteerStudentIds?.includes(userId))
+    )
+  );
+
   useEffect(() => {
     // Wait until Supabase store hydration has finished before enforcing permissions
     if (!hydrated) return;
@@ -28,10 +35,10 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     }
 
     // User is logged in but doesn't have permission for this path
-    if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey)) {
+    if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey, isVolunteer)) {
       router.replace(homeForRole(roleKey, chapterSlug));
     }
-  }, [pathname, userId, roleKey, chapterSlug, router, hydrated, store.session.authRoleKey]);
+  }, [pathname, userId, roleKey, chapterSlug, router, hydrated, store.session.authRoleKey, isVolunteer]);
 
   // While store is hydrating from Supabase, render loading indicator
   if (!hydrated) {
@@ -51,7 +58,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey)) {
+  if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey, isVolunteer)) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-[13px] text-text-mute">
         Redirecting to your workspace…

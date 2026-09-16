@@ -150,10 +150,11 @@ export default function ChapterEventsPage({
         e.category.toLowerCase().includes(q)
       );
     })
-    .sort(
-      (a, b) =>
-        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime(),
-    );
+    .sort((a, b) => {
+      const timeB = new Date(b.startsAt || b.publishedAt || 0).getTime();
+      const timeA = new Date(a.startsAt || a.publishedAt || 0).getTime();
+      return timeB - timeA;
+    });
 
   function publishEventFromList(eventItem: EventItem) {
     const existing = getEventForm(store, eventItem.id, "registration");
@@ -307,13 +308,19 @@ export default function ChapterEventsPage({
               const user = store.profiles.find((p) => p.id === reg.userId);
               const ev = store.events.find((e) => e.id === reg.eventId);
               const isSelected = selectedRegIds.includes(reg.id);
+              const isVolunteerForRegEvent =
+                Boolean(ev?.volunteerStudentIds?.includes(session.userId)) ||
+                (store.volunteerGroups || []).some(
+                  (g) => g.chapterId === ev?.chapterId && g.eventId === ev?.id && g.memberIds?.includes(session.userId),
+                );
+              const canApproveThisReg = canApprove || isVolunteerForRegEvent;
               return (
                 <li
                   key={reg.id}
                   className="flex flex-wrap items-center justify-between gap-2 py-2.5"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    {canApprove && (
+                    {canApproveThisReg && (
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -334,7 +341,7 @@ export default function ChapterEventsPage({
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge tone="orange">Priority #{idx + 1}</Badge>
-                    {canApprove ? (
+                    {canApproveThisReg ? (
                       <>
                         <Button
                           variant="green"
@@ -449,6 +456,12 @@ export default function ChapterEventsPage({
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
             {filteredEvents.map((ev) => {
+              const isAssignedVolunteer =
+                Boolean(ev.volunteerStudentIds?.includes(session.userId)) ||
+                (store.volunteerGroups || []).some(
+                  (g) => g.chapterId === ev.chapterId && g.eventId === ev.id && g.memberIds?.includes(session.userId),
+                );
+              const canManageThisEvent = canManage || isAssignedVolunteer;
               const regState = getEventRegistrationState(store, ev, session.userId);
               const regForm = getEventForm(store, ev.id, "registration");
               const fbForm = getEventForm(store, ev.id, "feedback");
@@ -464,7 +477,7 @@ export default function ChapterEventsPage({
               );
 
               let secondary: { href: string; label: string } | null = null;
-              if (canManage && regForm) {
+              if (canManageThisEvent && regForm) {
                 secondary = {
                   href: `/chapter/${slug}/forms/${regForm.id}`,
                   label: "Forms",
@@ -486,7 +499,7 @@ export default function ChapterEventsPage({
                   event={ev}
                   href={`/chapter/${slug}/events/${ev.id}`}
                   className="bg-bg shadow-[var(--shadow-sm)]"
-                  hideStatus={!canManage}
+                  hideStatus={!canManageThisEvent}
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
                     <div className="flex flex-wrap items-center gap-2">
@@ -524,28 +537,42 @@ export default function ChapterEventsPage({
                         </Link>
                       ) : regState.status === "ended" ? (
                         <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                          <Button variant="primary" className="h-9 px-4">
-                            Open event
+                          <Button variant="secondary" className="h-9 px-4">
+                            View Details
                           </Button>
                         </Link>
                       ) : regState.status === "upcoming" || regState.isUpcoming ? (
-                        <Button
-                          variant="secondary"
-                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
-                          disabled
-                          title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
-                        >
-                          Registration Not Started
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="secondary"
+                            className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-80"
+                            disabled
+                            title={regState.reason || `Registration opens on ${new Date(ev.registrationStart).toLocaleString()}`}
+                          >
+                            Registration Not Started
+                          </Button>
+                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                            <Button variant="ghost" className="h-9 px-3 text-xs">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
                       ) : regState.isClosed ? (
-                        <Button
-                          variant="ghost"
-                          className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
-                          disabled
-                          title={regState.reason || "Registration is closed"}
-                        >
-                          {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            className="h-9 px-4 text-text-dim border border-border/70 cursor-not-allowed opacity-75"
+                            disabled
+                            title={regState.reason || "Registration is closed"}
+                          >
+                            {ev.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
+                          </Button>
+                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                            <Button variant="ghost" className="h-9 px-3 text-xs">
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
                       ) : regState.isWaitlist ? (
                         <Button
                           variant="secondary"
@@ -565,7 +592,7 @@ export default function ChapterEventsPage({
                       )}
 
                       {/* Management Controls: Start Event, End Event, Publish & Stop Registration */}
-                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManage || session.roleKey === "campus_lead" || session.roleKey === "chairman" || session.roleKey === "elevates_coordinator" || session.roleKey === "hq_admin" || ev.organizerId === session.userId) ? (
+                      {(canPublishEvent(session.roleKey, ev, session.userId) || canManageThisEvent || session.roleKey === "campus_lead" || session.roleKey === "chairman" || session.roleKey === "elevates_coordinator" || session.roleKey === "hq_admin" || ev.organizerId === session.userId) ? (
                         (ev.status === "ongoing" || isEventOngoing(ev)) ? (
                           /* When ongoing: ONLY End Event button! All other actions closed. */
                           <Button
@@ -597,7 +624,7 @@ export default function ChapterEventsPage({
                               </Button>
                             )}
 
-                            {(canPublishEvent(session.roleKey, ev, session.userId) || canManage) && (
+                            {(canPublishEvent(session.roleKey, ev, session.userId) || canManageThisEvent) && (
                               ev.status === "registration_open" ? (
                                 <Button
                                   variant="danger"
@@ -614,13 +641,21 @@ export default function ChapterEventsPage({
                                   onClick={() => publishEventFromList(ev)}
                                   title="Publish / Open registration for this event"
                                 >
-                                  {ev.status === "registration_closed" ? "Reopen Registration" : "Publish Event"}
+                                  Open Registration
                                 </Button>
                               ) : null
                             )}
                           </>
                         )
                       ) : null}
+
+                      {isAssignedVolunteer && (
+                        <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
+                          <Button variant="orange" className="h-9 px-3 text-xs flex items-center gap-1 font-bold shadow-sm">
+                            Take Attendance
+                          </Button>
+                        </Link>
+                      )}
 
                       {secondary && !isFacultyRole(session.roleKey) ? (
                         <Link

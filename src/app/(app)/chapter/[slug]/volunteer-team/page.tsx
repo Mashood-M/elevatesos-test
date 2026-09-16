@@ -28,6 +28,7 @@ import {
   QrCode,
   Search,
   Settings2,
+  Sparkles,
   Tag,
   Trash2,
   UserPlus,
@@ -76,6 +77,8 @@ export default function ChapterVolunteerTeamPage({
     removeVolunteerFromGroup,
     updateVolunteerMemberPowers,
     assignVolunteerToEvent,
+    assignVolunteerGroupToEvent,
+    applyVolunteerPresetToEvent,
     removeVolunteerAssignment,
   } = useStore();
 
@@ -91,15 +94,22 @@ export default function ChapterVolunteerTeamPage({
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<"groups" | "directory" | "events">("groups");
-  const [groupTypeFilter, setGroupTypeFilter] = useState<"all" | "listed" | "temp">("all");
+  const [groupTypeFilter, setGroupTypeFilter] = useState<"all" | "presets" | "events" | "listed">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [flash, setFlash] = useState("");
 
   // Group creation / editing modal
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [isPresetModal, setIsPresetModal] = useState(false);
+  const [presetSelectedStudentIds, setPresetSelectedStudentIds] = useState<string[]>([]);
+  const [presetStudentSearch, setPresetStudentSearch] = useState("");
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [groupDraft, setGroupDraft] = useState<GroupDraft>(emptyGroupDraft);
   const [groupError, setGroupError] = useState("");
+
+  // Quick preset application popover target
+  const [applyPresetTargetSquad, setApplyPresetTargetSquad] = useState<VolunteerGroup | null>(null);
+  const [assignPresetTargetGroup, setAssignPresetTargetGroup] = useState<VolunteerGroup | null>(null);
 
   // Powers modal state (can target a group OR an individual student in a group)
   const [powersTarget, setPowersTarget] = useState<{
@@ -116,7 +126,7 @@ export default function ChapterVolunteerTeamPage({
   const [selectedStudentForGroup, setSelectedStudentForGroup] = useState<string>("");
   const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
 
-  // Quick event assignment modal
+  // Quick event assignment modal (for individual students or unlinked pools)
   const [assignEventTarget, setAssignEventTarget] = useState<{
     targetType: "group" | "student";
     groupId?: string;
@@ -126,10 +136,6 @@ export default function ChapterVolunteerTeamPage({
   const [selectedEventId, setSelectedEventId] = useState<string>("");
   const [assignStudentId, setAssignStudentId] = useState<string>("");
   const [assignStudentSearch, setAssignStudentSearch] = useState<string>("");
-  const [assignValidFrom, setAssignValidFrom] = useState(new Date().toISOString().slice(0, 10));
-  const [assignValidTo, setAssignValidTo] = useState(
-    new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10),
-  );
 
   // Expanded group details
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
@@ -169,9 +175,23 @@ export default function ChapterVolunteerTeamPage({
       .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   }, [store.volunteerGroups, chapter]);
 
+  const chapterPresets = useMemo(() => {
+    return chapterGroups.filter((g) => Boolean(g.isPreset));
+  }, [chapterGroups]);
+
+  const chapterEventSquads = useMemo(() => {
+    return chapterGroups.filter((g) => Boolean(g.eventId));
+  }, [chapterGroups]);
+
+  const chapterRegularPools = useMemo(() => {
+    return chapterGroups.filter((g) => !g.isPreset && !g.eventId);
+  }, [chapterGroups]);
+
   const filteredGroups = useMemo(() => {
     return chapterGroups.filter((g) => {
-      if (groupTypeFilter !== "all" && g.groupType !== groupTypeFilter) return false;
+      if (groupTypeFilter === "presets" && !g.isPreset) return false;
+      if (groupTypeFilter === "events" && !g.eventId) return false;
+      if (groupTypeFilter === "listed" && (g.isPreset || g.eventId)) return false;
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       return (
@@ -247,6 +267,20 @@ export default function ChapterVolunteerTeamPage({
     });
   }, [chapterStudents, assignStudentSearch]);
 
+  const filteredPresetStudents = useMemo(() => {
+    const q = presetStudentSearch.toLowerCase().trim();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((s) => {
+      return (
+        s.fullName.toLowerCase().includes(q) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
+        (s.department && s.department.toLowerCase().includes(q)) ||
+        (s.year && s.year.toLowerCase().includes(q))
+      );
+    });
+  }, [chapterStudents, presetStudentSearch]);
+
   // Set of student IDs who hold any active volunteer assignment or group membership
   const volunteerSummaryMap = useMemo(() => {
     const map = new Map<
@@ -274,13 +308,50 @@ export default function ChapterVolunteerTeamPage({
   }, [chapterStudents, store]);
 
   const totalVolunteersCount = volunteerSummaryMap.size;
-  const listedCount = chapterGroups.filter((g) => g.groupType === "listed").length;
-  const tempCount = chapterGroups.filter((g) => g.groupType === "temp").length;
 
   if (!chapter) return <p className="text-orange">{"// Chapter not found"}</p>;
 
+  function startCreatePreset() {
+    setEditingGroupId(null);
+    setIsPresetModal(true);
+    setPresetSelectedStudentIds([]);
+    setPresetStudentSearch("");
+    setGroupDraft({
+      name: "",
+      description: "",
+      groupType: "listed",
+      eventId: "",
+      validFrom: new Date().toISOString().slice(0, 10),
+      validTo: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+      powers: { ...DEFAULT_VOLUNTEER_POWERS },
+    });
+    setGroupError("");
+    setShowGroupModal(true);
+  }
+
+  function startEditPreset(preset: VolunteerGroup) {
+    setEditingGroupId(preset.id);
+    setIsPresetModal(true);
+    setPresetSelectedStudentIds([...preset.memberIds]);
+    setPresetStudentSearch("");
+    setGroupDraft({
+      name: preset.name,
+      description: preset.description || "",
+      groupType: "listed",
+      eventId: "",
+      validFrom: preset.validFrom || new Date().toISOString().slice(0, 10),
+      validTo: preset.validTo || new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+      powers: { ...(preset.powers || DEFAULT_VOLUNTEER_POWERS) },
+    });
+    setGroupError("");
+    setShowGroupModal(true);
+  }
+
   function startCreateGroup(type: VolunteerGroupType = "listed") {
     setEditingGroupId(null);
+    setIsPresetModal(false);
+    setPresetSelectedStudentIds([]);
+    setPresetStudentSearch("");
     setGroupDraft({
       name: "",
       description: "",
@@ -295,7 +366,14 @@ export default function ChapterVolunteerTeamPage({
   }
 
   function startEditGroup(group: VolunteerGroup) {
+    if (group.isPreset) {
+      startEditPreset(group);
+      return;
+    }
     setEditingGroupId(group.id);
+    setIsPresetModal(false);
+    setPresetSelectedStudentIds([...group.memberIds]);
+    setPresetStudentSearch("");
     setGroupDraft({
       name: group.name,
       description: group.description || "",
@@ -321,41 +399,47 @@ export default function ChapterVolunteerTeamPage({
         name: groupDraft.name.trim(),
         description: groupDraft.description.trim(),
         groupType: groupDraft.groupType,
-        eventId: groupDraft.eventId || undefined,
+        eventId: isPresetModal ? undefined : (groupDraft.eventId || undefined),
+        isPreset: isPresetModal,
+        ...(isPresetModal ? { memberIds: presetSelectedStudentIds } : {}),
         validFrom: groupDraft.validFrom,
         validTo: groupDraft.validTo,
         powers: groupDraft.powers,
       });
-      flashMsg("✓ Volunteer group updated!");
+      flashMsg(isPresetModal ? "✓ Volunteer preset updated!" : "✓ Volunteer squad updated!");
     } else {
       createVolunteerGroup({
         chapterId: chapter.id,
         name: groupDraft.name.trim(),
         description: groupDraft.description.trim(),
         groupType: groupDraft.groupType,
-        eventId: groupDraft.eventId || undefined,
-        memberIds: [],
+        eventId: isPresetModal ? undefined : (groupDraft.eventId || undefined),
+        isPreset: isPresetModal,
+        memberIds: isPresetModal ? presetSelectedStudentIds : [],
         validFrom: groupDraft.validFrom,
         validTo: groupDraft.validTo,
         powers: groupDraft.powers,
       });
-      flashMsg("✓ Volunteer group created!");
+      flashMsg(isPresetModal ? "✓ Volunteer preset created!" : "✓ Volunteer squad created!");
     }
 
     setShowGroupModal(false);
   }
 
   async function handleDeleteGroup(group: VolunteerGroup) {
+    const isPreset = Boolean(group.isPreset);
     const ok = await confirm({
-      title: "Delete Volunteer Group",
-      description: `Delete group “${group.name}”? All members will be unassigned from this squad.`,
-      confirmLabel: "Delete Group",
+      title: isPreset ? "Delete Volunteer Preset" : "Delete Volunteer Group",
+      description: isPreset
+        ? `Delete preset “${group.name}”? Reusable membership list will be removed.`
+        : `Delete group “${group.name}”? All members will be unassigned from this squad.`,
+      confirmLabel: isPreset ? "Delete Preset" : "Delete Group",
       danger: true,
     });
     if (!ok) return;
 
     deleteVolunteerGroup(group.id);
-    flashMsg(`Volunteer group "${group.name}" removed.`);
+    flashMsg(isPreset ? `Volunteer preset "${group.name}" removed.` : `Volunteer group "${group.name}" removed.`);
   }
 
   function handleAddMemberToGroup(groupId: string, studentId: string) {
@@ -385,36 +469,50 @@ export default function ChapterVolunteerTeamPage({
     flashMsg("Removed student from squad.");
   }
 
+  function handleDirectAssignToEvent(group: VolunteerGroup) {
+    if (!group.eventId) return;
+    const event = store.events.find((e) => e.id === group.eventId);
+    assignVolunteerGroupToEvent(group.id, group.eventId);
+    flashMsg(`✓ Assigned all ${group.memberIds.length} squad volunteers directly to ${event?.title || "event"}!`);
+  }
+
+  function handleApplyPresetToSquad(presetId: string, squad: VolunteerGroup) {
+    const preset = chapterPresets.find((p) => p.id === presetId);
+    if (!preset) return;
+    if (squad.eventId) {
+      applyVolunteerPresetToEvent(preset.id, squad.eventId);
+      const ev = store.events.find((e) => e.id === squad.eventId);
+      flashMsg(`✓ Applied preset "${preset.name}" directly to ${ev?.title || "event"}!`);
+    } else {
+      for (const memberId of preset.memberIds) {
+        if (!squad.memberIds.includes(memberId)) {
+          addVolunteerToGroup(squad.id, memberId);
+        }
+      }
+      flashMsg(`✓ Added ${preset.memberIds.length} volunteers from "${preset.name}" to "${squad.name}"!`);
+    }
+    setApplyPresetTargetSquad(null);
+  }
+
+  function handleAssignPresetToEvent(presetId: string, eventId: string) {
+    const preset = chapterPresets.find((p) => p.id === presetId);
+    const event = store.events.find((e) => e.id === eventId);
+    if (!preset || !event) return;
+    applyVolunteerPresetToEvent(preset.id, event.id);
+    flashMsg(`✓ Assigned preset "${preset.name}" directly to ${event.title}!`);
+    setAssignPresetTargetGroup(null);
+    setSelectedEventId("");
+  }
+
   function handleAssignToEvent() {
     if (!chapter || !assignEventTarget || !selectedEventId) return;
     const event = store.events.find((e) => e.id === selectedEventId);
     const eventName = event?.title || "event";
 
     if (assignEventTarget.targetType === "group" && assignEventTarget.groupId) {
+      assignVolunteerGroupToEvent(assignEventTarget.groupId, selectedEventId);
       const group = chapterGroups.find((g) => g.id === assignEventTarget.groupId);
-      if (!group) return;
-
-      // Assign all members of the group to this event
-      let count = 0;
-      for (const userId of group.memberIds) {
-        const memberCustom = group.customMemberPowers?.[userId];
-        const effectivePowers = memberCustom
-          ? { ...group.powers, ...memberCustom }
-          : group.powers;
-
-        assignVolunteerToEvent({
-          chapterId: chapter.id,
-          userId,
-          eventId: selectedEventId,
-          groupId: group.id,
-          tag: group.name,
-          powers: effectivePowers,
-          validFrom: assignValidFrom || event?.startsAt,
-          validTo: assignValidTo || event?.endsAt,
-        });
-        count++;
-      }
-      flashMsg(`✓ Assigned ${count} volunteers from "${group.name}" to ${eventName}!`);
+      flashMsg(`✓ Assigned volunteers from "${group?.name || "squad"}" directly to ${eventName}!`);
     } else if (assignEventTarget.targetType === "student") {
       const targetStudentId = assignStudentId || assignEventTarget.studentId;
       if (!targetStudentId) return;
@@ -425,10 +523,10 @@ export default function ChapterVolunteerTeamPage({
         eventId: selectedEventId,
         tag: `Volunteer · ${eventName}`,
         powers: { ...DEFAULT_VOLUNTEER_POWERS },
-        validFrom: assignValidFrom || event?.startsAt,
-        validTo: assignValidTo || event?.endsAt,
+        validFrom: event?.startsAt,
+        validTo: event?.endsAt,
       });
-      flashMsg(`✓ Assigned ${student?.fullName || "student"} to ${eventName}!`);
+      flashMsg(`✓ Assigned ${student?.fullName || "student"} directly to ${eventName}!`);
     }
 
     setAssignEventTarget(null);
@@ -465,7 +563,16 @@ export default function ChapterVolunteerTeamPage({
                   title="Search and add students directly to a volunteer squad"
                 >
                   <UserPlus size={14} className="text-[var(--accent)]" />
-                  + Add Volunteer Student
+                  + Add Student
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => startCreatePreset()}
+                  className="flex items-center gap-1.5 font-bold text-xs border border-purple-500/30 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                  title="Create reusable volunteer student preset"
+                >
+                  <Sparkles size={14} />
+                  + Create Preset
                 </Button>
                 <Button
                   variant="primary"
@@ -473,7 +580,7 @@ export default function ChapterVolunteerTeamPage({
                   className="flex items-center gap-1.5 font-bold text-xs"
                 >
                   <Plus size={14} />
-                  Create Volunteer Group
+                  Create Squad
                 </Button>
               </>
             )}
@@ -484,9 +591,9 @@ export default function ChapterVolunteerTeamPage({
       {/* Stats Overview in Finexy-light style */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Stat label="Total Active Volunteers" value={totalVolunteersCount} />
-        <Stat label="Listed Pools (Saved)" value={listedCount} />
-        <Stat label="Temp Event Squads" value={tempCount} />
-        <Stat label="Total Group Squads" value={chapterGroups.length} />
+        <Stat label="Volunteer Presets" value={chapterPresets.length} />
+        <Stat label="Event Squads" value={chapterEventSquads.length} />
+        <Stat label="Total Squads" value={chapterGroups.length} />
       </div>
 
       {/* Navigation Tabs & Search Controls */}
@@ -555,7 +662,7 @@ export default function ChapterVolunteerTeamPage({
         </div>
       </div>
 
-      {/* TAB 1: VOLUNTEER GROUPS (LISTED POOLS & TEMP SQUADS) */}
+      {/* TAB 1: VOLUNTEER GROUPS (PRESETS, EVENT SQUADS, LISTED POOLS) */}
       {activeTab === "groups" && (
         <div className="space-y-4">
           {/* Sub-filters for group types */}
@@ -577,6 +684,29 @@ export default function ChapterVolunteerTeamPage({
               </button>
               <button
                 type="button"
+                onClick={() => setGroupTypeFilter("presets")}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center gap-1 ${
+                  groupTypeFilter === "presets"
+                    ? "bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 font-bold"
+                    : "text-text-dim hover:text-text"
+                }`}
+              >
+                <Sparkles size={11} />
+                Volunteer Presets ({chapterPresets.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGroupTypeFilter("events")}
+                className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
+                  groupTypeFilter === "events"
+                    ? "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold"
+                    : "text-text-dim hover:text-text"
+                }`}
+              >
+                Event Squads ({chapterEventSquads.length})
+              </button>
+              <button
+                type="button"
                 onClick={() => setGroupTypeFilter("listed")}
                 className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
                   groupTypeFilter === "listed"
@@ -584,18 +714,7 @@ export default function ChapterVolunteerTeamPage({
                     : "text-text-dim hover:text-text"
                 }`}
               >
-                Listed Pools ({listedCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setGroupTypeFilter("temp")}
-                className={`px-2.5 py-1 rounded-full text-xs font-bold transition ${
-                  groupTypeFilter === "temp"
-                    ? "bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold"
-                    : "text-text-dim hover:text-text"
-                }`}
-              >
-                Temp Event Squads ({tempCount})
+                Listed Pools ({chapterRegularPools.length})
               </button>
             </div>
 
@@ -608,21 +727,22 @@ export default function ChapterVolunteerTeamPage({
                   title="Search and add students to squad"
                 >
                   <UserPlus size={13} className="text-[var(--accent)] mr-1 inline" />
-                  + Add Volunteer Student
+                  + Add Student
                 </Button>
                 <Button
                   variant="ghost"
-                  onClick={() => startCreateGroup("temp")}
-                  className="text-xs text-amber-600 dark:text-amber-400 border border-amber-500/30 h-auto py-1 px-2.5"
+                  onClick={() => startCreatePreset()}
+                  className="text-xs text-purple-600 dark:text-purple-400 border border-purple-500/30 h-auto py-1 px-2.5 font-bold hover:bg-purple-500/10 flex items-center gap-1"
                 >
-                  + New Temp Squad
+                  <Sparkles size={12} />
+                  + New Preset
                 </Button>
                 <Button
                   variant="orange"
                   onClick={() => startCreateGroup("listed")}
                   className="text-xs font-bold h-auto py-1 px-2.5"
                 >
-                  + New Listed Pool
+                  + New Squad
                 </Button>
               </div>
             )}
@@ -656,6 +776,7 @@ export default function ChapterVolunteerTeamPage({
             <div className="space-y-4">
               {filteredGroups.map((group) => {
                 const isExpanded = expandedGroupIds.has(group.id);
+                const isPreset = Boolean(group.isPreset);
                 const isTemp = group.groupType === "temp";
                 const linkedEvent = group.eventId
                   ? store.events.find((e) => e.id === group.eventId)
@@ -690,12 +811,32 @@ export default function ChapterVolunteerTeamPage({
                             <h3 className="font-bold text-sm text-text truncate">
                               {group.name}
                             </h3>
-                            <Badge
-                              tone={isTemp ? "amber" : "green"}
-                              className="font-bold text-[10px] uppercase tracking-wider"
-                            >
-                              {isTemp ? "Temp Squad" : "Listed Pool"}
-                            </Badge>
+                            {isPreset ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                <Sparkles size={11} /> Preset
+                              </span>
+                            ) : group.eventId ? (
+                              <Badge
+                                tone="amber"
+                                className="font-bold text-[10px] uppercase tracking-wider"
+                              >
+                                Event Squad
+                              </Badge>
+                            ) : isTemp ? (
+                              <Badge
+                                tone="amber"
+                                className="font-bold text-[10px] uppercase tracking-wider"
+                              >
+                                Temp Squad
+                              </Badge>
+                            ) : (
+                              <Badge
+                                tone="green"
+                                className="font-bold text-[10px] uppercase tracking-wider"
+                              >
+                                Listed Pool
+                              </Badge>
+                            )}
 
                             {linkedEvent && (
                               <Link
@@ -720,10 +861,10 @@ export default function ChapterVolunteerTeamPage({
                               <strong className="text-text font-mono">
                                 {group.memberIds.length}
                               </strong>{" "}
-                              Volunteers
+                              {isPreset ? "Students in Preset" : "Volunteers"}
                             </span>
 
-                            {group.validFrom && (
+                            {group.validFrom && !isPreset && (
                               <span className="flex items-center gap-1">
                                 <Calendar size={12} className="text-text-dim" />
                                 Valid: {formatDate(group.validFrom)}
@@ -776,35 +917,98 @@ export default function ChapterVolunteerTeamPage({
                             Powers ({activePowersCount})
                           </Button>
 
-                          {/* Add Member Button */}
+                          {/* Add / Manage Members Button */}
                           <Button
                             variant="ghost"
-                            onClick={() => setAddingMembersGroupId(group.id)}
+                            onClick={() => {
+                              if (isPreset) {
+                                startEditPreset(group);
+                              } else {
+                                setAddingMembersGroupId(group.id);
+                              }
+                            }}
                             className="text-xs py-1 px-2.5 h-auto border border-border flex items-center gap-1"
                           >
                             <UserPlus size={13} />
-                            Add Student
+                            {isPreset ? "Edit Students" : "Add Student"}
                           </Button>
 
-                          {/* Assign Group to Event Button */}
-                          <Button
-                            variant="ghost"
-                            onClick={() =>
-                              setAssignEventTarget({
-                                targetType: "group",
-                                groupId: group.id,
-                                title: `Assign "${group.name}" to Event`,
-                              })
-                            }
-                            className="text-xs py-1 px-2.5 h-auto text-[var(--accent)] border border-[var(--accent)]/30"
-                          >
-                            Assign to Event
-                          </Button>
+                          {/* Case 1: Reusable Preset -> Assign Preset to Event */}
+                          {isPreset && (
+                            <Button
+                              variant="ghost"
+                              onClick={() => {
+                                setAssignPresetTargetGroup(group);
+                                setSelectedEventId("");
+                              }}
+                              className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 hover:bg-purple-500/10 font-bold flex items-center gap-1"
+                              title="Directly assign this preset to any event"
+                            >
+                              <Sparkles size={12} />
+                              Assign to Event
+                            </Button>
+                          )}
 
-                          {/* Edit Group Settings */}
+                          {/* Case 2: Squad has linked event -> DIRECT ASSIGNMENT + Apply Preset */}
+                          {group.eventId && (
+                            <>
+                              {chapterPresets.length > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => setApplyPresetTargetSquad(group)}
+                                  className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 font-semibold hover:bg-purple-500/10 flex items-center gap-1"
+                                  title="Import students from a reusable preset"
+                                >
+                                  <Sparkles size={12} />
+                                  Apply Preset
+                                </Button>
+                              )}
+                              <Button
+                                variant="orange"
+                                onClick={() => handleDirectAssignToEvent(group)}
+                                className="text-xs py-1 px-2.5 h-auto font-bold flex items-center gap-1 shadow-sm"
+                                title={`Directly assign all volunteers to ${linkedEvent?.title || "event"}`}
+                              >
+                                <Check size={12} />
+                                Directly Assign to Event
+                              </Button>
+                            </>
+                          )}
+
+                          {/* Case 3: Regular Listed Pool (no event) -> Assign to Event */}
+                          {!isPreset && !group.eventId && (
+                            <>
+                              {chapterPresets.length > 0 && (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => setApplyPresetTargetSquad(group)}
+                                  className="text-xs py-1 px-2.5 h-auto text-purple-600 dark:text-purple-400 border border-purple-500/30 font-semibold hover:bg-purple-500/10 flex items-center gap-1"
+                                  title="Import students from preset into this squad"
+                                >
+                                  <Sparkles size={12} />
+                                  Apply Preset
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                onClick={() =>
+                                  setAssignEventTarget({
+                                    targetType: "group",
+                                    groupId: group.id,
+                                    title: `Assign "${group.name}" to Event`,
+                                  })
+                                }
+                                className="text-xs py-1 px-2.5 h-auto text-[var(--accent)] border border-[var(--accent)]/30 font-semibold"
+                              >
+                                Assign to Event
+                              </Button>
+                            </>
+                          )}
+
+                          {/* Edit Group / Preset */}
                           <Button
                             variant="ghost"
-                            onClick={() => startEditGroup(group)}
+                            onClick={() => (isPreset ? startEditPreset(group) : startEditGroup(group))}
                             className="text-xs py-1 px-2 h-auto text-text-dim"
                           >
                             Edit
@@ -815,7 +1019,7 @@ export default function ChapterVolunteerTeamPage({
                             variant="danger"
                             onClick={() => handleDeleteGroup(group)}
                             className="text-xs py-1 px-2 h-auto text-red-500"
-                            title="Delete group"
+                            title={isPreset ? "Delete preset" : "Delete group"}
                           >
                             <Trash2 size={13} />
                           </Button>
@@ -829,25 +1033,31 @@ export default function ChapterVolunteerTeamPage({
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-bold text-text flex items-center gap-1.5">
                             <Users size={13} className="text-[var(--accent)]" />
-                            Squad Members ({group.memberIds.length})
+                            {isPreset ? "Preset Students" : "Squad Members"} ({group.memberIds.length})
                           </span>
                           <div className="flex items-center gap-2">
-                            {canManage && group.memberIds.length > 0 && (
+                            {canManage && (
                               <Button
                                 variant="ghost"
                                 onClick={() => {
-                                  setAddingMembersGroupId(group.id);
-                                  setSelectedStudentForGroup("");
-                                  setStudentSearchQuery("");
+                                  if (isPreset) {
+                                    startEditPreset(group);
+                                  } else {
+                                    setAddingMembersGroupId(group.id);
+                                    setSelectedStudentForGroup("");
+                                    setStudentSearchQuery("");
+                                  }
                                 }}
                                 className="text-xs font-bold py-1 px-2.5 h-auto text-[var(--accent)] hover:bg-[var(--accent)]/10 border border-[var(--accent)]/30"
                               >
                                 <UserPlus size={12} className="inline mr-1" />
-                                + Add Student
+                                {isPreset ? "Edit Preset List" : "+ Add Student"}
                               </Button>
                             )}
                             <span className="text-[11px] text-text-dim hidden sm:inline">
-                              Powers can be adjusted group-wide or individually for each student.
+                              {isPreset
+                                ? "Preset members can be applied to any event with one click."
+                                : "Powers can be adjusted group-wide or individually for each student."}
                             </span>
                           </div>
                         </div>
@@ -1213,20 +1423,37 @@ export default function ChapterVolunteerTeamPage({
         </TerminalPanel>
       )}
 
-      {/* DIALOG 1: CREATE / EDIT VOLUNTEER GROUP */}
+      {/* DIALOG 1: CREATE / EDIT VOLUNTEER GROUP OR PRESET */}
       <Dialog
         open={showGroupModal}
         onClose={() => setShowGroupModal(false)}
-        title={editingGroupId ? "Edit Volunteer Group" : "Create Volunteer Group / Squad"}
-        description="Configure a reusable listed volunteer pool or a temporary event squad with powers."
+        title={
+          isPresetModal
+            ? editingGroupId
+              ? "Edit Volunteer Preset"
+              : "Create Volunteer Preset"
+            : editingGroupId
+              ? "Edit Volunteer Group"
+              : "Create Volunteer Group / Squad"
+        }
+        description={
+          isPresetModal
+            ? "Configure a reusable preset of student volunteers with default permissions that can be applied to any event with one click."
+            : "Configure a reusable listed volunteer pool or a temporary event squad with powers."
+        }
+        className="max-w-xl"
       >
         <div className="space-y-4">
           <div>
-            <FieldLabel>Squad / Group Name</FieldLabel>
+            <FieldLabel>{isPresetModal ? "Preset Name" : "Squad / Group Name"}</FieldLabel>
             <Input
               value={groupDraft.name}
               onChange={(e) => setGroupDraft((d) => ({ ...d, name: e.target.value }))}
-              placeholder="e.g. Check-in Desk Squad, Logistics Crew, Hackathon Staff"
+              placeholder={
+                isPresetModal
+                  ? "e.g. Core Event Leads, Registration Desk Preset, Stage Crew"
+                  : "e.g. Check-in Desk Squad, Logistics Crew, Hackathon Staff"
+              }
             />
           </div>
 
@@ -1236,65 +1463,183 @@ export default function ChapterVolunteerTeamPage({
               rows={2}
               value={groupDraft.description}
               onChange={(e) => setGroupDraft((d) => ({ ...d, description: e.target.value }))}
-              placeholder="Responsibilities, meeting points, venue checkpoints..."
+              placeholder={
+                isPresetModal
+                  ? "Describe what this volunteer preset is used for across chapter events..."
+                  : "Responsibilities, meeting points, venue checkpoints..."
+              }
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Group Type</FieldLabel>
-              <Select
-                value={groupDraft.groupType}
-                onChange={(e) =>
-                  setGroupDraft((d) => ({ ...d, groupType: e.target.value as VolunteerGroupType }))
-                }
-              >
-                <option value="listed">Listed Group (Reusable Pool)</option>
-                <option value="temp">Temp Squad (Event-Specific)</option>
-              </Select>
-            </div>
+          {!isPresetModal && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel>Group Type</FieldLabel>
+                  <Select
+                    value={groupDraft.groupType}
+                    onChange={(e) =>
+                      setGroupDraft((d) => ({ ...d, groupType: e.target.value as VolunteerGroupType }))
+                    }
+                  >
+                    <option value="listed">Listed Group (Reusable Pool)</option>
+                    <option value="temp">Temp Squad (Event-Specific)</option>
+                  </Select>
+                </div>
 
-            <div>
-              <FieldLabel>Linked Chapter Event (Optional)</FieldLabel>
-              <Select
-                value={groupDraft.eventId}
-                onChange={(e) => setGroupDraft((d) => ({ ...d, eventId: e.target.value }))}
-              >
-                <option value="">No linked event (Chapter-wide)</option>
-                {store.events
-                  .filter((e) => e.chapterId === chapter.id)
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.title}
-                    </option>
-                  ))}
-              </Select>
-            </div>
-          </div>
+                <div>
+                  <FieldLabel>Linked Chapter Event (Optional)</FieldLabel>
+                  <Select
+                    value={groupDraft.eventId}
+                    onChange={(e) => setGroupDraft((d) => ({ ...d, eventId: e.target.value }))}
+                  >
+                    <option value="">No linked event (Chapter-wide)</option>
+                    {store.events
+                      .filter((e) => e.chapterId === chapter.id)
+                      .map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.title}
+                        </option>
+                      ))}
+                  </Select>
+                </div>
+              </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Valid From</FieldLabel>
-              <Input
-                type="date"
-                value={groupDraft.validFrom}
-                onChange={(e) => setGroupDraft((d) => ({ ...d, validFrom: e.target.value }))}
-              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel>Valid From</FieldLabel>
+                  <Input
+                    type="date"
+                    value={groupDraft.validFrom}
+                    onChange={(e) => setGroupDraft((d) => ({ ...d, validFrom: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Valid Until</FieldLabel>
+                  <Input
+                    type="date"
+                    value={groupDraft.validTo}
+                    onChange={(e) => setGroupDraft((d) => ({ ...d, validTo: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* If Preset Modal, show searchable student multi-select checklist */}
+          {isPresetModal && (
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-text-dim uppercase tracking-wider">
+                  Preset Students ({presetSelectedStudentIds.length} selected)
+                </span>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setPresetSelectedStudentIds(chapterStudents.map((s) => s.id))}
+                    className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-text-mute">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setPresetSelectedStudentIds([])}
+                    className="text-[11px] font-semibold text-text-dim hover:text-text"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
+                <Input
+                  value={presetStudentSearch}
+                  onChange={(e) => setPresetStudentSearch(e.target.value)}
+                  placeholder="Search students by name, email, department, ID..."
+                  className="pl-8 text-xs py-1 h-auto"
+                />
+                {presetStudentSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setPresetStudentSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              <div className="max-h-52 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg-page/40 p-1">
+                {filteredPresetStudents.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-text-dim">
+                    No students found matching &ldquo;{presetStudentSearch}&rdquo;
+                  </div>
+                ) : (
+                  filteredPresetStudents.map((student) => {
+                    const isSelected = presetSelectedStudentIds.includes(student.id);
+                    return (
+                      <label
+                        key={student.id}
+                        className={`flex items-center justify-between gap-2 p-2 rounded-lg cursor-pointer transition select-none ${
+                          isSelected
+                            ? "bg-[var(--accent)]/10 border border-[var(--accent)]/25"
+                            : "hover:bg-bg"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setPresetSelectedStudentIds((prev) =>
+                                prev.includes(student.id)
+                                  ? prev.filter((id) => id !== student.id)
+                                  : [...prev, student.id],
+                              );
+                            }}
+                            className="h-3.5 w-3.5 rounded border-border text-[var(--accent)] focus:ring-[var(--accent)]/30 cursor-pointer shrink-0"
+                          />
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg border border-border text-[10px] font-bold">
+                            {initials(student.fullName)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-semibold text-text truncate">
+                                {student.fullName}
+                              </span>
+                              {student.elevatesId && (
+                                <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-bg border border-border text-text-dim">
+                                  {student.elevatesId}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-text-dim truncate">
+                              {student.email}
+                              {student.department ? ` · ${student.department}` : ""}
+                              {student.year ? ` (Yr ${student.year})` : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <span className="text-[10px] font-bold text-[var(--accent)] shrink-0 flex items-center gap-1">
+                            <Check size={11} /> Selected
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
-            <div>
-              <FieldLabel>Valid Until</FieldLabel>
-              <Input
-                type="date"
-                value={groupDraft.validTo}
-                onChange={(e) => setGroupDraft((d) => ({ ...d, validTo: e.target.value }))}
-              />
-            </div>
-          </div>
+          )}
 
           {/* Inline Power Checkbox setup */}
           <div className="space-y-2 pt-2 border-t border-border">
             <span className="text-[11px] font-bold text-text-dim uppercase tracking-wider block">
-              Default Powers for Squad (Checkboxes)
+              Default Powers for {isPresetModal ? "Preset" : "Squad"} (Checkboxes)
             </span>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {VOLUNTEER_POWER_DEFINITIONS.map((def) => {
@@ -1332,7 +1677,13 @@ export default function ChapterVolunteerTeamPage({
               Cancel
             </Button>
             <Button variant="orange" onClick={handleSaveGroup} className="text-xs font-bold">
-              {editingGroupId ? "Save Changes" : "Create Group"}
+              {editingGroupId
+                ? isPresetModal
+                  ? "Save Preset"
+                  : "Save Changes"
+                : isPresetModal
+                  ? "Create Preset"
+                  : "Create Group"}
             </Button>
           </div>
         </div>
@@ -1390,7 +1741,7 @@ export default function ChapterVolunteerTeamPage({
               >
                 {chapterGroups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.name} ({g.groupType === "temp" ? "Temp Squad" : "Listed Pool"})
+                    {g.name} ({g.isPreset ? "Preset" : g.eventId ? "Event Squad" : "Listed Pool"})
                   </option>
                 ))}
               </Select>
@@ -1401,11 +1752,38 @@ export default function ChapterVolunteerTeamPage({
                 <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Target Squad</span>
                 <span className="text-xs font-bold text-text truncate">{currentAddingGroup.name}</span>
               </div>
-              <Badge tone={currentAddingGroup.groupType === "temp" ? "amber" : "green"}>
-                {currentAddingGroup.groupType === "temp" ? "Temp Squad" : "Listed Pool"}
+              <Badge tone={currentAddingGroup.isPreset ? "magenta" : currentAddingGroup.eventId ? "amber" : "green"}>
+                {currentAddingGroup.isPreset ? "Preset" : currentAddingGroup.eventId ? "Event Squad" : "Listed Pool"}
               </Badge>
             </div>
           ) : null}
+
+          {/* Quick Import from Volunteer Preset Chips */}
+          {chapterPresets.length > 0 && (
+            <div className="p-2.5 rounded-xl border border-purple-500/20 bg-purple-500/5 space-y-1.5">
+              <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider flex items-center gap-1">
+                <Sparkles size={11} /> Quick Import from Volunteer Preset
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {chapterPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      if (currentAddingGroup) {
+                        handleApplyPresetToSquad(preset.id, currentAddingGroup);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full bg-bg border border-purple-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-text hover:border-purple-500 hover:text-purple-600 transition shadow-2xs"
+                    title={`Import all ${preset.memberIds.length} students from ${preset.name}`}
+                  >
+                    <span>{preset.name}</span>
+                    <span className="text-[9px] text-text-mute font-mono">({preset.memberIds.length})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Search Bar with Icon and Clear Button */}
           <div>
@@ -1560,7 +1938,7 @@ export default function ChapterVolunteerTeamPage({
         </div>
       </Dialog>
 
-      {/* DIALOG 4: ASSIGN GROUP OR STUDENT TO EVENT */}
+      {/* DIALOG 4: ASSIGN GROUP OR STUDENT TO EVENT DIRECTLY */}
       <Dialog
         open={Boolean(assignEventTarget)}
         onClose={() => {
@@ -1570,7 +1948,7 @@ export default function ChapterVolunteerTeamPage({
           setAssignStudentSearch("");
         }}
         title={assignEventTarget?.title || "Assign to Event"}
-        description="Grant delegated event powers for the duration of this event."
+        description="Grant delegated event powers directly synchronized with the event schedule."
         className="max-w-lg"
       >
         <div className="space-y-4">
@@ -1663,24 +2041,15 @@ export default function ChapterVolunteerTeamPage({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Valid From</FieldLabel>
-              <Input
-                type="date"
-                value={assignValidFrom}
-                onChange={(e) => setAssignValidFrom(e.target.value)}
-              />
+          {selectedEventId && (
+            <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+              <Check size={14} className="shrink-0" />
+              <span>
+                Schedule automatically synchronized with event dates (
+                {formatDate(store.events.find((e) => e.id === selectedEventId)?.startsAt || "")}).
+              </span>
             </div>
-            <div>
-              <FieldLabel>Valid To</FieldLabel>
-              <Input
-                type="date"
-                value={assignValidTo}
-                onChange={(e) => setAssignValidTo(e.target.value)}
-              />
-            </div>
-          </div>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
             <Button
@@ -1705,11 +2074,167 @@ export default function ChapterVolunteerTeamPage({
               onClick={handleAssignToEvent}
               className="text-xs font-bold"
             >
-              Confirm Event Assignment
+              Confirm Assignment
             </Button>
           </div>
         </div>
       </Dialog>
+
+      {/* DIALOG 5: APPLY PRESET TO SQUAD MODAL */}
+      {applyPresetTargetSquad && (
+        <Dialog
+          open={Boolean(applyPresetTargetSquad)}
+          onClose={() => setApplyPresetTargetSquad(null)}
+          title={`Apply Volunteer Preset to "${applyPresetTargetSquad.name}"`}
+          description={
+            applyPresetTargetSquad.eventId
+              ? "Select a preset to directly assign its students to this event."
+              : "Select a preset to import all its student members into this squad."
+          }
+          className="max-w-md"
+        >
+          <div className="space-y-4">
+            {chapterPresets.length === 0 ? (
+              <div className="p-6 text-center border border-dashed border-border rounded-xl space-y-3">
+                <Sparkles className="mx-auto h-8 w-8 text-purple-500 opacity-80" />
+                <div>
+                  <p className="text-xs font-bold text-text">No Reusable Presets Created Yet</p>
+                  <p className="text-[11px] text-text-dim mt-1">
+                    Create reusable student presets so you can assign teams with one click.
+                  </p>
+                </div>
+                <Button
+                  variant="orange"
+                  onClick={() => {
+                    setApplyPresetTargetSquad(null);
+                    startCreatePreset();
+                  }}
+                  className="text-xs font-bold"
+                >
+                  + Create First Preset
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {chapterPresets.map((preset) => {
+                  const memberCount = preset.memberIds.length;
+                  return (
+                    <div
+                      key={preset.id}
+                      className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-bg hover:border-purple-500/50 transition"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-text truncate">
+                            {preset.name}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.2 text-[9px] font-bold">
+                            <Sparkles size={9} /> Preset
+                          </span>
+                        </div>
+                        {preset.description && (
+                          <p className="text-[11px] text-text-dim truncate mt-0.5">
+                            {preset.description}
+                          </p>
+                        )}
+                        <span className="text-[10px] text-text-mute font-mono block mt-1">
+                          {memberCount} {memberCount === 1 ? "student" : "students"} in preset
+                        </span>
+                      </div>
+
+                      <Button
+                        variant="orange"
+                        className="text-xs font-bold shrink-0"
+                        onClick={() => handleApplyPresetToSquad(preset.id, applyPresetTargetSquad)}
+                      >
+                        ⚡ Apply ({memberCount})
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+              <Button
+                variant="ghost"
+                onClick={() => setApplyPresetTargetSquad(null)}
+                className="text-xs"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* DIALOG 6: ASSIGN PRESET DIRECTLY TO EVENT MODAL */}
+      {assignPresetTargetGroup && (
+        <Dialog
+          open={Boolean(assignPresetTargetGroup)}
+          onClose={() => {
+            setAssignPresetTargetGroup(null);
+            setSelectedEventId("");
+          }}
+          title={`Assign Preset "${assignPresetTargetGroup.name}" to Event`}
+          description="Choose an event. All preset students will be assigned directly without asking for date ranges."
+          className="max-w-md"
+        >
+          <div className="space-y-4">
+            <div>
+              <FieldLabel>Select Chapter Event</FieldLabel>
+              <Select
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+              >
+                <option value="">Select an event…</option>
+                {store.events
+                  .filter((e) => e.chapterId === chapter.id)
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.title} ({e.status})
+                    </option>
+                  ))}
+              </Select>
+            </div>
+
+            {selectedEventId && (
+              <div className="p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-xs text-emerald-600 dark:text-emerald-400 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Check size={13} />
+                  Direct Event Synchronization
+                </div>
+                <p className="text-[11px] text-text-dim">
+                  All {assignPresetTargetGroup.memberIds.length} preset students will be assigned directly to{" "}
+                  <strong>{store.events.find((e) => e.id === selectedEventId)?.title}</strong> for the event duration (
+                  {formatDate(store.events.find((e) => e.id === selectedEventId)?.startsAt || "")}).
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setAssignPresetTargetGroup(null);
+                  setSelectedEventId("");
+                }}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="orange"
+                disabled={!selectedEventId}
+                onClick={() => handleAssignPresetToEvent(assignPresetTargetGroup.id, selectedEventId)}
+                className="text-xs font-bold"
+              >
+                Assign Directly to Event
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

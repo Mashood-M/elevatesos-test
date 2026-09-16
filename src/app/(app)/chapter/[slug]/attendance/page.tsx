@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
-import { CheckCircle2, ChevronDown, Play, Users, X, XCircle, Crown, Mic, Sparkles, Search } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Play, Plus, Users, X, XCircle, Crown, Mic, Sparkles, Search } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import {
@@ -29,7 +29,7 @@ import { hasPermission } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { cohortRepIds } from "@/lib/forms/helpers";
 import { cn, formatDateTime } from "@/lib/utils";
-import type { AttendanceStatus, ClassCohort, EventAttendanceSession } from "@/types";
+import type { AttendanceStatus, ClassCohort, EventAttendanceSession, VolunteerGroup } from "@/types";
 
 type DeskMessage = { tone: "ok" | "err"; text: string };
 
@@ -53,6 +53,7 @@ export default function ChapterAttendancePage({
     endEvent,
     addVolunteerToGroup,
     removeVolunteerFromGroup,
+    applyVolunteerPresetToEvent,
   } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
@@ -649,6 +650,13 @@ export default function ChapterAttendancePage({
     });
   }, [chapterStudents, volunteerSearch]);
 
+  const chapterVolunteerPresets = useMemo(() => {
+    if (!chapter) return [];
+    return (store.volunteerGroups || []).filter(
+      (g) => g.chapterId === chapter.id && (g.isPreset || g.groupType === "listed") && g.memberIds.length > 0,
+    );
+  }, [chapter, store.volunteerGroups]);
+
   const filteredTeam = useMemo(() => {
     const q = rosterQuery.trim().toLowerCase();
     if (!q) return eventTeam;
@@ -952,6 +960,52 @@ export default function ChapterAttendancePage({
       }
     },
     [eventId, currentEvent, updateEvent, store.attendance, store.registrations, store.volunteerGroups, removeVolunteerFromGroup, deleteAttendance, deleteRegistration, volunteerPendingId],
+  );
+
+  const handleApplyPreset = useCallback(
+    async (preset: VolunteerGroup) => {
+      if (!eventId) {
+        setPopNotification({ tone: "err", text: "Select an event first." });
+        return;
+      }
+      try {
+        applyVolunteerPresetToEvent(preset.id, eventId);
+
+        // Also check in all preset members as present in active session
+        for (const studentId of preset.memberIds) {
+          const reg = store.registrations.find(
+            (r) => r.eventId === eventId && r.userId === studentId,
+          );
+          if (reg) {
+            updateAttendance(
+              reg.id,
+              "present",
+              session.userId,
+              activeSessionObj?.id,
+              activeSessionObj?.name,
+            );
+          } else {
+            quickRegisterAndCheckIn(
+              eventId,
+              studentId,
+              "present",
+              "manual",
+              session.userId,
+              activeSessionObj?.id,
+              activeSessionObj?.name,
+            );
+          }
+        }
+
+        setPopNotification({
+          tone: "ok",
+          text: `✓ Applied preset "${preset.name}": ${preset.memberIds.length} volunteer students directly assigned and marked present!`,
+        });
+      } catch {
+        setPopNotification({ tone: "err", text: "Failed to apply volunteer preset." });
+      }
+    },
+    [eventId, applyVolunteerPresetToEvent, store.registrations, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj],
   );
 
   const handleToggleTeamMemberAttendance = useCallback(
@@ -2713,6 +2767,52 @@ export default function ChapterAttendancePage({
                 <X className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Volunteer Presets Quick-Apply */}
+            {chapterVolunteerPresets.length > 0 && (
+              <div className="pt-3 pb-2.5 shrink-0 border-b border-border/70 space-y-1.5 bg-bg-elevated/40 -mx-4 sm:-mx-5 px-4 sm:px-5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-text flex items-center gap-1.5">
+                    <Sparkles size={12} className="text-orange-500" />
+                    Quick Apply Volunteer Preset:
+                  </span>
+                  <span className="text-[10px] text-text-dim">
+                    Click preset to auto-assign all members
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                  {chapterVolunteerPresets.map((preset) => {
+                    const count = preset.memberIds.length;
+                    const allAssigned =
+                      count > 0 &&
+                      preset.memberIds.every((id) =>
+                        currentEvent?.volunteerStudentIds?.includes(id),
+                      );
+
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleApplyPreset(preset)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                          allAssigned
+                            ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-default"
+                            : "bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 active:scale-95 cursor-pointer shadow-2xs"
+                        }`}
+                        title={`Apply "${preset.name}" (${count} students) directly to this event`}
+                      >
+                        <Sparkles size={10} className="shrink-0 text-orange-500" />
+                        <span>{preset.name}</span>
+                        <span className="rounded-full bg-bg-panel px-1.5 py-0.2 text-[9px] font-mono border border-border">
+                          {count}
+                        </span>
+                        {allAssigned ? <Check size={11} /> : <Plus size={11} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Search filter */}
             <div className="pt-3 pb-2 shrink-0 space-y-1.5">

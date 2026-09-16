@@ -648,6 +648,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         name: vg.name,
         description: vg.description ?? undefined,
         groupType: vg.groupType ?? vg.group_type ?? "listed",
+        isPreset: Boolean(vg.isPreset ?? vg.is_preset),
         eventId: vg.eventId ?? vg.event_id ?? undefined,
         validFrom: vg.validFrom ?? vg.valid_from ?? undefined,
         validTo: vg.validTo ?? vg.valid_to ?? undefined,

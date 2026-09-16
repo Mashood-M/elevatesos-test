@@ -452,6 +452,7 @@ export interface VolunteerGroup {
   name: string;
   description?: string;
   groupType: VolunteerGroupType; // "listed" (reusable pool) or "temp" (event-specific squad)
+  isPreset?: boolean;            // true if group is a reusable volunteer preset
   eventId?: string;              // linked event if temp or event-specific
   validFrom?: string;            // ISO date string
   validTo?: string;              // ISO date string

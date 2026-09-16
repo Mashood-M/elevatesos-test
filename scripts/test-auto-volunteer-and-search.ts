@@ -26,6 +26,7 @@ interface VolunteerGroup {
   name: string;
   description?: string;
   groupType: "listed" | "temp";
+  isPreset?: boolean;
   eventId?: string;
   validFrom?: string;
   validTo?: string;
@@ -181,6 +182,105 @@ function runTests() {
   // Test search with no match
   const noMatch = filterStudents(testProfiles, "NonExistentXYZ");
   assert(noMatch.length === 0, "Non-matching query returns empty array");
+
+  // 3. Volunteer Presets: Creation and In-Modal Member Selection
+  console.log("\n--- 3. Volunteer Presets: Creation and Member Selection ---");
+  const volunteerPreset: VolunteerGroup = {
+    id: "preset-core-leads",
+    chapterId: "ch-ekc",
+    name: "Core Tech Leads Preset",
+    description: "Reusable student preset for high-impact campus tech events",
+    groupType: "listed",
+    isPreset: true,
+    powers: { ...DEFAULT_VOLUNTEER_POWERS, canManageTasks: true },
+    memberIds: ["u-1", "u-2"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  assert(volunteerPreset.isPreset === true, "Volunteer preset flagged with isPreset: true");
+  assert(volunteerPreset.groupType === "listed", "Preset stored as listed group for database compatibility");
+  assert(volunteerPreset.memberIds.length === 2, "Preset initialized with selected student members");
+  assert(volunteerPreset.powers.canManageTasks === true, "Preset holds customized powers");
+
+  // 4. Preset Editability (Modifying members and powers)
+  console.log("\n--- 4. Preset Editability ---");
+  const updatedPreset: VolunteerGroup = {
+    ...volunteerPreset,
+    name: "Core Tech & Stage Leads Preset",
+    memberIds: [...volunteerPreset.memberIds, "u-3"], // Added Devika
+    updatedAt: new Date().toISOString(),
+  };
+
+  assert(updatedPreset.name === "Core Tech & Stage Leads Preset", "Preset name successfully editable");
+  assert(updatedPreset.memberIds.includes("u-3") && updatedPreset.memberIds.length === 3, "Preset members successfully updated");
+
+  // 5. Direct Event Assignment (Inherit event dates, no prompt)
+  console.log("\n--- 5. Direct Event Assignment Contract ---");
+  interface VolunteerAssignment {
+    id: string;
+    chapterId: string;
+    userId: string;
+    eventId: string;
+    groupId?: string;
+    tag: string;
+    powers: VolunteerPowers;
+    validFrom: string;
+    validTo: string;
+  }
+
+  function directAssignSquadToEvent(group: VolunteerGroup, event: EventItem): VolunteerAssignment[] {
+    return group.memberIds.map((userId) => ({
+      id: `assign-${group.id}-${userId}`,
+      chapterId: event.chapterId,
+      userId,
+      eventId: event.id,
+      groupId: group.id,
+      tag: group.name,
+      powers: group.powers,
+      validFrom: event.startsAt, // directly inherit without prompt
+      validTo: event.endsAt,     // directly inherit without prompt
+    }));
+  }
+
+  const assignments = directAssignSquadToEvent(autoVolGroup, sampleEvent);
+  assert(assignments.length === autoVolGroup.memberIds.length, "Squad directly assigned to its own event");
+
+  // If autoVolGroup has members:
+  autoVolGroup.memberIds = ["u-1", "u-2"];
+  const populatedAssignments = directAssignSquadToEvent(autoVolGroup, sampleEvent);
+  assert(populatedAssignments.length === 2, "All squad members directly assigned to event");
+  assert(populatedAssignments[0].validFrom === sampleEvent.startsAt, "Assignment directly inherits event startsAt date");
+  assert(populatedAssignments[0].validTo === sampleEvent.endsAt, "Assignment directly inherits event endsAt date");
+  assert(populatedAssignments[0].eventId === sampleEvent.id, "Assignment directly inherits target event id");
+
+  // 6. One-Click Preset Application to Event
+  console.log("\n--- 6. One-Click Preset Application to Event ---");
+  function applyPresetToEvent(preset: VolunteerGroup, event: EventItem): {
+    assignedMembers: string[];
+    assignments: VolunteerAssignment[];
+  } {
+    const assignments: VolunteerAssignment[] = preset.memberIds.map((userId) => ({
+      id: `assign-preset-${preset.id}-${userId}`,
+      chapterId: event.chapterId,
+      userId,
+      eventId: event.id,
+      groupId: preset.id,
+      tag: preset.name,
+      powers: preset.powers,
+      validFrom: event.startsAt,
+      validTo: event.endsAt,
+    }));
+    return {
+      assignedMembers: [...preset.memberIds],
+      assignments,
+    };
+  }
+
+  const presetResult = applyPresetToEvent(updatedPreset, sampleEvent);
+  assert(presetResult.assignedMembers.length === 3, "Preset members mapped to event");
+  assert(presetResult.assignments.every((a) => a.eventId === sampleEvent.id), "All preset assignments bound to target event");
+  assert(presetResult.assignments.every((a) => a.validFrom === sampleEvent.startsAt), "Preset assignments inherit event startsAt date without prompting");
 
   console.log("\n==================================================");
   console.log(`  RESULTS: ${passed} PASSED | ${failed} FAILED`);

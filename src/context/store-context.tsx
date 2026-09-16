@@ -482,6 +482,7 @@ type StoreContextValue = {
     name: string;
     description?: string;
     groupType?: VolunteerGroupType;
+    isPreset?: boolean;
     eventId?: string;
     validFrom?: string;
     validTo?: string;
@@ -505,6 +506,8 @@ type StoreContextValue = {
     validTo?: string;
     status?: "active" | "inactive" | "expired";
   }) => VolunteerAssignment | null;
+  assignVolunteerGroupToEvent: (groupId: string, eventId: string) => number;
+  applyVolunteerPresetToEvent: (presetId: string, eventId: string) => { addedCount: number };
   removeVolunteerAssignment: (id: string) => boolean;
   updateVolunteerAssignmentPowers: (id: string, powers: VolunteerPowers) => boolean;
   createProject: (
@@ -5329,12 +5332,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       createVolunteerGroup: (input) => {
         const id = genUuid();
+        const isPreset = input.isPreset ?? (input.groupType === "listed");
         const group: VolunteerGroup = {
           id,
           chapterId: input.chapterId,
           name: input.name.trim(),
           description: input.description?.trim() || undefined,
-          groupType: input.groupType || "listed",
+          groupType: input.groupType || (isPreset ? "listed" : "temp"),
+          isPreset,
           eventId: input.eventId || undefined,
           validFrom: input.validFrom || undefined,
           validTo: input.validTo || undefined,
@@ -5346,16 +5351,58 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: new Date().toISOString(),
         };
 
+        // If this group is created with a linked event and members, directly assign them to that event
+        const autoAssignments: VolunteerAssignment[] = [];
+        let updatedEventVolIds: string[] | null = null;
+        if (input.eventId && group.memberIds.length > 0) {
+          const linkedEvent = (store.events || []).find((e) => e.id === input.eventId);
+          const validFrom = linkedEvent?.startsAt || group.validFrom || new Date().toISOString();
+          const validTo = linkedEvent?.endsAt || group.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+          for (const mId of group.memberIds) {
+            const mCustom = group.customMemberPowers?.[mId];
+            const effPowers = mCustom ? { ...group.powers, ...mCustom } : group.powers;
+            const assign: VolunteerAssignment = {
+              id: genUuid(),
+              chapterId: group.chapterId,
+              userId: mId,
+              eventId: input.eventId,
+              groupId: group.id,
+              tag: group.name,
+              powers: effPowers,
+              validFrom,
+              validTo,
+              status: "active",
+              createdBy: store.session?.userId,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            autoAssignments.push(assign);
+            broadcastChange("volunteer_assignments", "INSERT", assign);
+            void remoteMutate("volunteer_assignment", assign);
+          }
+
+          if (linkedEvent) {
+            updatedEventVolIds = Array.from(new Set([...(linkedEvent.volunteerStudentIds || []), ...group.memberIds]));
+          }
+        }
+
         setStore((s) => ({
           ...s,
           volunteerGroups: [...(s.volunteerGroups || []), group],
+          volunteerAssignments: autoAssignments.length > 0
+            ? [...autoAssignments, ...(s.volunteerAssignments || [])]
+            : s.volunteerAssignments,
+          events: updatedEventVolIds && input.eventId
+            ? (s.events || []).map((e) => (e.id === input.eventId ? { ...e, volunteerStudentIds: updatedEventVolIds! } : e))
+            : s.events,
           activityLogs: [
             log(
               s.session.userId,
               "volunteer_group_created",
               "volunteer_group",
               group.id,
-              `Created volunteer group "${group.name}" (${group.groupType}) on ${new Date().toLocaleString()}`,
+              `Created volunteer ${isPreset ? "preset" : "group"} "${group.name}" on ${new Date().toLocaleString()}`,
             ),
             ...s.activityLogs,
           ],
@@ -5363,6 +5410,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         broadcastChange("volunteer_groups", "INSERT", group);
         void remoteMutate("volunteer_group", group);
+        if (updatedEventVolIds && input.eventId) {
+          void remoteMutate("event", { id: input.eventId, volunteerStudentIds: updatedEventVolIds });
+        }
         return group;
       },
 
@@ -5439,9 +5489,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedAt: new Date().toISOString(),
         };
 
+        // If this group is linked to a specific event, directly assign student to event with event dates
+        let newAssignment: VolunteerAssignment | null = null;
+        let updatedEventVolIds: string[] | null = null;
+        if (group.eventId) {
+          const targetEvent = (store.events || []).find((e) => e.id === group.eventId);
+          const effectivePowers = customPowers
+            ? { ...group.powers, ...customPowers }
+            : group.powers;
+          const validFrom = targetEvent?.startsAt || group.validFrom || new Date().toISOString();
+          const validTo = targetEvent?.endsAt || group.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+          const existingAssign = (store.volunteerAssignments || []).find(
+            (a) => a.userId === userId && a.eventId === group.eventId,
+          );
+          if (!existingAssign) {
+            newAssignment = {
+              id: genUuid(),
+              chapterId: group.chapterId,
+              userId,
+              eventId: group.eventId,
+              groupId: group.id,
+              tag: group.name,
+              powers: effectivePowers,
+              validFrom,
+              validTo,
+              status: "active",
+              createdBy: store.session?.userId,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+
+          if (targetEvent) {
+            updatedEventVolIds = Array.from(new Set([...(targetEvent.volunteerStudentIds || []), userId]));
+          }
+        }
+
         setStore((s) => ({
           ...s,
           volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === groupId ? nextGroup : g)),
+          volunteerAssignments: newAssignment
+            ? [newAssignment, ...(s.volunteerAssignments || [])]
+            : s.volunteerAssignments,
+          events: updatedEventVolIds && group.eventId
+            ? (s.events || []).map((e) => (e.id === group.eventId ? { ...e, volunteerStudentIds: updatedEventVolIds! } : e))
+            : s.events,
         }));
 
         broadcastChange("volunteer_groups", "UPDATE", nextGroup);
@@ -5452,6 +5545,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           chapterId: group.chapterId,
           customPowers,
         });
+        if (newAssignment) {
+          broadcastChange("volunteer_assignments", "INSERT", newAssignment);
+          void remoteMutate("volunteer_assignment", newAssignment);
+        }
+        if (updatedEventVolIds && group.eventId) {
+          void remoteMutate("event", { id: group.eventId, volunteerStudentIds: updatedEventVolIds });
+        }
         return true;
       },
 
@@ -5473,11 +5573,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStore((s) => ({
           ...s,
           volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === groupId ? nextGroup : g)),
+          volunteerAssignments: group.eventId
+            ? (s.volunteerAssignments || []).filter(
+                (a) => !(a.userId === userId && (a.groupId === groupId || a.eventId === group.eventId)),
+              )
+            : s.volunteerAssignments,
+          events: group.eventId
+            ? (s.events || []).map((e) =>
+                e.id === group.eventId
+                  ? { ...e, volunteerStudentIds: (e.volunteerStudentIds || []).filter((id) => id !== userId) }
+                  : e,
+              )
+            : s.events,
         }));
 
         broadcastChange("volunteer_groups", "UPDATE", nextGroup);
         void remoteMutate("volunteer_group", nextGroup);
         void remoteMutate("remove_volunteer_group_member", { groupId, userId });
+        if (group.eventId) {
+          const currentEvt = (store.events || []).find((e) => e.id === group.eventId);
+          if (currentEvt) {
+            const nextVolIds = (currentEvt.volunteerStudentIds || []).filter((id) => id !== userId);
+            void remoteMutate("event", { id: group.eventId, volunteerStudentIds: nextVolIds });
+          }
+        }
         return true;
       },
 
@@ -5486,7 +5605,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!group) return false;
 
         const nextCustom = { ...group.customMemberPowers };
-        if (!customPowers) {
+        if (customPowers === null) {
           delete nextCustom[userId];
         } else {
           nextCustom[userId] = customPowers;
@@ -5544,6 +5663,178 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         broadcastChange("volunteer_assignments", "INSERT", assignment);
         void remoteMutate("volunteer_assignment", assignment);
         return assignment;
+      },
+
+      assignVolunteerGroupToEvent: (groupId: string, eventId: string) => {
+        const group = (store.volunteerGroups || []).find((g) => g.id === groupId);
+        if (!group) return 0;
+        const event = (store.events || []).find((e) => e.id === eventId);
+        if (!event) return 0;
+
+        const eventName = event.title || "event";
+        const validFrom = event.startsAt || group.validFrom || new Date().toISOString();
+        const validTo = event.endsAt || group.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+        let count = 0;
+        const newAssignments: VolunteerAssignment[] = [];
+        const currentEventVolIds = event.volunteerStudentIds || [];
+        const mergedEventVolIds = Array.from(new Set([...currentEventVolIds, ...group.memberIds]));
+
+        for (const userId of group.memberIds) {
+          const memberCustom = group.customMemberPowers?.[userId];
+          const effectivePowers = memberCustom
+            ? { ...group.powers, ...memberCustom }
+            : group.powers;
+
+          const existing = (store.volunteerAssignments || []).find(
+            (a) => a.userId === userId && a.eventId === eventId,
+          );
+
+          if (!existing) {
+            const assignment: VolunteerAssignment = {
+              id: genUuid(),
+              chapterId: group.chapterId,
+              userId,
+              eventId,
+              groupId: group.id,
+              tag: group.name,
+              powers: effectivePowers,
+              validFrom,
+              validTo,
+              status: "active",
+              createdBy: store.session?.userId,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            newAssignments.push(assignment);
+            broadcastChange("volunteer_assignments", "INSERT", assignment);
+            void remoteMutate("volunteer_assignment", assignment);
+          }
+          count++;
+        }
+
+        setStore((s) => ({
+          ...s,
+          volunteerAssignments: [...newAssignments, ...(s.volunteerAssignments || [])],
+          events: (s.events || []).map((e) => (e.id === eventId ? { ...e, volunteerStudentIds: mergedEventVolIds } : e)),
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_assigned",
+              "volunteer_assignment",
+              groupId,
+              `Directly assigned ${count} volunteers from "${group.name}" to event "${eventName}"`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        void remoteMutate("event", { id: eventId, volunteerStudentIds: mergedEventVolIds });
+        return count;
+      },
+
+      applyVolunteerPresetToEvent: (presetId: string, eventId: string) => {
+        const preset = (store.volunteerGroups || []).find((g) => g.id === presetId);
+        if (!preset) return { addedCount: 0 };
+        const event = (store.events || []).find((e) => e.id === eventId);
+        if (!event) return { addedCount: 0 };
+
+        const validFrom = event.startsAt || preset.validFrom || new Date().toISOString();
+        const validTo = event.endsAt || preset.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+        // 1. Find or create event volunteer squad
+        let eventSquad = (store.volunteerGroups || []).find((g) => g.eventId === eventId);
+        if (!eventSquad) {
+          eventSquad = {
+            id: genUuid(),
+            chapterId: event.chapterId,
+            name: `${event.title} Volunteers`,
+            description: `Official volunteer squad for ${event.title}`,
+            groupType: "temp",
+            eventId: event.id,
+            validFrom,
+            validTo,
+            powers: { ...DEFAULT_VOLUNTEER_POWERS, ...preset.powers },
+            memberIds: [],
+            customMemberPowers: {},
+            createdBy: store.session?.userId,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setStore((s) => ({
+            ...s,
+            volunteerGroups: [...(s.volunteerGroups || []), eventSquad!],
+          }));
+          broadcastChange("volunteer_groups", "INSERT", eventSquad);
+          void remoteMutate("volunteer_group", eventSquad);
+        }
+
+        // 2. Add preset members to eventSquad and event.volunteerStudentIds
+        const mergedMembers = Array.from(new Set([...(eventSquad.memberIds || []), ...preset.memberIds]));
+        const updatedSquad: VolunteerGroup = {
+          ...eventSquad,
+          memberIds: mergedMembers,
+          updatedAt: new Date().toISOString(),
+        };
+
+        const prevVolIds = event.volunteerStudentIds || [];
+        const mergedEventVolIds = Array.from(new Set([...prevVolIds, ...preset.memberIds]));
+
+        const newAssignments: VolunteerAssignment[] = [];
+        for (const userId of preset.memberIds) {
+          const memberCustom = preset.customMemberPowers?.[userId];
+          const effectivePowers = memberCustom
+            ? { ...preset.powers, ...memberCustom }
+            : preset.powers;
+
+          const existing = (store.volunteerAssignments || []).find(
+            (a) => a.userId === userId && a.eventId === eventId,
+          );
+
+          if (!existing) {
+            const assignment: VolunteerAssignment = {
+              id: genUuid(),
+              chapterId: event.chapterId,
+              userId,
+              eventId,
+              groupId: eventSquad.id,
+              tag: preset.name,
+              powers: effectivePowers,
+              validFrom,
+              validTo,
+              status: "active",
+              createdBy: store.session?.userId,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            newAssignments.push(assignment);
+            broadcastChange("volunteer_assignments", "INSERT", assignment);
+            void remoteMutate("volunteer_assignment", assignment);
+          }
+        }
+
+        setStore((s) => ({
+          ...s,
+          volunteerGroups: (s.volunteerGroups || []).map((g) => (g.id === updatedSquad.id ? updatedSquad : g)),
+          events: (s.events || []).map((e) => (e.id === eventId ? { ...e, volunteerStudentIds: mergedEventVolIds } : e)),
+          volunteerAssignments: [...newAssignments, ...(s.volunteerAssignments || [])],
+          activityLogs: [
+            log(
+              s.session.userId,
+              "volunteer_assigned",
+              "volunteer_assignment",
+              presetId,
+              `Applied volunteer preset "${preset.name}" to event "${event.title}" (${preset.memberIds.length} members)`,
+            ),
+            ...s.activityLogs,
+          ],
+        }));
+
+        broadcastChange("volunteer_groups", "UPDATE", updatedSquad);
+        void remoteMutate("volunteer_group", updatedSquad);
+        void remoteMutate("event", { id: eventId, volunteerStudentIds: mergedEventVolIds });
+
+        return { addedCount: preset.memberIds.length };
       },
 
       removeVolunteerAssignment: (id) => {

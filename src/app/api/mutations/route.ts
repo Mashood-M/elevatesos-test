@@ -2412,6 +2412,7 @@ export async function POST(req: Request) {
         name: g.name,
         description: g.description || null,
         group_type: g.groupType || "listed",
+        is_preset: Boolean(g.isPreset),
         event_id: isUuid(g.eventId) ? g.eventId : null,
         valid_from: g.validFrom || null,
         valid_to: g.validTo || null,

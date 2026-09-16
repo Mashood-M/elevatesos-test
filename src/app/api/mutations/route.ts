@@ -216,6 +216,51 @@ export async function POST(req: Request) {
         }
       }
 
+      // Ensure a volunteer squad is auto-created for this event in database
+      if (eventId && isUuid(eventId) && isUuid(event.chapterId)) {
+        try {
+          const { data: existingGroup } = await admin
+            .from("volunteer_groups")
+            .select("id")
+            .eq("event_id", eventId)
+            .maybeSingle();
+
+          if (!existingGroup) {
+            const volGroupName = `${event.title || "Event"} Volunteers`;
+            const validFrom = event.startsAt || new Date().toISOString();
+            const validTo =
+              event.endsAt ||
+              new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+
+            await admin.from("volunteer_groups").insert({
+              id: genUuid(),
+              chapter_id: event.chapterId,
+              name: volGroupName,
+              description: `Official volunteer team for ${event.title}`,
+              group_type: "temp",
+              event_id: eventId,
+              valid_from: validFrom,
+              valid_to: validTo,
+              powers: {
+                canTakeAttendance: true,
+                canScanQr: true,
+                canVerifyTickets: true,
+                canRegisterWalkins: false,
+                canManageTasks: false,
+                canViewRoster: true,
+              },
+              member_ids: [],
+              custom_member_powers: {},
+              created_by: isUuid(event.organizerId) ? event.organizerId : null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          }
+        } catch (vgErr) {
+          console.warn("Notice: volunteer squad auto-create on event mutation:", vgErr);
+        }
+      }
+
       await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
       return NextResponse.json({ ok: true, id: eventId });
     }

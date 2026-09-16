@@ -2074,6 +2074,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           });
 
           const defaultReminders = buildDefaultEventReminders(normalized, targetChapterId);
+
+          // Auto-create volunteer squad for the event if it doesn't already exist
+          const defaultVolGroupName = `${normalized.title} Volunteers`;
+          const existingVolGroup = (s.volunteerGroups || []).find(
+            (g) =>
+              g.eventId === eventId ||
+              (g.chapterId === targetChapterId && g.name.toLowerCase() === defaultVolGroupName.toLowerCase()),
+          );
+          const autoVolGroup: VolunteerGroup | null =
+            existingIndex < 0 && !existingVolGroup
+              ? {
+                  id: genUuid(),
+                  chapterId: targetChapterId,
+                  name: defaultVolGroupName,
+                  description: `Official volunteer squad for ${normalized.title}`,
+                  groupType: "temp",
+                  eventId,
+                  validFrom: normalized.startsAt || new Date().toISOString(),
+                  validTo:
+                    normalized.endsAt ||
+                    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+                  powers: { ...DEFAULT_VOLUNTEER_POWERS },
+                  memberIds: [],
+                  customMemberPowers: {},
+                  createdBy: activeUserId,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                }
+              : null;
+
           return {
             ...s,
             events: [normalized, ...filtered],
@@ -2086,6 +2116,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               existingIndex >= 0
                 ? (s.eventReminders ?? [])
                 : [...defaultReminders, ...(s.eventReminders ?? [])],
+            volunteerGroups: autoVolGroup
+              ? [...(s.volunteerGroups ?? []), autoVolGroup]
+              : s.volunteerGroups,
             activityLogs: [
               log(
                 s.session.userId,
@@ -2094,6 +2127,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 eventId,
                 normalized.title,
               ),
+              ...(autoVolGroup
+                ? [
+                    log(
+                      s.session.userId,
+                      "volunteer_group_created",
+                      "volunteer_group",
+                      autoVolGroup.id,
+                      `Auto-created volunteer squad "${autoVolGroup.name}" for event "${normalized.title}"`,
+                    ),
+                  ]
+                : []),
               ...s.activityLogs,
             ],
           };
@@ -2109,6 +2153,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 forms: (s.forms ?? []).filter((f) => f.eventId !== eventId),
                 eventForms: s.eventForms.filter((f) => f.eventId !== eventId),
                 eventReminders: (s.eventReminders ?? []).filter((r) => r.eventId !== eventId),
+                volunteerGroups: (s.volunteerGroups ?? []).filter((g) => g.eventId !== eventId),
               }));
             }
           },
@@ -2125,6 +2170,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 errorMessage: `Failed to persist reminder "${rem.title}"`,
               })
             );
+
+            // Persist auto-created volunteer squad if present in store
+            const createdVolSquad = (store.volunteerGroups || []).find((g) => g.eventId === eventId);
+            if (createdVolSquad) {
+              broadcastChange("volunteer_groups", "INSERT", createdVolSquad);
+              void runPersist(remoteMutate("volunteer_group", createdVolSquad), {
+                errorMessage: `Failed to persist volunteer squad for "${normalized.title}"`,
+              });
+            }
           }
         });
 

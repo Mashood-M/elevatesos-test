@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -37,6 +37,7 @@ export default function ClusterDetailPage({
   const cluster = store.clusters.find((c) => c.id === clusterId);
   const [weekTitle, setWeekTitle] = useState("");
   const [addMemberId, setAddMemberId] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
   const [inviteUserId, setInviteUserId] = useState("");
   const [challengeNote, setChallengeNote] = useState("");
   const [flash, setFlash] = useState("");
@@ -59,6 +60,16 @@ export default function ClusterDetailPage({
   const isMember = cluster.memberIds.includes(session.userId);
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
   const nonMembers = members.filter((p) => !cluster.memberIds.includes(p.id));
+  const filteredNonMembers = useMemo(() => {
+    if (!memberSearch.trim()) return nonMembers;
+    const q = memberSearch.toLowerCase().trim();
+    return nonMembers.filter(
+      (m) =>
+        m.fullName.toLowerCase().includes(q) ||
+        (m.email && m.email.toLowerCase().includes(q)) ||
+        (m.elevatesId && m.elevatesId.toLowerCase().includes(q)),
+    );
+  }, [nonMembers, memberSearch]);
   const projects = store.projects.filter((p) => p.clusterId === cluster.id);
   const doneWeeks = cluster.roadmap.filter((r) => r.done).length;
   const progress = cluster.roadmap.length
@@ -376,28 +387,46 @@ export default function ClusterDetailPage({
               })}
             </ul>
             {canManage && nonMembers.length > 0 ? (
-              <div className="mt-3 flex gap-2">
-                <Select
-                  value={addMemberId}
-                  onChange={(e) => setAddMemberId(e.target.value)}
-                >
-                  <option value="">Add member…</option>
-                  {nonMembers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.fullName}
+              <div className="mt-3 space-y-2">
+                {nonMembers.length > 3 && (
+                  <Input
+                    value={memberSearch}
+                    onChange={(e) => setMemberSearch(e.target.value)}
+                    placeholder="Search students to add..."
+                    className="text-xs h-8 w-full"
+                  />
+                )}
+                <div className="flex gap-2">
+                  <Select
+                    value={addMemberId}
+                    onChange={(e) => setAddMemberId(e.target.value)}
+                    className="text-xs"
+                  >
+                    <option value="">
+                      {filteredNonMembers.length === 0
+                        ? "No students match search…"
+                        : "Select member to add…"}
                     </option>
-                  ))}
-                </Select>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    if (!addMemberId) return;
-                    addClusterMember(cluster.id, addMemberId);
-                    setAddMemberId("");
-                  }}
-                >
-                  Add
-                </Button>
+                    {filteredNonMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.fullName} ({m.elevatesId || m.email})
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    className="text-xs shrink-0"
+                    disabled={!addMemberId}
+                    onClick={() => {
+                      if (!addMemberId) return;
+                      addClusterMember(cluster.id, addMemberId);
+                      setAddMemberId("");
+                      setMemberSearch("");
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
               </div>
             ) : null}
           </TerminalPanel>

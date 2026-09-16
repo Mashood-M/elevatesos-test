@@ -19,30 +19,23 @@ import {
   VOLUNTEER_POWER_DEFINITIONS,
   getUserVolunteerPowers,
 } from "@/lib/volunteers";
-import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import { formatDate, initials } from "@/lib/utils";
 import {
   Check,
-  ChevronDown,
   ChevronRight,
-  Filter,
   Layers,
   Plus,
   QrCode,
   Search,
   Settings2,
-  Shield,
-  Sparkles,
   Tag,
   Trash2,
-  UserCheck,
   UserPlus,
   Users,
   X,
   Calendar,
 } from "lucide-react";
 import type {
-  Profile,
-  VolunteerAssignment,
   VolunteerGroup,
   VolunteerGroupType,
   VolunteerPowers,
@@ -84,7 +77,6 @@ export default function ChapterVolunteerTeamPage({
     updateVolunteerMemberPowers,
     assignVolunteerToEvent,
     removeVolunteerAssignment,
-    updateVolunteerAssignmentPowers,
   } = useStore();
 
   const { session } = useCurrentUser();
@@ -122,6 +114,7 @@ export default function ChapterVolunteerTeamPage({
   // Add members to group modal
   const [addingMembersGroupId, setAddingMembersGroupId] = useState<string | null>(null);
   const [selectedStudentForGroup, setSelectedStudentForGroup] = useState<string>("");
+  const [studentSearchQuery, setStudentSearchQuery] = useState<string>("");
 
   // Quick event assignment modal
   const [assignEventTarget, setAssignEventTarget] = useState<{
@@ -131,6 +124,8 @@ export default function ChapterVolunteerTeamPage({
     title: string;
   } | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [assignStudentId, setAssignStudentId] = useState<string>("");
+  const [assignStudentSearch, setAssignStudentSearch] = useState<string>("");
   const [assignValidFrom, setAssignValidFrom] = useState(new Date().toISOString().slice(0, 10));
   const [assignValidTo, setAssignValidTo] = useState(
     new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10),
@@ -143,6 +138,18 @@ export default function ChapterVolunteerTeamPage({
     setFlash(msg);
     window.setTimeout(() => setFlash(""), 2500);
   }
+
+  const startAddVolunteerStudent = (targetGroupId?: string) => {
+    if (chapterGroups.length === 0) {
+      flashMsg("Please create a volunteer squad first before adding students.");
+      startCreateGroup("listed");
+      return;
+    }
+    const gid = targetGroupId || chapterGroups[0].id;
+    setAddingMembersGroupId(gid);
+    setSelectedStudentForGroup("");
+    setStudentSearchQuery("");
+  };
 
   function toggleGroupExpand(groupId: string) {
     setExpandedGroupIds((prev) => {
@@ -208,6 +215,38 @@ export default function ChapterVolunteerTeamPage({
     });
   }, [chapterStudents, searchQuery]);
 
+  const currentAddingGroup = useMemo(() => {
+    return chapterGroups.find((g) => g.id === addingMembersGroupId);
+  }, [chapterGroups, addingMembersGroupId]);
+
+  const filteredAddStudents = useMemo(() => {
+    const q = studentSearchQuery.toLowerCase().trim();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((s) => {
+      return (
+        s.fullName.toLowerCase().includes(q) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
+        (s.department && s.department.toLowerCase().includes(q)) ||
+        (s.year && s.year.toLowerCase().includes(q))
+      );
+    });
+  }, [chapterStudents, studentSearchQuery]);
+
+  const filteredAssignStudents = useMemo(() => {
+    const q = assignStudentSearch.toLowerCase().trim();
+    if (!q) return chapterStudents;
+    return chapterStudents.filter((s) => {
+      return (
+        s.fullName.toLowerCase().includes(q) ||
+        (s.email && s.email.toLowerCase().includes(q)) ||
+        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
+        (s.department && s.department.toLowerCase().includes(q)) ||
+        (s.year && s.year.toLowerCase().includes(q))
+      );
+    });
+  }, [chapterStudents, assignStudentSearch]);
+
   // Set of student IDs who hold any active volunteer assignment or group membership
   const volunteerSummaryMap = useMemo(() => {
     const map = new Map<
@@ -238,117 +277,118 @@ export default function ChapterVolunteerTeamPage({
   const listedCount = chapterGroups.filter((g) => g.groupType === "listed").length;
   const tempCount = chapterGroups.filter((g) => g.groupType === "temp").length;
 
-  if (!chapter) return <p className="text-orange">// Chapter not found</p>;
+  if (!chapter) return <p className="text-orange">{"// Chapter not found"}</p>;
 
-  // Open create group
   function startCreateGroup(type: VolunteerGroupType = "listed") {
     setEditingGroupId(null);
     setGroupDraft({
-      ...emptyGroupDraft(),
+      name: "",
+      description: "",
       groupType: type,
+      eventId: "",
+      validFrom: new Date().toISOString().slice(0, 10),
+      validTo: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+      powers: { ...DEFAULT_VOLUNTEER_POWERS },
     });
     setGroupError("");
     setShowGroupModal(true);
   }
 
-  // Open edit group
-  function startEditGroup(g: VolunteerGroup) {
-    setEditingGroupId(g.id);
+  function startEditGroup(group: VolunteerGroup) {
+    setEditingGroupId(group.id);
     setGroupDraft({
-      name: g.name,
-      description: g.description || "",
-      groupType: g.groupType,
-      eventId: g.eventId || "",
-      validFrom: g.validFrom ? g.validFrom.slice(0, 10) : "",
-      validTo: g.validTo ? g.validTo.slice(0, 10) : "",
-      powers: g.powers || { ...DEFAULT_VOLUNTEER_POWERS },
+      name: group.name,
+      description: group.description || "",
+      groupType: group.groupType,
+      eventId: group.eventId || "",
+      validFrom: group.validFrom || new Date().toISOString().slice(0, 10),
+      validTo: group.validTo || new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10),
+      powers: { ...group.powers },
     });
     setGroupError("");
     setShowGroupModal(true);
   }
 
-  // Save group
   function handleSaveGroup() {
-    setGroupError("");
     if (!chapter) return;
-    const name = groupDraft.name.trim();
-    if (!name) {
+    if (!groupDraft.name.trim()) {
       setGroupError("Group name is required.");
       return;
     }
 
     if (editingGroupId) {
       updateVolunteerGroup(editingGroupId, {
-        name,
-        description: groupDraft.description.trim() || undefined,
+        name: groupDraft.name.trim(),
+        description: groupDraft.description.trim(),
         groupType: groupDraft.groupType,
         eventId: groupDraft.eventId || undefined,
-        validFrom: groupDraft.validFrom || undefined,
-        validTo: groupDraft.validTo || undefined,
+        validFrom: groupDraft.validFrom,
+        validTo: groupDraft.validTo,
         powers: groupDraft.powers,
       });
-      flashMsg(`✓ Updated volunteer group "${name}"`);
+      flashMsg("✓ Volunteer group updated!");
     } else {
       createVolunteerGroup({
         chapterId: chapter.id,
-        name,
-        description: groupDraft.description.trim() || undefined,
+        name: groupDraft.name.trim(),
+        description: groupDraft.description.trim(),
         groupType: groupDraft.groupType,
         eventId: groupDraft.eventId || undefined,
-        validFrom: groupDraft.validFrom || undefined,
-        validTo: groupDraft.validTo || undefined,
+        memberIds: [],
+        validFrom: groupDraft.validFrom,
+        validTo: groupDraft.validTo,
         powers: groupDraft.powers,
       });
-      flashMsg(`✓ Created ${groupDraft.groupType === "temp" ? "Temp Squad" : "Listed Group"} "${name}"`);
+      flashMsg("✓ Volunteer group created!");
     }
+
     setShowGroupModal(false);
   }
 
-  // Delete group
-  async function handleDeleteGroup(g: VolunteerGroup) {
+  async function handleDeleteGroup(group: VolunteerGroup) {
     const ok = await confirm({
       title: "Delete Volunteer Group",
-      description: `Delete group “${g.name}”? All members will be unassigned from this squad.`,
+      description: `Delete group “${group.name}”? All members will be unassigned from this squad.`,
       confirmLabel: "Delete Group",
       danger: true,
     });
     if (!ok) return;
 
-    deleteVolunteerGroup(g.id);
-    flashMsg(`Deleted group "${g.name}".`);
+    deleteVolunteerGroup(group.id);
+    flashMsg(`Volunteer group "${group.name}" removed.`);
   }
 
-  // Add member to group
-  function handleAddMemberToGroup(groupId: string, userId: string) {
-    if (!userId) return;
-    addVolunteerToGroup(groupId, userId);
-    const student = store.profiles.find((p) => p.id === userId);
-    flashMsg(`✓ Added ${student?.fullName || "student"} to group.`);
+  function handleAddMemberToGroup(groupId: string, studentId: string) {
+    if (!studentId) return;
+    addVolunteerToGroup(groupId, studentId);
+    flashMsg("✓ Added student to volunteer squad!");
     setSelectedStudentForGroup("");
-    setAddingMembersGroupId(null);
   }
 
-  // Remove member from group
-  async function handleRemoveMemberFromGroup(g: VolunteerGroup, userId: string) {
-    const student = store.profiles.find((p) => p.id === userId);
+  function handleQuickAddMemberToGroup(groupId: string, studentId: string) {
+    if (!studentId) return;
+    addVolunteerToGroup(groupId, studentId);
+    flashMsg("✓ Added student to squad!");
+  }
+
+  async function handleRemoveMemberFromGroup(group: VolunteerGroup, studentId: string) {
+    const student = store.profiles.find((p) => p.id === studentId);
     const ok = await confirm({
-      title: "Remove from Group",
-      description: `Remove ${student?.fullName || "this student"} from “${g.name}”?`,
+      title: "Remove from Squad",
+      description: `Remove ${student?.fullName || "this student"} from “${group.name}”?`,
       confirmLabel: "Remove",
       danger: true,
     });
     if (!ok) return;
 
-    removeVolunteerFromGroup(g.id, userId);
-    flashMsg(`Removed ${student?.fullName || "student"} from group.`);
+    removeVolunteerFromGroup(group.id, studentId);
+    flashMsg("Removed student from squad.");
   }
 
-  // Quick assign group or student to an event
   function handleAssignToEvent() {
     if (!chapter || !assignEventTarget || !selectedEventId) return;
-
     const event = store.events.find((e) => e.id === selectedEventId);
-    const eventName = event?.title || "Event";
+    const eventName = event?.title || "event";
 
     if (assignEventTarget.targetType === "group" && assignEventTarget.groupId) {
       const group = chapterGroups.find((g) => g.id === assignEventTarget.groupId);
@@ -375,11 +415,13 @@ export default function ChapterVolunteerTeamPage({
         count++;
       }
       flashMsg(`✓ Assigned ${count} volunteers from "${group.name}" to ${eventName}!`);
-    } else if (assignEventTarget.targetType === "student" && assignEventTarget.studentId) {
-      const student = store.profiles.find((p) => p.id === assignEventTarget.studentId);
+    } else if (assignEventTarget.targetType === "student") {
+      const targetStudentId = assignStudentId || assignEventTarget.studentId;
+      if (!targetStudentId) return;
+      const student = store.profiles.find((p) => p.id === targetStudentId);
       assignVolunteerToEvent({
         chapterId: chapter.id,
-        userId: assignEventTarget.studentId,
+        userId: targetStudentId,
         eventId: selectedEventId,
         tag: `Volunteer · ${eventName}`,
         powers: { ...DEFAULT_VOLUNTEER_POWERS },
@@ -391,6 +433,8 @@ export default function ChapterVolunteerTeamPage({
 
     setAssignEventTarget(null);
     setSelectedEventId("");
+    setAssignStudentId("");
+    setAssignStudentSearch("");
   }
 
   return (
@@ -413,14 +457,25 @@ export default function ChapterVolunteerTeamPage({
               </Button>
             </Link>
             {canManage && (
-              <Button
-                variant="primary"
-                onClick={() => startCreateGroup("listed")}
-                className="flex items-center gap-1.5 font-bold text-xs"
-              >
-                <Plus size={14} />
-                Create Volunteer Group
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => startAddVolunteerStudent()}
+                  className="flex items-center gap-1.5 font-bold text-xs border border-border"
+                  title="Search and add students directly to a volunteer squad"
+                >
+                  <UserPlus size={14} className="text-[var(--accent)]" />
+                  + Add Volunteer Student
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => startCreateGroup("listed")}
+                  className="flex items-center gap-1.5 font-bold text-xs"
+                >
+                  <Plus size={14} />
+                  Create Volunteer Group
+                </Button>
+              </>
             )}
           </div>
         }
@@ -546,6 +601,15 @@ export default function ChapterVolunteerTeamPage({
 
             {canManage && (
               <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => startAddVolunteerStudent()}
+                  className="text-xs font-bold border border-border h-auto py-1 px-2.5"
+                  title="Search and add students to squad"
+                >
+                  <UserPlus size={13} className="text-[var(--accent)] mr-1 inline" />
+                  + Add Volunteer Student
+                </Button>
                 <Button
                   variant="ghost"
                   onClick={() => startCreateGroup("temp")}
@@ -767,9 +831,25 @@ export default function ChapterVolunteerTeamPage({
                             <Users size={13} className="text-[var(--accent)]" />
                             Squad Members ({group.memberIds.length})
                           </span>
-                          <span className="text-[11px] text-text-dim">
-                            Powers can be adjusted group-wide or individually for each student.
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {canManage && group.memberIds.length > 0 && (
+                              <Button
+                                variant="ghost"
+                                onClick={() => {
+                                  setAddingMembersGroupId(group.id);
+                                  setSelectedStudentForGroup("");
+                                  setStudentSearchQuery("");
+                                }}
+                                className="text-xs font-bold py-1 px-2.5 h-auto text-[var(--accent)] hover:bg-[var(--accent)]/10 border border-[var(--accent)]/30"
+                              >
+                                <UserPlus size={12} className="inline mr-1" />
+                                + Add Student
+                              </Button>
+                            )}
+                            <span className="text-[11px] text-text-dim hidden sm:inline">
+                              Powers can be adjusted group-wide or individually for each student.
+                            </span>
+                          </div>
                         </div>
 
                         {group.memberIds.length === 0 ? (
@@ -990,13 +1070,15 @@ export default function ChapterVolunteerTeamPage({
                                 {/* Assign to event button */}
                                 <Button
                                   variant="orange"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setAssignStudentId(student.id);
+                                    setAssignStudentSearch("");
                                     setAssignEventTarget({
                                       targetType: "student",
                                       studentId: student.id,
                                       title: `Assign ${student.fullName} as Event Volunteer`,
-                                    })
-                                  }
+                                    });
+                                  }}
                                   className="text-[11px] py-1 px-2.5 h-auto font-bold"
                                 >
                                   Assign Event
@@ -1030,13 +1112,15 @@ export default function ChapterVolunteerTeamPage({
               {canManage && chapterStudents.length > 0 && (
                 <Button
                   variant="orange"
-                  onClick={() =>
+                  onClick={() => {
+                    setAssignStudentId(chapterStudents[0]?.id || "");
+                    setAssignStudentSearch("");
                     setAssignEventTarget({
                       targetType: "student",
-                      studentId: chapterStudents[0].id,
+                      studentId: chapterStudents[0]?.id || "",
                       title: "Assign Event Volunteer",
-                    })
-                  }
+                    });
+                  }}
                   className="text-xs font-bold"
                 >
                   + Assign Volunteer to Event
@@ -1286,24 +1370,163 @@ export default function ChapterVolunteerTeamPage({
         onClose={() => {
           setAddingMembersGroupId(null);
           setSelectedStudentForGroup("");
+          setStudentSearchQuery("");
         }}
         title="Add Student to Volunteer Squad"
-        description="Select a chapter student to appoint to this volunteer group."
+        description="Search chapter students and appoint them to this volunteer squad."
+        className="max-w-lg"
       >
         <div className="space-y-4">
+          {/* Target Squad Selector / Badge */}
+          {chapterGroups.length > 1 ? (
+            <div>
+              <FieldLabel>Target Volunteer Squad</FieldLabel>
+              <Select
+                value={addingMembersGroupId || ""}
+                onChange={(e) => {
+                  setAddingMembersGroupId(e.target.value);
+                  setSelectedStudentForGroup("");
+                }}
+              >
+                {chapterGroups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name} ({g.groupType === "temp" ? "Temp Squad" : "Listed Pool"})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ) : currentAddingGroup ? (
+            <div className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-bg-page/50">
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold text-text-dim uppercase tracking-wider block">Target Squad</span>
+                <span className="text-xs font-bold text-text truncate">{currentAddingGroup.name}</span>
+              </div>
+              <Badge tone={currentAddingGroup.groupType === "temp" ? "amber" : "green"}>
+                {currentAddingGroup.groupType === "temp" ? "Temp Squad" : "Listed Pool"}
+              </Badge>
+            </div>
+          ) : null}
+
+          {/* Search Bar with Icon and Clear Button */}
           <div>
-            <FieldLabel>Select Student</FieldLabel>
-            <Select
-              value={selectedStudentForGroup}
-              onChange={(e) => setSelectedStudentForGroup(e.target.value)}
-            >
-              <option value="">Select student…</option>
-              {chapterStudents.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.elevatesId || s.email})
-                </option>
-              ))}
-            </Select>
+            <FieldLabel>Search Students</FieldLabel>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
+              <Input
+                value={studentSearchQuery}
+                onChange={(e) => setStudentSearchQuery(e.target.value)}
+                placeholder="Search by student name, email, department, year, or ID..."
+                className="pl-9 pr-8 text-xs w-full"
+                autoFocus
+              />
+              {studentSearchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setStudentSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5 rounded transition"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Search Results / Student List */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] text-text-dim px-0.5">
+              <span>
+                {filteredAddStudents.length}{" "}
+                {filteredAddStudents.length === 1 ? "student" : "students"} found
+              </span>
+              {selectedStudentForGroup && (
+                <span className="text-[var(--accent)] font-semibold">1 student selected</span>
+              )}
+            </div>
+
+            <div className="max-h-60 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg p-1 pr-1.5 shadow-2xs">
+              {filteredAddStudents.length === 0 ? (
+                <div className="py-8 text-center text-xs text-text-dim">
+                  No chapter students found matching &ldquo;{studentSearchQuery}&rdquo;
+                </div>
+              ) : (
+                filteredAddStudents.map((s) => {
+                  const isInSquad = Boolean(
+                    currentAddingGroup?.memberIds.includes(s.id),
+                  );
+                  const isSelected = selectedStudentForGroup === s.id;
+
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={() => {
+                        if (!isInSquad) {
+                          setSelectedStudentForGroup(s.id);
+                        }
+                      }}
+                      className={`flex items-center justify-between gap-2.5 p-2 rounded-lg transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30"
+                          : isInSquad
+                            ? "opacity-60 bg-bg-page/30 cursor-default"
+                            : "hover:bg-bg-page/70"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-bold text-[10px] ${
+                            isSelected
+                              ? "bg-[var(--accent)] text-white"
+                              : "bg-bg-page border border-border text-text"
+                          }`}
+                        >
+                          {initials(s.fullName)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-text truncate">
+                              {s.fullName}
+                            </span>
+                            {s.elevatesId && (
+                              <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-bg-page border border-border text-text-dim">
+                                {s.elevatesId}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-text-dim truncate">
+                            {s.email}
+                            {s.department ? ` · ${s.department}` : ""}
+                            {s.year ? ` (Yr ${s.year})` : ""}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        {isInSquad ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-bold">
+                            <Check size={11} /> In Squad
+                          </span>
+                        ) : (
+                          <Button
+                            type="button"
+                            variant={isSelected ? "orange" : "ghost"}
+                            className="text-[11px] py-0.5 px-2 h-7 font-bold border border-border"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (addingMembersGroupId) {
+                                handleQuickAddMemberToGroup(addingMembersGroupId, s.id);
+                              }
+                            }}
+                          >
+                            + Add
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
@@ -1312,6 +1535,7 @@ export default function ChapterVolunteerTeamPage({
               onClick={() => {
                 setAddingMembersGroupId(null);
                 setSelectedStudentForGroup("");
+                setStudentSearchQuery("");
               }}
               className="text-xs"
             >
@@ -1319,7 +1543,10 @@ export default function ChapterVolunteerTeamPage({
             </Button>
             <Button
               variant="orange"
-              disabled={!selectedStudentForGroup}
+              disabled={
+                !selectedStudentForGroup ||
+                Boolean(currentAddingGroup?.memberIds.includes(selectedStudentForGroup))
+              }
               onClick={() => {
                 if (addingMembersGroupId && selectedStudentForGroup) {
                   handleAddMemberToGroup(addingMembersGroupId, selectedStudentForGroup);
@@ -1327,7 +1554,7 @@ export default function ChapterVolunteerTeamPage({
               }}
               className="text-xs font-bold"
             >
-              Add to Squad
+              Add Selected to Squad
             </Button>
           </div>
         </div>
@@ -1339,9 +1566,12 @@ export default function ChapterVolunteerTeamPage({
         onClose={() => {
           setAssignEventTarget(null);
           setSelectedEventId("");
+          setAssignStudentId("");
+          setAssignStudentSearch("");
         }}
         title={assignEventTarget?.title || "Assign to Event"}
         description="Grant delegated event powers for the duration of this event."
+        className="max-w-lg"
       >
         <div className="space-y-4">
           <div>
@@ -1360,6 +1590,78 @@ export default function ChapterVolunteerTeamPage({
                 ))}
             </Select>
           </div>
+
+          {/* If assigning an individual student, provide search and student selection */}
+          {assignEventTarget?.targetType === "student" && (
+            <div className="space-y-2">
+              <FieldLabel>Student Volunteer</FieldLabel>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
+                <Input
+                  value={assignStudentSearch}
+                  onChange={(e) => setAssignStudentSearch(e.target.value)}
+                  placeholder="Search students by name, email, department, ID..."
+                  className="pl-9 pr-8 text-xs w-full"
+                />
+                {assignStudentSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setAssignStudentSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5 rounded transition"
+                    title="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="max-h-44 overflow-y-auto divide-y divide-border/40 rounded-xl border border-border bg-bg p-1 shadow-2xs">
+                {filteredAssignStudents.length === 0 ? (
+                  <div className="py-4 text-center text-xs text-text-dim">
+                    No chapter students found matching &ldquo;{assignStudentSearch}&rdquo;
+                  </div>
+                ) : (
+                  filteredAssignStudents.map((s) => {
+                    const isSelected = (assignStudentId || assignEventTarget.studentId) === s.id;
+                    return (
+                      <div
+                        key={s.id}
+                        onClick={() => setAssignStudentId(s.id)}
+                        className={`flex items-center justify-between gap-2 p-2 rounded-lg cursor-pointer transition ${
+                          isSelected
+                            ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30 font-semibold"
+                            : "hover:bg-bg-page/70"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                              isSelected
+                                ? "bg-[var(--accent)] text-white"
+                                : "bg-bg-page border border-border text-text"
+                            }`}
+                          >
+                            {initials(s.fullName)}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs text-text truncate block">{s.fullName}</span>
+                            <span className="text-[10px] text-text-dim truncate block">
+                              {s.email} {s.elevatesId ? `· ${s.elevatesId}` : ""}
+                            </span>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span className="text-[10px] font-bold text-[var(--accent)] flex items-center gap-1">
+                            <Check size={12} /> Selected
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1386,6 +1688,8 @@ export default function ChapterVolunteerTeamPage({
               onClick={() => {
                 setAssignEventTarget(null);
                 setSelectedEventId("");
+                setAssignStudentId("");
+                setAssignStudentSearch("");
               }}
               className="text-xs"
             >
@@ -1393,7 +1697,11 @@ export default function ChapterVolunteerTeamPage({
             </Button>
             <Button
               variant="orange"
-              disabled={!selectedEventId}
+              disabled={
+                !selectedEventId ||
+                (assignEventTarget?.targetType === "student" &&
+                  !(assignStudentId || assignEventTarget?.studentId))
+              }
               onClick={handleAssignToEvent}
               className="text-xs font-bold"
             >

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
-import { CheckCircle2, ChevronDown, Play, Users, X, XCircle, Crown, Mic, Sparkles } from "lucide-react";
+import { CheckCircle2, ChevronDown, Play, Users, X, XCircle, Crown, Mic, Sparkles, Search } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import {
@@ -51,6 +51,8 @@ export default function ChapterAttendancePage({
     updateEvent,
     startEvent,
     endEvent,
+    addVolunteerToGroup,
+    removeVolunteerFromGroup,
   } = useStore();
   const { session } = useCurrentUser();
   const chapter = store.chapters.find((c) => c.slug === slug);
@@ -398,13 +400,22 @@ export default function ChapterAttendancePage({
       }
     });
 
-    // Volunteers from volunteerStudentIds and attendance
+    // Volunteers from volunteerStudentIds, linked volunteer squads, and attendance
     const volIds = new Set([
       ...(currentEvent.volunteerStudentIds || []),
       ...store.attendance
         .filter((a) => a.eventId === eventId && a.status === "volunteer")
         .map((a) => a.userId),
     ]);
+    (store.volunteerGroups || [])
+      .filter((g) => g.eventId === eventId)
+      .forEach((g) => {
+        (g.memberIds || []).forEach((mId) => volIds.add(mId));
+      });
+    (store.volunteerAssignments || [])
+      .filter((a) => a.eventId === eventId && a.status === "active")
+      .forEach((a) => volIds.add(a.userId));
+
     volIds.forEach((vUserId) => {
       if (!team.some((t) => t.userId === vUserId)) {
         const p = store.profiles.find((pr) => pr.id === vUserId);
@@ -424,7 +435,7 @@ export default function ChapterAttendancePage({
     });
 
     return team;
-  }, [currentEvent, eventId, store.profiles, store.attendance]);
+  }, [currentEvent, eventId, store.profiles, store.attendance, store.volunteerGroups, store.volunteerAssignments]);
 
   const filteredRoster = useMemo(() => {
     let list = approvedRegs;
@@ -853,6 +864,12 @@ export default function ChapterAttendancePage({
           });
         }
 
+        // Sync with event's volunteer squad if present
+        const evtVolunteerGroup = (store.volunteerGroups || []).find((g) => g.eventId === eventId);
+        if (evtVolunteerGroup && !evtVolunteerGroup.memberIds.includes(studentId)) {
+          addVolunteerToGroup(evtVolunteerGroup.id, studentId);
+        }
+
         // 2. Mark attendance as present (volunteers are marked as present)
         const reg = store.registrations.find(
           (r) => r.eventId === eventId && r.userId === studentId,
@@ -890,7 +907,7 @@ export default function ChapterAttendancePage({
         setVolunteerPendingId(null);
       }
     },
-    [eventId, currentEvent, updateEvent, isCampusLead, store.registrations, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj, volunteerPendingId],
+    [eventId, currentEvent, updateEvent, isCampusLead, store.registrations, store.volunteerGroups, addVolunteerToGroup, updateAttendance, quickRegisterAndCheckIn, session.userId, activeSessionObj, volunteerPendingId],
   );
 
   const handleRemoveVolunteer = useCallback(
@@ -905,6 +922,12 @@ export default function ChapterAttendancePage({
           await updateEvent(eventId, {
             volunteerStudentIds: prevVolIds.filter((id) => id !== studentId),
           });
+        }
+
+        // Sync with event's volunteer squad if present
+        const evtVolunteerGroup = (store.volunteerGroups || []).find((g) => g.eventId === eventId);
+        if (evtVolunteerGroup && evtVolunteerGroup.memberIds.includes(studentId)) {
+          removeVolunteerFromGroup(evtVolunteerGroup.id, studentId);
         }
 
         // 2. Delete attendance records for this volunteer in this event
@@ -928,7 +951,7 @@ export default function ChapterAttendancePage({
         setVolunteerPendingId(null);
       }
     },
-    [eventId, currentEvent, updateEvent, store.attendance, store.registrations, deleteAttendance, deleteRegistration, volunteerPendingId],
+    [eventId, currentEvent, updateEvent, store.attendance, store.registrations, store.volunteerGroups, removeVolunteerFromGroup, deleteAttendance, deleteRegistration, volunteerPendingId],
   );
 
   const handleToggleTeamMemberAttendance = useCallback(
@@ -2692,14 +2715,35 @@ export default function ChapterAttendancePage({
             </div>
 
             {/* Search filter */}
-            <div className="pt-3 pb-2 shrink-0">
-              <Input
-                value={volunteerSearch}
-                onChange={(e) => setVolunteerSearch(e.target.value)}
-                placeholder="Search chapter students by name, email, or ID..."
-                className="w-full text-xs"
-                autoFocus
-              />
+            <div className="pt-3 pb-2 shrink-0 space-y-1.5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-dim" />
+                <Input
+                  value={volunteerSearch}
+                  onChange={(e) => setVolunteerSearch(e.target.value)}
+                  placeholder="Search chapter students by name, email, department, or Elevates ID..."
+                  className="w-full text-xs pl-9 pr-8"
+                  autoFocus
+                />
+                {volunteerSearch ? (
+                  <button
+                    type="button"
+                    onClick={() => setVolunteerSearch("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-0.5 rounded transition"
+                    title="Clear search"
+                  >
+                    <X size={13} />
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-text-dim px-0.5">
+                <span>
+                  Showing {filteredVolunteerStudents.length} of {chapterStudents.length} chapter students
+                </span>
+                {volunteerSearch && (
+                  <span className="text-orange-500 font-medium">Filtered by &ldquo;{volunteerSearch}&rdquo;</span>
+                )}
+              </div>
             </div>
 
             {/* Student list */}

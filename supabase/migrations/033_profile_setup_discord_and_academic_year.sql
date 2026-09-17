@@ -255,6 +255,16 @@ END;
 -- ============================================================================
 -- 5. ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================================================
+-- Helper: Safe fallback for is_hq_user if not already defined
+CREATE OR REPLACE FUNCTION public.is_hq_user()
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() 
+      AND (p.role IN ('founder', 'hq_admin', 'HQ Admin', 'Founder') OR p.designation IN ('founder', 'hq_admin'))
+  );
+$$;
+
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.guild_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;

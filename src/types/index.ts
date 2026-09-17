@@ -215,6 +215,8 @@ export interface Profile {
   avatarUrl?: string;
   department?: string;
   year?: string;
+  /** Academic year (e.g. 1st Year, 2nd Year, 3rd Year, 4th Year) */
+  academicYear?: string;
   /** Class section within department + year (e.g. A, B) */
   section?: string;
   chapterId?: string;
@@ -233,6 +235,14 @@ export interface Profile {
   resumeUrl?: string;
   githubUrl?: string;
   linkedinUrl?: string;
+  /** Linked Discord user snowflake ID */
+  discordUserId?: string;
+  /** Linked Discord username/handle */
+  discordUsername?: string;
+  /** Whether the account is connected with the Elevates Discord Bot */
+  discordConnected?: boolean;
+  /** Timestamp when Discord Bot was connected */
+  discordConnectedAt?: string;
   points: number;
   badges: string[];
   bio?: string;

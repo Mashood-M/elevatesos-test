@@ -1662,6 +1662,10 @@ export async function POST(req: Request) {
         if (p.phone !== undefined) updatePayload.phone = p.phone;
         if (p.department !== undefined) updatePayload.department = p.department;
         if (p.year !== undefined) updatePayload.year = p.year;
+        if (p.academicYear !== undefined) {
+          updatePayload.academic_year = p.academicYear;
+          if (p.year === undefined) updatePayload.year = p.academicYear;
+        }
         if (p.section !== undefined) updatePayload.section = p.section;
         if (p.chapterId !== undefined) updatePayload.chapter_id = isUuid(p.chapterId) ? p.chapterId : null;
         if (p.status !== undefined) updatePayload.status = p.status;
@@ -1673,6 +1677,10 @@ export async function POST(req: Request) {
         if (p.linkedinUrl !== undefined) updatePayload.linkedin_url = p.linkedinUrl || null;
         if (p.portfolioUrl !== undefined) updatePayload.portfolio_url = p.portfolioUrl || null;
         if (p.resumeUrl !== undefined) updatePayload.resume_url = p.resumeUrl || null;
+        if (p.discordUserId !== undefined) updatePayload.discord_user_id = p.discordUserId || null;
+        if (p.discordUsername !== undefined) updatePayload.discord_username = p.discordUsername || null;
+        if (p.discordConnected !== undefined) updatePayload.discord_connected = Boolean(p.discordConnected);
+        if (p.discordConnectedAt !== undefined) updatePayload.discord_connected_at = p.discordConnectedAt || null;
 
         // Check if profile exists
         const { data: existingProf } = await admin.from("profiles").select("id").eq("id", targetId).maybeSingle();

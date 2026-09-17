@@ -4,7 +4,22 @@ import { use, useEffect, useMemo, useState } from "react";
 import { resolveMediaUrl } from "@/lib/data/media";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Edit3, Globe, Link2, Mail, Phone, Trash2, QrCode } from "lucide-react";
+import {
+  Building2,
+  CheckCircle2,
+  Edit3,
+  Globe,
+  GraduationCap,
+  Link2,
+  Lock,
+  Mail,
+  Phone,
+  Plus,
+  QrCode,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,6 +40,38 @@ import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { formatDateTime, initials } from "@/lib/utils";
 import type { Profile } from "@/types";
+
+function DiscordIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+    </svg>
+  );
+}
+
+const DEFAULT_ACADEMIC_YEARS = [
+  "1st Year",
+  "2nd Year",
+  "3rd Year",
+  "4th Year",
+  "Postgraduate",
+  "Alumni / Graduated",
+];
+
+const POPULAR_SKILL_SUGGESTIONS = [
+  "React",
+  "Next.js",
+  "TypeScript",
+  "Python",
+  "Node.js",
+  "UI/UX Design",
+  "Figma",
+  "Tailwind CSS",
+  "AI / ML",
+  "Flutter",
+  "Cloud / DevOps",
+  "PostgreSQL",
+];
 
 export default function ProfilePage({
   params,
@@ -54,8 +101,6 @@ export default function ProfilePage({
   const communityTiers = store.doctrine?.communityTiers ?? [];
   const journeyStages = store.doctrine?.journeyStages ?? [];
 
-
-  const [cohortId, setCohortId] = useState("");
   const [savedFlash, setSavedFlash] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -65,13 +110,17 @@ export default function ProfilePage({
   const [editBio, setEditBio] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editDept, setEditDept] = useState("");
-  const [editYear, setEditYear] = useState("");
+  const [editAcademicYear, setEditAcademicYear] = useState("");
   const [editSection, setEditSection] = useState("");
-  const [editSkills, setEditSkills] = useState("");
+  const [skillsList, setSkillsList] = useState<string[]>([]);
+  const [newSkillInput, setNewSkillInput] = useState("");
   const [editInterests, setEditInterests] = useState("");
   const [editGithub, setEditGithub] = useState("");
   const [editLinkedin, setEditLinkedin] = useState("");
   const [editPortfolio, setEditPortfolio] = useState("");
+  const [editDiscordUsername, setEditDiscordUsername] = useState("");
+  const [editDiscordUserId, setEditDiscordUserId] = useState("");
+  const [editDiscordConnected, setEditDiscordConnected] = useState(false);
 
   const isOwn = Boolean(
     (profile && session.userId && profile.id === session.userId) ||
@@ -79,25 +128,39 @@ export default function ProfilePage({
   );
   const canEdit = isOwn || isHqRole(session.roleKey);
 
+  const availableAcademicYears = useMemo(() => {
+    const storeYears = store.academicYears || [];
+    const combined = Array.from(new Set([...DEFAULT_ACADEMIC_YEARS, ...storeYears])).filter(Boolean);
+    return combined;
+  }, [store.academicYears]);
+
+  const [cohortIdOverride, setCohortIdOverride] = useState<string | null>(null);
+
+  const profileChapterId = profile?.chapterId;
+  const profileDepartment = profile?.department;
+  const profileYear = profile?.academicYear || profile?.year;
+  const profileSection = profile?.section;
+
   const chapterCohorts = useMemo(() => {
-    if (!profile?.chapterId) return [];
+    if (!profileChapterId) return [];
     return (store.classCohorts ?? [])
-      .filter((c) => c.chapterId === profile.chapterId)
+      .filter((c) => c.chapterId === profileChapterId)
       .slice()
       .sort((a, b) => cohortLabel(a).localeCompare(cohortLabel(b)));
-  }, [store.classCohorts, profile?.chapterId]);
+  }, [store.classCohorts, profileChapterId]);
 
-  useEffect(() => {
-    if (!profile?.chapterId) return;
-    const match = findClassCohort(
+  const autoCohort = useMemo(() => {
+    if (!profileChapterId) return null;
+    return findClassCohort(
       store,
-      profile.chapterId,
-      profile.department,
-      profile.year,
-      profile.section,
+      profileChapterId,
+      profileDepartment,
+      profileYear,
+      profileSection,
     );
-    setCohortId(match?.id ?? "");
-  }, [profile, store]);
+  }, [store, profileChapterId, profileDepartment, profileYear, profileSection]);
+
+  const cohortId = cohortIdOverride ?? (autoCohort?.id ?? "");
 
   // Open edit modal with current profile data
   function handleOpenEdit() {
@@ -106,40 +169,75 @@ export default function ProfilePage({
     setEditBio(profile.bio || "");
     setEditPhone(profile.phone || "");
     setEditDept(profile.department || "");
-    setEditYear(profile.year || "");
+    setEditAcademicYear(profile.academicYear || profile.year || "1st Year");
     setEditSection(profile.section || "");
-    setEditSkills((profile.skills || []).join(", "));
+    setSkillsList([...(profile.skills || [])]);
+    setNewSkillInput("");
     setEditInterests((profile.interests || []).join(", "));
     setEditGithub(profile.githubUrl || "");
     setEditLinkedin(profile.linkedinUrl || "");
     setEditPortfolio(profile.portfolioUrl || "");
+    setEditDiscordUsername(profile.discordUsername || "");
+    setEditDiscordUserId(profile.discordUserId || "");
+    setEditDiscordConnected(
+      Boolean(
+        profile.discordConnected ??
+          (profile.discordUsername || profile.discordUserId),
+      ),
+    );
     setEditOpen(true);
+  }
+
+  function handleAddSkill(skillToAdd?: string) {
+    const raw = (skillToAdd ?? newSkillInput).trim();
+    if (!raw) return;
+    if (!skillsList.some((s) => s.toLowerCase() === raw.toLowerCase())) {
+      setSkillsList([...skillsList, raw]);
+    }
+    if (!skillToAdd) {
+      setNewSkillInput("");
+    }
+  }
+
+  function handleRemoveSkill(skillToRemove: string) {
+    setSkillsList(skillsList.filter((s) => s !== skillToRemove));
   }
 
   function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!profile) return;
-    const skillsArr = editSkills
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+
     const interestsArr = editInterests
       .split(",")
       .map((i) => i.trim())
       .filter(Boolean);
+
+    const yearVal = editAcademicYear.trim() || undefined;
+    const hasDiscord = Boolean(
+      editDiscordConnected ||
+        editDiscordUsername.trim() ||
+        editDiscordUserId.trim(),
+    );
 
     updateProfile(profile.id, {
       fullName: editName.trim() || profile.fullName,
       bio: editBio.trim() || undefined,
       phone: editPhone.trim() || undefined,
       department: editDept.trim() || undefined,
-      year: editYear.trim() || undefined,
+      year: yearVal,
+      academicYear: yearVal,
       section: editSection.trim() || undefined,
-      skills: skillsArr,
+      skills: skillsList,
       interests: interestsArr,
       githubUrl: editGithub.trim() || undefined,
       linkedinUrl: editLinkedin.trim() || undefined,
       portfolioUrl: editPortfolio.trim() || undefined,
+      discordUsername: editDiscordUsername.trim() || undefined,
+      discordUserId: editDiscordUserId.trim() || undefined,
+      discordConnected: hasDiscord,
+      discordConnectedAt: hasDiscord
+        ? profile.discordConnectedAt || new Date().toISOString()
+        : undefined,
     });
 
     setEditOpen(false);
@@ -163,16 +261,13 @@ export default function ProfilePage({
     isHqRole(session.roleKey) ||
     hasPermission(store, session.roleKey, "class.manage");
 
-  if (!profile) {
-    return (
-      <div className="rounded-[14px] bg-[var(--accent-soft)] p-8 text-center">
-        <p className="text-orange">// profile.not_found · {id}</p>
-      </div>
-    );
-  }
+  const chapter = store.chapters.find((c) => c.id === profile?.chapterId);
+  const profileUserId = profile?.id ?? cleanId;
 
-  const chapter = store.chapters.find((c) => c.id === profile.chapterId);
-  const profileUserId = profile.id;
+  const isDiscordConnected = Boolean(
+    profile?.discordConnected ??
+      (profile?.discordUsername || profile?.discordUserId),
+  );
 
   const volPowers = useMemo(() => {
     return getUserVolunteerPowers(store, profileUserId || cleanId);
@@ -218,36 +313,40 @@ export default function ProfilePage({
       return r ? { role: r, createdAt: ur.createdAt } : null;
     })
     .filter((item): item is RoleWithTimestamp => item !== null && item.role.key !== "volunteer");
-  const roles = rolesWithUr.map((ru) => ru.role);
+
   const certs = store.certificates.filter((c) => c.userId === profileUserId || c.userId === cleanId);
   const eventsAttended = store.attendance.filter((a) => a.userId === profileUserId || a.userId === cleanId);
   const projects = store.projects.filter((p) => p.teamIds.includes(profileUserId) || p.teamIds.includes(cleanId));
   const score = executiveScore(store, profileUserId);
-  const classLabel = [
-    profile.department,
-    profile.year,
-    profile.section ? `Sec ${profile.section}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 
-  const derived = withDerivedProgression(store, profile);
+  const academicYearDisplay = profile?.academicYear || profile?.year || "Year not set";
+
+  const derived = withDerivedProgression(store, profile ?? ({} as Profile));
 
   function saveClass() {
     if (!selectedCohort || !profile) return;
     updateProfile(profile.id, {
       department: selectedCohort.department,
       year: selectedCohort.year,
+      academicYear: selectedCohort.year,
       section: selectedCohort.section,
     });
     setSavedFlash(true);
     window.setTimeout(() => setSavedFlash(false), 1400);
   }
 
+  if (!profile) {
+    return (
+      <div className="rounded-[14px] bg-[var(--accent-soft)] p-8 text-center">
+        <p className="text-orange font-mono text-sm">{"// profile.not_found · "}{id}</p>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header Banner */}
-      <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8">
+      <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8 border border-border/50">
         <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[20px] bg-[var(--accent-soft)] text-2xl font-bold text-[var(--accent)] shadow-[var(--shadow-sm)]">
@@ -262,11 +361,25 @@ export default function ProfilePage({
               )}
             </div>
             <div className="flex-1">
-              <p className="text-[12px] font-semibold text-[var(--accent)]">
-                Profile
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[12px] font-semibold text-[var(--accent)] uppercase tracking-wider">
+                  Member Profile
+                </p>
+                {isDiscordConnected ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/20 px-2 py-0.5 text-[11px] font-bold">
+                    <DiscordIcon className="w-3 h-3" />
+                    Bot Synced
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 text-[11px] font-semibold">
+                    <DiscordIcon className="w-3 h-3 opacity-70" />
+                    Bot Unlinked
+                  </span>
+                )}
+              </div>
+
               <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl">
+                <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl text-text">
                   {profile.fullName}
                 </h1>
                 {profile.elevatesId && (
@@ -283,26 +396,83 @@ export default function ProfilePage({
                   </span>
                 )}
               </div>
-              <p className="mt-1.5 text-sm text-text-dim">
-                {classLabel || "Class not set"}
-                {chapter ? (
+
+              {/* Verified Identity & Non-Editable Institutional Info Bar */}
+              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-text-dim">
+                {/* Academic Year */}
+                <span className="inline-flex items-center gap-1 font-semibold text-text">
+                  <GraduationCap size={13} className="text-[var(--accent)]" />
+                  {academicYearDisplay}
+                </span>
+
+                {/* Department & Section */}
+                {(profile.department || profile.section) && (
                   <>
-                    {" · "}
+                    <span className="text-border">·</span>
+                    <span>
+                      {profile.department || "General"}
+                      {profile.section ? ` · Sec ${profile.section}` : ""}
+                    </span>
+                  </>
+                )}
+
+                {/* Chapter & College Name (Non-editable, based on joined chapter) */}
+                <span className="text-border">·</span>
+                {chapter ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-[var(--accent)]"
+                    title={`Joined chapter: ${chapter.name} (${chapter.college || "Campus Chapter"}) - Chapter membership is locked to your campus`}
+                  >
+                    <Building2 size={12} />
                     <Link
                       href={`/chapter/${chapter.slug}`}
-                      className="font-medium text-[var(--accent)] hover:underline"
+                      className="hover:underline font-bold"
                     >
                       {chapter.name}
                     </Link>
+                    {chapter.college && (
+                      <span className="text-xs opacity-80 font-normal">
+                        · {chapter.college}
+                      </span>
+                    )}
+                    <span
+                      className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-semibold opacity-70"
+                      title="Bound to your campus chapter (Non-editable)"
+                    >
+                      <Lock size={10} />
+                      Joined
+                    </span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-zinc-500/10 px-2 py-0.5 text-text-dim text-xs">
+                    <Building2 size={12} />
+                    Independent / No Chapter
+                  </span>
+                )}
+
+                {/* Email Address (Non-editable) */}
+                {profile.email && (
+                  <>
+                    <span className="text-border">·</span>
+                    <span
+                      className="inline-flex items-center gap-1 font-mono text-[11px] text-text-dim"
+                      title="Account Email - Non-editable"
+                    >
+                      <Mail size={12} className="opacity-60" />
+                      {profile.email}
+                      <Lock size={10} className="opacity-40" />
+                    </span>
                   </>
-                ) : null}
-              </p>
+                )}
+              </div>
+
               {(profile.createdAt || profile.joinedAt) ? (
-                <p className="mt-1 text-[12px] text-text-mute flex items-center gap-1.5 font-mono">
+                <p className="mt-2 text-[12px] text-text-mute flex items-center gap-1.5 font-mono">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80" />
-                  <span>Joined {formatDateTime((profile.createdAt || profile.joinedAt)!)}</span>
+                  <span>Member since {formatDateTime((profile.createdAt || profile.joinedAt)!)}</span>
                 </p>
               ) : null}
+
               {profile.bio ? (
                 <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-text-dim">
                   {profile.bio}
@@ -318,12 +488,14 @@ export default function ProfilePage({
                 )}
                 <Badge tone="cyan">
                   {communityTiers.find(
-                    (t: any) => t.key === derived.engagementTier || t.tier === derived.engagementTier,
+                    (t: { key?: string; tier?: string; label?: string }) =>
+                      t.key === derived.engagementTier || t.tier === derived.engagementTier,
                   )?.label ?? "Everyone"}
                 </Badge>
                 <Badge tone="orange">
                   {journeyStages.find(
-                    (s: any) => s.key === derived.journeyStage || s.stage === derived.journeyStage,
+                    (s: { key?: string; stage?: string; label?: string }) =>
+                      s.key === derived.journeyStage || s.stage === derived.journeyStage,
                   )?.label ?? "Awareness"}
                 </Badge>
                 {rolesWithUr.map(({ role, createdAt }) => (
@@ -372,10 +544,10 @@ export default function ProfilePage({
               <Button
                 variant="orange"
                 onClick={handleOpenEdit}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 font-bold"
               >
                 <Edit3 size={14} />
-                Edit profile
+                Profile Setup & Edit
               </Button>
             )}
             {isHqRole(session.roleKey) && (
@@ -389,7 +561,7 @@ export default function ProfilePage({
               </Button>
             )}
             {savedFlash && (
-              <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[12px] font-medium text-[var(--accent)]">
+              <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[12px] font-medium text-[var(--accent)] animate-pulse">
                 Saved!
               </span>
             )}
@@ -450,6 +622,76 @@ export default function ProfilePage({
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        {/* Discord Bot Integration Panel */}
+        <TerminalPanel
+          title="discord.bot_status"
+          accent={isDiscordConnected ? "green" : "orange"}
+          meta={isDiscordConnected ? "connected" : "action_required"}
+          className="xl:col-span-2"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                  isDiscordConnected
+                    ? "bg-[#5865F2]/15 text-[#5865F2]"
+                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                <DiscordIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h3 className="font-bold text-sm text-text">
+                    {isDiscordConnected
+                      ? "Discord Connected with Elevates Bot"
+                      : "Discord Not Connected with Bot"}
+                  </h3>
+                  <Badge tone={isDiscordConnected ? "green" : "orange"}>
+                    {isDiscordConnected ? "Verified Sync" : "Connection Pending"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-text-dim mt-1 max-w-2xl leading-relaxed">
+                  {isDiscordConnected
+                    ? "Your Discord identity is linked with the Elevates Bot. Your event tickets, cluster channels, role badges, and announcements are automatically synchronized with the server."
+                    : "Connect your Discord account to receive event check-in alerts, unlock private project cluster channels, and automatically receive chapter role privileges on the Elevates Discord."}
+                </p>
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs font-mono">
+                  {profile.discordUsername && (
+                    <span className="rounded-md bg-bg px-2.5 py-1 text-text border border-border flex items-center gap-1.5">
+                      <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
+                      @{profile.discordUsername.replace(/^@/, "")}
+                    </span>
+                  )}
+                  {profile.discordUserId && (
+                    <span className="rounded-md bg-bg px-2.5 py-1 text-text-dim border border-border">
+                      ID: {profile.discordUserId}
+                    </span>
+                  )}
+                  {isDiscordConnected && (
+                    <span className="text-emerald-500 flex items-center gap-1 font-sans text-xs font-medium">
+                      <CheckCircle2 size={13} /> Active Bot Sync
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {canEdit && (
+              <Button
+                variant={isDiscordConnected ? "secondary" : "orange"}
+                size="sm"
+                onClick={handleOpenEdit}
+                className="shrink-0 text-xs flex items-center gap-1.5 font-bold"
+              >
+                <DiscordIcon className="w-3.5 h-3.5" />
+                {isDiscordConnected ? "Update Discord" : "Connect with Bot"}
+              </Button>
+            )}
+          </div>
+        </TerminalPanel>
+
         {/* Class Selection — only if the student has a chapter */}
         {isOwn && profile.chapterId ? (
           <TerminalPanel
@@ -485,7 +727,7 @@ export default function ProfilePage({
                   <FieldLabel>Your class</FieldLabel>
                   <Select
                     value={cohortId}
-                    onChange={(e) => setCohortId(e.target.value)}
+                    onChange={(e) => setCohortIdOverride(e.target.value)}
                   >
                     <option value="">Select class…</option>
                     {chapterCohorts.map((c) => (
@@ -573,12 +815,16 @@ export default function ProfilePage({
           </p>
           <div className="flex flex-wrap gap-2">
             <Badge tone="cyan">
-              {communityTiers.find((t: any) => t.key === derived.engagementTier || t.tier === derived.engagementTier)
-                ?.label ?? "Everyone"}
+              {communityTiers.find(
+                (t: { key?: string; tier?: string; label?: string }) =>
+                  t.key === derived.engagementTier || t.tier === derived.engagementTier,
+              )?.label ?? "Everyone"}
             </Badge>
             <Badge tone="orange">
-              {journeyStages.find((s: any) => s.key === derived.journeyStage || s.stage === derived.journeyStage)
-                ?.label ?? "Awareness"}
+              {journeyStages.find(
+                (s: { key?: string; stage?: string; label?: string }) =>
+                  s.key === derived.journeyStage || s.stage === derived.journeyStage,
+              )?.label ?? "Awareness"}
             </Badge>
           </div>
           <p className="mt-3 text-[12px] text-text-mute">
@@ -587,19 +833,48 @@ export default function ProfilePage({
           </p>
         </TerminalPanel>
 
-        {/* Skills & Interests */}
-        <TerminalPanel title="skills.interests">
-          <div className="grid gap-4 md:grid-cols-2">
+        {/* Skills & Interests Panel */}
+        <TerminalPanel
+          title="skills.interests"
+          meta={`${profile.skills.length} skills`}
+        >
+          <div className="space-y-4">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wider text-text">Skills</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text">
+                  Skills ({profile.skills.length})
+                </p>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={handleOpenEdit}
+                    className="text-[11px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                  >
+                    <Edit3 size={11} /> Edit skills
+                  </button>
+                )}
+              </div>
+
               {profile.skills.length === 0 ? (
-                <p className="mt-2 text-[12px] text-text-mute">No skills added yet.</p>
+                <div className="mt-2 rounded-lg border border-dashed border-border p-3 text-center">
+                  <p className="text-[12px] text-text-mute">No skills added yet.</p>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOpenEdit}
+                      className="mt-1 text-xs text-[var(--accent)]"
+                    >
+                      + Add your technical skills
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {profile.skills.map((s) => (
                     <span
                       key={s}
-                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text"
+                      className="rounded-lg bg-[var(--neutral-100)] border border-border/50 px-2.5 py-1 text-[12px] font-semibold text-text shadow-sm"
                     >
                       {s}
                     </span>
@@ -607,7 +882,8 @@ export default function ProfilePage({
                 </div>
               )}
             </div>
-            <div>
+
+            <div className="border-t border-border/50 pt-3">
               <p className="text-[11px] font-bold uppercase tracking-wider text-text">Interests</p>
               {profile.interests.length === 0 ? (
                 <p className="mt-2 text-[12px] text-text-mute">No interests added yet.</p>
@@ -616,7 +892,7 @@ export default function ProfilePage({
                   {profile.interests.map((i) => (
                     <span
                       key={i}
-                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text"
+                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text-dim"
                     >
                       {i}
                     </span>
@@ -625,9 +901,13 @@ export default function ProfilePage({
               )}
             </div>
           </div>
+
           <div className="mt-5 flex flex-wrap gap-4 border-t border-border pt-4 text-[13px]">
             {profile.email ? (
-              <span className="flex items-center gap-1.5 text-text-dim">
+              <span
+                className="flex items-center gap-1.5 text-text-dim font-mono text-xs"
+                title="Verified Account Email"
+              >
                 <Mail size={14} className="opacity-60" />
                 {profile.email}
               </span>
@@ -691,7 +971,7 @@ export default function ProfilePage({
         <TerminalPanel title="certificates" accent="green">
           {certs.length === 0 ? (
             <p className="text-[12px] text-text-dim">
-              // No certificates issued
+              {"// No certificates issued"}
             </p>
           ) : (
             <ul className="space-y-2">
@@ -722,7 +1002,7 @@ export default function ProfilePage({
         {/* Projects */}
         <TerminalPanel title="projects" accent="orange">
           {projects.length === 0 ? (
-            <p className="text-[12px] text-text-dim">// No active projects</p>
+            <p className="text-[12px] text-text-dim">{"// No active projects"}</p>
           ) : (
             <ul className="space-y-2">
               {projects.map((p) => (
@@ -739,137 +1019,365 @@ export default function ProfilePage({
         </TerminalPanel>
       </div>
 
-      {/* Edit Profile Modal Dialog */}
+      {/* Comprehensive Profile Setup & Edit Modal Dialog */}
       <Dialog
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Edit Profile"
-        description="Update your personal details, bio, skills, and links."
+        title="Member Profile Setup"
+        description="Configure your official member profile, academic year, technical skills, and Discord bot connection."
       >
-        <form onSubmit={handleSaveProfile} className="space-y-4 pt-2">
-          <div>
-            <FieldLabel>Email Address (Read-only)</FieldLabel>
-            <Input
-              value={profile.email || ""}
-              disabled
-              readOnly
-              className="bg-white/5 text-text-dim cursor-not-allowed border-border font-mono text-xs opacity-75"
-            />
-            <p className="mt-1 text-[11px] text-text-mute">
-              Email address is fixed and cannot be edited.
+        <form onSubmit={handleSaveProfile} className="space-y-5 pt-2">
+          {/* Section 1: Non-Editable Institutional Credentials */}
+          <div className="rounded-xl border border-border bg-bg/60 p-4 space-y-3.5">
+            <div className="flex items-center justify-between border-b border-border pb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-emerald-500" />
+                Verified Institutional Identity
+              </span>
+              <span className="text-[11px] text-text-mute flex items-center gap-1">
+                <Lock size={11} /> Non-editable fields
+              </span>
+            </div>
+
+            {/* Email Address (Non-editable) */}
+            <div>
+              <FieldLabel className="flex items-center justify-between">
+                <span>Email Address</span>
+                <span className="text-[10px] font-mono text-text-mute">Fixed to account</span>
+              </FieldLabel>
+              <div className="relative">
+                <Input
+                  value={profile.email || ""}
+                  disabled
+                  readOnly
+                  className="bg-bg/40 text-text-dim cursor-not-allowed border-border font-mono text-xs pl-8 select-none"
+                />
+                <Lock size={13} className="absolute left-2.5 top-3 text-text-mute" />
+              </div>
+              <p className="mt-1 text-[11px] text-text-mute">
+                Email address cannot be changed as it is permanently linked to your verified authentication account.
+              </p>
+            </div>
+
+            {/* Chapter / College Name (Non-editable, based on joined chapter) */}
+            <div>
+              <FieldLabel className="flex items-center justify-between">
+                <span>Joined Campus Chapter</span>
+                <span className="text-[10px] font-mono text-text-mute">Campus governed</span>
+              </FieldLabel>
+              <div className="relative">
+                <Input
+                  value={
+                    chapter
+                      ? `${chapter.name} — ${chapter.college || "Campus Chapter"}`
+                      : "Independent Student (No Chapter Joined)"
+                  }
+                  disabled
+                  readOnly
+                  className="bg-bg/40 text-text-dim cursor-not-allowed border-border text-xs pl-8 font-medium select-none"
+                />
+                <Building2 size={13} className="absolute left-2.5 top-3 text-text-mute" />
+              </div>
+              <p className="mt-1 text-[11px] text-text-mute">
+                Chapter membership is governed by campus leads and admissions. It cannot be altered manually in your profile.
+              </p>
+            </div>
+          </div>
+
+          {/* Section 2: Personal & Academic Details */}
+          <div className="space-y-3.5">
+            <div className="border-b border-border pb-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-text">
+                Personal & Academic Details
+              </span>
+            </div>
+
+            <div>
+              <FieldLabel>Full Name *</FieldLabel>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Your full name"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Academic Year Dropdown */}
+              <div className="sm:col-span-1">
+                <FieldLabel>Academic Year *</FieldLabel>
+                <Select
+                  value={editAcademicYear}
+                  onChange={(e) => setEditAcademicYear(e.target.value)}
+                  className="font-medium text-xs"
+                >
+                  {availableAcademicYears.map((yr) => (
+                    <option key={yr} value={yr}>
+                      {yr}
+                    </option>
+                  ))}
+                  {!availableAcademicYears.includes(editAcademicYear) && editAcademicYear && (
+                    <option value={editAcademicYear}>{editAcademicYear}</option>
+                  )}
+                </Select>
+              </div>
+
+              {/* Department */}
+              <div className="sm:col-span-1">
+                <FieldLabel>Department</FieldLabel>
+                <Input
+                  value={editDept}
+                  onChange={(e) => setEditDept(e.target.value)}
+                  placeholder="e.g. CSE, ECE, ME"
+                />
+              </div>
+
+              {/* Section */}
+              <div className="sm:col-span-1">
+                <FieldLabel>Section (optional)</FieldLabel>
+                <Input
+                  value={editSection}
+                  onChange={(e) => setEditSection(e.target.value)}
+                  placeholder="e.g. A, B"
+                />
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel>Bio / Tagline</FieldLabel>
+              <TextArea
+                rows={2}
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                placeholder="A short tagline about your craft, goals, or passion..."
+              />
+            </div>
+          </div>
+
+          {/* Section 3: Technical Skills Tag Manager */}
+          <div className="space-y-3">
+            <div className="border-b border-border pb-1.5 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-text">
+                Technical Skills ({skillsList.length})
+              </span>
+              <span className="text-[11px] text-text-dim">Add tags representing your stack</span>
+            </div>
+
+            {/* Active Skills Chips */}
+            <div className="min-h-[44px] rounded-xl border border-border bg-bg/40 p-2.5 flex flex-wrap items-center gap-1.5">
+              {skillsList.length === 0 ? (
+                <span className="text-xs text-text-mute italic">
+                  No skills selected yet. Type a skill below or click suggested tags.
+                </span>
+              ) : (
+                skillsList.map((skill) => (
+                  <span
+                    key={skill}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 px-2.5 py-1 text-xs font-bold text-[var(--accent)]"
+                  >
+                    <span>{skill}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSkill(skill)}
+                      className="hover:text-red-500 rounded-full p-0.5"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            {/* Add Custom Skill Input */}
+            <div className="flex items-center gap-2">
+              <Input
+                value={newSkillInput}
+                onChange={(e) => setNewSkillInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleAddSkill();
+                  }
+                }}
+                placeholder="Type a skill (e.g. Docker, Rust, Swift) and press Add..."
+                className="text-xs"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => handleAddSkill()}
+                className="shrink-0 flex items-center gap-1 text-xs font-semibold"
+              >
+                <Plus size={14} />
+                Add
+              </Button>
+            </div>
+
+            {/* Popular Skill Suggestions */}
+            <div>
+              <p className="text-[10px] uppercase font-bold tracking-wider text-text-mute mb-1.5">
+                Quick Add Suggestions:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {POPULAR_SKILL_SUGGESTIONS.map((sug) => {
+                  const alreadyAdded = skillsList.some(
+                    (s) => s.toLowerCase() === sug.toLowerCase(),
+                  );
+                  return (
+                    <button
+                      key={sug}
+                      type="button"
+                      disabled={alreadyAdded}
+                      onClick={() => handleAddSkill(sug)}
+                      className={`text-[11px] px-2 py-0.5 rounded-md border transition-all ${
+                        alreadyAdded
+                          ? "bg-bg/20 text-text-mute border-border/40 cursor-default opacity-50"
+                          : "bg-bg hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 text-text-dim border-border cursor-pointer font-medium"
+                      }`}
+                    >
+                      {alreadyAdded ? `✓ ${sug}` : `+ ${sug}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <FieldLabel>Interests (comma separated)</FieldLabel>
+              <Input
+                value={editInterests}
+                onChange={(e) => setEditInterests(e.target.value)}
+                placeholder="Web3, Open Source, System Design, Robotics"
+                className="text-xs"
+              />
+            </div>
+          </div>
+
+          {/* Section 4: Discord Bot Integration */}
+          <div className="rounded-xl border border-[#5865F2]/30 bg-[#5865F2]/5 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-[#5865F2]/20 pb-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#5865F2] flex items-center gap-1.5">
+                <DiscordIcon className="w-4 h-4" />
+                Elevates Discord Bot Integration
+              </span>
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  editDiscordConnected
+                    ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                    : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                }`}
+              >
+                {editDiscordConnected ? "Connected" : "Not Connected"}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Discord Username / Handle</FieldLabel>
+                <div className="relative">
+                  <Input
+                    value={editDiscordUsername}
+                    onChange={(e) => {
+                      setEditDiscordUsername(e.target.value);
+                      if (e.target.value.trim()) setEditDiscordConnected(true);
+                    }}
+                    placeholder="e.g. mashood / dev#0001"
+                    className="font-mono text-xs pl-8"
+                  />
+                  <span className="absolute left-2.5 top-2.5 text-text-mute font-mono text-xs">@</span>
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel>Discord User ID (optional snowflake ID)</FieldLabel>
+                <Input
+                  value={editDiscordUserId}
+                  onChange={(e) => {
+                    setEditDiscordUserId(e.target.value);
+                    if (e.target.value.trim()) setEditDiscordConnected(true);
+                  }}
+                  placeholder="e.g. 847294829104829104"
+                  className="font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Toggle bot status */}
+            <div className="flex items-center justify-between pt-1">
+              <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-text">
+                <input
+                  type="checkbox"
+                  checked={editDiscordConnected}
+                  onChange={(e) => setEditDiscordConnected(e.target.checked)}
+                  className="h-4 w-4 rounded border-border text-[#5865F2] focus:ring-[#5865F2]"
+                />
+                <span>Account is connected & verified with Elevates Discord Bot</span>
+              </label>
+
+              {editDiscordConnected && (
+                <span className="text-[11px] text-emerald-500 font-medium flex items-center gap-1">
+                  <CheckCircle2 size={12} /> Sync Enabled
+                </span>
+              )}
+            </div>
+
+            <p className="text-[11px] text-text-dim leading-relaxed">
+              When connected, the Elevates Discord Bot synchronizes your campus chapter roles, event access passes, and project cluster threads directly on the Discord server.
             </p>
           </div>
 
-          <div>
-            <FieldLabel>Full Name</FieldLabel>
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              placeholder="Your full name"
-              required
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Bio / Tagline</FieldLabel>
-            <TextArea
-              rows={2}
-              value={editBio}
-              onChange={(e) => setEditBio(e.target.value)}
-              placeholder="Short bio, focus areas, or interests"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Phone (optional)</FieldLabel>
-              <Input
-                value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-              />
-            </div>
-            <div>
-              <FieldLabel>Department</FieldLabel>
-              <Input
-                value={editDept}
-                onChange={(e) => setEditDept(e.target.value)}
-                placeholder="e.g. CSE, Cyber Security"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <FieldLabel>Year</FieldLabel>
-              <Input
-                value={editYear}
-                onChange={(e) => setEditYear(e.target.value)}
-                placeholder="e.g. 3rd Year, S5"
-              />
-            </div>
-            <div>
-              <FieldLabel>Section</FieldLabel>
-              <Input
-                value={editSection}
-                onChange={(e) => setEditSection(e.target.value)}
-                placeholder="e.g. A, B"
-              />
-            </div>
-          </div>
-
-          <div>
-            <FieldLabel>Skills (comma separated)</FieldLabel>
-            <Input
-              value={editSkills}
-              onChange={(e) => setEditSkills(e.target.value)}
-              placeholder="React, TypeScript, Python, UI/UX"
-            />
-          </div>
-
-          <div>
-            <FieldLabel>Interests (comma separated)</FieldLabel>
-            <Input
-              value={editInterests}
-              onChange={(e) => setEditInterests(e.target.value)}
-              placeholder="Web Dev, AI/ML, Cloud, Open Source"
-            />
-          </div>
-
+          {/* Section 5: Contact & Portfolio Links */}
           <div className="space-y-3 border-t border-border pt-3">
-            <p className="text-[12px] font-semibold text-text-dim">Social & Portfolio Links</p>
-            <div>
-              <FieldLabel>GitHub URL</FieldLabel>
-              <Input
-                value={editGithub}
-                onChange={(e) => setEditGithub(e.target.value)}
-                placeholder="https://github.com/username"
-              />
+            <p className="text-[12px] font-bold uppercase tracking-wider text-text">
+              Contact & Portfolio Links
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Phone (optional)</FieldLabel>
+                <Input
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+              <div>
+                <FieldLabel>Portfolio / Website URL</FieldLabel>
+                <Input
+                  value={editPortfolio}
+                  onChange={(e) => setEditPortfolio(e.target.value)}
+                  placeholder="https://yourportfolio.com"
+                />
+              </div>
             </div>
-            <div>
-              <FieldLabel>LinkedIn URL</FieldLabel>
-              <Input
-                value={editLinkedin}
-                onChange={(e) => setEditLinkedin(e.target.value)}
-                placeholder="https://linkedin.com/in/username"
-              />
-            </div>
-            <div>
-              <FieldLabel>Portfolio / Website URL</FieldLabel>
-              <Input
-                value={editPortfolio}
-                onChange={(e) => setEditPortfolio(e.target.value)}
-                placeholder="https://yourportfolio.com"
-              />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>GitHub URL</FieldLabel>
+                <Input
+                  value={editGithub}
+                  onChange={(e) => setEditGithub(e.target.value)}
+                  placeholder="https://github.com/username"
+                />
+              </div>
+              <div>
+                <FieldLabel>LinkedIn URL</FieldLabel>
+                <Input
+                  value={editLinkedin}
+                  onChange={(e) => setEditLinkedin(e.target.value)}
+                  placeholder="https://linkedin.com/in/username"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <div className="flex justify-end gap-2.5 border-t border-border pt-4">
             <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="orange">
-              Save Changes
+            <Button type="submit" variant="orange" className="font-bold">
+              Save Profile
             </Button>
           </div>
         </form>

@@ -144,7 +144,8 @@ export function transformProfileRow(p: Record<string, any>): Profile {
     joinedAt: p.joinedAt ?? p.joined_at ?? p.createdAt ?? p.created_at ?? undefined,
     avatarUrl: p.avatarUrl ?? p.avatar_url ?? undefined,
     department: p.department ?? undefined,
-    year: p.year ?? undefined,
+    year: p.year ?? p.academic_year ?? p.academicYear ?? undefined,
+    academicYear: p.academicYear ?? p.academic_year ?? p.year ?? undefined,
     section: p.section ?? undefined,
     chapterId: p.chapterId ?? p.chapter_id ?? undefined,
     status: p.status ?? "active",
@@ -158,6 +159,14 @@ export function transformProfileRow(p: Record<string, any>): Profile {
     resumeUrl: p.resumeUrl ?? p.resume_url ?? undefined,
     githubUrl: p.githubUrl ?? p.github_url ?? undefined,
     linkedinUrl: p.linkedinUrl ?? p.linkedin_url ?? undefined,
+    discordUserId: p.discordUserId ?? p.discord_user_id ?? undefined,
+    discordUsername: p.discordUsername ?? p.discord_username ?? undefined,
+    discordConnected: Boolean(
+      p.discordConnected ??
+        p.discord_connected ??
+        (p.discordUserId || p.discord_user_id || p.discordUsername || p.discord_username),
+    ),
+    discordConnectedAt: p.discordConnectedAt ?? p.discord_connected_at ?? undefined,
     points: Number(p.points ?? 0),
     badges: Array.isArray(p.badges) ? p.badges : [],
     bio: p.bio ?? undefined,

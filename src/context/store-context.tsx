@@ -321,6 +321,7 @@ type StoreContextValue = {
         | "phone"
         | "department"
         | "year"
+        | "academicYear"
         | "section"
         | "bio"
         | "skills"
@@ -331,6 +332,10 @@ type StoreContextValue = {
         | "resumeUrl"
         | "engagementTier"
         | "journeyStage"
+        | "discordUserId"
+        | "discordUsername"
+        | "discordConnected"
+        | "discordConnectedAt"
       >
     >,
   ) => void;
@@ -3365,12 +3370,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           if (patch.phone !== undefined) updatePayload.phone = patch.phone;
           if (patch.department !== undefined) updatePayload.department = patch.department;
           if (patch.year !== undefined) updatePayload.year = patch.year;
+          if (patch.academicYear !== undefined) {
+            updatePayload.academic_year = patch.academicYear;
+            if (patch.year === undefined) updatePayload.year = patch.academicYear;
+          }
           if (patch.section !== undefined) updatePayload.section = patch.section;
           if (patch.skills !== undefined) updatePayload.skills = patch.skills;
           if (patch.interests !== undefined) updatePayload.interests = patch.interests;
           if (patch.githubUrl !== undefined) updatePayload.github_url = patch.githubUrl;
           if (patch.linkedinUrl !== undefined) updatePayload.linkedin_url = patch.linkedinUrl;
           if (patch.portfolioUrl !== undefined) updatePayload.portfolio_url = patch.portfolioUrl;
+          if (patch.discordUserId !== undefined) updatePayload.discord_user_id = patch.discordUserId || null;
+          if (patch.discordUsername !== undefined) updatePayload.discord_username = patch.discordUsername || null;
+          if (patch.discordConnected !== undefined) updatePayload.discord_connected = patch.discordConnected;
+          if (patch.discordConnectedAt !== undefined) updatePayload.discord_connected_at = patch.discordConnectedAt;
 
           if (Object.keys(updatePayload).length > 0) {
             supabase

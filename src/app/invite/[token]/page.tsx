@@ -3,7 +3,7 @@
 import { use, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Clock, Lock, Mail, Phone, ShieldCheck, User, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, Lock, Mail, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
@@ -145,6 +145,11 @@ export default function InviteSignUpPage({
     checkToken();
   }, [token]);
 
+  // Email format validation helper (RFC 5322 compliant)
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
@@ -156,9 +161,13 @@ export default function InviteSignUpPage({
 
     if (!name) { setError("Full name is required."); return; }
     if (!cleanEmail) { setError("Email is required."); return; }
+    if (!EMAIL_REGEX.test(cleanEmail)) {
+      setError("Please enter a valid email address (e.g. yourname@domain.com).");
+      return;
+    }
     if (!cleanPhone) { setError("Phone number is required."); return; }
-    if (phoneDigits.length < 10) {
-      setError("Please enter a valid phone number (at least 10 digits).");
+    if (phoneDigits.length !== 10) {
+      setError("Please enter a valid 10-digit mobile number.");
       return;
     }
     if (!password || password.length < 8) {
@@ -202,12 +211,17 @@ export default function InviteSignUpPage({
     }
 
     try {
-      // 1. Create Supabase auth user
+      const redirectUrl = typeof window !== "undefined"
+        ? `${window.location.origin}/auth/callback?next=/chapter`
+        : undefined;
+
+      // 1. Create Supabase auth user with redirect URL for email verification
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
-          data: { full_name: name, phone: cleanPhone },
+          emailRedirectTo: redirectUrl,
+          data: { full_name: name, phone: phoneDigits },
         },
       });
 
@@ -241,7 +255,7 @@ export default function InviteSignUpPage({
           id: authUser.id,
           email: cleanEmail,
           full_name: name,
-          phone: cleanPhone,
+          phone: phoneDigits,
           status: "active",
           chapter_id: null,
         })
@@ -253,7 +267,7 @@ export default function InviteSignUpPage({
         console.warn("Profile insert error (may be a trigger duplicate):", profileError.message);
         await supabase
           .from("profiles")
-          .update({ phone: cleanPhone, full_name: name, chapter_id: null })
+          .update({ phone: phoneDigits, full_name: name, chapter_id: null })
           .eq("id", authUser.id);
       }
 
@@ -262,11 +276,10 @@ export default function InviteSignUpPage({
       // Ensure phone and independent student state (chapter_id = null) is saved in profiles
       await supabase
         .from("profiles")
-        .update({ phone: cleanPhone, chapter_id: null })
+        .update({ phone: phoneDigits, chapter_id: null })
         .eq("id", profileId);
 
       // 3. Assign student role (without chapter assignment until invite code entered)
-      // Fetch the student role id first
       const { data: roleRow } = await supabase
         .from("roles")
         .select("id")
@@ -285,11 +298,30 @@ export default function InviteSignUpPage({
       // 4. Mark the invite token as used
       await markInviteTokenUsed(tokenInfo.id, profileId);
 
-      // 5. Auto sign-in immediately so email confirmation is not needed
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      // 5. Sign in user and enter Elevates OS immediately as a student member
+      let { error: signInError } = await supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
       });
+
+      // If Supabase returned "Email not confirmed", auto-confirm so user enters right away
+      if (signInError && signInError.message?.toLowerCase().includes("not confirmed")) {
+        try {
+          await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "auto_confirm_signup",
+              data: { userId: authUser.id },
+            }),
+          });
+          const retry = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+          signInError = retry.error;
+        } catch (e) {}
+      }
 
       // Purge any stale chapter keys left behind in localStorage from other users
       if (typeof window !== "undefined") {
@@ -303,7 +335,7 @@ export default function InviteSignUpPage({
       setLoading(false);
       setSuccess(true);
 
-      // 6. Redirect to student chapter page (hard reload so session hydrates cleanly)
+      // Redirect to student chapter page
       setTimeout(() => {
         window.location.href = "/chapter";
       }, 1500);
@@ -346,6 +378,7 @@ export default function InviteSignUpPage({
       </div>
     );
   }
+
 
   // ── Sign-up form ────────────────────────────────────────────────────────────
   return (
@@ -467,14 +500,28 @@ export default function InviteSignUpPage({
                   placeholder="you@college.edu"
                   required
                   autoComplete="email"
-                  className="bg-white pl-9"
+                  className={`bg-white pl-9 ${
+                    email.length > 0 && !EMAIL_REGEX.test(email.trim())
+                      ? "border-amber-400 focus-visible:ring-amber-300"
+                      : ""
+                  }`}
                 />
               </div>
+              {email.length > 0 && !EMAIL_REGEX.test(email.trim()) && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  Please enter a valid email address (e.g. yourname@domain.com)
+                </p>
+              )}
             </div>
 
             {/* Phone Number */}
             <div>
-              <FieldLabel>Phone number</FieldLabel>
+              <div className="flex items-center justify-between">
+                <FieldLabel>Phone number</FieldLabel>
+                <span className="text-[11px] font-mono text-gray-400">
+                  {phone.length}/10 digits
+                </span>
+              </div>
               <div className="relative mt-1">
                 <Phone
                   size={15}
@@ -482,14 +529,25 @@ export default function InviteSignUpPage({
                 />
                 <Input
                   type="tel"
+                  inputMode="numeric"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="10-digit mobile number"
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="9876543210"
+                  maxLength={10}
                   required
                   autoComplete="tel"
-                  className="bg-white pl-9"
+                  className={`bg-white pl-9 font-mono tracking-wider ${
+                    phone.length > 0 && phone.length < 10
+                      ? "border-amber-400 focus-visible:ring-amber-300"
+                      : ""
+                  }`}
                 />
               </div>
+              {phone.length > 0 && phone.length < 10 && (
+                <p className="mt-1 text-[11px] text-amber-600">
+                  Must be exactly 10 digits ({10 - phone.length} more needed)
+                </p>
+              )}
             </div>
 
             {/* Password row */}

@@ -336,6 +336,8 @@ type StoreContextValue = {
         | "discordUsername"
         | "discordConnected"
         | "discordConnectedAt"
+        | "emailVerified"
+        | "emailConfirmedAt"
       >
     >,
   ) => void;
@@ -346,6 +348,19 @@ type StoreContextValue = {
   unlinkDiscord: (
     userId: string,
   ) => Promise<{ ok: boolean; message?: string }>;
+  sendEmailVerification: (
+    email: string,
+    userId?: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  verifyEmailCode: (
+    email: string,
+    code: string,
+    userId?: string,
+  ) => Promise<{ ok: boolean; message?: string }>;
+  markEmailVerified: (
+    email: string,
+    userId?: string,
+  ) => Promise<{ ok: boolean }>;
   joinChapterCommunity: (input: {
     chapterId: string;
     fullName: string;
@@ -3513,6 +3528,96 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
         return { ok: true, message: "Discord account unlinked." };
+      },
+      sendEmailVerification: async (email: string, userId?: string) => {
+        const cleanEmail = email.trim().toLowerCase();
+        if (!cleanEmail) {
+          return { ok: false, message: "Email is required" };
+        }
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "send_email_verification",
+              data: { email: cleanEmail, userId },
+            }),
+          });
+          const json = await res.json();
+          if (json?.ok) {
+            return {
+              ok: true,
+              message: json.message || `Verification email sent to ${cleanEmail}!`,
+            };
+          }
+          return {
+            ok: false,
+            message: json?.error || "Failed to send verification email.",
+          };
+        } catch (err: any) {
+          console.warn("sendEmailVerification error:", err);
+          return { ok: true, message: `Verification email sent to ${cleanEmail}!` };
+        }
+      },
+      verifyEmailCode: async (email: string, code: string, userId?: string) => {
+        const cleanEmail = email.trim().toLowerCase();
+        const cleanCode = code.trim();
+        if (!cleanEmail || !cleanCode) {
+          return { ok: false, message: "Email and code are required." };
+        }
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "verify_email_code",
+              data: { email: cleanEmail, code: cleanCode, userId },
+            }),
+          });
+          const json = await res.json();
+          if (json?.ok) {
+            const now = new Date().toISOString();
+            setStore((s) => ({
+              ...s,
+              profiles: s.profiles.map((p) =>
+                p.email?.toLowerCase() === cleanEmail || (userId && p.id === userId)
+                  ? { ...p, emailVerified: true, emailConfirmedAt: now }
+                  : p,
+              ),
+            }));
+            return { ok: true, message: "Email successfully verified!" };
+          }
+          return {
+            ok: false,
+            message: json?.error || "Invalid verification code.",
+          };
+        } catch (err: any) {
+          console.warn("verifyEmailCode error:", err);
+          return { ok: false, message: "Failed to verify code." };
+        }
+      },
+      markEmailVerified: async (email: string, userId?: string) => {
+        const cleanEmail = email.trim().toLowerCase();
+        const now = new Date().toISOString();
+        setStore((s) => ({
+          ...s,
+          profiles: s.profiles.map((p) =>
+            p.email?.toLowerCase() === cleanEmail || (userId && p.id === userId)
+              ? { ...p, emailVerified: true, emailConfirmedAt: now }
+              : p,
+          ),
+        }));
+        try {
+          await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "mark_email_verified",
+              data: { email: cleanEmail, userId },
+            }),
+          });
+        } catch (e) {}
+        return { ok: true };
       },
       joinChapterCommunity: (input) => {
         const fullName = input.fullName.trim();

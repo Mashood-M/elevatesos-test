@@ -442,6 +442,16 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
             ? `ELV-${String(p.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`
             : undefined),
         email: p.email,
+        emailVerified: Boolean(
+          p.email_verified ||
+          p.email_confirmed_at ||
+          (authUser?.email && p.email && authUser.email.toLowerCase() === p.email.toLowerCase() && (authUser.email_confirmed_at || authUser.confirmed_at))
+        ),
+        emailConfirmedAt: p.email_confirmed_at ?? (
+          authUser?.email && p.email && authUser.email.toLowerCase() === p.email.toLowerCase()
+            ? (authUser.email_confirmed_at || authUser.confirmed_at)
+            : undefined
+        ),
         fullName: p.full_name,
         createdAt: p.created_at ?? undefined,
         joinedAt: p.created_at ?? undefined,

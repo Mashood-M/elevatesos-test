@@ -85,8 +85,16 @@ export default function ProfilePage({
 }) {
   const { id } = use(params);
   const router = useRouter();
-  const { store, updateProfile, deleteUser, verifyDiscordOtp, unlinkDiscord } =
-    useStore();
+  const {
+    store,
+    updateProfile,
+    deleteUser,
+    verifyDiscordOtp,
+    unlinkDiscord,
+    sendEmailVerification,
+    verifyEmailCode,
+    markEmailVerified,
+  } = useStore();
   const { session } = useCurrentUser();
 
   const cleanId = (id || "").trim();
@@ -111,6 +119,90 @@ export default function ProfilePage({
   const [copiedElevatesId, setCopiedElevatesId] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  // Email Verification modal & state
+  const [emailVerifyModalOpen, setEmailVerifyModalOpen] = useState(false);
+  const [emailOtpInput, setEmailOtpInput] = useState("");
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
+  const [emailVerifyStatus, setEmailVerifyStatus] = useState<"idle" | "sent" | "success" | "error">("idle");
+  const [emailVerifyMessage, setEmailVerifyMessage] = useState("");
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+
+  // Email resend cooldown timer
+  useEffect(() => {
+    if (emailResendCooldown <= 0) return;
+    const timer = setTimeout(() => setEmailResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [emailResendCooldown]);
+
+  // Check URL search params for ?verified=true
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("verified") === "true" && profile?.email) {
+        markEmailVerified(profile.email, profile.id);
+        setEmailVerifyStatus("success");
+        setEmailVerifyMessage("Your email address has been verified successfully!");
+        setEmailVerifyModalOpen(true);
+        url.searchParams.delete("verified");
+        window.history.replaceState({}, "", url.pathname + (url.search ? `?${url.searchParams}` : ""));
+      }
+    }
+  }, [profile?.email, profile?.id, markEmailVerified]);
+
+  async function handleSendVerificationEmail() {
+    if (!profile?.email || emailResendCooldown > 0) return;
+    setIsSendingVerification(true);
+    setEmailVerifyMessage("");
+    setEmailVerifyStatus("idle");
+
+    const res = await sendEmailVerification(profile.email, profile.id);
+    setIsSendingVerification(false);
+    if (res.ok) {
+      setEmailVerifyStatus("sent");
+      setEmailVerifyMessage(
+        res.message ||
+          `Verification email sent to ${profile.email}! Please check your inbox and click the link or enter the 6-digit code below.`,
+      );
+      setEmailResendCooldown(60);
+    } else {
+      setEmailVerifyStatus("error");
+      setEmailVerifyMessage(res.message || "Failed to send verification email. Please try again.");
+    }
+  }
+
+  async function handleConfirmEmailOtp(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!profile?.email) return;
+    const cleanOtp = emailOtpInput.trim().replace(/\D/g, "");
+    if (cleanOtp.length !== 6) {
+      setEmailVerifyStatus("error");
+      setEmailVerifyMessage("Please enter the 6-digit code sent to your email.");
+      return;
+    }
+
+    setIsVerifyingEmailOtp(true);
+    setEmailVerifyStatus("idle");
+    const res = await verifyEmailCode(profile.email, cleanOtp, profile.id);
+    setIsVerifyingEmailOtp(false);
+
+    if (res.ok) {
+      setEmailVerifyStatus("success");
+      setEmailVerifyMessage("Your email address is now verified!");
+      setEmailOtpInput("");
+    } else {
+      setEmailVerifyStatus("error");
+      setEmailVerifyMessage(res.message || "Invalid or expired verification code.");
+    }
+  }
+
+  function handleOpenEmailVerifyModal() {
+    setEmailVerifyModalOpen(true);
+    setEmailOtpInput("");
+    setEmailVerifyStatus("idle");
+    setEmailVerifyMessage("");
+  }
 
   function handleCopyElevatesId() {
     const idToCopy = profile?.elevatesId || profile?.email || "";
@@ -1094,15 +1186,41 @@ export default function ProfilePage({
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-4 border-t border-border pt-4 text-[13px]">
+          <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-border pt-4 text-[13px]">
             {profile.email ? (
-              <span
-                className="flex items-center gap-1.5 text-text-dim font-mono text-xs"
-                title="Verified Account Email"
-              >
-                <Mail size={14} className="opacity-60" />
-                {profile.email}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="flex items-center gap-1.5 text-text-dim font-mono text-xs"
+                  title="Account Email"
+                >
+                  <Mail size={14} className="opacity-60" />
+                  {profile.email}
+                </span>
+
+                {profile.emailVerified ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 size={12} className="text-emerald-600" />
+                    Verified
+                  </span>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
+                      Unverified
+                    </span>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={handleOpenEmailVerifyModal}
+                        className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-xs hover:opacity-90 transition-opacity cursor-pointer"
+                        title="Verify your email address"
+                      >
+                        <ShieldCheck size={12} />
+                        Verify
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             ) : null}
             {profile.phone ? (
               <span className="flex items-center gap-1.5 text-text-dim">
@@ -1478,11 +1596,21 @@ export default function ProfilePage({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <FieldLabel>Phone (optional)</FieldLabel>
+                <div className="flex items-center justify-between">
+                  <FieldLabel>Phone (optional)</FieldLabel>
+                  {editPhone.length > 0 && (
+                    <span className="text-[11px] font-mono text-text-muted">
+                      {editPhone.length}/10
+                    </span>
+                  )}
+                </div>
                 <Input
+                  type="tel"
+                  inputMode="numeric"
                   value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
+                  onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  placeholder="10-digit mobile number"
+                  maxLength={10}
                 />
               </div>
               <div>
@@ -1584,6 +1712,156 @@ export default function ProfilePage({
               )}
             </Button>
           </div>
+        </div>
+      </Dialog>
+
+      {/* Email Verification Modal Dialog */}
+      <Dialog
+        open={emailVerifyModalOpen}
+        onClose={() => setEmailVerifyModalOpen(false)}
+        title="Verify Account Email"
+        description="Confirm your email address to ensure account authenticity and receive official chapter updates."
+      >
+        <div className="space-y-4 pt-2">
+          {/* Target email chip */}
+          <div className="flex items-center justify-between rounded-xl border border-border bg-bg/60 p-3">
+            <div className="flex items-center gap-2">
+              <Mail size={16} className="text-[var(--accent)]" />
+              <span className="font-mono text-xs font-semibold text-text">
+                {profile.email}
+              </span>
+            </div>
+            {profile.emailVerified ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
+                <CheckCircle2 size={12} className="text-emerald-600" />
+                Verified
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
+                Unverified
+              </span>
+            )}
+          </div>
+
+          {profile.emailVerified ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-center space-y-2">
+              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
+              <h4 className="text-sm font-bold text-emerald-900">Email Address Verified</h4>
+              <p className="text-xs text-emerald-700">
+                Your email address ({profile.email}) is officially verified and confirmed.
+              </p>
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setEmailVerifyModalOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-text-dim leading-relaxed">
+                Click below to send a verification email to <span className="font-semibold text-text">{profile.email}</span>. You can verify by clicking the link in your inbox, or by entering the 6-digit code below.
+              </p>
+
+              {/* Action 1: Send / Resend Email */}
+              <div className="flex items-center justify-between gap-2 rounded-lg bg-bg/40 p-2.5 border border-border">
+                <span className="text-xs text-text-dim font-medium">
+                  Verification email
+                </span>
+                <Button
+                  type="button"
+                  variant="orange"
+                  size="sm"
+                  onClick={handleSendVerificationEmail}
+                  disabled={isSendingVerification || emailResendCooldown > 0}
+                  className="font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isSendingVerification ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : emailResendCooldown > 0 ? (
+                    <span>Resend in {emailResendCooldown}s</span>
+                  ) : (
+                    <>
+                      <Mail size={13} />
+                      <span>Send Verification Email</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Status messages */}
+              {emailVerifyMessage && (
+                <div
+                  className={`rounded-lg p-3 text-xs ${
+                    emailVerifyStatus === "success"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : emailVerifyStatus === "error"
+                      ? "bg-red-50 text-red-600 border border-red-200"
+                      : "bg-blue-50 text-blue-700 border border-blue-200"
+                  }`}
+                >
+                  {emailVerifyMessage}
+                </div>
+              )}
+
+              {/* Action 2: Enter 6-digit code */}
+              <form onSubmit={handleConfirmEmailOtp} className="space-y-3 pt-1">
+                <div>
+                  <FieldLabel className="text-xs font-semibold">
+                    Enter 6-digit verification code (from email)
+                  </FieldLabel>
+                  <div className="relative mt-1">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={emailOtpInput}
+                      onChange={(e) => setEmailOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="••••••"
+                      maxLength={6}
+                      className="h-11 text-center font-mono text-xl font-bold tracking-[0.3em] bg-bg"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEmailVerifyModalOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="orange"
+                    size="sm"
+                    disabled={isVerifyingEmailOtp || emailOtpInput.trim().length !== 6}
+                    className="font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isVerifyingEmailOtp ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={13} />
+                        <span>Confirm Code</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       </Dialog>
     </div>

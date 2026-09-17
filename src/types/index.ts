@@ -209,6 +209,10 @@ export interface Profile {
   /** Human-readable unique sequential identifier shown in nav & used for fast search / URLs. Format: ELV-0001, ELV-A000, etc. */
   elevatesId?: string;
   email: string;
+  /** Whether the profile's email address has been verified */
+  emailVerified?: boolean;
+  /** Timestamp when email was verified */
+  emailConfirmedAt?: string;
   fullName: string;
   createdAt?: string;
   joinedAt?: string;

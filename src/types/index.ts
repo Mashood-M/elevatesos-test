@@ -243,6 +243,10 @@ export interface Profile {
   discordConnected?: boolean;
   /** Timestamp when Discord Bot was connected */
   discordConnectedAt?: string;
+  /** Role string (e.g. Campus Lead, Class Representative, Member) */
+  role?: string;
+  /** Bot designation key (e.g. campus_lead, class_rep) */
+  designation?: string;
   points: number;
   badges: string[];
   bio?: string;

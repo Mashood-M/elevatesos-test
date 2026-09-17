@@ -6,7 +6,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Building2,
+  Check,
   CheckCircle2,
+  Copy,
   Edit3,
   Globe,
   GraduationCap,
@@ -102,8 +104,17 @@ export default function ProfilePage({
   const journeyStages = store.doctrine?.journeyStages ?? [];
 
   const [savedFlash, setSavedFlash] = useState(false);
+  const [copiedElevatesId, setCopiedElevatesId] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  function handleCopyElevatesId() {
+    const idToCopy = profile?.elevatesId || profile?.email || "";
+    if (!idToCopy) return;
+    navigator.clipboard.writeText(idToCopy);
+    setCopiedElevatesId(true);
+    window.setTimeout(() => setCopiedElevatesId(false), 2000);
+  }
 
   // Edit form state
   const [editName, setEditName] = useState("");
@@ -622,74 +633,162 @@ export default function ProfilePage({
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        {/* Discord Bot Integration Panel */}
+        {/* Discord Bot Integration Panel — Elevates Discord Bot Architecture */}
         <TerminalPanel
-          title="discord.bot_status"
+          title="elevates_bot.discord_sync"
           accent={isDiscordConnected ? "green" : "orange"}
-          meta={isDiscordConnected ? "connected" : "action_required"}
+          meta={isDiscordConnected ? "bot_linked" : "verification_needed"}
           className="xl:col-span-2"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3.5">
+          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
+            <div className="flex items-start gap-4">
               <div
-                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${
+                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm border ${
                   isDiscordConnected
-                    ? "bg-[#5865F2]/15 text-[#5865F2]"
-                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                    ? "bg-[#5865F2]/10 border-[#5865F2]/30 text-[#5865F2]"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
                 }`}
               >
-                <DiscordIcon className="h-6 w-6" />
+                <DiscordIcon className="h-7 w-7" />
               </div>
-              <div>
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <h3 className="font-bold text-sm text-text">
+                  <h3 className="font-bold text-base text-text">
                     {isDiscordConnected
-                      ? "Discord Connected with Elevates Bot"
-                      : "Discord Not Connected with Bot"}
+                      ? "Linked with Elevates Discord Bot"
+                      : "Connect Chapter Discord via Elevates Bot"}
                   </h3>
                   <Badge tone={isDiscordConnected ? "green" : "orange"}>
-                    {isDiscordConnected ? "Verified Sync" : "Connection Pending"}
+                    {isDiscordConnected ? "Bot Sync Active" : "Verification Required"}
                   </Badge>
+                  {profile.designation && (
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25 uppercase">
+                      {profile.designation.replace("_", " ")} role
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-text-dim mt-1 max-w-2xl leading-relaxed">
+
+                <p className="text-xs text-text-dim max-w-2xl leading-relaxed">
                   {isDiscordConnected
-                    ? "Your Discord identity is linked with the Elevates Bot. Your event tickets, cluster channels, role badges, and announcements are automatically synchronized with the server."
-                    : "Connect your Discord account to receive event check-in alerts, unlock private project cluster channels, and automatically receive chapter role privileges on the Elevates Discord."}
+                    ? "Your Discord identity is bound to this Elevates OS account. The bot automatically provisions your 'ELEVATES • Member' server role, cluster channels, attendance pings, and campus badges."
+                    : "The Elevates Discord Bot provisions roles, private campus cluster channels, and event alerts. Verify directly inside your chapter Discord server using your Elevates ID."}
                 </p>
 
-                <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs font-mono">
+                {/* Verification ID helper card */}
+                <div className="pt-2 flex flex-wrap items-center gap-3">
+                  <div className="inline-flex items-center gap-2 rounded-xl bg-bg-card border border-border px-3 py-1.5 shadow-2xs">
+                    <span className="text-[11px] font-mono text-text-mute uppercase tracking-wider">Elevates ID:</span>
+                    <span className="text-xs font-mono font-bold text-accent">
+                      {profile.elevatesId || "ELV-PENDING"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCopyElevatesId}
+                      className="ml-1 inline-flex items-center gap-1 rounded-md bg-bg hover:bg-border/60 px-2 py-0.5 text-[11px] font-semibold text-text border border-border/80 transition-colors"
+                      title="Copy Elevates ID to verify with bot"
+                    >
+                      {copiedElevatesId ? (
+                        <>
+                          <Check size={12} className="text-emerald-500" />
+                          <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy size={12} className="text-text-muted" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
                   {profile.discordUsername && (
-                    <span className="rounded-md bg-bg px-2.5 py-1 text-text border border-border flex items-center gap-1.5">
+                    <span className="rounded-xl bg-bg px-3 py-1.5 text-xs text-text border border-border flex items-center gap-1.5 font-mono">
                       <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
                       @{profile.discordUsername.replace(/^@/, "")}
                     </span>
                   )}
+
                   {profile.discordUserId && (
-                    <span className="rounded-md bg-bg px-2.5 py-1 text-text-dim border border-border">
-                      ID: {profile.discordUserId}
+                    <span className="rounded-xl bg-bg px-3 py-1.5 text-xs text-text-dim border border-border font-mono">
+                      Snowflake: {profile.discordUserId}
                     </span>
                   )}
+
                   {isDiscordConnected && (
-                    <span className="text-emerald-500 flex items-center gap-1 font-sans text-xs font-medium">
-                      <CheckCircle2 size={13} /> Active Bot Sync
+                    <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs font-semibold">
+                      <CheckCircle2 size={14} /> Synchronized
                     </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {canEdit && (
-              <Button
-                variant={isDiscordConnected ? "secondary" : "orange"}
-                size="sm"
-                onClick={handleOpenEdit}
-                className="shrink-0 text-xs flex items-center gap-1.5 font-bold"
-              >
-                <DiscordIcon className="w-3.5 h-3.5" />
-                {isDiscordConnected ? "Update Discord" : "Connect with Bot"}
-              </Button>
-            )}
+            {/* Quick action buttons */}
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 self-start w-full lg:w-auto">
+              {!isDiscordConnected && (
+                <Button
+                  variant="orange"
+                  size="sm"
+                  onClick={handleCopyElevatesId}
+                  className="text-xs flex items-center justify-center gap-1.5 font-bold shadow-sm"
+                >
+                  {copiedElevatesId ? (
+                    <>
+                      <Check size={14} />
+                      <span>Copied ID! Run /connect</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      <span>Copy ID for /connect</span>
+                    </>
+                  )}
+                </Button>
+              )}
+              {canEdit && (
+                <Button
+                  variant={isDiscordConnected ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={handleOpenEdit}
+                  className="text-xs flex items-center justify-center gap-1.5 font-semibold"
+                >
+                  <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
+                  {isDiscordConnected ? "Configure Discord" : "Manual Bot Setup"}
+                </Button>
+              )}
+            </div>
           </div>
+
+          {/* Verification steps for unlinked members */}
+          {!isDiscordConnected && (
+            <div className="mt-4 pt-3.5 border-t border-border/80">
+              <div className="rounded-xl bg-bg/70 border border-border/60 p-3.5">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2 flex items-center gap-1.5">
+                  <span>🤖</span> How to verify with the Elevates Discord Bot:
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs text-text">
+                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
+                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 1</div>
+                    <p className="text-text-dim text-[11px] leading-snug">
+                      Join your campus chapter Discord server (e.g. {chapter?.name || "Elevates Chapter"}).
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
+                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 2</div>
+                    <p className="text-text-dim text-[11px] leading-snug">
+                      Type <code className="font-mono font-bold text-text bg-bg px-1 py-0.5 rounded">/connect</code> or <code className="font-mono font-bold text-text bg-bg px-1 py-0.5 rounded">/verify</code> in any channel.
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
+                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 3</div>
+                    <p className="text-text-dim text-[11px] leading-snug">
+                      Click &ldquo;Yes, I have an account&rdquo; and paste your Elevates ID (<span className="font-mono font-bold text-accent">{profile.elevatesId || "ELV-XXXX"}</span>).
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </TerminalPanel>
 
         {/* Class Selection — only if the student has a chapter */}
@@ -1259,7 +1358,7 @@ export default function ProfilePage({
             <div className="flex items-center justify-between border-b border-[#5865F2]/20 pb-2">
               <span className="text-xs font-bold uppercase tracking-wider text-[#5865F2] flex items-center gap-1.5">
                 <DiscordIcon className="w-4 h-4" />
-                Elevates Discord Bot Integration
+                Elevates Discord Bot Sync (/connect & /verify)
               </span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
@@ -1268,8 +1367,35 @@ export default function ProfilePage({
                     : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
                 }`}
               >
-                {editDiscordConnected ? "Connected" : "Not Connected"}
+                {editDiscordConnected ? "Linked & Active" : "Pending Verification"}
               </span>
+            </div>
+
+            {/* Quick Elevates ID banner for bot verification */}
+            <div className="flex items-center justify-between rounded-lg bg-bg-card/90 border border-border p-2.5 text-xs">
+              <div>
+                <span className="text-text-dim text-[11px]">Verification Elevates ID:</span>
+                <span className="font-mono font-bold text-accent ml-1.5 text-xs">
+                  {profile.elevatesId || "ELV-PENDING"}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyElevatesId}
+                className="inline-flex items-center gap-1 rounded bg-bg hover:bg-border/60 px-2 py-1 text-[11px] font-semibold text-text border border-border transition-colors"
+              >
+                {copiedElevatesId ? (
+                  <>
+                    <Check size={12} className="text-emerald-500" />
+                    <span className="text-emerald-600 dark:text-emerald-400">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy size={12} className="text-text-muted" />
+                    <span>Copy ID</span>
+                  </>
+                )}
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1290,7 +1416,7 @@ export default function ProfilePage({
               </div>
 
               <div>
-                <FieldLabel>Discord User ID (optional snowflake ID)</FieldLabel>
+                <FieldLabel>Discord Snowflake ID (optional)</FieldLabel>
                 <Input
                   value={editDiscordUserId}
                   onChange={(e) => {
@@ -1323,7 +1449,7 @@ export default function ProfilePage({
             </div>
 
             <p className="text-[11px] text-text-dim leading-relaxed">
-              When connected, the Elevates Discord Bot synchronizes your campus chapter roles, event access passes, and project cluster threads directly on the Discord server.
+              When members type <code className="font-mono font-bold text-text">/connect</code> or <code className="font-mono font-bold text-text">/verify</code> in their chapter Discord, the bot looks up their Elevates ID, grants the <span className="font-semibold text-text">ELEVATES • Member</span> role, changes their server nickname to their full name, and maps any executive leadership designations.
             </p>
           </div>
 

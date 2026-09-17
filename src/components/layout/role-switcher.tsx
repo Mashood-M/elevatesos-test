@@ -407,7 +407,7 @@ export function RoleSwitcher() {
                         className="flex items-center gap-1.5 flex-1 min-w-0 px-1 py-0.5 cursor-pointer"
                       >
                         {selectedChapter && isTestChapter(selectedChapter) ? (
-                          <FlaskConical size={12} className="shrink-0 text-amber-500" />
+                          <FlaskConical size={12} className="shrink-0 text-amber-600" />
                         ) : (
                           <Building2 size={12} className="shrink-0 text-[var(--text-mute)]" />
                         )}
@@ -415,7 +415,7 @@ export function RoleSwitcher() {
                           {selectedChapter?.name || "Select chapter"}
                         </span>
                         {selectedChapter && isTestChapter(selectedChapter) && (
-                          <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.1 text-[7px] font-bold uppercase text-amber-600 dark:text-amber-300">
+                          <span className="shrink-0 rounded bg-amber-500/20 px-1 py-0.1 text-[7px] font-bold uppercase text-amber-700">
                             Test
                           </span>
                         )}
@@ -443,7 +443,7 @@ export function RoleSwitcher() {
                         className={cn(
                           "flex h-5 w-5 items-center justify-center rounded-[5px] transition",
                           isConfirmed
-                            ? "bg-emerald-500/15 text-emerald-500 hover:bg-red-500/15 hover:text-red-500"
+                            ? "bg-emerald-500/15 text-emerald-600 hover:bg-red-500/15 hover:text-red-500"
                             : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90",
                         )}
                         aria-label={isConfirmed ? "Deselect chapter" : "Confirm chapter"}
@@ -457,25 +457,46 @@ export function RoleSwitcher() {
                   {isListOpen && (
                     <div className="mt-1.5 border-t border-[var(--border)] pt-1 max-h-32 overflow-y-auto space-y-0.5 scrollbar-thin">
                       {/* Test Chapter */}
-                      {testChapter && (
-                        <button
-                          type="button"
-                          onClick={() => handleSelectChapter(testChapter)}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition",
-                            "bg-amber-500/10 text-amber-800 dark:text-amber-200 hover:bg-amber-500/20",
-                            selectedChapter?.id === testChapter.id && "font-bold ring-1 ring-amber-500/50",
-                          )}
-                        >
-                          <span className="truncate flex items-center gap-1">
-                            <FlaskConical size={10} className="text-amber-500" />
-                            {testChapter.name}
-                          </span>
-                          {selectedChapter?.id === testChapter.id && (
-                            <Check size={10} className="text-amber-600 shrink-0" />
-                          )}
-                        </button>
-                      )}
+                      {testChapter && (() => {
+                        const isSel = selectedChapter?.id === testChapter.id;
+                        return (
+                          <button
+                            key={testChapter.id}
+                            type="button"
+                            onClick={() => handleSelectChapter(testChapter)}
+                            className={cn(
+                              "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[11px] transition",
+                              isSel
+                                ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)]"
+                                : "text-[var(--text)] hover:bg-[var(--bg-hover)] bg-amber-500/[0.08]",
+                            )}
+                          >
+                            <span className="truncate flex items-center gap-1.5 min-w-0">
+                              <FlaskConical
+                                size={11}
+                                className={cn(
+                                  "shrink-0",
+                                  isSel ? "text-[var(--accent)]" : "text-amber-600",
+                                )}
+                              />
+                              <span className="truncate">{testChapter.name}</span>
+                            </span>
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                              <span
+                                className={cn(
+                                  "rounded px-1 py-0.2 text-[7px] font-bold uppercase",
+                                  isSel
+                                    ? "bg-[var(--accent)]/20 text-[var(--accent)]"
+                                    : "bg-amber-500/20 text-amber-700",
+                                )}
+                              >
+                                Test
+                              </span>
+                              {isSel && <Check size={10} className="text-[var(--accent)] shrink-0" />}
+                            </div>
+                          </button>
+                        );
+                      })()}
 
                       {/* Other Chapters */}
                       {otherChapters.map((c) => {
@@ -486,7 +507,7 @@ export function RoleSwitcher() {
                             type="button"
                             onClick={() => handleSelectChapter(c)}
                             className={cn(
-                              "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[10px] transition hover:bg-[var(--bg-hover)]",
+                              "flex w-full items-center justify-between rounded-[6px] px-1.5 py-1 text-left text-[11px] transition hover:bg-[var(--bg-hover)]",
                               isSel
                                 ? "bg-[var(--accent)]/10 font-bold text-[var(--accent)]"
                                 : "text-[var(--text)]",

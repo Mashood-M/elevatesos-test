@@ -178,7 +178,7 @@ export function ChapterSelectorModal({
                   <Sparkles size={14} className="text-amber-500 animate-pulse" />
                   Pinned Sandbox Chapter
                 </span>
-                <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-600 dark:text-amber-400">
+                <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-700">
                   Full Feature Testing
                 </span>
               </div>
@@ -202,10 +202,10 @@ export function ChapterSelectorModal({
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-[16px] font-bold text-[var(--text)] group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                        <h3 className="text-[16px] font-bold text-[var(--text)] group-hover:text-amber-700 transition-colors">
                           {testChapter.name}
                         </h3>
-                        <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-600 dark:text-amber-300">
+                        <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-700">
                           Sandbox
                         </span>
                       </div>
@@ -242,7 +242,7 @@ export function ChapterSelectorModal({
                     <Calendar size={12} className="text-purple-500" />
                     {testChapter.eventCount} sample events
                   </span>
-                  <span className="ml-auto font-semibold text-amber-600 dark:text-amber-400 group-hover:translate-x-0.5 transition-transform">
+                  <span className="ml-auto font-semibold text-amber-700 group-hover:translate-x-0.5 transition-transform">
                     Launch test chapter →
                   </span>
                 </div>

@@ -13,14 +13,14 @@ import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
 import { calculateChapterActivityScore } from "@/lib/analytics";
 import { activityLabel } from "@/lib/permissions";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, cn } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
 import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
 import { persistSystemUiState } from "@/lib/data/mutations";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import type { Chapter } from "@/types";
-import { X } from "lucide-react";
+import { X, Settings, LayoutDashboard } from "lucide-react";
 
 type DraftChapter = {
   name: string;
@@ -342,35 +342,38 @@ export default function HqChaptersPage() {
                         )}
                       </td>
                       <td className="py-3">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <div className="flex items-center gap-1.5 flex-nowrap">
                           <button
                             type="button"
                             onClick={() => toggleChapterStatus(c)}
-                            className={`font-medium cursor-pointer transition-colors ${
+                            className={cn(
+                              "inline-flex items-center justify-center h-7 px-2.5 rounded-full text-xs font-semibold transition-colors cursor-pointer border",
                               c.status === "active"
-                                ? "text-amber-400 hover:text-amber-300 hover:underline"
-                                : "text-emerald-400 hover:text-emerald-300 hover:underline"
-                            }`}
+                                ? "bg-amber-500/10 text-amber-700 border-amber-500/25 hover:bg-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-700 border-emerald-500/25 hover:bg-emerald-500/20",
+                            )}
                             title={c.status === "active" ? "Disable this chapter" : "Enable this chapter"}
                           >
                             {c.status === "active" ? "Disable" : "Enable"}
                           </button>
                           <Link
                             href={`/chapter/${c.slug}/settings`}
-                            className="font-medium text-[var(--accent)] hover:underline"
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-bg-panel border border-border text-text hover:bg-bg-hover hover:border-[var(--border-strong)] transition-colors shadow-2xs"
                           >
+                            <Settings size={12} className="text-[var(--accent)]" />
                             Settings
                           </Link>
                           <Link
                             href={`/chapter/${c.slug}`}
-                            className="font-medium text-text-dim hover:text-[var(--accent)]"
+                            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-bg-panel border border-border text-text hover:bg-bg-hover hover:border-[var(--border-strong)] transition-colors shadow-2xs"
                           >
+                            <LayoutDashboard size={12} className="text-text-mute" />
                             Dashboard
                           </Link>
                           <button
                             type="button"
                             onClick={() => setDeleteTarget(c)}
-                            className="font-medium text-red-400 hover:underline cursor-pointer"
+                            className="inline-flex items-center justify-center h-7 px-2.5 rounded-full text-xs font-semibold bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500/20 transition-colors cursor-pointer"
                           >
                             Delete
                           </button>

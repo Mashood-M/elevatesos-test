@@ -64,25 +64,37 @@ CREATE TABLE IF NOT EXISTS public.guild_config (
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
+    full_name TEXT,
+    email TEXT,
+    phone TEXT,
     chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
     role TEXT,
     designation TEXT,
+    elevates_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Populate users table from existing profiles
-INSERT INTO public.users (id, name, chapter_id, role, designation, created_at)
+INSERT INTO public.users (id, name, full_name, email, phone, chapter_id, role, designation, elevates_id, created_at)
 SELECT 
     p.id,
     COALESCE(p.full_name, 'Member'),
+    COALESCE(p.full_name, 'Member'),
+    p.email,
+    p.phone,
     p.chapter_id,
     COALESCE(p.role, 'Member'),
     COALESCE(p.designation, 'student'),
+    p.elevates_id,
     COALESCE(p.created_at, now())
 FROM public.profiles p
 ON CONFLICT (id) DO UPDATE SET
     name = EXCLUDED.name,
+    full_name = EXCLUDED.full_name,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
     chapter_id = EXCLUDED.chapter_id,
+    elevates_id = EXCLUDED.elevates_id,
     role = EXCLUDED.role,
     designation = EXCLUDED.designation;
 
@@ -142,20 +154,28 @@ CREATE INDEX IF NOT EXISTS idx_discord_warnings_guild_user ON public.discord_war
 CREATE OR REPLACE FUNCTION public.sync_profile_to_users()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-    INSERT INTO public.users (id, name, chapter_id, role, designation, created_at)
+    INSERT INTO public.users (id, name, full_name, email, phone, chapter_id, role, designation, elevates_id, created_at)
     VALUES (
         NEW.id,
         COALESCE(NEW.full_name, 'Member'),
+        COALESCE(NEW.full_name, 'Member'),
+        NEW.email,
+        NEW.phone,
         NEW.chapter_id,
         COALESCE(NEW.role, 'Member'),
         COALESCE(NEW.designation, 'student'),
+        NEW.elevates_id,
         COALESCE(NEW.created_at, now())
     )
     ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
+        full_name = EXCLUDED.full_name,
+        email = EXCLUDED.email,
+        phone = EXCLUDED.phone,
         chapter_id = EXCLUDED.chapter_id,
         role = EXCLUDED.role,
-        designation = EXCLUDED.designation;
+        designation = EXCLUDED.designation,
+        elevates_id = EXCLUDED.elevates_id;
     RETURN NEW;
 END;
 $$;

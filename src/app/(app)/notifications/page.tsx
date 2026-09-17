@@ -43,7 +43,7 @@ export default function NotificationsPage() {
         <Stat label="Role" value={session.roleKey.replaceAll("_", " ")} />
       </div>
 
-      <TerminalPanel title="Inbox" meta={session.userId} className="mt-6">
+      <TerminalPanel title="Inbox" className="mt-6">
         {notifications.length === 0 ? (
           <p className="text-[13px] text-text-dim">No notifications for this persona.</p>
         ) : (

@@ -212,7 +212,17 @@ export default function InviteSignUpPage({
       });
 
       if (signUpError) {
-        setError(signUpError.message);
+        let msg = signUpError.message;
+        if (!msg || msg === "{}" || msg === "[object Object]") {
+          if ((signUpError as { status?: number }).status === 500) {
+            msg = "A database error occurred while creating your account. Please contact your administrator.";
+          } else if ((signUpError as { status?: number }).status === 422) {
+            msg = "This email is already registered or cannot be processed. Please sign in instead.";
+          } else {
+            msg = "Account creation failed. Please check your details and try again.";
+          }
+        }
+        setError(msg);
         setLoading(false);
         return;
       }

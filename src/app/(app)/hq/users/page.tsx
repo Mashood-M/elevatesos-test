@@ -970,9 +970,9 @@ export default function HqUsersPage() {
             {rows.map(({ profile, roles, status, chapter, urs }) => (
               <li
                 key={profile.id}
-                className="flex flex-wrap items-center justify-between gap-3 py-3.5"
+                className="flex items-start justify-between gap-3 sm:gap-4 py-3.5"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/profile/${profile.elevatesId || profile.id}`}
@@ -1036,7 +1036,7 @@ export default function HqUsersPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
                   {canAssign.length > 0 ? (
                     <Button
                       variant="ghost"

@@ -219,4 +219,10 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- 6. RPC Grants
+GRANT EXECUTE ON FUNCTION public.verify_discord_otp(UUID, TEXT) TO authenticated, anon;
+GRANT EXECUTE ON FUNCTION public.unlink_discord(UUID) TO authenticated, anon;
+
 NOTIFY pgrst, 'reload schema';
+
+

@@ -359,7 +359,13 @@ type StoreContextValue = {
   verifyDiscordOtp: (
     userId: string,
     otp: string,
-  ) => Promise<{ ok: boolean; message?: string }>;
+  ) => Promise<{
+    ok: boolean;
+    reason?: "no_pending_code" | "max_attempts" | "invalid_code" | "success" | string;
+    attemptsLeft?: number;
+    message?: string;
+    discordUsername?: string;
+  }>;
   unlinkDiscord: (
     userId: string,
   ) => Promise<{ ok: boolean; message?: string }>;
@@ -3563,7 +3569,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       verifyDiscordOtp: async (userId: string, otp: string) => {
         const cleanOtp = otp.trim();
         if (!cleanOtp) {
-          return { ok: false, message: "Please enter the 6-digit OTP code." };
+          return {
+            ok: false,
+            reason: "invalid_code",
+            message: "Please enter the 6-digit OTP code.",
+          };
         }
 
         const supabase = createClient();
@@ -3575,7 +3585,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
             if (error) {
               console.warn("Supabase RPC verify_discord_otp failed:", error.message);
-              // If RPC is missing or fails in development, fallback to local verification
+              // If RPC is missing or fails in development, fallback to local verification below
             } else if (data) {
               if (data.ok) {
                 const now = new Date().toISOString();
@@ -3597,9 +3607,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                     ...s.activityLogs,
                   ],
                 }));
-                return { ok: true, message: data.message || "Discord verified and linked successfully!" };
+                return {
+                  ok: true,
+                  reason: "success",
+                  message: data.message || "Discord account successfully verified and linked!",
+                  discordUsername: data.discord_username,
+                };
               }
-              return { ok: false, message: data.message || "Invalid or expired verification code." };
+              return {
+                ok: false,
+                reason: data.reason || "invalid_code",
+                attemptsLeft: typeof data.attempts_left === "number" ? data.attempts_left : undefined,
+                message: data.message || "Invalid or expired verification code.",
+              };
             }
           } catch (err: any) {
             console.warn("verify_discord_otp exception:", err?.message);
@@ -3612,6 +3632,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const now = new Date().toISOString();
           const target = store.profiles.find((p) => p.id === userId);
           const handle = target?.fullName?.toLowerCase().replace(/[^a-z0-9]/g, "_") || "student";
+          const mockUsername = target?.discordUsername || `${handle}#${cleanOtp.slice(0, 4)}`;
           setStore((s) => ({
             ...s,
             profiles: s.profiles.map((p) =>
@@ -3619,7 +3640,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 ? {
                     ...p,
                     discordConnected: true,
-                    discordUsername: p.discordUsername || `${handle}#${cleanOtp.slice(0, 4)}`,
+                    discordUsername: mockUsername,
                     discordUserId: p.discordUserId || `849204819204${cleanOtp}`,
                     discordConnectedAt: now,
                   }
@@ -3632,12 +3653,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }));
           return {
             ok: true,
+            reason: "success",
+            discordUsername: mockUsername,
             message: "Discord account successfully verified and linked!",
           };
         }
 
         return {
           ok: false,
+          reason: "invalid_code",
+          attemptsLeft: 4,
           message: "Please enter a valid 6-digit code provided by the Elevates Discord Bot.",
         };
       },

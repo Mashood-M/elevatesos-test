@@ -239,7 +239,11 @@ export default function ProfilePage({
     if (!profile) return;
     const cleanOtp = otpInput.trim();
     if (!cleanOtp) {
-      setOtpError("Please enter the 6-digit verification code from Discord.");
+      setOtpError("Please enter the 6-character verification code.");
+      return;
+    }
+    if (cleanOtp.length !== 6) {
+      setOtpError("The verification code must be exactly 6 characters.");
       return;
     }
     setOtpError(null);
@@ -253,7 +257,25 @@ export default function ProfilePage({
         );
         setOtpInput("");
       } else {
-        setOtpError(res.message || "Invalid or expired verification code.");
+        if (res.reason === "no_pending_code") {
+          setOtpError(
+            res.message ||
+              "No pending verification code found. Please run the /connect command in the Elevates Discord server first.",
+          );
+        } else if (res.reason === "max_attempts") {
+          setOtpError(
+            res.message ||
+              "Maximum attempts exceeded. Please run /connect in the Elevates Discord server to generate a new code.",
+          );
+        } else if (res.reason === "invalid_code") {
+          const attemptsMsg =
+            typeof res.attemptsLeft === "number"
+              ? ` (${res.attemptsLeft} attempt${res.attemptsLeft === 1 ? "" : "s"} remaining)`
+              : "";
+          setOtpError((res.message || "Incorrect verification code.") + attemptsMsg);
+        } else {
+          setOtpError(res.message || "Failed to verify code. Please check Discord and try again.");
+        }
       }
     } catch (err: unknown) {
       const msg =
@@ -274,6 +296,7 @@ export default function ProfilePage({
       setUnlinkConfirmOpen(false);
       setOtpSuccess(null);
       setOtpError(null);
+      setOtpInput("");
     } catch (err) {
       console.warn("Failed to unlink discord:", err);
     } finally {
@@ -405,8 +428,7 @@ export default function ProfilePage({
   const profileUserId = profile?.id ?? cleanId;
 
   const isDiscordConnected = Boolean(
-    profile?.discordConnected ??
-      (profile?.discordUsername || profile?.discordUserId),
+    profile?.discordConnected && (profile?.discordUsername || profile?.discordUserId),
   );
 
   const volPowers = useMemo(() => {
@@ -761,172 +783,103 @@ export default function ProfilePage({
         />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        {/* Discord Bot Integration Panel — Elevates Discord Bot Architecture */}
-        <TerminalPanel
-          title="elevates_bot.discord_sync"
-          accent={isDiscordConnected ? "green" : "orange"}
-          meta={isDiscordConnected ? "bot_verified" : "otp_verification_needed"}
-          className="xl:col-span-2"
-        >
-          <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
-            <div className="flex items-start gap-4">
-              <div
-                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm border ${
-                  isDiscordConnected
-                    ? "bg-[#5865F2]/10 border-[#5865F2]/30 text-[#5865F2]"
-                    : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
-                }`}
-              >
-                <DiscordIcon className="h-7 w-7" />
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h3 className="font-bold text-base text-text">
-                    {isDiscordConnected
-                      ? "Linked with Elevates Discord Bot"
-                      : "Connect Chapter Discord via OTP Verification"}
-                  </h3>
-                  <Badge tone={isDiscordConnected ? "green" : "orange"}>
-                    {isDiscordConnected ? "Bot Sync Active" : "OTP Required"}
-                  </Badge>
-                  {profile.designation && (
-                    <span className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25 uppercase">
-                      {profile.designation.replace("_", " ")} role
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-text-dim max-w-2xl leading-relaxed">
-                  {isDiscordConnected
-                    ? "Your Discord identity is confirmed and cryptographically bound to this Elevates OS account. The bot automatically provisions your 'ELEVATES • Member' server role, cluster channels, attendance pings, and campus badges."
-                    : "To prevent unauthorized account linking, the Elevates Bot generates a temporary 6-digit OTP code when you request connection in your campus Discord. Enter that OTP below to securely verify your identity."}
-                </p>
-
-                {/* Identity & Verification chips */}
-                <div className="pt-2 flex flex-wrap items-center gap-3">
-                  <div className="inline-flex items-center gap-2 rounded-xl bg-bg-card border border-border px-3 py-1.5 shadow-2xs">
-                    <span className="text-[11px] font-mono text-text-mute uppercase tracking-wider">Your Elevates ID:</span>
-                    <span className="text-xs font-mono font-bold text-accent">
-                      {profile.elevatesId || "ELV-PENDING"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyElevatesId}
-                      className="ml-1 inline-flex items-center gap-1 rounded-md bg-bg hover:bg-border/60 px-2 py-0.5 text-[11px] font-semibold text-text border border-border/80 transition-colors"
-                      title="Copy Elevates ID to enter into bot"
-                    >
-                      {copiedElevatesId ? (
-                        <>
-                          <Check size={12} className="text-emerald-500" />
-                          <span className="text-emerald-600 dark:text-emerald-400">Copied!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} className="text-text-muted" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
+      {/* Discord Bot Integration Panel — Elevates Discord Bot Architecture (only when viewing own profile) */}
+      {isOwn && (
+        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+          <TerminalPanel
+            title="elevates_bot.discord_sync"
+            accent={isDiscordConnected ? "green" : "orange"}
+            meta={isDiscordConnected ? "connected" : "verification_required"}
+            className="xl:col-span-2"
+          >
+            {isDiscordConnected ? (
+              /* State 2: User already has a verified Discord link */
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+                <div className="flex items-start sm:items-center gap-4">
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] shadow-sm">
+                    <DiscordIcon className="h-7 w-7" />
                   </div>
-
-                  {profile.discordUsername && (
-                    <span className="rounded-xl bg-bg px-3 py-1.5 text-xs text-text border border-border flex items-center gap-1.5 font-mono">
-                      <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
-                      @{profile.discordUsername.replace(/^@/, "")}
-                    </span>
-                  )}
-
-                  {profile.discordUserId && (
-                    <span className="rounded-xl bg-bg px-3 py-1.5 text-xs text-text-dim border border-border font-mono">
-                      Snowflake: {profile.discordUserId}
-                    </span>
-                  )}
-
-                  {isDiscordConnected && (
-                    <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs font-semibold">
-                      <CheckCircle2 size={14} /> Synchronized
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Actions for connected state */}
-            {isDiscordConnected && isOwn && (
-              <div className="shrink-0 self-start">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setUnlinkConfirmOpen(true)}
-                  className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 flex items-center gap-1.5 font-medium"
-                >
-                  <Unlink size={13} />
-                  <span>Unlink Discord</span>
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* OTP Verification section for unlinked members */}
-          {!isDiscordConnected && (
-            <div className="mt-5 pt-4 border-t border-border/80 space-y-4">
-              {/* How it works 3-step guide */}
-              <div className="rounded-xl bg-bg/70 border border-border/60 p-3.5">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2 flex items-center gap-1.5">
-                  <span>🤖</span> 2-Step OTP Verification Process:
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs text-text">
-                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
-                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 1</div>
-                    <p className="text-text-dim text-[11px] leading-snug">
-                      Join your campus chapter Discord server (<span className="text-text font-medium">{chapter?.name || "Elevates Chapter"}</span>).
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
-                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 2</div>
-                    <p className="text-text-dim text-[11px] leading-snug">
-                      Type <code className="font-mono font-bold text-text bg-bg px-1 py-0.5 rounded">/connect</code> or <code className="font-mono font-bold text-text bg-bg px-1 py-0.5 rounded">/verify</code> and submit your Elevates ID (<span className="font-mono font-bold text-accent">{profile.elevatesId || "ELV-XXXX"}</span>).
-                    </p>
-                  </div>
-                  <div className="rounded-lg bg-bg-card p-2.5 border border-border/50">
-                    <div className="font-bold text-[11px] text-accent font-mono mb-0.5">STEP 3</div>
-                    <p className="text-text-dim text-[11px] leading-snug">
-                      The bot gives you a <span className="font-semibold text-text">6-digit OTP code</span>. Enter that code below to confirm and link!
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Interactive OTP Input Card */}
-              {isOwn ? (
-                <div className="rounded-2xl border border-accent/25 bg-accent/5 p-4 sm:p-5">
-                  <div className="max-w-xl">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <KeyRound className="w-4 h-4 text-accent" />
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-text">
-                        Enter 6-Digit Verification Code
-                      </h4>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="font-bold text-base text-text font-[family-name:var(--font-display)]">
+                        Discord Account
+                      </h3>
+                      {/* Green "Connected" indicator */}
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Connected
+                      </span>
                     </div>
-                    <p className="text-xs text-text-dim mb-3.5">
-                      Paste or enter the 6-digit numeric OTP code received from the Elevates Discord Bot.
-                    </p>
 
-                    <form onSubmit={handleVerifyOtp} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      {/* Linked Discord Username */}
+                      <span className="inline-flex items-center gap-1.5 font-mono text-sm font-semibold text-text bg-bg border border-border px-3 py-1 rounded-xl shadow-2xs">
+                        <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
+                        @{profile.discordUsername?.replace(/^@/, "") || "member"}
+                      </span>
+
+                      {profile.discordUserId && (
+                        <span className="font-mono text-xs text-text-dim bg-bg border border-border px-2.5 py-1 rounded-xl">
+                          ID: {profile.discordUserId}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Disconnect button */}
+                <div className="shrink-0 self-start sm:self-center">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setUnlinkConfirmOpen(true)}
+                    className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 flex items-center gap-1.5 font-semibold px-3 py-2 border border-rose-500/20 hover:border-rose-500/30 rounded-xl transition-colors"
+                  >
+                    <Unlink size={14} />
+                    <span>Disconnect</span>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* State 1: User has no verified Discord link yet */
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 shadow-sm">
+                    <DiscordIcon className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h3 className="font-bold text-base text-text font-[family-name:var(--font-display)]">
+                        Discord Bot Integration
+                      </h3>
+                      <Badge tone="orange">Not Connected</Badge>
+                    </div>
+
+                    {/* Short explanation required by prompt */}
+                    <p className="text-sm text-text-dim leading-relaxed max-w-2xl">
+                      Connect your Discord account by running the <code className="font-mono font-bold text-text bg-bg-card px-1.5 py-0.5 rounded border border-border">/connect</code> command in the Elevates Discord server, then enter the code you receive below.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 6-character input field & Verify button */}
+                <div className="rounded-2xl border border-border bg-bg/50 p-4 sm:p-5 mt-2">
+                  <form onSubmit={handleVerifyOtp} className="space-y-3 max-w-xl">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                       <div className="relative">
                         <input
                           type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
                           maxLength={6}
                           value={otpInput}
                           onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                            const val = e.target.value.trim().slice(0, 6);
                             setOtpInput(val);
                             if (otpError) setOtpError(null);
                           }}
-                          placeholder="● ● ● ● ● ●"
-                          className="w-full sm:w-48 h-11 px-3 text-center font-mono font-bold text-lg tracking-[0.3em] rounded-xl border border-border bg-bg text-text focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent"
+                          placeholder="6-character code"
+                          className="w-full sm:w-56 h-11 px-4 text-center font-mono font-bold text-base tracking-[0.25em] uppercase rounded-xl border border-border bg-bg text-text focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 focus:border-[var(--accent)]"
+                          disabled={isVerifyingOtp}
                         />
                       </div>
 
@@ -935,7 +888,7 @@ export default function ProfilePage({
                         variant="orange"
                         size="md"
                         disabled={isVerifyingOtp || otpInput.trim().length !== 6}
-                        className="h-11 font-bold text-xs px-5 flex items-center justify-center gap-2 shadow-sm"
+                        className="h-11 font-bold text-xs px-6 flex items-center justify-center gap-2 shadow-sm rounded-xl"
                       >
                         {isVerifyingOtp ? (
                           <>
@@ -945,36 +898,35 @@ export default function ProfilePage({
                         ) : (
                           <>
                             <ShieldCheck size={14} />
-                            <span>Verify & Link Discord</span>
+                            <span>Verify</span>
                           </>
                         )}
                       </Button>
-                    </form>
+                    </div>
 
-                    {/* Feedback states */}
+                    {/* Clear inline feedback messages for all response cases */}
                     {otpError && (
-                      <div className="mt-3 text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
-                        <span>⚠️</span>
-                        <span>{otpError}</span>
+                      <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3.5 py-2.5 flex items-start gap-2 animate-in fade-in duration-200">
+                        <span className="text-base leading-none">⚠️</span>
+                        <span className="leading-snug">{otpError}</span>
                       </div>
                     )}
 
                     {otpSuccess && (
-                      <div className="mt-3 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
-                        <CheckCircle2 size={14} />
-                        <span>{otpSuccess}</span>
+                      <div className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3.5 py-2.5 flex items-start gap-2 animate-in fade-in duration-200">
+                        <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                        <span className="leading-snug">{otpSuccess}</span>
                       </div>
                     )}
-                  </div>
+                  </form>
                 </div>
-              ) : (
-                <div className="text-xs text-text-dim italic">
-                  Discord linking is only available when logged into this profile.
-                </div>
-              )}
-            </div>
-          )}
-        </TerminalPanel>
+              </div>
+            )}
+          </TerminalPanel>
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
 
         {/* Class Selection — only if the student has a chapter */}
         {isOwn && profile.chapterId ? (
@@ -1667,19 +1619,24 @@ export default function ProfilePage({
         }}
       />
 
-      {/* Unlink Discord Confirmation Modal */}
+      {/* Disconnect Discord Confirmation Modal */}
       <Dialog
         open={unlinkConfirmOpen}
         onClose={() => setUnlinkConfirmOpen(false)}
-        title="Unlink Discord Account"
+        title="Disconnect Discord Account"
       >
         <div className="space-y-4">
           <p className="text-sm text-text-dim leading-relaxed">
             Are you sure you want to disconnect your Discord account (<span className="font-mono text-text font-semibold">@{profile.discordUsername || "member"}</span>) from Elevates OS?
           </p>
-          <p className="text-xs text-text-muted">
-            Unlinking removes your verified member role, access to private campus cluster channels, and automated event check-in alerts on the Discord server. You can reconnect anytime using a new OTP code.
-          </p>
+          <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 leading-relaxed space-y-1">
+            <p className="font-semibold flex items-center gap-1.5">
+              <span>⚠️</span> Impact on Discord Roles:
+            </p>
+            <p>
+              Disconnecting will unbind your account and remove your verified member roles, cluster channel access, and automated event check-in alerts in the Elevates Discord server.
+            </p>
+          </div>
 
           <div className="flex justify-end gap-2.5 pt-2 border-t border-border">
             <Button
@@ -1702,12 +1659,12 @@ export default function ProfilePage({
               {isUnlinking ? (
                 <>
                   <Loader2 size={13} className="animate-spin" />
-                  <span>Unlinking...</span>
+                  <span>Disconnecting...</span>
                 </>
               ) : (
                 <>
                   <Unlink size={13} />
-                  <span>Yes, Unlink Discord</span>
+                  <span>Disconnect</span>
                 </>
               )}
             </Button>

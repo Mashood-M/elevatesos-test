@@ -3584,8 +3584,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               p_otp: cleanOtp,
             });
             if (error) {
-              console.warn("Supabase RPC verify_discord_otp failed:", error.message);
-              // If RPC is missing or fails in development, fallback to local verification below
+              console.error("Supabase RPC verify_discord_otp failed:", error.message);
+              return {
+                ok: false,
+                reason: "rpc_error",
+                message: error.message || "Failed to verify code with database.",
+              };
             } else if (data) {
               if (data.ok) {
                 const now = new Date().toISOString();
@@ -3622,12 +3626,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               };
             }
           } catch (err: any) {
-            console.warn("verify_discord_otp exception:", err?.message);
+            console.error("verify_discord_otp exception:", err?.message);
+            return {
+              ok: false,
+              reason: "rpc_error",
+              message: err?.message || "Failed to verify code with database.",
+            };
           }
         }
 
-        // Demo Mode / Local fallback verification
-        // Accept any 6-digit number or valid test OTP
+        // Offline Demo Mode fallback verification (only if Supabase client is not available)
         if (/^\d{6}$/.test(cleanOtp)) {
           const now = new Date().toISOString();
           const target = store.profiles.find((p) => p.id === userId);

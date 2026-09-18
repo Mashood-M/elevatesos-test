@@ -244,7 +244,22 @@ type StoreContextValue = {
   registerForEvent: (
     registration: EventRegistration,
   ) => { ok: true; status?: RegistrationStatus } | { ok: false; message: string };
-  issueCertificate: (eventId: string, userId: string, achievement?: string) => CheckInResult;
+  issueCertificate: (
+    eventId: string,
+    userId: string,
+    achievement?: string,
+    templateId?: string
+  ) => CheckInResult;
+  batchIssueCertificates: (
+    eventId: string,
+    userIds: string[],
+    achievement?: string,
+    templateId?: string
+  ) => {
+    successCount: number;
+    failedCount: number;
+    results: { userId: string; result: CheckInResult }[];
+  };
   revokeCertificate: (id: string, isRevoked?: boolean) => boolean;
   saveEventForm: (eventId: string, fields: FormField[]) => void;
   saveForm: (
@@ -2994,7 +3009,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           },
         });
       },
-      issueCertificate: (eventId, userId, achievement) => {
+      issueCertificate: (eventId, userId, achievement, templateId) => {
         let result: CheckInResult = { ok: true };
         const certId = genUuid();
         setStore((s) => {
@@ -3058,7 +3073,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           }
           const ch = s.chapters.find((c) => c.id === ev?.chapterId);
           const prefix = (ch?.slug?.slice(0, 3) || "ELE").toUpperCase();
-          const certificateId = `CERT-${prefix}-2026-${Date.now().toString().slice(-4)}`;
+          const certId = genUuid();
+          const seq = Math.floor(1000 + Math.random() * 9000);
+          const certificateId = `CERT-${prefix}-2026-${seq}`;
           const cert: Certificate = {
             id: certId,
             certificateId,
@@ -3069,6 +3086,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             digitalSignature: `sig_${certificateId.toLowerCase()}`,
             isRevoked: false,
             achievement: achievement || "Participation",
+            templateId: templateId || undefined,
           };
           void runPersist(persistCertificate(cert), {
             errorMessage: "Failed to issue certificate",
@@ -3092,6 +3110,130 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           };
         });
         return result;
+      },
+      batchIssueCertificates: (eventId, userIds, achievement, templateId) => {
+        let successCount = 0;
+        let failedCount = 0;
+        const results: { userId: string; result: CheckInResult }[] = [];
+
+        setStore((s) => {
+          if (s.session.roleKey === "class_representative") {
+            for (const uid of userIds) {
+              results.push({
+                userId: uid,
+                result: {
+                  ok: false,
+                  message: "Access restricted: Class Representatives are not authorized to issue certificates.",
+                },
+              });
+              failedCount++;
+            }
+            return s;
+          }
+
+          const ev = s.events.find((e) => e.id === eventId);
+          const ch = s.chapters.find((c) => c.id === ev?.chapterId);
+          const prefix = (ch?.slug?.slice(0, 3) || "ELE").toUpperCase();
+
+          let currentCerts = [...s.certificates];
+          let currentAtt = [...s.attendance];
+          let currentLogs = [...s.activityLogs];
+
+          for (let i = 0; i < userIds.length; i++) {
+            const userId = userIds[i];
+
+            if (
+              currentCerts.some(
+                (c) => c.eventId === eventId && c.userId === userId && !c.isRevoked
+              )
+            ) {
+              results.push({ userId, result: { ok: false, message: "Certificate already issued." } });
+              failedCount++;
+              continue;
+            }
+
+            let att = currentAtt.find(
+              (a) => a.eventId === eventId && a.userId === userId
+            );
+            const isOrganizer = ev?.organizerId === userId || ev?.facultyId === userId || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+            const userProf = s.profiles.find((p) => p.id === userId);
+            const isSpeaker = ev?.hosts && ev.hosts.some((h) => h.name && userProf?.fullName && h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase());
+            const isVolunteer =
+              (att && att.status === "volunteer") ||
+              (ev?.volunteerStudentIds && ev.volunteerStudentIds.includes(userId)) ||
+              (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+            const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
+
+            if (
+              !isAutoPresent &&
+              (!att ||
+                !(
+                  att.status === "present" ||
+                  att.status === "volunteer" ||
+                  att.status === "speaker"
+                ))
+            ) {
+              results.push({
+                userId,
+                result: { ok: false, message: "Requires verified attendance (present)." },
+              });
+              failedCount++;
+              continue;
+            }
+
+            if (isAutoPresent && !att) {
+              const autoAtt: AttendanceRecord = {
+                id: genUuid(),
+                eventId,
+                userId,
+                registrationId: s.registrations.find((r) => r.eventId === eventId && r.userId === userId)?.id || `reg-auto-${userId}`,
+                status: "present",
+                method: "manual",
+                checkedInBy: s.session.userId,
+                checkedInAt: new Date().toISOString(),
+              };
+              currentAtt = [autoAtt, ...currentAtt];
+            }
+
+            const certId = genUuid();
+            const seq = Math.floor(1000 + Math.random() * 9000);
+            const certificateId = `CERT-${prefix}-2026-${seq}`;
+            const cert: Certificate = {
+              id: certId,
+              certificateId,
+              eventId,
+              userId,
+              issuedAt: new Date().toISOString(),
+              verificationQr: `VERIFY-${certificateId}`,
+              digitalSignature: `sig_${certificateId.toLowerCase()}`,
+              isRevoked: false,
+              achievement: achievement || "Participation",
+              templateId: templateId || undefined,
+            };
+
+            void runPersist(persistCertificate(cert), {
+              errorMessage: `Failed to issue certificate for user ${userId}`,
+            });
+
+            currentCerts = [cert, ...currentCerts];
+            currentLogs = [
+              log(s.session.userId, "certificate_issued", "certificate", certificateId),
+              ...currentLogs,
+            ];
+
+            results.push({ userId, result: { ok: true } });
+            successCount++;
+          }
+
+          return {
+            ...s,
+            attendance: currentAtt,
+            certificates: currentCerts,
+            activityLogs: currentLogs,
+          };
+        });
+
+        return { successCount, failedCount, results };
       },
       revokeCertificate: (id, isRevoked = true) => {
         const prev = store.certificates.find((c) => c.id === id || c.certificateId === id);

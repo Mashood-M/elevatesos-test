@@ -686,7 +686,34 @@ export interface Certificate {
   digitalSignature: string;
   isRevoked?: boolean;
   achievement?: string;
+  templateId?: string;
+  signatory1SignatureUrl?: string;
+  signatory2SignatureUrl?: string;
   pdfUrl?: string;
+}
+
+export interface CertificateTemplate {
+  id: string;
+  name: string;
+  chapterId?: string;
+  isDefault?: boolean;
+  mainTitle: string;
+  subTitle: string;
+  preamble: string;
+  achievement: string;
+  description: string;
+  signatory1Name: string;
+  signatory1Role: string;
+  signatory1Org?: string;
+  signatory1SignatureUrl?: string;
+  signatory2Name: string;
+  signatory2Role: string;
+  signatory2Org?: string;
+  signatory2SignatureUrl?: string;
+  bottomLeftText?: string;
+  bottomRightText?: string;
+  showGridPattern?: boolean;
+  createdAt?: string;
 }
 
 export interface Cluster {

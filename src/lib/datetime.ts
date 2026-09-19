@@ -189,3 +189,50 @@ export function offsetIso(daysFromNow: number, hour = 10, minute = 0, durationHo
 }
 
 export const WEEKDAYS_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+/** Add or subtract days from a YYYY-MM-DD dateKey */
+export function addDays(dateKey: string, deltaDays: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey;
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const cur = new Date(Date.UTC(y, m - 1, d + deltaDays, 12));
+  return `${cur.getUTCFullYear()}-${pad(cur.getUTCMonth() + 1)}-${pad(cur.getUTCDate())}`;
+}
+
+/** Get the 7 Monday-to-Sunday dateKeys of the week containing the given dateKey */
+export function weekDaysForDateKey(dateKey: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return [];
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const wd = weekdayMon0(dateKey); // 0=Mon … 6=Sun
+  const monday = new Date(Date.UTC(y, m - 1, d - wd, 12));
+  const days: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const cur = new Date(monday.getTime() + i * 86400000);
+    days.push(`${cur.getUTCFullYear()}-${pad(cur.getUTCMonth() + 1)}-${pad(cur.getUTCDate())}`);
+  }
+  return days;
+}
+
+/** Extract time only string e.g. "10:30 AM" */
+export function formatTimeOnly(iso: string, timeZone = APP_TZ): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-IN", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+/** Extract short date label e.g. "18 Sep" */
+export function formatDateShort(dateKey: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return dateKey;
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d, 12));
+  return probe.toLocaleDateString("en-IN", {
+    timeZone: APP_TZ,
+    day: "numeric",
+    month: "short",
+  });
+}
+

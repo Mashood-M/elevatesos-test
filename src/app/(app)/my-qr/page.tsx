@@ -7,6 +7,7 @@ import { useStore, useCurrentUser } from "@/context/store-context";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/page-header";
 import { mintQrCode } from "@/lib/forms/helpers";
 
 // Render QR code using the installed `qrcode` package via canvas
@@ -156,17 +157,11 @@ export default function MyQrPage() {
       </Link>
 
       {/* Header */}
-      <div className="mb-8">
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent-soft)]">
-          <QrCode size={26} className="text-[var(--accent)]" />
-        </div>
-        <h1 className="font-[family-name:var(--font-display)] text-[2rem] font-extrabold tracking-[-0.04em] text-text">
-          My QR Code
-        </h1>
-        <p className="mt-2 text-[14px] text-text-dim">
-          Show this to the organizer or CR to mark your attendance.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Access Pass"
+        title="My QR Code"
+        description="Show this QR code at campus events for fast check-in and attendance verification."
+      />
 
       {myEvents.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white p-8 text-center">

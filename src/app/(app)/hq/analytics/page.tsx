@@ -13,7 +13,9 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
+import { Button } from "@/components/ui/button";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Stat } from "@/components/ui/stat";
 import { useStore } from "@/context/store-context";
@@ -70,6 +72,20 @@ export default function HqAnalyticsPage() {
         eyebrow="Overview"
         title="Organization Analytics"
         description="Cross-chapter metrics, activity scores, and engagement trends from live Elevates network data."
+        actions={
+          <div className="flex items-center gap-2">
+            <Link href="/hq">
+              <Button variant="ghost" size="sm">
+                HQ Dashboard
+              </Button>
+            </Link>
+            <Link href="/hq/chapters">
+              <Button variant="secondary" size="sm">
+                Chapters
+              </Button>
+            </Link>
+          </div>
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

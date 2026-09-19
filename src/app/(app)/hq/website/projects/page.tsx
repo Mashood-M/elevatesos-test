@@ -635,7 +635,7 @@ export default function ProjectsCMSPage() {
       <PageHeader
         eyebrow="Website CMS"
         title="Projects & Production Proof"
-        description="Manage all Flagship Case Studies (Vibranium, Aaroh, Celestia, RoadUndo), Member Showcases, and the Also Built archive on elevates.live/projects."
+        description="Manage all Flagship Case Studies, Member Showcases, and production proof on elevates.live/projects."
         actions={
           section === "flagship" ? (
             <Button size="sm" variant="orange" onClick={() => { setEditing(blank()); setIsNew(true); }}>

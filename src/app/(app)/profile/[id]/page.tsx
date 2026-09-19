@@ -13,17 +13,26 @@ import {
   Globe,
   GraduationCap,
   KeyRound,
+  Layers,
   Link2,
   Loader2,
   Lock,
   Mail,
+  MapPin,
   Phone,
   Plus,
   QrCode,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Unlink,
+  User,
+  Users,
   X,
+  ExternalLink,
+  Award,
+  CalendarCheck2,
+  FolderGit2,
 } from "lucide-react";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +42,7 @@ import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
+import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
   cohortLabel,
@@ -44,6 +54,7 @@ import { withDerivedProgression } from "@/lib/eos/progression";
 import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { formatDateTime, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { Profile } from "@/types";
 
 function DiscordIcon({ className = "w-4 h-4" }: { className?: string }) {
@@ -77,6 +88,8 @@ const POPULAR_SKILL_SUGGESTIONS = [
   "Cloud / DevOps",
   "PostgreSQL",
 ];
+
+type ProfileTab = "overview" | "credentials" | "journey" | "settings";
 
 export default function ProfilePage({
   params,
@@ -115,6 +128,7 @@ export default function ProfilePage({
   const communityTiers = store.doctrine?.communityTiers ?? [];
   const journeyStages = store.doctrine?.journeyStages ?? [];
 
+  const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
   const [savedFlash, setSavedFlash] = useState(false);
   const [copiedElevatesId, setCopiedElevatesId] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -163,7 +177,7 @@ export default function ProfilePage({
       setEmailVerifyStatus("sent");
       setEmailVerifyMessage(
         res.message ||
-          `Verification email sent to ${profile.email}! Please check your inbox and click the link or enter the 6-digit code below.`,
+        `Verification email sent to ${profile.email}! Please check your inbox and click the link or enter the 6-digit code below.`,
       );
       setEmailResendCooldown(60);
     } else {
@@ -260,12 +274,12 @@ export default function ProfilePage({
         if (res.reason === "no_pending_code") {
           setOtpError(
             res.message ||
-              "No pending verification code found. Please run the /connect command in the Elevates Discord server first.",
+            "No pending verification code found. Please run the /connect command in the Elevates Discord server first.",
           );
         } else if (res.reason === "max_attempts") {
           setOtpError(
             res.message ||
-              "Maximum attempts exceeded. Please run /connect in the Elevates Discord server to generate a new code.",
+            "Maximum attempts exceeded. Please run /connect in the Elevates Discord server to generate a new code.",
           );
         } else if (res.reason === "invalid_code") {
           const attemptsMsg =
@@ -306,7 +320,7 @@ export default function ProfilePage({
 
   const isOwn = Boolean(
     (profile && session.userId && profile.id === session.userId) ||
-      (session.userId && session.userId === cleanId),
+    (session.userId && session.userId === cleanId),
   );
   const canEdit = isOwn || isHqRole(session.roleKey);
 
@@ -344,7 +358,6 @@ export default function ProfilePage({
 
   const cohortId = cohortIdOverride ?? (autoCohort?.id ?? "");
 
-  // Open edit modal with current profile data
   function handleOpenEdit() {
     if (!profile) return;
     setEditName(profile.fullName || "");
@@ -408,64 +421,29 @@ export default function ProfilePage({
     window.setTimeout(() => setSavedFlash(false), 2000);
   }
 
-  const selectedCohort = chapterCohorts.find((c) => c.id === cohortId);
+  const selectedCohort = useMemo(() => {
+    return chapterCohorts.find((c) => c.id === cohortId);
+  }, [chapterCohorts, cohortId]);
 
   const assignedReps = useMemo(() => {
-    if (!profile || !selectedCohort) return [];
-    return listStudentRepresentatives(store, {
-      ...profile,
-      department: selectedCohort.department,
-      year: selectedCohort.year,
-      section: selectedCohort.section,
-    });
-  }, [store, profile, selectedCohort]);
-
-  const canSeeClassesLink =
-    isHqRole(session.roleKey) ||
-    hasPermission(store, session.roleKey, "class.manage");
+    return listStudentRepresentatives(store, profile);
+  }, [store, profile]);
 
   const chapter = store.chapters.find((c) => c.id === profile?.chapterId);
-  const profileUserId = profile?.id ?? cleanId;
 
-  const isDiscordConnected = Boolean(
-    profile?.discordConnected && (profile?.discordUsername || profile?.discordUserId),
-  );
+  const canSeeClassesLink =
+    Boolean(chapter) &&
+    hasPermission(store, session.roleKey, "class.manage");
 
-  const volPowers = useMemo(() => {
-    return getUserVolunteerPowers(store, profileUserId || cleanId);
-  }, [store, profileUserId, cleanId]);
+  const isDiscordConnected = Boolean(profile?.discordUserId);
 
-  const isVolunteer = useMemo(() => {
-    const inTeam = (store.volunteerGroups || []).some(
-      (g) => g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId),
-    );
-    const inEvent = (store.events || []).some(
-      (e) => e.volunteerStudentIds?.includes(profileUserId) || e.volunteerStudentIds?.includes(cleanId),
-    );
-    return volPowers.isVolunteer || inTeam || inEvent;
-  }, [volPowers.isVolunteer, store.volunteerGroups, store.events, profileUserId, cleanId]);
-
-  const volunteerAssignedEvent = useMemo(() => {
-    if (!isVolunteer) return null;
-    const group = (store.volunteerGroups || []).find(
-      (g) => (g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId)) && g.eventId,
-    );
-    if (group?.eventId) {
-      return store.events.find((e) => e.id === group.eventId) ?? null;
-    }
-    const directEvent = (store.events || []).find(
-      (e) => e.volunteerStudentIds?.includes(profileUserId) || e.volunteerStudentIds?.includes(cleanId),
-    );
-    return directEvent ?? null;
-  }, [isVolunteer, store.volunteerGroups, store.events, profileUserId, cleanId]);
-
-  const volunteerTeamName = useMemo(() => {
-    if (!isVolunteer) return null;
-    const group = (store.volunteerGroups || []).find(
-      (g) => g.memberIds?.includes(profileUserId) || g.memberIds?.includes(cleanId),
-    );
-    return group?.name ?? null;
-  }, [isVolunteer, store.volunteerGroups, profileUserId, cleanId]);
+  const profileUserId = profile?.id ?? "";
+  const volunteerPowers = getUserVolunteerPowers(store, profileUserId);
+  const isVolunteer = volunteerPowers.isVolunteer;
+  const volunteerTeamName = volunteerPowers.effectiveTag || volunteerPowers.activeGroups[0]?.name;
+  const volunteerAssignedEvent = volunteerPowers.activeAssignments[0]?.eventId
+    ? store.events.find((e) => e.id === volunteerPowers.activeAssignments[0].eventId)
+    : undefined;
 
   type RoleWithTimestamp = { role: (typeof store.roles)[0]; createdAt: string | undefined };
   const rolesWithUr: RoleWithTimestamp[] = store.userRoles
@@ -506,12 +484,63 @@ export default function ProfilePage({
   }
 
   return (
-    <div>
-      {/* Header Banner */}
-      <div className="relative mb-6 overflow-hidden rounded-[var(--radius-lg)] bg-bg-panel p-6 shadow-[var(--shadow)] md:p-8 border border-border/50">
-        <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[20px] bg-[var(--accent-soft)] text-2xl font-bold text-[var(--accent)] shadow-[var(--shadow-sm)]">
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Member Portfolio"
+        title={profile.fullName}
+        description={
+          isOwn
+            ? "Official member profile, verified credentials, and active projects."
+            : `Verified member portfolio${chapter ? ` · ${chapter.name}` : ""}.`
+        }
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {isOwn && (isVolunteer || session.roleKey === "volunteer" || hasPermission(store, session.roleKey, "attendance.verify")) && chapter && (
+              <Link href={`/chapter/${chapter.slug}/attendance`}>
+                <Button variant="orange" className="gap-2 font-bold shadow-xs">
+                  <QrCode size={14} />
+                  <span>Take Attendance</span>
+                </Button>
+              </Link>
+            )}
+            {isOwn && (
+              <Link href="/referrals">
+                <Button variant="secondary" className="gap-2">
+                  <Link2 size={14} />
+                  <span>Referrals</span>
+                </Button>
+              </Link>
+            )}
+            {canEdit && (
+              <Button
+                variant="orange"
+                onClick={handleOpenEdit}
+                className="gap-2 font-bold"
+              >
+                <Edit3 size={14} />
+                <span>Edit Profile</span>
+              </Button>
+            )}
+            {isHqRole(session.roleKey) && (
+              <Button
+                variant="danger"
+                onClick={() => setDeleteConfirmOpen(true)}
+                className="gap-1.5"
+              >
+                <Trash2 size={14} />
+                <span>Delete User</span>
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      {/* 2. Modern Profile Identity Hero Card */}
+      <div className="rounded-[var(--radius-lg)] bg-bg-panel p-5 sm:p-7 shadow-[var(--shadow)] border border-border/70">
+        <div className="flex flex-col md:flex-row md:items-start gap-6">
+          {/* Avatar Area */}
+          <div className="relative shrink-0">
+            <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--accent-soft)] text-3xl font-extrabold text-[var(--accent)] shadow-sm border border-border/60">
               {profile.avatarUrl ? (
                 <img
                   src={resolveMediaUrl(profile.avatarUrl)}
@@ -522,771 +551,863 @@ export default function ProfilePage({
                 initials(profile.fullName)
               )}
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-[12px] font-semibold text-[var(--accent)] uppercase tracking-wider">
-                  Member Profile
-                </p>
-                {isDiscordConnected ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/20 px-2 py-0.5 text-[11px] font-bold">
-                    <DiscordIcon className="w-3 h-3" />
-                    Bot Synced
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 text-[11px] font-semibold">
-                    <DiscordIcon className="w-3 h-3 opacity-70" />
-                    Bot Unlinked
-                  </span>
-                )}
+            {isDiscordConnected && (
+              <div
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#5865F2] text-white shadow-xs"
+                title="Discord Bot Connected"
+              >
+                <DiscordIcon className="w-3.5 h-3.5" />
               </div>
-
-              <div className="mt-1 flex flex-wrap items-center gap-2.5">
-                <h1 className="font-[family-name:var(--font-display)] text-3xl font-extrabold tracking-[-0.04em] sm:text-4xl text-text">
-                  {profile.fullName}
-                </h1>
-                {profile.elevatesId && (
-                  <span className="font-mono text-xs font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 rounded-md">
-                    {profile.elevatesId}
-                  </span>
-                )}
-                {isVolunteer && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-xs font-bold tracking-wide"
-                    title={volunteerAssignedEvent ? `Assigned to: ${volunteerAssignedEvent.title}` : "Volunteer"}
-                  >
-                    Volunteer {volunteerAssignedEvent ? `· ${volunteerAssignedEvent.title}` : ""}
-                  </span>
-                )}
-              </div>
-
-              {/* Verified Identity & Non-Editable Institutional Info Bar */}
-              <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-text-dim">
-                {/* Academic Year */}
-                <span className="inline-flex items-center gap-1 font-semibold text-text">
-                  <GraduationCap size={13} className="text-[var(--accent)]" />
-                  {academicYearDisplay}
-                </span>
-
-                {/* Department & Section */}
-                {(profile.department || profile.section) && (
-                  <>
-                    <span className="text-border">·</span>
-                    <span>
-                      {profile.department || "General"}
-                      {profile.section ? ` · Sec ${profile.section}` : ""}
-                    </span>
-                  </>
-                )}
-
-                {/* Chapter & College Name (Non-editable, based on joined chapter) */}
-                <span className="text-border">·</span>
-                {chapter ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-2 py-0.5 font-medium text-[var(--accent)]"
-                    title={`Joined chapter: ${chapter.name} (${chapter.college || "Campus Chapter"}) - Chapter membership is locked to your campus`}
-                  >
-                    <Building2 size={12} />
-                    <Link
-                      href={`/chapter/${chapter.slug}`}
-                      className="hover:underline font-bold"
-                    >
-                      {chapter.name}
-                    </Link>
-                    {chapter.college && (
-                      <span className="text-xs opacity-80 font-normal">
-                        · {chapter.college}
-                      </span>
-                    )}
-                    <span
-                      className="ml-1 inline-flex items-center gap-0.5 text-[10px] font-semibold opacity-70"
-                      title="Bound to your campus chapter (Non-editable)"
-                    >
-                      <Lock size={10} />
-                      Joined
-                    </span>
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-zinc-500/10 px-2 py-0.5 text-text-dim text-xs">
-                    <Building2 size={12} />
-                    Independent / No Chapter
-                  </span>
-                )}
-
-                {/* Email Address (Non-editable) */}
-                {profile.email && (
-                  <>
-                    <span className="text-border">·</span>
-                    <span
-                      className="inline-flex items-center gap-1 font-mono text-[11px] text-text-dim"
-                      title="Account Email - Non-editable"
-                    >
-                      <Mail size={12} className="opacity-60" />
-                      {profile.email}
-                      <Lock size={10} className="opacity-40" />
-                    </span>
-                  </>
-                )}
-              </div>
-
-              {(profile.createdAt || profile.joinedAt) ? (
-                <p className="mt-2 text-[12px] text-text-mute flex items-center gap-1.5 font-mono">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400/80" />
-                  <span>Member since {formatDateTime((profile.createdAt || profile.joinedAt)!)}</span>
-                </p>
-              ) : null}
-
-              {profile.bio ? (
-                <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-text-dim">
-                  {profile.bio}
-                </p>
-              ) : null}
-
-              {/* Badges */}
-              <div className="mt-4 flex flex-wrap gap-2">
-                {isVolunteer && (
-                  <Badge tone="green" className="font-bold">
-                    {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
-                  </Badge>
-                )}
-                <Badge tone="cyan">
-                  {communityTiers.find(
-                    (t: { key?: string; tier?: string; label?: string }) =>
-                      t.key === derived.engagementTier || t.tier === derived.engagementTier,
-                  )?.label ?? "Everyone"}
-                </Badge>
-                <Badge tone="orange">
-                  {journeyStages.find(
-                    (s: { key?: string; stage?: string; label?: string }) =>
-                      s.key === derived.journeyStage || s.stage === derived.journeyStage,
-                  )?.label ?? "Awareness"}
-                </Badge>
-                {rolesWithUr.map(({ role, createdAt }) => (
-                  <span
-                    key={role.id}
-                    title={createdAt ? `Assigned ${formatDateTime(createdAt)}` : undefined}
-                  >
-                    <Badge tone="magenta">
-                      {role.name}
-                      {createdAt && (
-                        <span className="ml-1 opacity-75 text-[10px] font-mono">
-                          · {formatDateTime(createdAt)}
-                        </span>
-                      )}
-                    </Badge>
-                  </span>
-                ))}
-                {profile.badges.map((b) => (
-                  <Badge key={b} tone="green">
-                    {b}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex shrink-0 items-center gap-2">
-            {isOwn && (isVolunteer || session.roleKey === "volunteer" || hasPermission(store, session.roleKey, "attendance.verify")) && chapter && (
-              <Link href={`/chapter/${chapter.slug}/attendance`}>
-                <Button variant="orange" className="flex items-center gap-2 font-bold shadow-sm">
-                  <QrCode size={14} />
-                  Take Attendance
-                </Button>
-              </Link>
-            )}
-            {isOwn && (
-              <Link href="/referrals">
-                <Button variant="secondary" className="flex items-center gap-2">
-                  <Link2 size={14} />
-                  Referrals
-                </Button>
-              </Link>
-            )}
-            {canEdit && (
-              <Button
-                variant="orange"
-                onClick={handleOpenEdit}
-                className="flex items-center gap-2 font-bold"
-              >
-                <Edit3 size={14} />
-                Profile Setup & Edit
-              </Button>
-            )}
-            {isHqRole(session.roleKey) && (
-              <Button
-                variant="danger"
-                onClick={() => setDeleteConfirmOpen(true)}
-                className="flex items-center gap-1.5"
-              >
-                <Trash2 size={14} />
-                Delete User
-              </Button>
-            )}
-            {savedFlash && (
-              <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1 text-[12px] font-medium text-[var(--accent)] animate-pulse">
-                Saved!
+          {/* Identity Information Details */}
+          <div className="flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+                {profile.fullName}
+              </h2>
+
+              {/* 1-Click Copy Elevates ID Badge */}
+              {profile.elevatesId && (
+                <button
+                  type="button"
+                  onClick={handleCopyElevatesId}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-bg border border-border px-2.5 py-1 text-xs font-mono font-bold text-text hover:border-[var(--accent)] hover:text-[var(--accent)] transition shadow-2xs cursor-pointer"
+                  title="Click to copy Elevates ID"
+                >
+                  <span>{profile.elevatesId}</span>
+                  {copiedElevatesId ? (
+                    <Check size={12} className="text-emerald-500" />
+                  ) : (
+                    <Copy size={12} className="opacity-60" />
+                  )}
+                </button>
+              )}
+
+              {/* Discord sync indicator */}
+              {isDiscordConnected ? (
+                <span className="inline-flex items-center gap-1 rounded-md bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/20 px-2 py-0.5 text-[11px] font-bold">
+                  <DiscordIcon className="w-3 h-3" />
+                  Bot Synced
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium">
+                  <DiscordIcon className="w-3 h-3 opacity-70" />
+                  Bot Unlinked
+                </span>
+              )}
+
+              {/* Volunteer tag */}
+              {isVolunteer && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-bold tracking-wide">
+                  Volunteer
+                </span>
+              )}
+            </div>
+
+            {/* Academic & Campus Metadata Pills */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Campus Chapter Pill */}
+              {chapter ? (
+                <Link
+                  href={`/chapter/${chapter.slug}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-soft)] px-2.5 py-1 font-semibold text-[var(--accent)] hover:underline"
+                >
+                  <Building2 size={13} />
+                  <span>{chapter.name}</span>
+                  {chapter.college && (
+                    <span className="opacity-80 font-normal">
+                      · {chapter.college}
+                    </span>
+                  )}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-2.5 py-1 text-text-dim">
+                  <Building2 size={13} />
+                  Independent Member
+                </span>
+              )}
+
+              {/* Academic Year & Dept Pill */}
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-bg border border-border px-2.5 py-1 text-text font-medium">
+                <GraduationCap size={13} className="text-[var(--accent)]" />
+                <span>{academicYearDisplay}</span>
+                {(profile.department || profile.section) && (
+                  <span className="text-text-mute">
+                    · {profile.department || "General"}
+                    {profile.section ? ` (${profile.section})` : ""}
+                  </span>
+                )}
               </span>
+
+              {/* Email Verification status */}
+              {profile.email && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px]",
+                    profile.emailVerified
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold"
+                      : "border-border bg-bg text-text-dim",
+                  )}
+                >
+                  <Mail size={12} className="opacity-75" />
+                  <span>{profile.email}</span>
+                  {profile.emailVerified ? (
+                    <CheckCircle2 size={12} className="text-emerald-500 shrink-0" />
+                  ) : canEdit ? (
+                    <button
+                      type="button"
+                      onClick={handleOpenEmailVerifyModal}
+                      className="ml-1 text-[10px] text-[var(--accent)] font-bold hover:underline cursor-pointer"
+                    >
+                      Verify
+                    </button>
+                  ) : null}
+                </span>
+              )}
+            </div>
+
+            {/* Member Bio */}
+            {profile.bio && (
+              <p className="max-w-2xl text-[13px] leading-relaxed text-text-dim pt-1">
+                {profile.bio}
+              </p>
             )}
+
+            {/* Roles & EOS Doctrine Badges */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <Badge tone="cyan">
+                {communityTiers.find(
+                  (t: { key?: string; tier?: string; label?: string }) =>
+                    t.key === derived.engagementTier || t.tier === derived.engagementTier,
+                )?.label ?? "Everyone"}
+              </Badge>
+              <Badge tone="orange">
+                {journeyStages.find(
+                  (s: { key?: string; stage?: string; label?: string }) =>
+                    s.key === derived.journeyStage || s.stage === derived.journeyStage,
+                )?.label ?? "Awareness"}
+              </Badge>
+              {rolesWithUr.map(({ role, createdAt }) => (
+                <Badge key={role.id} tone="magenta">
+                  {role.name}
+                </Badge>
+              ))}
+              {profile.badges.map((b) => (
+                <Badge key={b} tone="green">
+                  {b}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Volunteer Quick-Access Attendance Panel */}
+      {/* 3. Volunteer Quick Bar (if volunteer) */}
       {isVolunteer && chapter && (
-        <div className="mb-6 rounded-[var(--radius-lg)] border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-[var(--shadow-sm)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-              <QrCode size={20} />
+        <div className="rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+              <QrCode size={18} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <p className="font-bold text-sm text-text">
-                  Volunteer Tag: {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
-                </p>
-                {volunteerAssignedEvent ? (
-                  <span className="rounded-full bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
-                    Assigned: {volunteerAssignedEvent.title}
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide">
-                    Awaiting Event
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-text-dim mt-0.5">
+              <p className="font-bold text-[13px] text-text">
+                Volunteer Status: {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
+              </p>
+              <p className="text-[12px] text-text-dim">
                 {volunteerAssignedEvent
-                  ? `You are assigned to take attendance and manage "${volunteerAssignedEvent.title}".`
-                  : `Member of ${volunteerTeamName || "volunteer team"} for ${chapter.name}. Awaiting event assignment.`}
+                  ? `Assigned to manage "${volunteerAssignedEvent.title}".`
+                  : `Member of volunteer team for ${chapter.name}. Awaiting event assignment.`}
               </p>
             </div>
           </div>
           {volunteerAssignedEvent && (
             <Link href={`/chapter/${chapter.slug}/attendance?eventId=${volunteerAssignedEvent.id}`}>
-              <Button variant="orange" className="text-xs font-bold shrink-0 flex items-center gap-2">
+              <Button variant="orange" size="sm" className="font-bold shrink-0 gap-1.5">
                 <QrCode size={13} />
-                Take Attendance →
+                <span>Take Attendance</span>
               </Button>
             </Link>
           )}
         </div>
       )}
 
-      {/* Stats row */}
-      <div className="grid gap-3 sm:grid-cols-4">
+      {/* 4. Executive Metric Cards Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <Stat label="Points" value={profile.points} accent="cyan" />
         <Stat label="Executive Score" value={score} accent="magenta" />
         <Stat label="Certificates" value={certs.length} accent="green" />
-        <Stat
-          label="Events Attended"
-          value={eventsAttended.length}
-          accent="orange"
-        />
+        <Stat label="Events Attended" value={eventsAttended.length} accent="orange" />
       </div>
 
-      {/* Discord Bot Integration Panel — Elevates Discord Bot Architecture (only when viewing own profile) */}
-      {isOwn && (
-        <div className="mt-6 grid gap-6 xl:grid-cols-2">
-          <TerminalPanel
-            title="elevates_bot.discord_sync"
-            accent={isDiscordConnected ? "green" : "orange"}
-            meta={isDiscordConnected ? "connected" : "verification_required"}
-            className="xl:col-span-2"
-          >
-            {isDiscordConnected ? (
-              /* State 2: User already has a verified Discord link */
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5">
-                <div className="flex items-start sm:items-center gap-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] shadow-sm">
-                    <DiscordIcon className="h-7 w-7" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <h3 className="font-bold text-base text-text font-[family-name:var(--font-display)]">
-                        Discord Account
-                      </h3>
-                      {/* Green "Connected" indicator */}
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-2xs">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        Connected
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      {/* Linked Discord Username */}
-                      <span className="inline-flex items-center gap-1.5 font-mono text-sm font-semibold text-text bg-bg border border-border px-3 py-1 rounded-xl shadow-2xs">
-                        <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
-                        @{profile.discordUsername?.replace(/^@/, "") || "member"}
-                      </span>
-
-                      {profile.discordUserId && (
-                        <span className="font-mono text-xs text-text-dim bg-bg border border-border px-2.5 py-1 rounded-xl">
-                          ID: {profile.discordUserId}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Disconnect button */}
-                <div className="shrink-0 self-start sm:self-center">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setUnlinkConfirmOpen(true)}
-                    className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 flex items-center gap-1.5 font-semibold px-3 py-2 border border-rose-500/20 hover:border-rose-500/30 rounded-xl transition-colors"
-                  >
-                    <Unlink size={14} />
-                    <span>Disconnect</span>
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              /* State 1: User has no verified Discord link yet */
-              <div className="space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 shadow-sm">
-                    <DiscordIcon className="h-6 w-6" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      <h3 className="font-bold text-base text-text font-[family-name:var(--font-display)]">
-                        Discord Bot Integration
-                      </h3>
-                      <Badge tone="orange">Not Connected</Badge>
-                    </div>
-
-                    {/* Short explanation required by prompt */}
-                    <p className="text-sm text-text-dim leading-relaxed max-w-2xl">
-                      Connect your Discord account by running the <code className="font-mono font-bold text-text bg-bg-card px-1.5 py-0.5 rounded border border-border">/connect</code> command in the Elevates Discord server, then enter the code you receive below.
-                    </p>
-                  </div>
-                </div>
-
-                {/* 6-character input field & Verify button */}
-                <div className="rounded-2xl border border-border bg-bg/50 p-4 sm:p-5 mt-2">
-                  <form onSubmit={handleVerifyOtp} className="space-y-3 max-w-xl">
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          maxLength={6}
-                          value={otpInput}
-                          onChange={(e) => {
-                            const val = e.target.value.trim().slice(0, 6);
-                            setOtpInput(val);
-                            if (otpError) setOtpError(null);
-                          }}
-                          placeholder="6-character code"
-                          className="w-full sm:w-56 h-11 px-4 text-center font-mono font-bold text-base tracking-[0.25em] uppercase rounded-xl border border-border bg-bg text-text focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 focus:border-[var(--accent)]"
-                          disabled={isVerifyingOtp}
-                        />
-                      </div>
-
-                      <Button
-                        type="submit"
-                        variant="orange"
-                        size="md"
-                        disabled={isVerifyingOtp || otpInput.trim().length !== 6}
-                        className="h-11 font-bold text-xs px-6 flex items-center justify-center gap-2 shadow-sm rounded-xl"
-                      >
-                        {isVerifyingOtp ? (
-                          <>
-                            <Loader2 size={14} className="animate-spin" />
-                            <span>Verifying...</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck size={14} />
-                            <span>Verify</span>
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    {/* Clear inline feedback messages for all response cases */}
-                    {otpError && (
-                      <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl px-3.5 py-2.5 flex items-start gap-2 animate-in fade-in duration-200">
-                        <span className="text-base leading-none">⚠️</span>
-                        <span className="leading-snug">{otpError}</span>
-                      </div>
-                    )}
-
-                    {otpSuccess && (
-                      <div className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3.5 py-2.5 flex items-start gap-2 animate-in fade-in duration-200">
-                        <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
-                        <span className="leading-snug">{otpSuccess}</span>
-                      </div>
-                    )}
-                  </form>
-                </div>
-              </div>
+      {/* 5. Modern Tabbed Navigation */}
+      <div className="flex items-center justify-between border-b border-border/80 pb-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              activeTab === "overview"
+                ? "bg-bg-panel text-text border border-border shadow-xs"
+                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
             )}
-          </TerminalPanel>
-        </div>
-      )}
-
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-
-        {/* Class Selection — only if the student has a chapter */}
-        {isOwn && profile.chapterId ? (
-          <TerminalPanel
-            title="class.order"
-            meta={savedFlash ? "saved" : studentHasClassSet(profile) ? "set" : "required"}
-            accent="orange"
-            className="xl:col-span-2"
           >
-            <p className="mb-4 text-[13px] text-text-dim">
-              Pick your class from the list set by chapter executives. That class
-              has one or two representatives — pick one of them when registering
-              for events.
-            </p>
-            {!chapterCohorts.length ? (
-              <p className="text-[13px] text-[var(--accent)]">
-                No classes set up yet. Ask your chapter exec to create divisions
-                (e.g. Common · 1st · T1, CSE · 2nd · A).
-                {canSeeClassesLink && chapter ? (
-                  <>
-                    {" "}
-                    <Link
-                      href={`/chapter/${chapter.slug}/classes`}
-                      className="underline font-medium"
-                    >
-                      Open Classes
-                    </Link>
-                  </>
-                ) : null}
-              </p>
-            ) : (
-              <>
-                <div className="max-w-xl">
-                  <FieldLabel>Your class</FieldLabel>
-                  <Select
-                    value={cohortId}
-                    onChange={(e) => setCohortIdOverride(e.target.value)}
-                  >
-                    <option value="">Select class…</option>
-                    {chapterCohorts.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {cohortLabel(c)}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Button
-                    variant="primary"
-                    onClick={saveClass}
-                    disabled={!selectedCohort}
-                  >
-                    Save class
-                  </Button>
-                  {canSeeClassesLink && chapter ? (
-                    <Link href={`/chapter/${chapter.slug}/classes`}>
-                      <Button variant="ghost">Manage classes</Button>
-                    </Link>
-                  ) : null}
-                </div>
-              </>
+            <User size={14} />
+            <span>Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("credentials")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              activeTab === "credentials"
+                ? "bg-bg-panel text-text border border-border shadow-xs"
+                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
             )}
-            <div className="mt-5 border-t border-border pt-4">
-              <p className="text-[10px] uppercase tracking-wider text-text-dim">
-                Assigned representatives
-              </p>
-              {assignedReps.length >= 1 ? (
-                <ul className="mt-2 space-y-2">
-                  {assignedReps.map((r, i) => (
-                    <li
-                      key={r.id}
-                      className="flex items-center justify-between rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2 text-sm"
-                    >
-                      <span className="font-medium">{r.label}</span>
-                      <Badge tone={i === 0 ? "cyan" : "magenta"}>
-                        rep {i + 1}
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-[13px] text-text-dim">
-                  Select a class above to see your representative(s).
-                </p>
+          >
+            <Award size={14} />
+            <span>Certificates & Credentials</span>
+            <span className="rounded-full bg-border px-1.5 py-0.2 text-[10px] font-bold">
+              {certs.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("journey")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              activeTab === "journey"
+                ? "bg-bg-panel text-text border border-border shadow-xs"
+                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
+            )}
+          >
+            <Sparkles size={14} />
+            <span>EOS Journey</span>
+          </button>
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => setActiveTab("settings")}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+                activeTab === "settings"
+                  ? "bg-bg-panel text-text border border-border shadow-xs"
+                  : "text-text-mute hover:text-text hover:bg-bg-panel/50",
               )}
-            </div>
-          </TerminalPanel>
-        ) : isOwn && !profile.chapterId ? (
-          <TerminalPanel
-            title="chapter.status"
-            meta="independent"
-            accent="orange"
-            className="xl:col-span-2"
-          >
-            <div className="flex flex-wrap items-start gap-4">
-              <div className="flex-1 min-w-[240px]">
-                <p className="text-sm font-semibold text-text mb-1">
-                  Not in any chapter
-                </p>
-                <p className="text-[13px] text-text-dim leading-relaxed">
-                  Your account is set as an <strong>Independent</strong> student — not tied to any specific Elevates chapter.
-                  You can still attend <strong>open events</strong> hosted at any campus and participate fully.
-                  If you join a chapter later, your profile will update automatically.
-                </p>
-              </div>
-              <Badge tone="mute">Independent</Badge>
-            </div>
-            <div className="mt-4 pt-4 border-t border-border">
-              <p className="text-[11px] text-text-mute">
-                To join a chapter, ask a chapter executive or campus lead to add you.
-                Your Elevates ID is still active and will carry over when you join.
-              </p>
-            </div>
-          </TerminalPanel>
-        ) : null}
+            >
+              <DiscordIcon className="w-3.5 h-3.5" />
+              <span>Integrations & Setup</span>
+            </button>
+          )}
+        </div>
+      </div>
 
-        {/* EOS Journey */}
-        <TerminalPanel title="eos.journey" accent="cyan" className="xl:col-span-2">
-          <p className="mb-3 text-[13px] text-text-dim">
-            Progression is earned from activity — attendance, clusters, and
-            leadership — not admin labels.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Badge tone="cyan">
-              {communityTiers.find(
-                (t: { key?: string; tier?: string; label?: string }) =>
-                  t.key === derived.engagementTier || t.tier === derived.engagementTier,
-              )?.label ?? "Everyone"}
-            </Badge>
-            <Badge tone="orange">
-              {journeyStages.find(
-                (s: { key?: string; stage?: string; label?: string }) =>
-                  s.key === derived.journeyStage || s.stage === derived.journeyStage,
-              )?.label ?? "Awareness"}
-            </Badge>
-          </div>
-          <p className="mt-3 text-[12px] text-text-mute">
-            Workshop check-in → Participant · Repeat activity → Active · Cluster
-            invite accepted → Cluster · Leadership term → Campus Lead / Executive
-          </p>
-        </TerminalPanel>
+      {/* 6. TAB CONTENT PANELS */}
 
-        {/* Skills & Interests Panel */}
-        <TerminalPanel
-          title="skills.interests"
-          meta={`${profile.skills.length} skills`}
-        >
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text">
-                  Skills ({profile.skills.length})
-                </p>
+      {/* TAB 1: OVERVIEW */}
+      {activeTab === "overview" && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+          {/* Main Column (8-cols): Skills, Projects, Recent Events */}
+          <div className="xl:col-span-8 space-y-6">
+            {/* Technical Skills & Interests Card */}
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  Technical Skills & Interests
+                </h3>
                 {canEdit && (
                   <button
                     type="button"
                     onClick={handleOpenEdit}
-                    className="text-[11px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                    className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <Edit3 size={11} /> Edit skills
+                    <Edit3 size={12} />
+                    <span>Edit Skills</span>
                   </button>
                 )}
               </div>
 
-              {profile.skills.length === 0 ? (
-                <div className="mt-2 rounded-lg border border-dashed border-border p-3 text-center">
-                  <p className="text-[12px] text-text-mute">No skills added yet.</p>
-                  {canEdit && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleOpenEdit}
-                      className="mt-1 text-xs text-[var(--accent)]"
-                    >
-                      + Add your technical skills
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {profile.skills.map((s) => (
-                    <span
-                      key={s}
-                      className="rounded-lg bg-[var(--neutral-100)] border border-border/50 px-2.5 py-1 text-[12px] font-semibold text-text shadow-sm"
-                    >
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-border/50 pt-3">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-text">Interests</p>
-              {profile.interests.length === 0 ? (
-                <p className="mt-2 text-[12px] text-text-mute">No interests added yet.</p>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {profile.interests.map((i) => (
-                    <span
-                      key={i}
-                      className="rounded-lg bg-[var(--neutral-100)] px-2.5 py-1 text-[12px] font-medium text-text-dim"
-                    >
-                      {i}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center gap-4 border-t border-border pt-4 text-[13px]">
-            {profile.email ? (
-              <div className="flex items-center gap-2">
-                <span
-                  className="flex items-center gap-1.5 text-text-dim font-mono text-xs"
-                  title="Account Email"
-                >
-                  <Mail size={14} className="opacity-60" />
-                  {profile.email}
-                </span>
-
-                {profile.emailVerified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                    <CheckCircle2 size={12} className="text-emerald-600" />
-                    Verified
-                  </span>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
-                      Unverified
-                    </span>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2">
+                  Skills ({profile.skills.length})
+                </p>
+                {profile.skills.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-center">
+                    <p className="text-[12px] text-text-mute">No skills added yet.</p>
                     {canEdit && (
-                      <button
-                        type="button"
-                        onClick={handleOpenEmailVerifyModal}
-                        className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-xs hover:opacity-90 transition-opacity cursor-pointer"
-                        title="Verify your email address"
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleOpenEdit}
+                        className="mt-2 text-xs text-[var(--accent)]"
                       >
-                        <ShieldCheck size={12} />
-                        Verify
-                      </button>
+                        + Add technical skills
+                      </Button>
                     )}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {profile.skills.map((s) => (
+                      <span
+                        key={s}
+                        className="rounded-lg bg-bg border border-border px-3 py-1 text-[12px] font-semibold text-text shadow-2xs"
+                      >
+                        {s}
+                      </span>
+                    ))}
                   </div>
                 )}
               </div>
-            ) : null}
-            {profile.phone ? (
-              <span className="flex items-center gap-1.5 text-text-dim">
-                <Phone size={14} className="opacity-60" />
-                {profile.phone}
-              </span>
-            ) : null}
-            {profile.githubUrl ? (
-              <a
-                href={profile.githubUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 font-medium text-text hover:text-[var(--accent)]"
-              >
-                <Link2 size={14} />
-                GitHub
-              </a>
-            ) : null}
-            {profile.linkedinUrl ? (
-              <a
-                href={profile.linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 font-medium text-[#0a66c2] hover:underline"
-              >
-                <Link2 size={14} />
-                LinkedIn
-              </a>
-            ) : null}
-            {profile.portfolioUrl ? (
-              <a
-                href={profile.portfolioUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 font-medium text-[var(--accent)] hover:underline"
-              >
-                <Globe size={14} />
-                Portfolio
-              </a>
-            ) : null}
+
+              <div className="border-t border-border/60 pt-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2">
+                  Interests
+                </p>
+                {profile.interests.length === 0 ? (
+                  <p className="text-[12px] text-text-mute">No interests specified.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {profile.interests.map((i) => (
+                      <span
+                        key={i}
+                        className="rounded-lg bg-bg/60 border border-border/60 px-2.5 py-1 text-[12px] font-medium text-text-dim"
+                      >
+                        {i}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Projects Card */}
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderGit2 size={16} className="text-[var(--accent)]" />
+                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                    Active Projects
+                  </h3>
+                </div>
+                <span className="rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-semibold text-text-mute">
+                  {projects.length}
+                </span>
+              </div>
+
+              {projects.length === 0 ? (
+                <div className="py-6 text-center text-text-mute text-[13px]">
+                  No active projects associated with this profile.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {projects.map((p) => (
+                    <div
+                      key={p.id}
+                      className="rounded-xl border border-border/80 bg-bg/50 p-3.5 space-y-2 hover:bg-bg transition shadow-2xs"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <Badge tone="cyan">{p.stage}</Badge>
+                        {p.projectType && (
+                          <span className="text-[10px] text-text-mute font-mono">
+                            {p.projectType}
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-[13px] text-text">
+                        {p.title}
+                      </h4>
+                      {p.description && (
+                        <p className="text-[11px] text-text-dim line-clamp-2">
+                          {p.description}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Event Attendance History Card */}
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                <div className="flex items-center gap-2">
+                  <CalendarCheck2 size={16} className="text-[var(--accent)]" />
+                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                    Event History
+                  </h3>
+                </div>
+                <span className="rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-semibold text-text-mute">
+                  {eventsAttended.length} attended
+                </span>
+              </div>
+
+              {eventsAttended.length === 0 ? (
+                <div className="py-6 text-center text-text-mute text-[13px]">
+                  No event attendance recorded yet.
+                </div>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {eventsAttended.slice(0, 5).map((a) => {
+                    const ev = store.events.find((e) => e.id === a.eventId);
+                    return (
+                      <li key={a.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-bold text-text truncate">
+                            {ev?.title ?? "Community Event"}
+                          </p>
+                          <p className="text-[11px] text-text-mute">
+                            {ev?.venue ? `${ev.venue} · ` : ""}
+                            {formatDateTime(a.checkedInAt)}
+                          </p>
+                        </div>
+                        <Badge tone="green">Present</Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
-        </TerminalPanel>
 
-        {/* Engagement Score */}
-        <TerminalPanel title="engagement.score" accent="magenta">
-          <ProgressBar
-            value={Math.min(100, profile.points / 20)}
-            label="Activity index"
-            accent="green"
-          />
-          <p className="mt-4 text-[11px] text-text-dim">
-            Executive score algorithm: tasks × 12 + events × 18 + reports × 15
-            + attendance × 10
-          </p>
-        </TerminalPanel>
+          {/* Sidebar Column (4-cols): Contact, Campus, Class Details */}
+          <div className="xl:col-span-4 space-y-5">
+            {/* Contact & Social Links Card */}
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-3">
+              <h3 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text border-b border-border/60 pb-2.5">
+                Contact & Profiles
+              </h3>
 
-        {/* Certificates */}
-        <TerminalPanel title="certificates" accent="green">
+              <ul className="space-y-2.5 text-[12px]">
+                {profile.email && (
+                  <li className="flex items-center justify-between gap-2 text-text-dim">
+                    <span className="flex items-center gap-1.5 font-mono">
+                      <Mail size={13} className="text-text-mute" />
+                      <span className="truncate max-w-[180px]">{profile.email}</span>
+                    </span>
+                    {profile.emailVerified ? (
+                      <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                    ) : (
+                      <span className="text-[10px] text-amber-500 font-semibold">Unverified</span>
+                    )}
+                  </li>
+                )}
+
+                {profile.phone && (
+                  <li className="flex items-center gap-2 text-text-dim">
+                    <Phone size={13} className="text-text-mute" />
+                    <span>{profile.phone}</span>
+                  </li>
+                )}
+
+                {profile.githubUrl && (
+                  <li>
+                    <a
+                      href={profile.githubUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between text-text hover:text-[var(--accent)] font-medium"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Link2 size={13} className="text-text-mute" />
+                        <span>GitHub</span>
+                      </span>
+                      <ExternalLink size={12} className="text-text-mute" />
+                    </a>
+                  </li>
+                )}
+
+                {profile.linkedinUrl && (
+                  <li>
+                    <a
+                      href={profile.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between text-[#0a66c2] hover:underline font-medium"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Link2 size={13} className="text-text-mute" />
+                        <span>LinkedIn</span>
+                      </span>
+                      <ExternalLink size={12} className="text-text-mute" />
+                    </a>
+                  </li>
+                )}
+
+                {profile.portfolioUrl && (
+                  <li>
+                    <a
+                      href={profile.portfolioUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between text-[var(--accent)] hover:underline font-medium"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Globe size={13} className="text-text-mute" />
+                        <span>Portfolio</span>
+                      </span>
+                      <ExternalLink size={12} className="text-text-mute" />
+                    </a>
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {/* Campus & Class Information Card */}
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-3">
+              <h3 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text border-b border-border/60 pb-2.5">
+                Campus & Division
+              </h3>
+
+              <div className="space-y-2 text-[12px]">
+                <div>
+                  <span className="text-text-mute block text-[10px] uppercase font-bold">Chapter</span>
+                  <p className="font-semibold text-text mt-0.5">
+                    {chapter?.name ?? "Independent Member"}
+                  </p>
+                  {chapter?.college && (
+                    <p className="text-[11px] text-text-dim">{chapter.college}</p>
+                  )}
+                </div>
+
+                <div className="border-t border-border/50 pt-2">
+                  <span className="text-text-mute block text-[10px] uppercase font-bold">Class</span>
+                  <p className="font-semibold text-text mt-0.5">
+                    {selectedCohort ? cohortLabel(selectedCohort) : "No division assigned"}
+                  </p>
+                </div>
+
+                {assignedReps.length > 0 && (
+                  <div className="border-t border-border/50 pt-2">
+                    <span className="text-text-mute block text-[10px] uppercase font-bold mb-1">Class Representatives</span>
+                    <ul className="space-y-1">
+                      {assignedReps.map((r, i) => (
+                        <li key={r.id} className="flex items-center justify-between rounded-lg bg-bg px-2.5 py-1 text-[11px]">
+                          <span className="font-semibold">{r.label}</span>
+                          <span className="text-text-mute text-[10px]">Rep {i + 1}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: CREDENTIALS & CERTIFICATES */}
+      {activeTab === "credentials" && (
+        <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+          <div className="flex items-center justify-between border-b border-border/60 pb-3">
+            <div>
+              <h3 className="font-[family-name:var(--font-display)] text-[16px] font-bold text-text">
+                Verified Credentials & Certificates
+              </h3>
+              <p className="text-[12px] text-text-mute mt-0.5">
+                Cryptographically verifiable event participation and completion credentials.
+              </p>
+            </div>
+            <span className="rounded-full bg-bg border border-border px-3 py-0.5 text-xs font-bold text-[var(--accent)]">
+              {certs.length} Issued
+            </span>
+          </div>
+
           {certs.length === 0 ? (
-            <p className="text-[12px] text-text-dim">
-              {"// No certificates issued"}
-            </p>
+            <div className="py-12 text-center">
+              <Award size={36} className="mx-auto mb-2 text-text-mute opacity-40" />
+              <p className="text-[14px] font-semibold text-text">
+                No certificates issued yet
+              </p>
+              <p className="mt-1 text-[12px] text-text-mute max-w-sm mx-auto">
+                Certificates are automatically generated and verified upon attending workshops and hackathons.
+              </p>
+            </div>
           ) : (
-            <ul className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {certs.map((c) => {
                 const ev = store.events.find((e) => e.id === c.eventId);
                 return (
-                  <li key={c.id} className="rounded-[14px] bg-bg shadow-[var(--shadow-sm)] p-3">
-                    <p className="font-mono text-[11px] text-green">
-                      {c.certificateId}
-                    </p>
-                    <p className="text-[11px] text-text-dim">{ev?.title}</p>
-                    <p className="text-[10px] text-text-mute">
-                      {formatDateTime(c.issuedAt)}
-                    </p>
-                    <Link
-                      href={`/verify/certificate/${c.certificateId}`}
-                      className="mt-1 inline-block text-[10px] uppercase text-cyan hover:text-magenta"
-                    >
-                      Verify →
-                    </Link>
-                  </li>
+                  <div
+                    key={c.id}
+                    className="flex flex-col justify-between rounded-xl border border-border/80 bg-bg/60 p-4 transition hover:bg-bg hover:shadow-xs hover:border-[var(--accent)]/50"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-[family-name:var(--font-mono)] text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                          {c.certificateId}
+                        </span>
+                        <Badge tone="green">Verified</Badge>
+                      </div>
+
+                      <h4 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text line-clamp-2">
+                        {ev?.title ?? "Official Event Certificate"}
+                      </h4>
+
+                      <p className="text-[11px] text-text-mute">
+                        Issued on {formatDateTime(c.issuedAt)}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-text-dim">
+                        Public Verification
+                      </span>
+                      <Link
+                        href={`/verify/certificate/${c.certificateId}`}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)] hover:underline"
+                      >
+                        <span>Verify</span>
+                        <ExternalLink size={12} />
+                      </Link>
+                    </div>
+                  </div>
                 );
               })}
-            </ul>
+            </div>
           )}
-        </TerminalPanel>
+        </div>
+      )}
 
-        {/* Projects */}
-        <TerminalPanel title="projects" accent="orange">
-          {projects.length === 0 ? (
-            <p className="text-[12px] text-text-dim">{"// No active projects"}</p>
-          ) : (
-            <ul className="space-y-2">
-              {projects.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex justify-between border-b border-border pb-2 text-[12px]"
+      {/* TAB 3: EOS JOURNEY & ENGAGEMENT */}
+      {activeTab === "journey" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 space-y-6">
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <h3 className="font-[family-name:var(--font-display)] text-[16px] font-bold text-text border-b border-border/60 pb-3">
+                EOS Community Progression
+              </h3>
+              <p className="text-[13px] text-text-dim leading-relaxed">
+                Progression is earned through active participation in peer labs, workshops, and student innovation clusters.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div className="rounded-xl border border-border bg-bg/50 p-3.5 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-text-mute">Community Tier</span>
+                  <p className="text-[16px] font-bold text-text">
+                    {communityTiers.find(
+                      (t: { key?: string; tier?: string; label?: string }) =>
+                        t.key === derived.engagementTier || t.tier === derived.engagementTier,
+                    )?.label ?? "Everyone"}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border bg-bg/50 p-3.5 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-text-mute">Journey Stage</span>
+                  <p className="text-[16px] font-bold text-text">
+                    {journeyStages.find(
+                      (s: { key?: string; stage?: string; label?: string }) =>
+                        s.key === derived.journeyStage || s.stage === derived.journeyStage,
+                    )?.label ?? "Awareness"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 text-[12px] text-text-mute space-y-1">
+                <p>• <strong>Workshop check-in:</strong> Participant</p>
+                <p>• <strong>Consistent activity:</strong> Active</p>
+                <p>• <strong>Cluster invite accepted:</strong> Cluster Member</p>
+                <p>• <strong>Leadership term:</strong> Campus Executive</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 space-y-6">
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text border-b border-border/60 pb-3">
+                Executive Activity Index
+              </h3>
+
+              <ProgressBar
+                value={Math.min(100, profile.points / 20)}
+                label="Activity Score"
+                accent="green"
+              />
+
+              <div className="rounded-xl bg-bg border border-border p-3 space-y-1 text-[11px] text-text-dim font-mono">
+                <p>Score = tasks × 12 + events × 18 + reports × 15 + attendance × 10</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: INTEGRATIONS & SETUP */}
+      {activeTab === "settings" && canEdit && (
+        <div className="space-y-6">
+          {/* Discord Bot Integration Card */}
+          <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5865F2]/10 text-[#5865F2]">
+                  <DiscordIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                    Discord Account Verification
+                  </h3>
+                  <p className="text-[12px] text-text-mute">
+                    Link your Discord account to sync verified roles and announcements.
+                  </p>
+                </div>
+              </div>
+              {isDiscordConnected ? (
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 text-xs font-bold">
+                  Connected
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-2.5 py-0.5 text-xs font-bold">
+                  Action Required
+                </span>
+              )}
+            </div>
+
+            {isDiscordConnected ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl bg-bg p-4 border border-border">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5865F2] text-white">
+                    <DiscordIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-[14px] text-text">
+                      @{profile.discordUsername?.replace(/^@/, "") || "member"}
+                    </p>
+                    {profile.discordUserId && (
+                      <p className="font-mono text-[11px] text-text-mute">
+                        ID: {profile.discordUserId}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setUnlinkConfirmOpen(true)}
+                  className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 gap-1.5"
                 >
-                  <span>{p.title}</span>
-                  <Badge tone="cyan">{p.stage}</Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </TerminalPanel>
-      </div>
+                  <Unlink size={13} />
+                  <span>Disconnect</span>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-text-dim">
+                  Run <code className="font-mono font-bold text-text bg-bg px-2 py-0.5 rounded border border-border">/connect</code> in the Elevates Discord server, then paste the 6-character code below:
+                </p>
 
-      {/* Comprehensive Profile Setup & Edit Modal Dialog */}
+                <form onSubmit={handleVerifyOtp} className="flex flex-wrap items-center gap-3 max-w-md">
+                  <Input
+                    type="text"
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={(e) => {
+                      setOtpInput(e.target.value.trim().slice(0, 6));
+                      if (otpError) setOtpError(null);
+                    }}
+                    placeholder="6-character code"
+                    className="w-48 h-10 text-center font-mono font-bold text-base tracking-widest uppercase bg-bg"
+                    disabled={isVerifyingOtp}
+                  />
+
+                  <Button
+                    type="submit"
+                    variant="orange"
+                    disabled={isVerifyingOtp || otpInput.trim().length !== 6}
+                    className="h-10 font-bold text-xs gap-2"
+                  >
+                    {isVerifyingOtp ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={14} />
+                        <span>Verify</span>
+                      </>
+                    )}
+                  </Button>
+                </form>
+
+                {otpError && (
+                  <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 max-w-md">
+                    {otpError}
+                  </p>
+                )}
+                {otpSuccess && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 max-w-md">
+                    {otpSuccess}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Class Division Selection Card */}
+          {profile.chapterId && (
+            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
+              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  Class Division & Cohort
+                </h3>
+                {studentHasClassSet(profile) ? (
+                  <Badge tone="green">Assigned</Badge>
+                ) : (
+                  <Badge tone="orange">Required</Badge>
+                )}
+              </div>
+
+              <div className="max-w-md space-y-3">
+                <FieldLabel>Select Your Class Division</FieldLabel>
+                <Select
+                  value={cohortId}
+                  onChange={(e) => setCohortIdOverride(e.target.value)}
+                  className="bg-bg"
+                >
+                  <option value="">Select class division…</option>
+                  {chapterCohorts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {cohortLabel(c)}
+                    </option>
+                  ))}
+                </Select>
+
+                <div className="pt-2 flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={saveClass}
+                    disabled={!selectedCohort}
+                  >
+                    Save Division
+                  </Button>
+                  {canSeeClassesLink && chapter && (
+                    <Link href={`/chapter/${chapter.slug}/classes`}>
+                      <Button variant="ghost" size="sm">Manage Classes</Button>
+                    </Link>
+                  )}
+                  {savedFlash && (
+                    <span className="text-xs text-emerald-600 font-bold">Saved!</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Profile Edit Dialog */}
       <Dialog
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="Member Profile Setup"
-        description="Configure your official member profile, academic year, technical skills, and Discord bot connection."
+        title="Edit Profile"
+        description="Configure your official member profile, academic details, and technical skills."
       >
         <form onSubmit={handleSaveProfile} className="space-y-5 pt-2">
           {/* Section 1: Non-Editable Institutional Credentials */}
@@ -1316,12 +1437,9 @@ export default function ProfilePage({
                 />
                 <Lock size={13} className="absolute left-2.5 top-3 text-text-mute" />
               </div>
-              <p className="mt-1 text-[11px] text-text-mute">
-                Email address cannot be changed as it is permanently linked to your verified authentication account.
-              </p>
             </div>
 
-            {/* Chapter / College Name (Non-editable, based on joined chapter) */}
+            {/* Chapter / College Name (Non-editable) */}
             <div>
               <FieldLabel className="flex items-center justify-between">
                 <span>Joined Campus Chapter</span>
@@ -1340,20 +1458,11 @@ export default function ProfilePage({
                 />
                 <Building2 size={13} className="absolute left-2.5 top-3 text-text-mute" />
               </div>
-              <p className="mt-1 text-[11px] text-text-mute">
-                Chapter membership is governed by campus leads and admissions. It cannot be altered manually in your profile.
-              </p>
             </div>
           </div>
 
           {/* Section 2: Personal & Academic Details */}
           <div className="space-y-3.5">
-            <div className="border-b border-border pb-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-text">
-                Personal & Academic Details
-              </span>
-            </div>
-
             <div>
               <FieldLabel>Full Name *</FieldLabel>
               <Input
@@ -1365,7 +1474,6 @@ export default function ProfilePage({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Academic Year Dropdown */}
               <div className="sm:col-span-1">
                 <FieldLabel>Academic Year *</FieldLabel>
                 <Select
@@ -1384,7 +1492,6 @@ export default function ProfilePage({
                 </Select>
               </div>
 
-              {/* Department */}
               <div className="sm:col-span-1">
                 <FieldLabel>Department</FieldLabel>
                 <Input
@@ -1394,7 +1501,6 @@ export default function ProfilePage({
                 />
               </div>
 
-              {/* Section */}
               <div className="sm:col-span-1">
                 <FieldLabel>Section (optional)</FieldLabel>
                 <Input
@@ -1408,50 +1514,27 @@ export default function ProfilePage({
             <div>
               <FieldLabel>Bio / Tagline</FieldLabel>
               <TextArea
-                rows={2}
                 value={editBio}
                 onChange={(e) => setEditBio(e.target.value)}
-                placeholder="A short tagline about your craft, goals, or passion..."
+                placeholder="Tell the community about what you build and what you are learning..."
+                rows={2}
+              />
+            </div>
+
+            <div>
+              <FieldLabel>Phone Number</FieldLabel>
+              <Input
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="+91 98765 43210"
               />
             </div>
           </div>
 
-          {/* Section 3: Technical Skills Tag Manager */}
+          {/* Section 3: Technical Skills */}
           <div className="space-y-3">
-            <div className="border-b border-border pb-1.5 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-text">
-                Technical Skills ({skillsList.length})
-              </span>
-              <span className="text-[11px] text-text-dim">Add tags representing your stack</span>
-            </div>
-
-            {/* Active Skills Chips */}
-            <div className="min-h-[44px] rounded-xl border border-border bg-bg/40 p-2.5 flex flex-wrap items-center gap-1.5">
-              {skillsList.length === 0 ? (
-                <span className="text-xs text-text-mute italic">
-                  No skills selected yet. Type a skill below or click suggested tags.
-                </span>
-              ) : (
-                skillsList.map((skill) => (
-                  <span
-                    key={skill}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)]/15 border border-[var(--accent)]/30 px-2.5 py-1 text-xs font-bold text-[var(--accent)]"
-                  >
-                    <span>{skill}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSkill(skill)}
-                      className="hover:text-red-500 rounded-full p-0.5"
-                    >
-                      <X size={12} />
-                    </button>
-                  </span>
-                ))
-              )}
-            </div>
-
-            {/* Add Custom Skill Input */}
-            <div className="flex items-center gap-2">
+            <FieldLabel>Technical Skills</FieldLabel>
+            <div className="flex gap-2">
               <Input
                 value={newSkillInput}
                 onChange={(e) => setNewSkillInput(e.target.value)}
@@ -1461,366 +1544,180 @@ export default function ProfilePage({
                     handleAddSkill();
                   }
                 }}
-                placeholder="Type a skill (e.g. Docker, Rust, Swift) and press Add..."
-                className="text-xs"
+                placeholder="Type skill & press Enter..."
               />
               <Button
                 type="button"
                 variant="secondary"
-                size="sm"
                 onClick={() => handleAddSkill()}
-                className="shrink-0 flex items-center gap-1 text-xs font-semibold"
+                disabled={!newSkillInput.trim()}
               >
-                <Plus size={14} />
                 Add
               </Button>
             </div>
 
-            {/* Popular Skill Suggestions */}
-            <div>
-              <p className="text-[10px] uppercase font-bold tracking-wider text-text-mute mb-1.5">
-                Quick Add Suggestions:
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {POPULAR_SKILL_SUGGESTIONS.map((sug) => {
-                  const alreadyAdded = skillsList.some(
-                    (s) => s.toLowerCase() === sug.toLowerCase(),
-                  );
-                  return (
-                    <button
-                      key={sug}
-                      type="button"
-                      disabled={alreadyAdded}
-                      onClick={() => handleAddSkill(sug)}
-                      className={`text-[11px] px-2 py-0.5 rounded-md border transition-all ${
-                        alreadyAdded
-                          ? "bg-bg/20 text-text-mute border-border/40 cursor-default opacity-50"
-                          : "bg-bg hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] hover:border-[var(--accent)]/40 text-text-dim border-border cursor-pointer font-medium"
-                      }`}
-                    >
-                      {alreadyAdded ? `✓ ${sug}` : `+ ${sug}`}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {skillsList.map((skill) => (
+                <span
+                  key={skill}
+                  className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-semibold text-[var(--accent)]"
+                >
+                  <span>{skill}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSkill(skill)}
+                    className="hover:opacity-75 cursor-pointer"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
             </div>
 
-            <div>
-              <FieldLabel>Interests (comma separated)</FieldLabel>
+            <div className="flex flex-wrap items-center gap-1 pt-1 text-[11px] text-text-mute">
+              <span>Popular:</span>
+              {POPULAR_SKILL_SUGGESTIONS.slice(0, 6).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => handleAddSkill(s)}
+                  className="rounded px-1.5 py-0.5 hover:bg-bg border border-border text-[10px] cursor-pointer"
+                >
+                  +{s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section 4: Web & Social Links */}
+          <div className="space-y-3 pt-2 border-t border-border">
+            <FieldLabel>Web & Social Links</FieldLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Input
-                value={editInterests}
-                onChange={(e) => setEditInterests(e.target.value)}
-                placeholder="Web3, Open Source, System Design, Robotics"
-                className="text-xs"
+                value={editGithub}
+                onChange={(e) => setEditGithub(e.target.value)}
+                placeholder="GitHub URL"
+              />
+              <Input
+                value={editLinkedin}
+                onChange={(e) => setEditLinkedin(e.target.value)}
+                placeholder="LinkedIn URL"
+              />
+              <Input
+                value={editPortfolio}
+                onChange={(e) => setEditPortfolio(e.target.value)}
+                placeholder="Portfolio URL"
               />
             </div>
           </div>
 
-          {/* Section 4: Discord Bot Integration Notice */}
-          <div className="rounded-xl border border-[#5865F2]/25 bg-[#5865F2]/5 p-3.5 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <DiscordIcon className="w-4 h-4 text-[#5865F2] shrink-0" />
-              <div>
-                <span className="font-semibold text-text">Discord Bot Verification: </span>
-                <span className="text-text-dim">
-                  {isDiscordConnected
-                    ? `Linked as @${(profile.discordUsername || "member").replace(/^@/, "")}`
-                    : "Securely linked via 6-digit OTP on your profile"}
-                </span>
-              </div>
-            </div>
-            <span
-              className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                isDiscordConnected
-                  ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
-                  : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
-              }`}
+          <div className="flex justify-end gap-2 pt-4 border-t border-border">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setEditOpen(false)}
             >
-              {isDiscordConnected ? "Linked" : "OTP Pending"}
-            </span>
-          </div>
-
-          {/* Section 5: Contact & Portfolio Links */}
-          <div className="space-y-3 border-t border-border pt-3">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-text">
-              Contact & Portfolio Links
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="flex items-center justify-between">
-                  <FieldLabel>Phone (optional)</FieldLabel>
-                  {editPhone.length > 0 && (
-                    <span className="text-[11px] font-mono text-text-muted">
-                      {editPhone.length}/10
-                    </span>
-                  )}
-                </div>
-                <Input
-                  type="tel"
-                  inputMode="numeric"
-                  value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                  placeholder="10-digit mobile number"
-                  maxLength={10}
-                />
-              </div>
-              <div>
-                <FieldLabel>Portfolio / Website URL</FieldLabel>
-                <Input
-                  value={editPortfolio}
-                  onChange={(e) => setEditPortfolio(e.target.value)}
-                  placeholder="https://yourportfolio.com"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>GitHub URL</FieldLabel>
-                <Input
-                  value={editGithub}
-                  onChange={(e) => setEditGithub(e.target.value)}
-                  placeholder="https://github.com/username"
-                />
-              </div>
-              <div>
-                <FieldLabel>LinkedIn URL</FieldLabel>
-                <Input
-                  value={editLinkedin}
-                  onChange={(e) => setEditLinkedin(e.target.value)}
-                  placeholder="https://linkedin.com/in/username"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2.5 border-t border-border pt-4">
-            <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" variant="orange" className="font-bold">
-              Save Profile
+            <Button type="submit" variant="orange">
+              Save Changes
             </Button>
           </div>
         </form>
       </Dialog>
 
-      <TypeConfirmModal
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        title="Delete User Profile"
-        description={`Are you sure you want to permanently delete profile for "${profile.fullName}" (${profile.email})? This action cannot be undone.`}
-        confirmWord="DELETE"
-        actionLabel="Delete User"
-        onConfirm={() => {
-          deleteUser(profile.id);
-          router.push("/hq/users");
-        }}
-      />
-
-      {/* Disconnect Discord Confirmation Modal */}
-      <Dialog
-        open={unlinkConfirmOpen}
-        onClose={() => setUnlinkConfirmOpen(false)}
-        title="Disconnect Discord Account"
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-text-dim leading-relaxed">
-            Are you sure you want to disconnect your Discord account (<span className="font-mono text-text font-semibold">@{profile.discordUsername || "member"}</span>) from Elevates OS?
-          </p>
-          <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 leading-relaxed space-y-1">
-            <p className="font-semibold flex items-center gap-1.5">
-              <span>⚠️</span> Impact on Discord Roles:
-            </p>
-            <p>
-              Disconnecting will unbind your account and remove your verified member roles, cluster channel access, and automated event check-in alerts in the Elevates Discord server.
-            </p>
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-2 border-t border-border">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setUnlinkConfirmOpen(false)}
-              disabled={isUnlinking}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              onClick={handleUnlinkDiscord}
-              disabled={isUnlinking}
-              className="font-bold flex items-center gap-1.5"
-            >
-              {isUnlinking ? (
-                <>
-                  <Loader2 size={13} className="animate-spin" />
-                  <span>Disconnecting...</span>
-                </>
-              ) : (
-                <>
-                  <Unlink size={13} />
-                  <span>Disconnect</span>
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      {/* Email Verification Modal Dialog */}
+      {/* Email Verification OTP Modal */}
       <Dialog
         open={emailVerifyModalOpen}
         onClose={() => setEmailVerifyModalOpen(false)}
-        title="Verify Account Email"
-        description="Confirm your email address to ensure account authenticity and receive official chapter updates."
+        title="Verify Email Address"
+        description={`We verify email addresses to secure credentials and official chapter communications.`}
       >
         <div className="space-y-4 pt-2">
-          {/* Target email chip */}
-          <div className="flex items-center justify-between rounded-xl border border-border bg-bg/60 p-3">
-            <div className="flex items-center gap-2">
-              <Mail size={16} className="text-[var(--accent)]" />
-              <span className="font-mono text-xs font-semibold text-text">
-                {profile.email}
-              </span>
-            </div>
-            {profile.emailVerified ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 border border-emerald-200">
-                <CheckCircle2 size={12} className="text-emerald-600" />
-                Verified
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 border border-amber-200">
-                Unverified
-              </span>
-            )}
+          <div className="rounded-xl border border-border bg-bg/50 p-4 space-y-2">
+            <p className="text-xs text-text-mute font-mono">Target Email</p>
+            <p className="font-bold text-sm text-text font-mono">{profile.email}</p>
           </div>
 
-          {profile.emailVerified ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 text-center space-y-2">
-              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
-              <h4 className="text-sm font-bold text-emerald-900">Email Address Verified</h4>
-              <p className="text-xs text-emerald-700">
-                Your email address ({profile.email}) is officially verified and confirmed.
-              </p>
-              <div className="pt-2">
+          {emailVerifyStatus !== "success" ? (
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="orange"
+                onClick={handleSendVerificationEmail}
+                disabled={isSendingVerification || emailResendCooldown > 0}
+                className="w-full justify-center"
+              >
+                {isSendingVerification ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : emailResendCooldown > 0 ? (
+                  `Resend Code in ${emailResendCooldown}s`
+                ) : (
+                  "Send Verification Code"
+                )}
+              </Button>
+
+              <form onSubmit={handleConfirmEmailOtp} className="space-y-3 pt-2 border-t border-border">
+                <FieldLabel>Enter 6-Digit Verification Code</FieldLabel>
+                <Input
+                  value={emailOtpInput}
+                  onChange={(e) => setEmailOtpInput(e.target.value)}
+                  placeholder="123456"
+                  maxLength={6}
+                  className="text-center font-mono text-lg tracking-widest"
+                />
                 <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setEmailVerifyModalOpen(false)}
+                  type="submit"
+                  variant="primary"
+                  disabled={isVerifyingEmailOtp || emailOtpInput.trim().length !== 6}
+                  className="w-full justify-center"
                 >
-                  Close
+                  {isVerifyingEmailOtp ? <Loader2 size={14} className="animate-spin" /> : "Confirm Code"}
                 </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <p className="text-xs text-text-dim leading-relaxed">
-                Click below to send a verification email to <span className="font-semibold text-text">{profile.email}</span>. You can verify by clicking the link in your inbox, or by entering the 6-digit code below.
-              </p>
-
-              {/* Action 1: Send / Resend Email */}
-              <div className="flex items-center justify-between gap-2 rounded-lg bg-bg/40 p-2.5 border border-border">
-                <span className="text-xs text-text-dim font-medium">
-                  Verification email
-                </span>
-                <Button
-                  type="button"
-                  variant="orange"
-                  size="sm"
-                  onClick={handleSendVerificationEmail}
-                  disabled={isSendingVerification || emailResendCooldown > 0}
-                  className="font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isSendingVerification ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : emailResendCooldown > 0 ? (
-                    <span>Resend in {emailResendCooldown}s</span>
-                  ) : (
-                    <>
-                      <Mail size={13} />
-                      <span>Send Verification Email</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Status messages */}
-              {emailVerifyMessage && (
-                <div
-                  className={`rounded-lg p-3 text-xs ${
-                    emailVerifyStatus === "success"
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                      : emailVerifyStatus === "error"
-                      ? "bg-red-50 text-red-600 border border-red-200"
-                      : "bg-blue-50 text-blue-700 border border-blue-200"
-                  }`}
-                >
-                  {emailVerifyMessage}
-                </div>
-              )}
-
-              {/* Action 2: Enter 6-digit code */}
-              <form onSubmit={handleConfirmEmailOtp} className="space-y-3 pt-1">
-                <div>
-                  <FieldLabel className="text-xs font-semibold">
-                    Enter 6-digit verification code (from email)
-                  </FieldLabel>
-                  <div className="relative mt-1">
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={emailOtpInput}
-                      onChange={(e) => setEmailOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="••••••"
-                      maxLength={6}
-                      className="h-11 text-center font-mono text-xl font-bold tracking-[0.3em] bg-bg"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setEmailVerifyModalOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    variant="orange"
-                    size="sm"
-                    disabled={isVerifyingEmailOtp || emailOtpInput.trim().length !== 6}
-                    className="font-semibold text-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    {isVerifyingEmailOtp ? (
-                      <>
-                        <Loader2 size={13} className="animate-spin" />
-                        <span>Verifying...</span>
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={13} />
-                        <span>Confirm Code</span>
-                      </>
-                    )}
-                  </Button>
-                </div>
               </form>
             </div>
+          ) : null}
+
+          {emailVerifyMessage && (
+            <p
+              className={cn(
+                "text-xs p-3 rounded-lg border",
+                emailVerifyStatus === "error"
+                  ? "bg-rose-500/10 border-rose-500/20 text-rose-600"
+                  : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 font-semibold",
+              )}
+            >
+              {emailVerifyMessage}
+            </p>
           )}
         </div>
       </Dialog>
+
+      {/* Disconnect Discord Confirmation Modal */}
+      <TypeConfirmModal
+        open={unlinkConfirmOpen}
+        onClose={() => setUnlinkConfirmOpen(false)}
+        onConfirm={handleUnlinkDiscord}
+        title="Disconnect Discord Account"
+        description="Are you sure you want to unlink your Discord account? You will lose Discord bot synced roles and commands until reconnected."
+        confirmWord="DISCONNECT"
+        actionLabel="Disconnect Account"
+      />
+
+      {/* Delete User Modal (HQ admin only) */}
+      <TypeConfirmModal
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={async () => {
+          if (!profile) return;
+          await deleteUser(profile.id);
+          router.push("/hq/users");
+        }}
+        title={`Delete User: ${profile.fullName}`}
+        description="This will permanently delete this profile, removing their credentials, roles, and permissions across the entire platform. This action cannot be undone."
+        confirmWord="DELETE"
+        actionLabel="Delete User Permanently"
+      />
     </div>
   );
 }

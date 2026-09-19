@@ -217,6 +217,9 @@ export function navGroupsForRole(
           },
           { href: `${base}/reports`, label: "Reports", icon: I.reports },
           { href: `${base}/resources`, label: "Resources", icon: I.resources },
+          ...(roleKey === "campus_lead" && slug
+            ? [{ href: `${base}/settings`, label: "Settings", icon: I.settings }]
+            : []),
         ],
       },
       {

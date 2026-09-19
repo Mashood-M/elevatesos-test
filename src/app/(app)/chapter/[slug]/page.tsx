@@ -137,52 +137,26 @@ export default function ChapterDashboardPage({
     .slice(0, 5);
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         eyebrow={
           isStudent ? "Explore" : chapterEyebrow(session.roleKey, "home")
         }
         title={chapter.name}
+        badge={
+          <Badge tone={chapter.status === "active" ? "green" : chapter.status === "onboarding" ? "orange" : "mute"}>
+            {chapter.status}
+          </Badge>
+        }
         description={
           isStudent
             ? `${chapter.college} · explore events, clusters, and projects`
-            : `${chapter.college} · ${chapter.city} · lead the chapter from here`
-        }
-        actions={
-          <div className="flex flex-nowrap gap-2 overflow-x-auto pb-0.5">
-            {showOps ? (
-              <>
-                <Link href={`/chapter/${slug}/calendar`}>
-                  <Button variant="orange">Calendar</Button>
-                </Link>
-                <Link
-                  href={
-                    canCreateEvent
-                      ? `/chapter/${slug}/events?create=1`
-                      : `/chapter/${slug}/events`
-                  }
-                >
-                  <Button variant="ghost">
-                    {canCreateEvent ? "Create event" : "Events"}
-                  </Button>
-                </Link>
-                <Link href={`/chapter/${slug}/settings`}>
-                  <Button variant="ghost">Settings</Button>
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href={`/chapter/${slug}/events`}>
-                  <Button variant="orange">Events</Button>
-                </Link>
-              </>
-            )}
-          </div>
+            : `${chapter.college} · ${chapter.city} · chapter operations and growth`
         }
       />
 
       {isStudent && !session.chapterId && (
-        <div className="mb-6 rounded-[14px] border border-[var(--accent)] bg-bg-panel p-4 shadow-[var(--shadow-sm)]">
+        <div className="mb-6 rounded-[14px] border border-[var(--accent)]/40 bg-bg-panel p-4 shadow-[var(--shadow-sm)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-text">
@@ -199,23 +173,37 @@ export default function ChapterDashboardPage({
       )}
 
       {showOps ? (
-        <SectionGrid className="mb-6">
-          <Stat
-            label="Activity score"
-            value={`${activityScore}%`}
-            hint={chapter.status.replaceAll("_", " ")}
-            accent="orange"
-          />
-          <Stat label="Members" value={members.length} accent="cyan" />
-          <Stat label="Events" value={events.length} />
-          <Stat label="Clusters" value={clusters.length} />
-        </SectionGrid>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Link href={`/chapter/${slug}/analytics`} className="block transition hover:opacity-90">
+            <Stat
+              label="Activity Score"
+              value={`${activityScore}%`}
+              hint={chapter.status.replaceAll("_", " ")}
+              accent="orange"
+            />
+          </Link>
+          <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
+            <Stat label="Members" value={members.length} hint="Student roster →" />
+          </Link>
+          <Link href={`/chapter/${slug}/events`} className="block transition hover:opacity-90">
+            <Stat label="Events" value={events.length} hint="Active & scheduled →" />
+          </Link>
+          <Link href={`/chapter/${slug}/clusters`} className="block transition hover:opacity-90">
+            <Stat label="Clusters" value={clusters.length} hint="Domain tracks →" />
+          </Link>
+        </div>
       ) : (
-        <SectionGrid className="mb-6">
-          <Stat label="Members" value={members.length} accent="cyan" hint="Registered in chapter" />
-          <Stat label="Events" value={events.length} accent="orange" hint="Active & upcoming" />
-          <Stat label="Clusters" value={clusters.length} accent="magenta" hint="Domain tracks" />
-        </SectionGrid>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
+            <Stat label="Members" value={members.length} hint="Registered in chapter →" />
+          </Link>
+          <Link href={`/chapter/${slug}/events`} className="block transition hover:opacity-90">
+            <Stat label="Events" value={events.length} accent="orange" hint="Active & upcoming →" />
+          </Link>
+          <Link href={`/chapter/${slug}/clusters`} className="block transition hover:opacity-90">
+            <Stat label="Clusters" value={clusters.length} hint="Domain tracks →" />
+          </Link>
+        </div>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
@@ -284,18 +272,13 @@ export default function ChapterDashboardPage({
             )}
             {upcoming.length === 0 ? (
               <p className="text-[13px] text-text-dim">
-                No upcoming events.
-                {showOps ? (
-                  <>
-                    {" "}
-                    <Link
-                      href={`/chapter/${slug}/calendar`}
-                      className="text-[var(--accent)] hover:underline"
-                    >
-                      Schedule one
-                    </Link>
-                  </>
-                ) : null}
+                No upcoming events scheduled.{" "}
+                <Link
+                  href={`/chapter/${slug}/events`}
+                  className="text-[var(--accent)] font-semibold hover:underline"
+                >
+                  View events directory →
+                </Link>
               </p>
             ) : (
               <div className="space-y-3">

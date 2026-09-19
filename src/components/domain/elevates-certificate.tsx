@@ -6,6 +6,7 @@ import QRCode from "react-qr-code";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, ExternalLink, ShieldCheck, Check } from "lucide-react";
 import Link from "next/link";
+import { exportCertificateAsPptx } from "@/lib/certificates/pptx";
 
 export interface ElevatesCertificateProps {
   // Recipient & Core Info
@@ -89,9 +90,51 @@ export function ElevatesCertificate({
       ? `has actively participated and successfully completed the "${eventTitle}" hosted by ${chapterName || "Elevates"}, demonstrating dedication, curiosity, and a commitment to learning, building, and creating a higher tomorrow.`
       : `has been an active member of Elevates and has demonstrated dedication, curiosity, and a commitment to learning, building, and creating a better tomorrow.`);
 
+  const [isExportingPptx, setIsExportingPptx] = React.useState(false);
+
   function handlePrint() {
     if (typeof window !== "undefined") {
       window.print();
+    }
+  }
+
+  async function handleDownloadPptx() {
+    try {
+      setIsExportingPptx(true);
+      await exportCertificateAsPptx(
+        {
+          id: certificateId,
+          name: `${recipientName} Certificate`,
+          mainTitle,
+          subTitle: displaySubtitle,
+          preamble,
+          achievement,
+          description: displayDescription,
+          signatory1Name,
+          signatory1Role,
+          signatory1Org,
+          signatory1SignatureUrl,
+          signatory2Name,
+          signatory2Role,
+          signatory2Org,
+          signatory2SignatureUrl,
+          bottomLeftText,
+          bottomRightText,
+          showGridPattern,
+        },
+        {
+          recipientName,
+          eventTitle,
+          chapterName,
+          institutionName,
+          certificateId,
+          filename: `${recipientName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Certificate.pptx`,
+        }
+      );
+    } catch (err) {
+      console.error("Failed to download PPTX certificate:", err);
+    } finally {
+      setIsExportingPptx(false);
     }
   }
 
@@ -113,6 +156,17 @@ export function ElevatesCertificate({
             >
               <ExternalLink size={13} /> Verify Public Page
             </Link>
+
+            <Button
+              variant="secondary"
+              onClick={handleDownloadPptx}
+              disabled={isExportingPptx}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-neutral-200 bg-white hover:bg-neutral-50 text-neutral-800"
+              title="Download editable PowerPoint presentation"
+            >
+              <Download size={14} className={isExportingPptx ? "animate-bounce" : "text-[#f26430]"} />
+              <span>Download PPTX</span>
+            </Button>
 
             <Button
               variant="orange"

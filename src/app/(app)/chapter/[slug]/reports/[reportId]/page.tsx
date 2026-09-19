@@ -7,6 +7,7 @@ import type { SaveState } from "@/components/domain/document-editor";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { isUserAppointedVolunteerForEvent } from "@/lib/volunteers";
 import { downloadReportDocx } from "@/lib/reports/docx-export";
 import { formatDateTime } from "@/lib/utils";
 
@@ -30,6 +31,10 @@ export default function ChapterReportDocumentPage({
   const isFaculty = isFacultyRole(session.roleKey);
   const isHq = isHqRole(session.roleKey);
 
+  const isVolunteerForEvent = report?.eventId
+    ? isUserAppointedVolunteerForEvent(store, session.userId, report.eventId)
+    : false;
+
   const editable = useMemo(() => {
     if (!report) return false;
     if (isFaculty) return false;
@@ -46,9 +51,12 @@ export default function ChapterReportDocumentPage({
         report.status === "draft" || report.status === "changes_requested"
       );
     }
+    if (isVolunteerForEvent) {
+      return report.status === "draft" || report.status === "changes_requested";
+    }
     if (!canSubmit) return false;
     return report.status === "draft" || report.status === "changes_requested";
-  }, [report, isFaculty, isHq, canSubmit]);
+  }, [report, isFaculty, isHq, canSubmit, isVolunteerForEvent]);
 
   if (!chapter) return <p className="text-[var(--accent)]">Chapter not found</p>;
   if (!report || report.chapterId !== chapter.id) {
@@ -121,7 +129,7 @@ export default function ChapterReportDocumentPage({
       libraryLabel="Library"
       exportLabel={isFaculty ? "Download for college" : "Export .docx"}
       showSubmit={Boolean(
-        canSubmit &&
+        (canSubmit || isVolunteerForEvent) &&
           editable &&
           (currentReport.status === "draft" ||
             currentReport.status === "changes_requested"),
@@ -132,7 +140,9 @@ export default function ChapterReportDocumentPage({
         type: currentReport.type,
         chapterName: currentChapter.name,
         eventTitle: event?.title,
-        authorName: author?.fullName,
+        authorName: author
+          ? `${author.fullName}${isVolunteerForEvent ? " (Appointed Volunteer)" : ""}`
+          : undefined,
         updatedAt: currentReport.updatedAt
           ? formatDateTime(currentReport.updatedAt)
           : undefined,

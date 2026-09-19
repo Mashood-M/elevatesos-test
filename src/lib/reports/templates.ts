@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/datetime";
+import { extractEventReportAnalytics } from "@/lib/reports/feedback-analytics";
 import type { ElevatesStore, EventItem, ReportImage } from "@/types";
 
 export type StudentReportDetails = {
@@ -7,24 +8,36 @@ export type StudentReportDetails = {
   authorName: string;
   chapterName: string;
   images: ReportImage[];
+  leadDescription?: string;
+  goodComments?: string[];
+  badReviews?: string[];
+  isVolunteer?: boolean;
 };
 
-/** Build TipTap-friendly HTML for a student auto-generated event report. */
+/** Build TipTap-friendly HTML for an event report with attendance ratio, campus lead description, and good/bad reviews. */
 export function buildStudentEventReportHtml(
   store: ElevatesStore,
   event: EventItem,
   details: StudentReportDetails,
 ): { title: string; summary: string; bodyHtml: string } {
   const title = `${event.title} — Activity Report`;
-  const regs = store.registrations.filter((r) => r.eventId === event.id);
-  const approved = regs.filter((r) => r.status === "approved").length;
-  const attendance = store.attendance.filter((a) => a.eventId === event.id);
-  const present = attendance.filter(
-    (a) =>
-      a.status === "present" ||
-      a.status === "volunteer" ||
-      a.status === "speaker",
-  ).length;
+
+  // Extract real event analytics or use provided overrides
+  const analytics = extractEventReportAnalytics(store, event);
+
+  const leadDescription =
+    details.leadDescription?.trim() ||
+    analytics.campusLeadDescription;
+
+  const goodComments =
+    details.goodComments && details.goodComments.length > 0
+      ? details.goodComments
+      : analytics.feedback.goodComments;
+
+  const badReviews =
+    details.badReviews && details.badReviews.length > 0
+      ? details.badReviews
+      : analytics.feedback.badReviews;
 
   const summary =
     details.outcomes.trim() ||
@@ -37,22 +50,46 @@ export function buildStudentEventReportHtml(
     )
     .join("");
 
+  const goodItemsHtml = goodComments
+    .map((c) => `<li>${escapeHtml(c)}</li>`)
+    .join("");
+
+  const badItemsHtml = badReviews
+    .map((c) => `<li>${escapeHtml(c)}</li>`)
+    .join("");
+
+  const authorRoleSuffix = details.isVolunteer
+    ? " (Appointed Event Volunteer)"
+    : "";
+
   const bodyHtml = `
 <h1>${escapeHtml(title)}</h1>
 <p><strong>Chapter:</strong> ${escapeHtml(details.chapterName)} · <strong>Date:</strong> ${formatDate(event.startsAt)} · <strong>Venue:</strong> ${escapeHtml(event.venue || "TBD")}</p>
 <p><strong>Category:</strong> ${escapeHtml(event.category)} · <strong>Status:</strong> ${escapeHtml(event.status.replaceAll("_", " "))}</p>
-<h2>Summary</h2>
-<p>${escapeHtml(summary)}</p>
-<h2>Participation</h2>
-<p>Registrations: ${regs.length} (approved ${approved}). Attendance marked: ${present}${details.attendanceNote ? ` — ${escapeHtml(details.attendanceNote)}` : ""}.</p>
+
+<h2>Event Overview & Campus Lead Description</h2>
+<blockquote><p>${escapeHtml(leadDescription)}</p></blockquote>
+
+<h2>Attendance & Turnout Ratio</h2>
+<p><strong>Attendance Turnout:</strong> ${analytics.attendanceRatio.turnoutPercentage}% (${analytics.attendanceRatio.present} verified attendees out of ${analytics.attendanceRatio.approved || analytics.attendanceRatio.registered || 1} registered)${details.attendanceNote ? ` — <em>${escapeHtml(details.attendanceNote)}</em>` : ""}.</p>
+<p>Total Registered: ${analytics.attendanceRatio.registered} · Approved: ${analytics.attendanceRatio.approved} · Attendance Marked: ${analytics.attendanceRatio.present} · Capacity: ${event.capacity || "Open"}${analytics.attendanceRatio.isFullHouse ? " (Full House Reached)" : ""}.</p>
+
+<h2>Participant Feedback & Reviews</h2>
+<h3>Good Comments & Positive Praises</h3>
+<ul>${goodItemsHtml || "<li>Positive feedback received from attendees.</li>"}</ul>
+
+<h3>Critical Feedback & Areas for Improvement (Bad Reviews)</h3>
+<ul>${badItemsHtml || "<li>Constructive feedback noted for future iterations.</li>"}</ul>
+
+<h2>Key Outcomes & Highlights</h2>
+<p>${escapeHtml(details.outcomes.trim() || "Key outcomes, learnings, and next steps.")}</p>
+
+<h2>Photos</h2>
 ${
-  imageBlocks
-    ? `<h2>Photos</h2>${imageBlocks}`
-    : "<h2>Photos</h2><p><em>No photos attached.</em></p>"
+  imageBlocks || "<p><em>No photos attached.</em></p>"
 }
-<h2>Outcomes</h2>
-<p>${escapeHtml(details.outcomes.trim() || "Add key outcomes, learnings, and next steps.")}</p>
-<p><em>Prepared by ${escapeHtml(details.authorName)} · Elevates OS</em></p>
+
+<p><em>Prepared by ${escapeHtml(details.authorName)}${authorRoleSuffix} · Elevates OS</em></p>
 `.trim();
 
   return { title, summary, bodyHtml };

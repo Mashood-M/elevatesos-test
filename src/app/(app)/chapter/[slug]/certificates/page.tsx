@@ -13,6 +13,8 @@ import { isExecutiveRole, resolveChapter, chapterEyebrow } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ElevatesCertificate } from "@/components/domain/elevates-certificate";
+import { CertificateCanvaEditor } from "@/components/domain/certificate-canva-editor";
+import { exportCertificateAsPptx } from "@/lib/certificates/pptx";
 import { CertificateTemplate } from "@/types";
 import {
   DEFAULT_CERTIFICATE_TEMPLATES,
@@ -82,21 +84,7 @@ export default function ChapterCertificatesPage({
     return templates.find((t) => t.id === selectedTemplateId) || templates[0];
   }, [templates, selectedTemplateId]);
 
-  // Modals state
-  const [importTemplateModalOpen, setImportTemplateModalOpen] = useState(false);
-  const [editTemplateModalOpen, setEditTemplateModalOpen] = useState(false);
 
-  // Template Editing Form state
-  const [templateEditDraft, setTemplateEditDraft] = useState<CertificateTemplate>({
-    ...activeTemplate,
-  });
-
-  // Template Import File & Preset state
-  const [importJsonText, setImportJsonText] = useState("");
-  const [importError, setImportError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const sig1FileRef = useRef<HTMLInputElement>(null);
-  const sig2FileRef = useRef<HTMLInputElement>(null);
 
   // Chapter-scoped events
   const chapterEvents = useMemo(() => {
@@ -145,12 +133,7 @@ export default function ChapterCertificatesPage({
     showGridPattern?: boolean;
   } | null>(null);
 
-  // Synchronize edit draft when activeTemplate changes
-  useEffect(() => {
-    if (activeTemplate) {
-      setTemplateEditDraft({ ...activeTemplate });
-    }
-  }, [activeTemplate]);
+
 
   // 1. ATTENDANCE ISSUANCE DATA:
   const attendeesList = useMemo(() => {
@@ -273,138 +256,7 @@ export default function ChapterCertificatesPage({
     setTimeout(() => setNotification(null), 4000);
   }
 
-  // Handle Signature PNG Import / Upload
-  function handleSignatureUpload(
-    e: React.ChangeEvent<HTMLInputElement>,
-    signatoryKey: "signatory1SignatureUrl" | "signatory2SignatureUrl"
-  ) {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      setTemplateEditDraft((prev) => ({
-        ...prev,
-        [signatoryKey]: dataUrl,
-      }));
-      setNotification({
-        type: "success",
-        text: "Signature PNG imported successfully!",
-      });
-      setTimeout(() => setNotification(null), 3000);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  // Save changes from Edit Template modal
-  function handleSaveEditedTemplate() {
-    if (!templateEditDraft.name?.trim()) {
-      setNotification({ type: "error", text: "Template name cannot be empty." });
-      setTimeout(() => setNotification(null), 3000);
-      return;
-    }
-
-    saveCertificateTemplate(templateEditDraft);
-    const updated = getCertificateTemplates(chapter?.id);
-    setTemplates(updated);
-    setSelectedTemplateId(templateEditDraft.id);
-    setEditTemplateModalOpen(false);
-    setNotification({
-      type: "success",
-      text: `Template "${templateEditDraft.name}" updated successfully!`,
-    });
-    setTimeout(() => setNotification(null), 3500);
-  }
-
-  // Handle Importing Template from JSON File or Text
-  function handleImportTemplateFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const parsed = JSON.parse(content);
-        importParsedTemplate(parsed);
-      } catch (err: any) {
-        setImportError("Invalid JSON file format: " + err.message);
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function importParsedTemplate(data: any) {
-    try {
-      if (!data.name || !data.mainTitle) {
-        throw new Error("Template must contain at least 'name' and 'mainTitle'.");
-      }
-
-      const imported: CertificateTemplate = {
-        id: `tpl-import-${Date.now()}`,
-        name: data.name.trim(),
-        chapterId: chapter?.id,
-        isDefault: false,
-        mainTitle: data.mainTitle || "CERTIFICATE",
-        subTitle: data.subTitle || "O F   R E C O G N I T I O N",
-        preamble: data.preamble || "T H I S   I S   T O   C E R T I F Y   T H A T",
-        achievement: data.achievement || "Participation",
-        description: data.description || "",
-        signatory1Name: data.signatory1Name || "Dr. K. S. Radhakrishnan",
-        signatory1Role: data.signatory1Role || "P R I N C I P A L",
-        signatory1SignatureUrl: data.signatory1SignatureUrl || undefined,
-        signatory2Name: data.signatory2Name || "Prof. Ananya Sen",
-        signatory2Role: data.signatory2Role || "F A C U L T Y   A D V I S O R",
-        signatory2SignatureUrl: data.signatory2SignatureUrl || undefined,
-        bottomLeftText: data.bottomLeftText || "I D E A S   I N T O   I M P A C T",
-        bottomRightText: data.bottomRightText || "A   H I G H E R   T O M O R R O W",
-        showGridPattern: data.showGridPattern ?? true,
-        createdAt: new Date().toISOString(),
-      };
-
-      saveCertificateTemplate(imported);
-      const updated = getCertificateTemplates(chapter?.id);
-      setTemplates(updated);
-      setSelectedTemplateId(imported.id);
-      setImportTemplateModalOpen(false);
-      setImportError("");
-      setImportJsonText("");
-      setNotification({
-        type: "success",
-        text: `Template "${imported.name}" imported successfully!`,
-      });
-      setTimeout(() => setNotification(null), 3500);
-    } catch (err: any) {
-      setImportError(err.message || "Failed to parse imported template.");
-    }
-  }
-
-  function handleExportTemplate(tpl: CertificateTemplate) {
-    const jsonStr = JSON.stringify(tpl, null, 2);
-    const blob = new Blob([jsonStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${tpl.name.toLowerCase().replace(/[^a-z0-9]/g, "_")}_template.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function handleDeleteCurrentTemplate() {
-    if (activeTemplate.isDefault) {
-      setNotification({ type: "error", text: "Default template cannot be deleted." });
-      setTimeout(() => setNotification(null), 3000);
-      return;
-    }
-
-    deleteCertificateTemplate(activeTemplate.id);
-    const updated = getCertificateTemplates(chapter?.id);
-    setTemplates(updated);
-    setSelectedTemplateId(updated[0].id);
-    setNotification({ type: "success", text: "Custom template deleted." });
-    setTimeout(() => setNotification(null), 3000);
-  }
 
   function handleToggleRevoke(certId: string, currentRevoked = false) {
     const ok = revokeCertificate(certId, !currentRevoked);
@@ -443,11 +295,11 @@ export default function ChapterCertificatesPage({
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              onClick={() => setImportTemplateModalOpen(true)}
+              onClick={() => setActiveTab("designer")}
               className="text-xs sm:text-sm flex items-center gap-1.5 font-semibold border border-border/80"
             >
-              <FileUp size={14} />
-              <span>Import Template</span>
+              <Sparkles size={14} className="text-[#f26430]" />
+              <span>Canva PPTX Studio</span>
             </Button>
           </div>
         }
@@ -649,18 +501,10 @@ export default function ChapterCertificatesPage({
 
                 <Button
                   variant="ghost"
-                  onClick={() => setEditTemplateModalOpen(true)}
-                  className="text-xs flex items-center gap-1 text-neutral-700 hover:bg-neutral-100"
+                  onClick={() => setActiveTab("designer")}
+                  className="text-xs flex items-center gap-1.5 text-neutral-700 hover:bg-neutral-100"
                 >
-                  <Edit3 size={13} /> Edit Template
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  onClick={() => setImportTemplateModalOpen(true)}
-                  className="text-xs flex items-center gap-1 text-[#f26430] hover:bg-[#f26430]/10"
-                >
-                  <FileUp size={13} /> Import Template
+                  <Sparkles size={13} className="text-[#f26430]" /> Canva PPTX Studio
                 </Button>
               </div>
 
@@ -941,6 +785,24 @@ export default function ChapterCertificatesPage({
 
                             <Button
                               variant="ghost"
+                              onClick={() => {
+                                exportCertificateAsPptx(activeTemplate, {
+                                  recipientName: cert.recipientName,
+                                  eventTitle: cert.eventTitle,
+                                  chapterName: chapter.name,
+                                  institutionName: chapter.college || chapter.name,
+                                  certificateId: cert.certificateId,
+                                  filename: `${cert.recipientName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Certificate.pptx`,
+                                });
+                              }}
+                              className="text-xs px-2.5 py-1 flex items-center gap-1 text-neutral-700 hover:text-neutral-900"
+                              title="Download as PowerPoint presentation (.pptx)"
+                            >
+                              <Download size={13} className="text-[#f26430]" /> PPTX
+                            </Button>
+
+                            <Button
+                              variant="ghost"
                               onClick={() => handleCopyVerifyLink(cert.certificateId)}
                               className="text-xs px-2.5 py-1 flex items-center gap-1 text-neutral-700"
                               title="Copy Public Verification Link"
@@ -977,529 +839,30 @@ export default function ChapterCertificatesPage({
       )}
 
       {/* ─────────────────────────────────────────────────────────── */}
-      {/* TAB 3: DESIGNER & TEMPLATE MANAGER */}
+      {/* TAB 3: CANVA PPTX DESIGNER & TEMPLATE STUDIO */}
       {/* ─────────────────────────────────────────────────────────── */}
       {activeTab === "designer" && (
-        <div className="space-y-6">
-          {/* Template Switcher Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-neutral-200 shadow-sm">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-xs font-semibold text-neutral-800">Active Template:</span>
-              <Select
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="text-xs w-60 font-medium"
-              >
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} {t.isDefault ? "(Default)" : "(Custom)"}
-                  </option>
-                ))}
-              </Select>
-
-              <Button
-                variant="secondary"
-                onClick={() => setEditTemplateModalOpen(true)}
-                className="text-xs flex items-center gap-1.5"
-              >
-                <Edit3 size={14} /> Edit Template
-              </Button>
-
-              <Button
-                variant="ghost"
-                onClick={() => setImportTemplateModalOpen(true)}
-                className="text-xs flex items-center gap-1.5 text-[#f26430] hover:bg-[#f26430]/10"
-              >
-                <FileUp size={14} /> Import Template
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => handleExportTemplate(activeTemplate)}
-                className="text-xs flex items-center gap-1.5 text-neutral-700"
-                title="Export Template as JSON"
-              >
-                <Download size={13} /> Export JSON
-              </Button>
-
-              {!activeTemplate.isDefault && (
-                <Button
-                  variant="ghost"
-                  onClick={handleDeleteCurrentTemplate}
-                  className="text-xs text-red-600 hover:bg-red-50 flex items-center gap-1"
-                >
-                  <Trash2 size={13} /> Delete
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            {/* Template Information & Signature summary (1 column) */}
-            <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm space-y-4">
-              <div className="border-b border-neutral-100 pb-3 flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-neutral-900 flex items-center gap-2">
-                    <Palette size={16} className="text-[#f26430]" />
-                    {activeTemplate.name}
-                  </h3>
-                  <p className="text-xs text-neutral-500 mt-0.5">
-                    Category: <strong className="text-neutral-800">{activeTemplate.achievement}</strong>
-                  </p>
-                </div>
-                <Button
-                  variant="orange"
-                  onClick={() => setEditTemplateModalOpen(true)}
-                  className="text-xs px-2.5 py-1 flex items-center gap-1"
-                >
-                  <Edit3 size={13} /> Edit
-                </Button>
-              </div>
-
-              {/* Signatures Status */}
-              <div className="space-y-3 text-xs">
-                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-neutral-800">Signatory 1 (Principal/Lead)</span>
-                    {activeTemplate.signatory1SignatureUrl ? (
-                      <Badge tone="green">PNG Signature Active</Badge>
-                    ) : (
-                      <Badge tone="mute">No Signature PNG</Badge>
-                    )}
-                  </div>
-                  <p className="text-neutral-600">{activeTemplate.signatory1Name} · {activeTemplate.signatory1Role}</p>
-                  {activeTemplate.signatory1SignatureUrl && (
-                    <div className="h-10 w-28 bg-white border border-neutral-200 rounded p-1">
-                      <img
-                        src={activeTemplate.signatory1SignatureUrl}
-                        alt="Sign 1"
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-neutral-800">Signatory 2 (Teacher/Advisor)</span>
-                    {activeTemplate.signatory2SignatureUrl ? (
-                      <Badge tone="green">PNG Signature Active</Badge>
-                    ) : (
-                      <Badge tone="mute">No Signature PNG</Badge>
-                    )}
-                  </div>
-                  <p className="text-neutral-600">{activeTemplate.signatory2Name} · {activeTemplate.signatory2Role}</p>
-                  {activeTemplate.signatory2SignatureUrl && (
-                    <div className="h-10 w-28 bg-white border border-neutral-200 rounded p-1">
-                      <img
-                        src={activeTemplate.signatory2SignatureUrl}
-                        alt="Sign 2"
-                        className="h-full w-full object-contain"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 space-y-1">
-                  <span className="font-semibold text-neutral-800">Background Pattern</span>
-                  <p className="text-neutral-500 text-[11px]">
-                    {activeTemplate.showGridPattern !== false
-                      ? "✓ Subtle #EEEEEE square grid pattern active"
-                      : "Plain white canvas"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-neutral-100 flex items-center justify-between">
-                <Button
-                  variant="ghost"
-                  onClick={() => setEditTemplateModalOpen(true)}
-                  className="w-full text-xs font-semibold text-[#f26430] hover:bg-[#f26430]/10 flex items-center justify-center gap-1.5"
-                >
-                  <Edit3 size={14} /> Edit Template & Signatures
-                </Button>
-              </div>
-            </div>
-
-            {/* Live Interactive Preview (2 columns) */}
-            <div className="lg:col-span-2 space-y-4">
-              <div className="rounded-2xl border border-neutral-200 bg-neutral-50/50 p-4 shadow-sm flex flex-col items-center">
-                <ElevatesCertificate
-                  recipientName="Aditya Prakash"
-                  certificateId={`CERT-${chapter.slug.slice(0, 3).toUpperCase()}-2026-PREV`}
-                  mainTitle={activeTemplate.mainTitle}
-                  subTitle={activeTemplate.subTitle}
-                  preamble={activeTemplate.preamble}
-                  description={activeTemplate.description || undefined}
-                  signatory1Name={activeTemplate.signatory1Name}
-                  signatory1Role={activeTemplate.signatory1Role}
-                  signatory1SignatureUrl={activeTemplate.signatory1SignatureUrl}
-                  signatory2Name={activeTemplate.signatory2Name}
-                  signatory2Role={activeTemplate.signatory2Role}
-                  signatory2SignatureUrl={activeTemplate.signatory2SignatureUrl}
-                  institutionName={chapter.college || chapter.name}
-                  chapterName={chapter.name}
-                  showGridPattern={activeTemplate.showGridPattern ?? true}
-                  showControls={true}
-                />
-              </div>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <CertificateCanvaEditor
+            initialTemplate={activeTemplate}
+            chapterName={chapter.name}
+            institutionName={chapter.college || chapter.name}
+            chapterSlug={chapter.slug}
+            templatesList={templates}
+            onSaveTemplate={(saved) => {
+              saveCertificateTemplate(saved);
+              const updated = getCertificateTemplates(chapter?.id);
+              setTemplates(updated);
+              setSelectedTemplateId(saved.id);
+              setNotification({
+                type: "success",
+                text: `Template "${saved.name}" saved successfully!`,
+              });
+              setTimeout(() => setNotification(null), 3500);
+            }}
+            onSelectTemplate={(tpl) => setSelectedTemplateId(tpl.id)}
+          />
         </div>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────── */}
-      {/* MODAL: EDIT TEMPLATE & SIGNATURE PNGs */}
-      {/* ─────────────────────────────────────────────────────────── */}
-      {editTemplateModalOpen && (
-        <Dialog
-          open={editTemplateModalOpen}
-          onClose={() => setEditTemplateModalOpen(false)}
-          title={`Edit Template: ${templateEditDraft.name}`}
-        >
-          <div className="space-y-4 max-w-xl mx-auto text-xs max-h-[80vh] overflow-y-auto pr-1">
-            <div>
-              <FieldLabel>Template Name</FieldLabel>
-              <Input
-                value={templateEditDraft.name}
-                onChange={(e) =>
-                  setTemplateEditDraft({ ...templateEditDraft, name: e.target.value })
-                }
-                placeholder="e.g. Workshop Leadership Certificate"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>Main Title</FieldLabel>
-                <Input
-                  value={templateEditDraft.mainTitle}
-                  onChange={(e) =>
-                    setTemplateEditDraft({ ...templateEditDraft, mainTitle: e.target.value })
-                  }
-                  placeholder="CERTIFICATE"
-                />
-              </div>
-              <div>
-                <FieldLabel>Subtitle / Heading</FieldLabel>
-                <Input
-                  value={templateEditDraft.subTitle}
-                  onChange={(e) =>
-                    setTemplateEditDraft({ ...templateEditDraft, subTitle: e.target.value })
-                  }
-                  placeholder="O F   R E C O G N I T I O N"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <FieldLabel>Preamble</FieldLabel>
-                <Input
-                  value={templateEditDraft.preamble}
-                  onChange={(e) =>
-                    setTemplateEditDraft({ ...templateEditDraft, preamble: e.target.value })
-                  }
-                  placeholder="T H I S   I S   T O   C E R T I F Y   T H A T"
-                />
-              </div>
-              <div>
-                <FieldLabel>Achievement Tag</FieldLabel>
-                <Input
-                  value={templateEditDraft.achievement}
-                  onChange={(e) =>
-                    setTemplateEditDraft({ ...templateEditDraft, achievement: e.target.value })
-                  }
-                  placeholder="Participation"
-                />
-              </div>
-            </div>
-
-            <div>
-              <FieldLabel>Description Copy</FieldLabel>
-              <textarea
-                value={templateEditDraft.description}
-                onChange={(e) =>
-                  setTemplateEditDraft({ ...templateEditDraft, description: e.target.value })
-                }
-                rows={3}
-                className="w-full rounded-xl border border-neutral-200 p-2.5 text-xs text-neutral-900 focus:border-[#f26430] focus:outline-none"
-                placeholder="Certificate body citation text..."
-              />
-            </div>
-
-            {/* SIGNATORY 1 & TEACHER SIGNATURE PNG */}
-            <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-3">
-              <span className="font-bold text-neutral-900 block text-xs">
-                Signatory 1 (Principal / Lead)
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <FieldLabel>Name</FieldLabel>
-                  <Input
-                    value={templateEditDraft.signatory1Name}
-                    onChange={(e) =>
-                      setTemplateEditDraft({ ...templateEditDraft, signatory1Name: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Title</FieldLabel>
-                  <Input
-                    value={templateEditDraft.signatory1Role}
-                    onChange={(e) =>
-                      setTemplateEditDraft({ ...templateEditDraft, signatory1Role: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* PNG Signature Import */}
-              <div>
-                <FieldLabel>Import Teacher / Principal Signature (PNG)</FieldLabel>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="file"
-                    ref={sig1FileRef}
-                    accept="image/png,image/*"
-                    className="hidden"
-                    onChange={(e) => handleSignatureUpload(e, "signatory1SignatureUrl")}
-                  />
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => sig1FileRef.current?.click()}
-                    className="text-xs flex items-center gap-1.5 border border-neutral-300 bg-white"
-                  >
-                    <Upload size={13} /> Upload PNG Signature
-                  </Button>
-                  {templateEditDraft.signatory1SignatureUrl && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() =>
-                        setTemplateEditDraft((prev) => ({ ...prev, signatory1SignatureUrl: undefined }))
-                      }
-                      className="text-xs text-red-600 hover:bg-red-50 flex items-center gap-1"
-                    >
-                      <X size={13} /> Remove
-                    </Button>
-                  )}
-                </div>
-                {templateEditDraft.signatory1SignatureUrl && (
-                  <div className="mt-2 h-12 w-32 bg-white border border-neutral-200 rounded p-1 flex items-center justify-center">
-                    <img
-                      src={templateEditDraft.signatory1SignatureUrl}
-                      alt="Signatory 1 Preview"
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* SIGNATORY 2 & TEACHER SIGNATURE PNG */}
-            <div className="p-3.5 rounded-xl border border-neutral-200 bg-neutral-50/50 space-y-3">
-              <span className="font-bold text-neutral-900 block text-xs">
-                Signatory 2 (Faculty Coordinator / Advisor)
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <FieldLabel>Name</FieldLabel>
-                  <Input
-                    value={templateEditDraft.signatory2Name}
-                    onChange={(e) =>
-                      setTemplateEditDraft({ ...templateEditDraft, signatory2Name: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Title</FieldLabel>
-                  <Input
-                    value={templateEditDraft.signatory2Role}
-                    onChange={(e) =>
-                      setTemplateEditDraft({ ...templateEditDraft, signatory2Role: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-
-              {/* PNG Signature Import */}
-              <div>
-                <FieldLabel>Import Teacher / Faculty Signature (PNG)</FieldLabel>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="file"
-                    ref={sig2FileRef}
-                    accept="image/png,image/*"
-                    className="hidden"
-                    onChange={(e) => handleSignatureUpload(e, "signatory2SignatureUrl")}
-                  />
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    onClick={() => sig2FileRef.current?.click()}
-                    className="text-xs flex items-center gap-1.5 border border-neutral-300 bg-white"
-                  >
-                    <Upload size={13} /> Upload PNG Signature
-                  </Button>
-                  {templateEditDraft.signatory2SignatureUrl && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() =>
-                        setTemplateEditDraft((prev) => ({ ...prev, signatory2SignatureUrl: undefined }))
-                      }
-                      className="text-xs text-red-600 hover:bg-red-50 flex items-center gap-1"
-                    >
-                      <X size={13} /> Remove
-                    </Button>
-                  )}
-                </div>
-                {templateEditDraft.signatory2SignatureUrl && (
-                  <div className="mt-2 h-12 w-32 bg-white border border-neutral-200 rounded p-1 flex items-center justify-center">
-                    <img
-                      src={templateEditDraft.signatory2SignatureUrl}
-                      alt="Signatory 2 Preview"
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <input
-                type="checkbox"
-                id="edit-grid-pattern-toggle"
-                checked={templateEditDraft.showGridPattern ?? true}
-                onChange={(e) =>
-                  setTemplateEditDraft({ ...templateEditDraft, showGridPattern: e.target.checked })
-                }
-                className="rounded border-neutral-300 text-[#f26430] focus:ring-[#f26430]"
-              />
-              <label htmlFor="edit-grid-pattern-toggle" className="text-xs text-neutral-700 cursor-pointer">
-                Include subtle background check pattern (#EEEEEE grid)
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100">
-              <Button variant="ghost" onClick={() => setEditTemplateModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="orange" onClick={handleSaveEditedTemplate}>
-                Save Changes
-              </Button>
-            </div>
-          </div>
-        </Dialog>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────── */}
-      {/* MODAL: IMPORT CERTIFICATE TEMPLATE */}
-      {/* ─────────────────────────────────────────────────────────── */}
-      {importTemplateModalOpen && (
-        <Dialog
-          open={importTemplateModalOpen}
-          onClose={() => setImportTemplateModalOpen(false)}
-          title="Import Certificate Template"
-        >
-          <div className="space-y-4 max-w-lg mx-auto text-xs">
-            <p className="text-neutral-500">
-              Import a certificate template from a JSON file or choose from one of the pre-designed community templates.
-            </p>
-
-            {/* Import Option A: File Upload */}
-            <div className="p-4 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/70 text-center space-y-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".json,application/json"
-                className="hidden"
-                onChange={handleImportTemplateFile}
-              />
-              <FileUp size={28} className="mx-auto text-neutral-400" />
-              <div>
-                <Button
-                  variant="secondary"
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-xs"
-                >
-                  Upload Template JSON File
-                </Button>
-                <p className="text-[11px] text-neutral-400 mt-1">Accepts exported .json certificate templates</p>
-              </div>
-            </div>
-
-            {/* Import Option B: Presets */}
-            <div className="space-y-2 pt-2">
-              <span className="font-semibold text-neutral-800">Or Quick-Import a Design Preset:</span>
-              <div className="grid grid-cols-2 gap-2">
-                {DEFAULT_CERTIFICATE_TEMPLATES.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => {
-                      const cloned = {
-                        ...preset,
-                        id: `tpl-${Date.now()}-${preset.achievement.toLowerCase().slice(0, 4)}`,
-                        name: `${preset.name} (Imported)`,
-                        chapterId: chapter?.id,
-                        isDefault: false,
-                      };
-                      importParsedTemplate(cloned);
-                    }}
-                    className="p-2.5 rounded-xl border border-neutral-200 text-left hover:border-[#f26430] hover:bg-orange-50/40 transition"
-                  >
-                    <div className="font-bold text-neutral-900 text-[11px]">{preset.name}</div>
-                    <div className="text-[10px] text-neutral-500 mt-0.5">{preset.achievement}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Import Option C: Paste JSON Text */}
-            <div className="space-y-1 pt-2">
-              <FieldLabel>Or Paste Template JSON Directly:</FieldLabel>
-              <textarea
-                value={importJsonText}
-                onChange={(e) => setImportJsonText(e.target.value)}
-                rows={4}
-                className="w-full font-mono text-[11px] rounded-xl border border-neutral-200 p-2 text-neutral-900 focus:border-[#f26430] focus:outline-none"
-                placeholder='{"name": "My Custom Template", "mainTitle": "CERTIFICATE", ...}'
-              />
-            </div>
-
-            {importError && (
-              <p className="text-xs text-red-600 bg-red-50 p-2 rounded-lg border border-red-200">
-                {importError}
-              </p>
-            )}
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100">
-              <Button variant="ghost" onClick={() => setImportTemplateModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="orange"
-                disabled={!importJsonText.trim()}
-                onClick={() => {
-                  try {
-                    const parsed = JSON.parse(importJsonText);
-                    importParsedTemplate(parsed);
-                  } catch (err: any) {
-                    setImportError("Invalid JSON: " + err.message);
-                  }
-                }}
-              >
-                Import JSON
-              </Button>
-            </div>
-          </div>
-        </Dialog>
       )}
 
       {/* ─────────────────────────────────────────────────────────── */}

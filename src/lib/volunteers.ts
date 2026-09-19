@@ -1,5 +1,6 @@
 import type {
   ElevatesStore,
+  EventItem,
   RoleKey,
   VolunteerAssignment,
   VolunteerGroup,
@@ -326,3 +327,89 @@ export function getUserVolunteerPowers(
     effectiveTag,
   };
 }
+
+/**
+ * Checks if a user is an appointed volunteer (or campus leader / HQ) for a specific event.
+ */
+export function isUserAppointedVolunteerForEvent(
+  store: ElevatesStore,
+  userId: string,
+  eventId: string,
+): boolean {
+  if (!userId || !eventId) return false;
+
+  // 1. Campus Lead, Chairman, or HQ have universal event governance
+  const userRoles = store.userRoles.filter((ur) => ur.userId === userId);
+  const isLeadOrHq = userRoles.some(
+    (ur) =>
+      ur.roleKey === "campus_lead" ||
+      ur.roleKey === "chairman" ||
+      isHqRole(ur.roleKey as RoleKey),
+  );
+  if (isLeadOrHq) return true;
+
+  // 2. Direct event-level volunteerStudentIds
+  const event = store.events.find((e) => e.id === eventId);
+  if (event?.volunteerStudentIds?.includes(userId)) {
+    return true;
+  }
+
+  // 3. Direct active volunteer assignment for this event
+  const volunteerAssignments = store.volunteerAssignments || [];
+  const hasDirectAssignment = volunteerAssignments.some(
+    (a) =>
+      a.userId === userId &&
+      a.eventId === eventId &&
+      a.status !== "inactive" &&
+      a.status !== "expired",
+  );
+  if (hasDirectAssignment) return true;
+
+  // 4. Volunteer group assigned to this event
+  const volunteerGroups = store.volunteerGroups || [];
+  const hasGroup = volunteerGroups.some(
+    (g) => g.eventId === eventId && g.memberIds.includes(userId),
+  );
+  if (hasGroup) return true;
+
+  return false;
+}
+
+/**
+ * Returns all events where the user is an appointed volunteer or executive leader.
+ */
+export function getUserAppointedEvents(
+  store: ElevatesStore,
+  userId: string,
+  chapterId?: string,
+): EventItem[] {
+  if (!userId) return [];
+  const events = chapterId
+    ? store.events.filter((e) => e.chapterId === chapterId)
+    : store.events;
+  return events.filter((e) => isUserAppointedVolunteerForEvent(store, userId, e.id));
+}
+
+/**
+ * Checks if a user can create, edit, or submit a report for an event.
+ */
+export function canUserManageEventReport(
+  store: ElevatesStore,
+  userId: string,
+  roleKey: RoleKey,
+  eventId?: string,
+): boolean {
+  if (isHqRole(roleKey) || roleKey === "campus_lead" || roleKey === "chairman") {
+    return true;
+  }
+  if (!eventId) {
+    // If no eventId specified, check if user is appointed volunteer for ANY event in the store
+    return (
+      (store.volunteerAssignments || []).some((a) => a.userId === userId && a.status !== "inactive") ||
+      (store.volunteerGroups || []).some((g) => g.memberIds.includes(userId)) ||
+      store.events.some((e) => e.volunteerStudentIds?.includes(userId))
+    );
+  }
+  return isUserAppointedVolunteerForEvent(store, userId, eventId);
+}
+

@@ -4,6 +4,7 @@ import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { embedLocationInNotes } from "@/lib/slug";
+import { getChapterElevatesId } from "@/lib/chapters";
 
 // Default Root Organization UUID seeded in database migration 001/002
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -757,8 +758,11 @@ export async function POST(req: Request) {
         chapterId = genUuid();
       }
 
+      const chapterElevatesId = getChapterElevatesId({ id: chapterId, elevatesId: chapter.elevatesId });
+
       const basePayload: Record<string, any> = {
         id: chapterId,
+        elevates_id: chapterElevatesId,
         organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : DEFAULT_ORG_ID,
         name: chapter.name,
         slug: chapter.slug,
@@ -867,7 +871,7 @@ export async function POST(req: Request) {
       }
 
       await revalidateWeb(["chapters", `chapter:${chapter.slug}`]);
-      return NextResponse.json({ ok: true, id: chapterId });
+      return NextResponse.json({ ok: true, id: chapterId, elevatesId: chapterElevatesId });
     }
 
     if (type === "delete_chapter") {

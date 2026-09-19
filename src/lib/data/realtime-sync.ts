@@ -3,7 +3,7 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { deduplicateEvents } from "@/lib/events";
-import { deriveChapterShortCode, ensureTestChapter } from "@/lib/chapters";
+import { deriveChapterShortCode, ensureTestChapter, getChapterElevatesId } from "@/lib/chapters";
 import { extractLocationFromNotes } from "@/lib/slug";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isHqRole } from "@/lib/permissions";
@@ -290,7 +290,7 @@ export function transformChapterRow(c: Record<string, any>): Chapter {
 
   return {
     id: c.id,
-    elevatesId: c.elevatesId ?? c.elevates_id ?? undefined,
+    elevatesId: getChapterElevatesId({ id: c.id, elevatesId: c.elevatesId ?? c.elevates_id }),
     organizationId: (c.organizationId ?? c.organization_id) || "00000000-0000-0000-0000-000000000001",
     name: c.name,
     shortCode,

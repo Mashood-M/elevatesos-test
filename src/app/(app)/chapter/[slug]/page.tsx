@@ -18,6 +18,7 @@ import { hasPermission, isHqRole } from "@/lib/permissions";
 import { calculateChapterActivityScore, chapterMetricsFromStore } from "@/lib/analytics";
 import { formatDate, formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
+import { getChapterElevatesId } from "@/lib/chapters";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
 const STUDENT_START = [
@@ -136,6 +137,8 @@ export default function ChapterDashboardPage({
     )
     .slice(0, 5);
 
+  const chapterElevatesId = getChapterElevatesId(chapter);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -144,21 +147,21 @@ export default function ChapterDashboardPage({
         }
         title={chapter.name}
         badge={
-          <Badge tone={chapter.status === "active" ? "green" : chapter.status === "onboarding" ? "orange" : "mute"}>
-            {chapter.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-0.5 rounded-md border border-[var(--accent)]/20 shadow-xs">
+              {chapterElevatesId}
+            </span>
+            <Badge tone={chapter.status === "active" ? "green" : chapter.status === "onboarding" ? "orange" : "mute"}>
+              {chapter.status}
+            </Badge>
+          </div>
         }
         description={
           <span className="flex flex-wrap items-center gap-2">
-            {chapter.elevatesId && (
-              <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md">
-                {chapter.elevatesId}
-              </span>
-            )}
             <span className="text-text-dim text-[13px]">
               {isStudent
-                ? `${chapter.college} · explore events, clusters, and projects`
-                : `${chapter.college} · ${chapter.city} · chapter operations and growth`}
+                ? `${chapter.college} · Chapter ID: ${chapterElevatesId} · explore events, clusters, and projects`
+                : `${chapter.college} · ${chapter.city} · Chapter ID: ${chapterElevatesId} · chapter operations and growth`}
             </span>
           </span>
         }
@@ -351,16 +354,14 @@ export default function ChapterDashboardPage({
             <TerminalPanel title="Activity score">
               <ProgressBar value={activityScore} label="Overall score" />
               <dl className="mt-5 space-y-3 text-[13px]">
-                {chapter.elevatesId && (
-                  <div className="flex justify-between items-center">
-                    <dt className="text-text-dim">Chapter ID</dt>
-                    <dd>
-                      <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md">
-                        {chapter.elevatesId}
-                      </span>
-                    </dd>
-                  </div>
-                )}
+                <div className="flex justify-between items-center">
+                  <dt className="text-text-dim">Chapter ID</dt>
+                  <dd>
+                    <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md border border-[var(--accent)]/20">
+                      {chapterElevatesId}
+                    </span>
+                  </dd>
+                </div>
                 <div className="flex justify-between">
                   <dt className="text-text-dim">Status</dt>
                   <dd className="font-medium capitalize">

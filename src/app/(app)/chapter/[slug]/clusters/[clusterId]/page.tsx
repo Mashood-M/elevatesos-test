@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
@@ -12,6 +12,9 @@ import { useStore, useCurrentUser } from "@/context/store-context";
 import { isHqRole } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { createClient } from "@/lib/supabase/client";
+import { formatDate, cn } from "@/lib/utils";
+import type { Profile } from "@/types";
 
 export default function ClusterDetailPage({
   params,
@@ -296,6 +299,12 @@ export default function ClusterDetailPage({
             </TerminalPanel>
           ) : null}
 
+          <ClusterTasksSection
+            clusterId={cluster.id}
+            memberIds={cluster.memberIds}
+            profiles={store.profiles}
+          />
+
           <TerminalPanel title="Roadmap" meta={`${doneWeeks}/${cluster.roadmap.length} done`}>
             <ProgressBar value={progress} label="Progress" />
             <ul className="mt-4 space-y-2">
@@ -455,5 +464,219 @@ export default function ClusterDetailPage({
         </div>
       </div>
     </div>
+  );
+}
+
+interface ClusterTask {
+  id: string;
+  cluster_id: string;
+  title: string;
+  description?: string | null;
+  due_date?: string | null;
+  status: string;
+  forum_thread_id?: string | null;
+  created_by?: string | null;
+  created_at?: string;
+}
+
+interface TaskSubmission {
+  id: string;
+  task_id: string;
+  os_user_id: string;
+  discord_message_id?: string | null;
+  status: string;
+  marked_by?: string | null;
+  completed_at?: string | null;
+  created_at?: string;
+}
+
+/**
+ * Isolated Read-Only Section: Cluster Weekly Tasks & Member Submissions
+ * Displays active cluster tasks and tracks member completion status from Discord.
+ */
+function ClusterTasksSection({
+  clusterId,
+  memberIds,
+  profiles,
+}: {
+  clusterId: string;
+  memberIds: string[];
+  profiles: Profile[];
+}) {
+  const [tasks, setTasks] = useState<ClusterTask[]>([]);
+  const [submissions, setSubmissions] = useState<TaskSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTasksAndSubmissions() {
+      setLoading(true);
+      try {
+        const supabase = createClient();
+        if (!supabase) {
+          if (isMounted) setLoading(false);
+          return;
+        }
+
+        const { data: taskData, error: taskErr } = await supabase
+          .from("cluster_tasks")
+          .select("id, cluster_id, title, description, due_date, status, forum_thread_id, created_by, created_at")
+          .eq("cluster_id", clusterId)
+          .eq("status", "active")
+          .order("created_at", { ascending: false });
+
+        if (taskErr) {
+          // Gracefully handle schema cache / missing table without crashing
+          if (isMounted) {
+            setTasks([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const typedTasks = (taskData as unknown as ClusterTask[]) || [];
+        if (isMounted) setTasks(typedTasks);
+
+        if (typedTasks.length > 0) {
+          const taskIds = typedTasks.map((t: ClusterTask) => t.id);
+          const { data: subData, error: subErr } = await supabase
+            .from("task_submissions")
+            .select("id, task_id, os_user_id, discord_message_id, status, marked_by, completed_at, created_at")
+            .in("task_id", taskIds)
+            .eq("status", "completed");
+
+          if (subErr) {
+            if (isMounted) setSubmissions([]);
+          } else {
+            if (isMounted) setSubmissions((subData as unknown as TaskSubmission[]) || []);
+          }
+        } else {
+          if (isMounted) setSubmissions([]);
+        }
+      } catch (err) {
+        console.warn("Cluster tasks fetch exception:", err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+
+    loadTasksAndSubmissions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clusterId]);
+
+  return (
+    <TerminalPanel
+      title="Cluster Tasks"
+      meta={tasks.length > 0 ? `${tasks.length} active · Discord Synced` : "Discord Synced"}
+    >
+      {loading ? (
+        <div className="py-6 text-center text-[13px] text-text-dim animate-pulse">
+          Loading tasks…
+        </div>
+      ) : tasks.length === 0 ? (
+        <p className="text-[13px] text-text-dim">
+          No active weekly tasks right now. Active tasks assigned in Discord will appear here.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {tasks.map((task) => {
+            const completedCount = memberIds.filter((mId) =>
+              submissions.some(
+                (s) => s.task_id === task.id && s.os_user_id === mId && s.status === "completed",
+              ),
+            ).length;
+
+            return (
+              <div
+                key={task.id}
+                className="rounded-[14px] bg-bg p-4 shadow-[var(--shadow-sm)] border border-border/50 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-semibold text-text text-[14px] leading-snug">
+                      {task.title}
+                    </h4>
+                    {task.due_date ? (
+                      <p className="text-[11px] font-mono text-text-mute mt-1">
+                        Due: {formatDate(task.due_date)}
+                      </p>
+                    ) : null}
+                  </div>
+                  <Badge tone="green">Active</Badge>
+                </div>
+
+                {task.description ? (
+                  <p className="text-[12px] text-text-dim leading-relaxed whitespace-pre-wrap">
+                    {task.description}
+                  </p>
+                ) : null}
+
+                <div className="pt-2 border-t border-border/40">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-text-mute mb-2">
+                    <span className="uppercase tracking-wider">Member Progress</span>
+                    <span className="font-mono">
+                      {completedCount}/{memberIds.length} completed
+                    </span>
+                  </div>
+
+                  {memberIds.length === 0 ? (
+                    <p className="text-[12px] text-text-dim italic">
+                      No members in this cluster yet.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {memberIds.map((mId) => {
+                        const profile = profiles.find((p) => p.id === mId);
+                        const isCompleted = submissions.some(
+                          (s) =>
+                            s.task_id === task.id &&
+                            s.os_user_id === mId &&
+                            s.status === "completed",
+                        );
+
+                        return (
+                          <li
+                            key={mId}
+                            className="flex items-center justify-between py-1 text-[13px]"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13px] select-none" aria-hidden="true">
+                                {isCompleted ? "✅" : "⬜"}
+                              </span>
+                              <span
+                                className={cn(
+                                  "font-medium",
+                                  isCompleted ? "text-text" : "text-text-dim",
+                                )}
+                              >
+                                {profile?.fullName || "Member"}
+                              </span>
+                            </div>
+                            <span
+                              className={cn(
+                                "font-mono text-[10px]",
+                                isCompleted
+                                  ? "text-[var(--success)] font-semibold"
+                                  : "text-text-mute",
+                              )}
+                            >
+                              {isCompleted ? "Done" : "Pending"}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </TerminalPanel>
   );
 }

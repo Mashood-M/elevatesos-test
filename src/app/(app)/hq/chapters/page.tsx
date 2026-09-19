@@ -18,7 +18,7 @@ import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { ChapterLocationPicker } from "@/components/chapter/chapter-location-picker";
 import { ChapterCitySelect } from "@/components/chapter/chapter-city-select";
 import { persistSystemUiState } from "@/lib/data/mutations";
-import { deriveChapterShortCode } from "@/lib/chapters";
+import { deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
 import type { Chapter } from "@/types";
 import { X, Settings, LayoutDashboard } from "lucide-react";
 
@@ -112,6 +112,7 @@ export default function HqChaptersPage() {
         }
       }
       if (!q) return true;
+      const chpId = getChapterElevatesId(c).toLowerCase();
       return (
         c.name.toLowerCase().includes(q) ||
         c.college.toLowerCase().includes(q) ||
@@ -119,7 +120,7 @@ export default function HqChaptersPage() {
         (c.district && c.district.toLowerCase().includes(q)) ||
         (c.state && c.state.toLowerCase().includes(q)) ||
         c.slug.toLowerCase().includes(q) ||
-        (c.elevatesId && c.elevatesId.toLowerCase().includes(q)) ||
+        chpId.includes(q) ||
         (c.shortCode && c.shortCode.toLowerCase().includes(q))
       );
     });
@@ -281,16 +282,14 @@ export default function HqChaptersPage() {
                           >
                             {c.name}
                           </Link>
-                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-white border border-white/10">
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-bg-panel text-text-dim border border-border">
                             {c.shortCode || deriveChapterShortCode(c.name)}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {c.elevatesId && (
-                            <span className="font-mono text-[10px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded">
-                              {c.elevatesId}
-                            </span>
-                          )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="font-mono text-[10px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded border border-[var(--accent)]/20 shadow-xs">
+                            {getChapterElevatesId(c)}
+                          </span>
                           <p className="text-[10px] text-text-mute">/{c.slug}</p>
                         </div>
                       </td>

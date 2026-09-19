@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@/lib/supabase/client";
-import { ensureTestChapter, deriveChapterShortCode } from "@/lib/chapters";
+import { ensureTestChapter, deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
 import { deduplicateEvents, DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
 import { extractLocationFromNotes } from "@/lib/slug";
 import { isUuid } from "@/lib/uuid";
@@ -325,7 +325,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
 
         return {
           id: c.id,
-          elevatesId: c.elevates_id ?? undefined,
+          elevatesId: getChapterElevatesId({ id: c.id, elevatesId: c.elevates_id }),
           shortCode,
           organizationId: c.organization_id,
           name: c.name,

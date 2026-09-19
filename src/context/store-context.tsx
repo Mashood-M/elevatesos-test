@@ -26,7 +26,7 @@ import {
   broadcastSessionUpdate,
   recalculateUserSession,
 } from "@/lib/data/realtime-sync";
-import { deriveChapterShortCode } from "@/lib/chapters";
+import { deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { remoteMutate } from "@/lib/data/mutations";
 import {
@@ -285,6 +285,7 @@ type StoreContextValue = {
       Partial<
         Pick<
           Chapter,
+          | "elevatesId"
           | "shortCode"
           | "district"
           | "state"
@@ -3291,9 +3292,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ).toUpperCase().slice(0, 4);
 
         const chapterId = genUuid();
+        const chapterElevatesId =
+          input.elevatesId?.trim() || getChapterElevatesId({ id: chapterId });
         const chapter: Chapter = {
           id: chapterId,
-          elevatesId: undefined,
+          elevatesId: chapterElevatesId,
           shortCode,
           organizationId: store.organization.id,
           name: trimmed.name,

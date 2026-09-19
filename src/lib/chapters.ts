@@ -154,3 +154,51 @@ export function deriveChapterShortCode(name: string): string {
   return rawWords[0].slice(0, 3).toUpperCase().padEnd(3, "X").slice(0, 3);
 }
 
+/**
+ * Formats a sequence number into the official sequential Chapter Elevates ID:
+ * - 1 to 999: "CHP-0001" to "CHP-0999"
+ * - 1,000 to 26,999: "CHP-A000" to "CHP-Z999"
+ * - 27,000+: "CHP-AA00" to "CHP-ZZ99"
+ */
+export function formatChapterElevatesId(n: number): string {
+  if (n < 1000) {
+    return `CHP-${String(n).padStart(4, "0")}`;
+  } else if (n < 27000) {
+    const letterIdx = Math.floor((n - 1000) / 1000);
+    const letter = String.fromCharCode(65 + letterIdx);
+    const rem = (n - 1000) % 1000;
+    return `CHP-${letter}${String(rem).padStart(3, "0")}`;
+  } else if (n < 703000) {
+    const twoLetterOffset = Math.floor((n - 27000) / 100);
+    const firstLetter = String.fromCharCode(65 + Math.floor(twoLetterOffset / 26));
+    const secondLetter = String.fromCharCode(65 + (twoLetterOffset % 26));
+    const rem = (n - 27000) % 100;
+    return `CHP-${firstLetter}${secondLetter}${String(rem).padStart(2, "0")}`;
+  }
+  return `CHP-${String(n).padStart(6, "0")}`;
+}
+
+/**
+ * Deterministically generates a valid Chapter Elevates ID from a chapter UUID/string.
+ */
+export function generateChapterElevatesId(id: string): string {
+  if (!id) return "CHP-0001";
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const n = (Math.abs(hash) % 999) + 1;
+  return formatChapterElevatesId(n);
+}
+
+/**
+ * Returns the chapter's official Elevates ID, guaranteeing a valid "CHP-XXXX" string
+ * even if the database record had a null or empty elevates_id.
+ */
+export function getChapterElevatesId(chapter?: { id?: string; elevatesId?: string } | null): string {
+  if (!chapter) return "CHP-0001";
+  if (chapter.elevatesId && chapter.elevatesId.trim()) return chapter.elevatesId.trim();
+  return generateChapterElevatesId(chapter.id || "0");
+}
+

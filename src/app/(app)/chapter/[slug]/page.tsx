@@ -149,9 +149,18 @@ export default function ChapterDashboardPage({
           </Badge>
         }
         description={
-          isStudent
-            ? `${chapter.college} · explore events, clusters, and projects`
-            : `${chapter.college} · ${chapter.city} · chapter operations and growth`
+          <span className="flex flex-wrap items-center gap-2">
+            {chapter.elevatesId && (
+              <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md">
+                {chapter.elevatesId}
+              </span>
+            )}
+            <span className="text-text-dim text-[13px]">
+              {isStudent
+                ? `${chapter.college} · explore events, clusters, and projects`
+                : `${chapter.college} · ${chapter.city} · chapter operations and growth`}
+            </span>
+          </span>
         }
       />
 
@@ -342,6 +351,16 @@ export default function ChapterDashboardPage({
             <TerminalPanel title="Activity score">
               <ProgressBar value={activityScore} label="Overall score" />
               <dl className="mt-5 space-y-3 text-[13px]">
+                {chapter.elevatesId && (
+                  <div className="flex justify-between items-center">
+                    <dt className="text-text-dim">Chapter ID</dt>
+                    <dd>
+                      <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md">
+                        {chapter.elevatesId}
+                      </span>
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <dt className="text-text-dim">Status</dt>
                   <dd className="font-medium capitalize">

@@ -118,7 +118,9 @@ export default function HqChaptersPage() {
         c.city.toLowerCase().includes(q) ||
         (c.district && c.district.toLowerCase().includes(q)) ||
         (c.state && c.state.toLowerCase().includes(q)) ||
-        c.slug.toLowerCase().includes(q)
+        c.slug.toLowerCase().includes(q) ||
+        (c.elevatesId && c.elevatesId.toLowerCase().includes(q)) ||
+        (c.shortCode && c.shortCode.toLowerCase().includes(q))
       );
     });
   }, [store.chapters, query, statusFilter]);
@@ -283,7 +285,14 @@ export default function HqChaptersPage() {
                             {c.shortCode || deriveChapterShortCode(c.name)}
                           </span>
                         </div>
-                        <p className="text-[10px] text-text-mute">/{c.slug}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {c.elevatesId && (
+                            <span className="font-mono text-[10px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded">
+                              {c.elevatesId}
+                            </span>
+                          )}
+                          <p className="text-[10px] text-text-mute">/{c.slug}</p>
+                        </div>
                       </td>
                       <td className="py-3 pr-4 text-text-dim">
                         {c.coordinates ? (

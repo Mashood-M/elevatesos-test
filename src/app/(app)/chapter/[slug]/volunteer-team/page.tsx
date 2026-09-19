@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
@@ -484,17 +485,17 @@ export default function ChapterVolunteerTeamPage({
       {/* Top Page Header */}
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Volunteer Team"
-        description="Organize reusable volunteer squads, designate event crews, and configure attendance check-in permissions"
+        title="Volunteer Squads & Teams"
+        description="Organize reusable volunteer squads, designate event check-in crews, and configure attendance permissions."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
-              <span className="self-center text-[12px] font-semibold text-[var(--accent)] animate-pulse">
+              <span className="self-center text-xs font-semibold text-[var(--accent)] animate-pulse">
                 {flash}
               </span>
             ) : null}
             <Link href={`/chapter/${slug}/attendance`}>
-              <Button variant="orange" className="flex items-center gap-2 font-bold shadow-sm">
+              <Button variant="orange" className="flex items-center gap-1.5 font-bold shadow-sm text-xs sm:text-sm">
                 <QrCode size={14} />
                 Attendance Desk
               </Button>
@@ -503,25 +504,49 @@ export default function ChapterVolunteerTeamPage({
         }
       />
 
+      {/* 4-Stat Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat
+          label="Active Volunteers"
+          value={new Set(chapterTeams.flatMap((t) => t.memberIds)).size}
+          hint="Appointed in squads"
+          accent="orange"
+        />
+        <Stat
+          label="Volunteer Teams"
+          value={chapterTeams.length}
+          hint="Operational crews"
+        />
+        <Stat
+          label="Assigned Events"
+          value={chapterTeams.filter((t) => t.eventId).length}
+          hint="Active deployments"
+        />
+        <Stat
+          label="Available Students"
+          value={availableStudentsForReplacement.length}
+          hint="Ready for appointment"
+        />
+      </div>
+
       {/* TOP SECTION: Event Selection & Team Assignment Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-[12px] bg-bg-panel border border-border shadow-sm">
+      <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow-sm)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] shrink-0">
+            <Calendar size={15} />
+          </div>
+          <span className="text-xs font-bold text-text shrink-0">Deploy Squad to Event:</span>
 
-        {/* Left: label + [dropdown][button] as an inline group */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Calendar size={15} className="text-[var(--accent)] shrink-0" />
-          <span className="text-xs font-bold text-text shrink-0">Assign to Event:</span>
-
-          {/* Dropdown + Button: same row, separate elements */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Select
               value={selectedEventIdForAssign}
               onChange={(e) => setSelectedEventIdForAssign(e.target.value)}
-              className="text-xs py-1 h-8 bg-bg min-w-[200px] max-w-xs font-medium"
+              className="text-xs h-9 bg-bg min-w-[220px] max-w-xs font-medium rounded-[var(--radius-sm)] border-border/80"
             >
               <option value="">-- Select an Event --</option>
               {chapterEvents.map((ev) => (
                 <option key={ev.id} value={ev.id}>
-                  {ev.title} {ev.status ? `· [${ev.status}]` : ""}
+                  {ev.title} {ev.status ? `· [${ev.status.replace("_", " ")}]` : ""}
                 </option>
               ))}
             </Select>
@@ -529,24 +554,13 @@ export default function ChapterVolunteerTeamPage({
             {canManage && activeTeam && (
               <Button
                 variant="orange"
-                className="h-8 px-3.5 text-xs flex items-center gap-1.5 font-bold shadow-sm shrink-0"
+                className="h-9 px-3.5 text-xs flex items-center gap-1.5 font-bold shadow-xs shrink-0"
                 onClick={handleAssignActiveTeamToEvent}
                 disabled={!selectedEventIdForAssign}
-                title={`Assign ${activeTeam.name} to the selected event`}
+                title={`Assign ${activeTeam.name} to selected event`}
               >
                 <Calendar size={13} />
-                Assign Team
-              </Button>
-            )}
-            {canManage && !activeTeam && (
-              <Button
-                variant="secondary"
-                className="h-8 px-3.5 text-xs flex items-center gap-1.5 font-bold opacity-50 cursor-not-allowed shrink-0"
-                disabled
-                title="Create a team first to assign it to an event"
-              >
-                <Calendar size={13} />
-                Assign Team
+                <span>Assign {activeTeam.name}</span>
               </Button>
             )}
           </div>
@@ -555,23 +569,27 @@ export default function ChapterVolunteerTeamPage({
         {/* Right: current assignment status + clear */}
         <div className="text-xs text-text-dim shrink-0">
           {activeTeamAssignedEvent && activeTeam ? (
-            <div className="flex items-center gap-1.5">
-              <span>
-                <strong className="text-text">{activeTeam.name}</strong> is assigned to:{" "}
+            <div className="flex items-center gap-2">
+              <span className="bg-bg px-2.5 py-1 rounded-[var(--radius-sm)] border border-border/70">
+                <strong className="text-text">{activeTeam.name}</strong> &rarr;{" "}
                 <strong className="text-[var(--accent)]">{activeTeamAssignedEvent.title}</strong>
               </span>
               {canManage && (
                 <button
                   type="button"
                   onClick={handleClearActiveTeamEvent}
-                  className="text-[11px] font-semibold text-text-dim hover:text-red-500 underline cursor-pointer transition"
+                  className="text-xs font-semibold text-red-500 hover:underline cursor-pointer transition"
                   title="Clear event assignment while keeping team volunteers intact"
                 >
                   Clear Event
                 </button>
               )}
             </div>
-          ) : null}
+          ) : (
+            <span className="text-text-mute text-xs">
+              {activeTeam ? `${activeTeam.name} is not assigned to an event` : "No team selected"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -769,11 +787,12 @@ export default function ChapterVolunteerTeamPage({
                         </div>
                       </div>
 
-                      {/* Action Buttons: Replace & Remove (Sleek Oval Icon Buttons) */}
+                      {/* Action Buttons: Replace & Remove */}
                       {canManage && (
-                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                          <button
-                            type="button"
+                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                          <Button
+                            variant="ghost"
+                            className="h-7 px-2.5 text-[11px] border border-border/70 hover:bg-bg-panel text-text-dim hover:text-text font-medium"
                             onClick={() => {
                               if (!activeTeam) return;
                               setReplacingVolunteer({
@@ -783,25 +802,25 @@ export default function ChapterVolunteerTeamPage({
                               });
                               setReplacementStudentId(availableStudentsForReplacement[0]?.id || "");
                             }}
-                            className="h-[26px] w-[38px] rounded-full flex items-center justify-center bg-bg-panel hover:bg-bg border border-border hover:border-text-dim/60 text-text hover:text-[var(--accent)] shadow-xs transition active:scale-95 shrink-0"
                             title={`Replace ${student?.fullName ?? "volunteer"}`}
                           >
-                            <ArrowLeftRight size={13} strokeWidth={2.3} className="text-text hover:text-[var(--accent)] shrink-0" />
-                          </button>
+                            <ArrowLeftRight size={11} className="mr-1 text-text-dim" />
+                            <span>Replace</span>
+                          </Button>
 
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-200 dark:hover:border-red-900/40"
                             onClick={() =>
                               handleRemoveStudentFromActiveTeam(
                                 userId,
                                 student?.fullName ?? "Volunteer",
                               )
                             }
-                            className="h-[26px] w-[38px] rounded-full flex items-center justify-center bg-[var(--danger)] hover:bg-red-700 text-white shadow-xs transition active:scale-95 shrink-0"
                             title={`Remove ${student?.fullName ?? "volunteer"}`}
                           >
-                            <Trash2 size={13} strokeWidth={2.3} className="text-white shrink-0" />
-                          </button>
+                            <Trash2 size={12} />
+                          </Button>
                         </div>
                       )}
                     </div>

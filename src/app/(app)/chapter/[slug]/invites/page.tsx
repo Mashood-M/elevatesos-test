@@ -1,12 +1,14 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
+import { Stat } from "@/components/ui/stat";
 import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-code-manager";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
-import Link from "next/link";
+import { deriveChapterShortCode } from "@/lib/chapters";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 
 export default function ChapterInvitesPage({
@@ -29,6 +31,31 @@ export default function ChapterInvitesPage({
     session.roleKey === "campus_lead" ||
     session.roleKey === "class_representative" ||
     isHqRole(session.roleKey);
+
+  const shortCode = useMemo(() => {
+    if (chapter?.shortCode) return chapter.shortCode.trim().toUpperCase();
+    if (chapter?.name) return deriveChapterShortCode(chapter.name);
+    return "ELV";
+  }, [chapter]);
+
+  const chapterCodes = useMemo(() => {
+    if (!chapter) return [];
+    return (store.chapterInviteCodes ?? []).filter(
+      (c) => c.chapterId === chapter.id,
+    );
+  }, [store.chapterInviteCodes, chapter]);
+
+  const activeCodes = chapterCodes.filter(
+    (c) => !c.isRevoked && new Date(c.expiresAt).getTime() > Date.now(),
+  );
+
+  const totalJoined = useMemo(() => {
+    let count = 0;
+    for (const c of chapterCodes) {
+      count += c.usesCount || c.joinedUsers?.length || 0;
+    }
+    return count;
+  }, [chapterCodes]);
 
   if (!mounted) {
     return (
@@ -79,16 +106,41 @@ export default function ChapterInvitesPage({
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "people")}
         title="Chapter Invitations & Codes"
-        description="Generate unique, random 3-day college invite codes for students to join your chapter. Restricted to Campus Leads & Class Reps."
+        description="Generate unique 3-day campus invite codes for students to join your chapter. Restricted to Campus Leads & Class Reps."
         actions={
           <Link href={`/chapter/${slug}`}>
-            <button className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-text hover:bg-bg-hover transition">
+            <button className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-bg-panel px-3 py-1.5 text-xs font-semibold text-text hover:bg-bg-hover hover:border-border transition shadow-xs">
               <ArrowLeft size={14} />
               <span>Back to Chapter</span>
             </button>
           </Link>
         }
       />
+
+      {/* 4-Stat Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat
+          label="Active Codes"
+          value={activeCodes.length}
+          hint="Currently valid (3-day window)"
+          accent="orange"
+        />
+        <Stat
+          label="Total Codes Generated"
+          value={chapterCodes.length}
+          hint="All time batch history"
+        />
+        <Stat
+          label="Students Joined"
+          value={totalJoined}
+          hint="Enrolled via chapter codes"
+        />
+        <Stat
+          label="Campus Shortcode"
+          value={`${shortCode}-`}
+          hint="Unique chapter token prefix"
+        />
+      </div>
 
       <ChapterInviteCodeManager chapterId={chapter.id} chapterSlug={chapter.slug} />
     </div>

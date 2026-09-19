@@ -3,8 +3,10 @@
 import { useState, useMemo } from "react";
 import { useStore } from "@/context/store-context";
 import { Button } from "@/components/ui/button";
-import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
+import { Badge } from "@/components/ui/badge";
+import { Dialog } from "@/components/ui/dialog";
 import { deriveChapterShortCode } from "@/lib/chapters";
+import { cn } from "@/lib/utils";
 import {
   Copy,
   Check,
@@ -15,6 +17,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 
 export function ChapterInviteCodeManager({
@@ -98,7 +101,7 @@ export function ChapterInviteCodeManager({
     setMsg(null);
     const created = generateChapterInviteCode(chapter?.id || chapterId);
     setMsg({
-      text: `🎉 Generated invite code "${created.code}" with prefix ${shortCode}! Valid for 3 days.`,
+      text: `Generated invite code "${created.code}" with prefix ${shortCode}! Valid for 3 days.`,
       type: "success",
     });
   }
@@ -111,13 +114,13 @@ export function ChapterInviteCodeManager({
 
   function getStatus(c: import("@/types").ChapterInviteCode) {
     if (c.isRevoked) {
-      return { label: "Revoked", color: "bg-red-500/10 text-red-400 border-red-500/30" };
+      return { label: "Revoked", tone: "mute" as const };
     }
     const isExpired = new Date() > new Date(c.expiresAt);
     if (isExpired) {
-      return { label: "Expired", color: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30" };
+      return { label: "Expired", tone: "mute" as const };
     }
-    return { label: "Active", color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" };
+    return { label: "Active", tone: "green" as const };
   }
 
   function formatTimeLeft(expiresAtStr: string) {
@@ -133,22 +136,22 @@ export function ChapterInviteCodeManager({
   return (
     <div className="space-y-6">
       {/* Generator Header Card */}
-      <div className="rounded-[var(--radius)] border border-border bg-bg-panel p-6 shadow-sm">
+      <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-5 sm:p-6 shadow-[var(--shadow-sm)]">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div>
             <div className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-[var(--accent)]" />
-              <h2 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
+              <h2 className="font-[family-name:var(--font-display)] text-base sm:text-lg font-bold text-text">
                 Chapter Invite Codes
               </h2>
-              <span className="inline-flex items-center font-mono font-bold text-xs bg-white/10 px-2 py-0.5 rounded text-[var(--accent)] border border-white/10">
+              <span className="inline-flex items-center font-mono font-bold text-xs bg-[var(--accent)]/10 text-[var(--accent)] px-2 py-0.5 rounded border border-[var(--accent)]/20">
                 Prefix: {shortCode}-
               </span>
             </div>
-            <p className="mt-1.5 text-xs text-text-mute max-w-xl">
+            <p className="mt-1.5 text-xs text-text-dim max-w-xl leading-relaxed">
               Invite codes start with the 3-letter chapter shortcode (
-              <span className="font-mono font-semibold text-white">{shortCode}</span>) followed by 6
-              random characters. Every code is <strong className="text-white">strictly valid for 3 days</strong> and tracks all students who join.
+              <span className="font-mono font-bold text-text">{shortCode}</span>) followed by 6
+              random characters. Every code is strictly valid for <strong className="text-text font-semibold">3 days</strong> and automatically provisions chapter membership to students.
             </p>
           </div>
 
@@ -156,54 +159,56 @@ export function ChapterInviteCodeManager({
             type="button"
             variant="orange"
             onClick={handleGenerate}
-            className="flex items-center gap-2 whitespace-nowrap font-bold px-4 py-2 text-sm shadow-sm"
+            className="flex items-center gap-2 whitespace-nowrap font-bold px-4 py-2 text-xs sm:text-sm shadow-sm shrink-0"
           >
-            <Sparkles size={16} />
+            <Sparkles size={15} />
             <span>Generate {shortCode}-XXXXXX Code</span>
           </Button>
         </div>
 
         {msg && (
           <div
-            className={`mt-4 rounded-md border p-3 text-xs font-semibold ${
+            className={cn(
+              "mt-4 rounded-[var(--radius-sm)] border p-3 text-xs font-semibold flex items-center gap-2",
               msg.type === "success"
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                : "border-red-500/30 bg-red-500/10 text-red-300"
-            }`}
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "border-red-500/30 bg-red-500/10 text-red-500",
+            )}
           >
-            {msg.text}
+            {msg.type === "success" ? <Check size={14} /> : <AlertTriangle size={14} />}
+            <span>{msg.text}</span>
           </div>
         )}
       </div>
 
       {/* Codes List Table */}
-      <div className="rounded-[var(--radius)] border border-border bg-bg-panel p-6 shadow-sm">
+      <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-5 sm:p-6 shadow-[var(--shadow-sm)]">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold text-text flex items-center gap-2">
             <span>Generated Codes & Join History</span>
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-normal text-text-mute">
+            <span className="rounded-full bg-border/60 px-2 py-0.5 text-[11px] font-semibold text-text-dim tabular-nums">
               {inviteCodes.length} total
             </span>
           </h3>
         </div>
 
         {inviteCodes.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center text-text-mute text-xs">
-            No invite codes generated yet. Click &quot;Generate {shortCode}-XXXXXX Code&quot; above to create your first code!
+          <div className="rounded-[var(--radius-sm)] border border-dashed border-border py-12 text-center text-text-dim text-xs">
+            No invite codes generated yet. Click &quot;Generate {shortCode}-XXXXXX Code&quot; above to create your first campus join code!
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-border/70">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-border text-text-mute">
-                  <th className="py-2.5 px-3">Invite Code</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Validity</th>
-                  <th className="py-2.5 px-3">Students Joined</th>
-                  <th className="py-2.5 px-3 text-right">Actions</th>
+                <tr className="border-b border-border/80 bg-bg text-text-dim">
+                  <th className="py-2.5 px-4 font-semibold">Invite Code</th>
+                  <th className="py-2.5 px-4 font-semibold">Status</th>
+                  <th className="py-2.5 px-4 font-semibold">Validity</th>
+                  <th className="py-2.5 px-4 font-semibold">Students Joined</th>
+                  <th className="py-2.5 px-4 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border/60 bg-bg-panel">
                 {inviteCodes.map((codeObj) => {
                   const status = getStatus(codeObj);
                   const isCopied = copiedId === codeObj.id;
@@ -214,20 +219,23 @@ export function ChapterInviteCodeManager({
                   return (
                     <tr key={codeObj.id} className="group">
                       <td colSpan={5} className="p-0">
-                        <div className="flex items-center justify-between p-3 hover:bg-white/[0.02] transition">
+                        <div className="flex items-center justify-between p-3.5 hover:bg-bg/60 transition">
                           {/* Code + Copy */}
-                          <div className="w-1/4 min-w-[150px] flex items-center gap-2">
-                            <span className="font-mono font-bold text-sm text-text bg-black/20 px-2 py-1 rounded border border-white/5">
+                          <div className="w-1/4 min-w-[160px] flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs sm:text-sm text-text bg-bg px-2.5 py-1 rounded border border-border/80">
                               {codeObj.code}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleCopy(codeObj.code, codeObj.id)}
-                              className="p-1 rounded text-text-mute hover:text-white hover:bg-white/10 transition"
+                              className="p-1 rounded text-text-dim hover:text-text hover:bg-bg transition"
                               title="Copy Code"
                             >
                               {isCopied ? (
-                                <Check size={14} className="text-emerald-400" />
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-500">
+                                  <Check size={13} />
+                                  <span>Copied</span>
+                                </span>
                               ) : (
                                 <Copy size={14} />
                               )}
@@ -236,16 +244,14 @@ export function ChapterInviteCodeManager({
 
                           {/* Status Badge */}
                           <div className="w-1/6 min-w-[90px]">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${status.color}`}
-                            >
+                            <Badge tone={status.tone} className="text-[10px] font-semibold">
                               {status.label}
-                            </span>
+                            </Badge>
                           </div>
 
                           {/* Validity Time */}
-                          <div className="w-1/5 min-w-[120px] text-text-mute flex items-center gap-1.5">
-                            <Clock size={12} className="opacity-60" />
+                          <div className="w-1/5 min-w-[130px] text-text-dim flex items-center gap-1.5 font-medium">
+                            <Clock size={12} className="text-text-dim shrink-0" />
                             <span>{formatTimeLeft(codeObj.expiresAt)}</span>
                           </div>
 
@@ -257,11 +263,10 @@ export function ChapterInviteCodeManager({
                                 onClick={() =>
                                   setExpandedCodeId(isExpanded ? null : codeObj.id)
                                 }
-                                className="inline-flex items-center gap-1.5 rounded bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-emerald-300 hover:bg-emerald-500/20 transition font-medium"
+                                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition font-semibold text-[11px]"
                               >
                                 <Users size={12} />
-                                <span className="font-bold">{joinedCount}</span>
-                                <span>joined</span>
+                                <span>{joinedCount} joined</span>
                                 {isExpanded ? (
                                   <ChevronUp size={12} />
                                 ) : (
@@ -269,7 +274,7 @@ export function ChapterInviteCodeManager({
                                 )}
                               </button>
                             ) : (
-                              <span className="text-text-mute opacity-60">0 joined</span>
+                              <span className="text-text-dim opacity-70">0 joined</span>
                             )}
                           </div>
 
@@ -279,30 +284,30 @@ export function ChapterInviteCodeManager({
                               <button
                                 type="button"
                                 onClick={() => setRevokeTarget(codeObj)}
-                                className="inline-flex items-center gap-1 rounded bg-red-500/10 border border-red-500/20 px-2.5 py-1 text-[11px] font-semibold text-red-400 hover:bg-red-500/20 transition"
+                                className="inline-flex items-center gap-1 rounded px-2.5 py-1 text-[11px] font-semibold text-red-500 hover:bg-red-500/10 transition border border-red-200 dark:border-red-900/50"
                               >
-                                <Ban size={12} />
+                                <Ban size={11} />
                                 <span>Revoke</span>
                               </button>
                             ) : (
-                              <span className="text-[11px] text-text-mute opacity-50">—</span>
+                              <span className="text-[11px] text-text-dim opacity-50">—</span>
                             )}
                           </div>
                         </div>
 
                         {/* Expandable Joined Students Table */}
                         {isExpanded && (
-                          <div className="bg-black/30 border-t border-b border-border/80 p-4 pl-8 space-y-2">
-                            <div className="flex items-center justify-between text-[11px] font-semibold text-text-mute mb-2">
+                          <div className="bg-bg/80 border-t border-b border-border/80 p-4 pl-8 space-y-2">
+                            <div className="flex items-center justify-between text-[11px] font-semibold text-text-dim mb-2">
                               <span>Students Registered via Code: {codeObj.code}</span>
                               <span>{codeObj.joinedUsers?.length ?? 0} recorded</span>
                             </div>
 
                             {codeObj.joinedUsers && codeObj.joinedUsers.length > 0 ? (
-                              <div className="overflow-x-auto rounded border border-border/60 bg-bg-panel">
+                              <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-border bg-bg-panel">
                                 <table className="w-full text-left text-[11px]">
                                   <thead>
-                                    <tr className="border-b border-border bg-white/[0.02] text-text-mute">
+                                    <tr className="border-b border-border/70 bg-bg text-text-dim">
                                       <th className="py-2 px-3">Student Name</th>
                                       <th className="py-2 px-3">Unique ID</th>
                                       <th className="py-2 px-3">Email</th>
@@ -310,10 +315,10 @@ export function ChapterInviteCodeManager({
                                       <th className="py-2 px-3 text-right">Joined At</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-border/40">
+                                  <tbody className="divide-y divide-border/50">
                                     {codeObj.joinedUsers.map((u, i) => (
-                                      <tr key={u.id || i} className="hover:bg-white/[0.02]">
-                                        <td className="py-2 px-3 font-medium text-text">
+                                      <tr key={u.id || i} className="hover:bg-bg/40">
+                                        <td className="py-2 px-3 font-semibold text-text">
                                           {u.fullName}
                                         </td>
                                         <td className="py-2 px-3 font-mono text-[10px] text-[var(--accent)] font-semibold">
@@ -325,7 +330,7 @@ export function ChapterInviteCodeManager({
                                         <td className="py-2 px-3 text-text-dim">
                                           {[u.department, u.year].filter(Boolean).join(" · ") || "—"}
                                         </td>
-                                        <td className="py-2 px-3 text-right text-text-mute font-mono text-[10px]">
+                                        <td className="py-2 px-3 text-right text-text-dim font-mono text-[10px]">
                                           {u.joinedAt
                                             ? new Date(u.joinedAt).toLocaleString(undefined, {
                                                 month: "short",
@@ -341,8 +346,8 @@ export function ChapterInviteCodeManager({
                                 </table>
                               </div>
                             ) : (
-                              <p className="text-xs text-text-mute py-1">
-                                {joinedCount} student(s) joined using this code. Profile details are synchronized in Supabase.
+                              <p className="text-xs text-text-dim py-1">
+                                {joinedCount} student(s) joined using this code. Profile details are synchronized in the directory.
                               </p>
                             )}
                           </div>
@@ -357,20 +362,32 @@ export function ChapterInviteCodeManager({
         )}
       </div>
 
-      <TypeConfirmModal
+      {/* Revoke Confirmation Dialog */}
+      <Dialog
         open={Boolean(revokeTarget)}
         onClose={() => setRevokeTarget(null)}
         title="Revoke Chapter Invite Code"
         description={`Are you sure you want to revoke invite code "${revokeTarget?.code}"? Students will no longer be able to use this code to join.`}
-        confirmWord="REVOKE"
-        actionLabel="Revoke Code"
-        onConfirm={async () => {
-          if (revokeTarget) {
-            await revokeChapterInviteCode(revokeTarget.id, revokeTarget.code);
-            setMsg({ text: `Revoked invite code "${revokeTarget.code}".`, type: "error" });
-          }
-        }}
-      />
+        className="max-w-md"
+      >
+        <div className="mt-5 flex justify-end gap-2 border-t border-border/80 pt-4">
+          <Button variant="ghost" onClick={() => setRevokeTarget(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={async () => {
+              if (revokeTarget) {
+                await revokeChapterInviteCode(revokeTarget.id, revokeTarget.code);
+                setMsg({ text: `Revoked invite code "${revokeTarget.code}".`, type: "error" });
+                setRevokeTarget(null);
+              }
+            }}
+          >
+            Revoke Code
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 }

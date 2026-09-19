@@ -930,6 +930,7 @@ export interface InviteToken {
   createdAt: string;
   expiresAt?: string;
   isActive: boolean;
+  usesCount?: number;
 }
 
 export interface DemoUserSession {

@@ -9,13 +9,16 @@ import {
   Copy,
   Download,
   FileSpreadsheet,
+  Filter,
   Mail,
   Phone,
   Plus,
+  RotateCcw,
   Search,
   Sparkles,
   Trash2,
   UserCheck,
+  UserPlus,
   Users,
   X,
   Shield,
@@ -31,7 +34,7 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isSuperAdmin } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
-import { formatDateTime, initials } from "@/lib/utils";
+import { cn, formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId, cohortRepIds } from "@/lib/forms/helpers";
 import { roleKeyLabel } from "@/lib/leadership";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
@@ -488,9 +491,9 @@ export default function ChapterStudentsPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow={chapterEyebrow(store.session.roleKey, "people")}
+        eyebrow={chapterEyebrow(session.roleKey, "people")}
         title={`${targetChapter.name} Members Roster`}
-        description={`Showing all official Supabase user profiles and verified student members registered in ${targetChapter.name} (${targetChapter.college}).`}
+        description={`Official student directory and member profiles registered in ${targetChapter.name} (${targetChapter.college}).`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -508,7 +511,7 @@ export default function ChapterStudentsPage({
                     variant="secondary"
                     className="flex items-center gap-1.5 text-xs"
                   >
-                    Invite Students
+                    <UserPlus size={14} /> Invite Students
                   </Button>
                 </Link>
                 <Button
@@ -532,14 +535,21 @@ export default function ChapterStudentsPage({
       />
 
       {session.roleKey === "class_representative" && myClassCohort && (
-        <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3.5 flex items-center justify-between gap-3 animate-fade-in">
-          <div className="flex items-center gap-2.5">
-            <GraduationCap className="h-5 w-5 text-cyan-400 shrink-0" />
+        <div className="rounded-[var(--radius-xl)] border border-cyan-500/25 bg-cyan-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[var(--shadow-sm)] animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-500 shrink-0">
+              <GraduationCap className="h-5 w-5" />
+            </div>
             <div>
-              <p className="text-xs font-bold text-text">Class Representative View</p>
-              <p className="text-[11px] text-text-dim">
-                Showing only enrolled students in your class:{" "}
-                <strong className="text-cyan-400">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-text">Class Representative View</p>
+                <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
+                  Assigned Cohort
+                </span>
+              </div>
+              <p className="text-[12px] text-text-dim mt-0.5">
+                Showing enrolled students in{" "}
+                <strong className="text-text font-semibold">
                   {myClassCohort.department} · {myClassCohort.year}
                   {myClassCohort.section ? ` (Sec ${myClassCohort.section})` : ""}
                 </strong>
@@ -551,29 +561,30 @@ export default function ChapterStudentsPage({
       )}
 
       {syncSuccessMsg && (
-        <div className="rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-400 animate-fade-in">
-          {syncSuccessMsg}
+        <div className="rounded-[var(--radius-lg)] border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 shadow-[var(--shadow-sm)] animate-fade-in">
+          <CheckCircle size={15} className="shrink-0" />
+          <span>{syncSuccessMsg}</span>
         </div>
       )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label={session.roleKey === "class_representative" ? "Class Members" : "Chapter Members"}
+          label={session.roleKey === "class_representative" ? "Class Members" : "Total Members"}
           value={chapterMembers.length}
           hint={session.roleKey === "class_representative" ? "Enrolled in your class" : "Strictly this chapter"}
           accent="cyan"
         />
         <Stat
-          label="Synced Supabase Profiles"
+          label="Active Accounts"
           value={activeSyncedCount}
-          hint="Active accounts"
+          hint="Synced Supabase profiles"
           accent="green"
         />
         <Stat
           label="Pending / Unclaimed"
           value={pendingCount}
-          hint="Pre-registered"
+          hint="Pre-registered members"
           accent="orange"
         />
         {session.roleKey !== "class_representative" ? (
@@ -593,147 +604,185 @@ export default function ChapterStudentsPage({
         )}
       </div>
 
-      {/* Search & Status Filter */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full max-w-md">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={
-              session.roleKey === "class_representative"
-                ? "Search by Elevates ID (ELV-...), name, email, or phone..."
-                : "Search by Elevates ID (ELV-...), name, email, role, or phone..."
-            }
-            className="pl-9 text-xs"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {(["all", "claimed", "unclaimed"] as const).map((st) => (
-            <button
-              key={st}
-              onClick={() => setFilterStatus(st)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
-                filterStatus === st
-                  ? "bg-text text-bg-page shadow-sm"
-                  : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
-              }`}
-            >
-              {st === "all"
-                ? `All Members (${chapterMembers.length})`
-                : st === "claimed"
-                  ? `Active Synced (${activeSyncedCount})`
-                  : `Unclaimed (${pendingCount})`}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Department Filter Pills */}
-      {session.roleKey !== "class_representative" && chapterDepartments.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-xs text-text-dim mr-1">Department:</span>
-          <button
-            type="button"
-            onClick={() => setSelectedDepartmentFilter("all")}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-              selectedDepartmentFilter === "all"
-                ? "bg-text text-bg-page shadow-sm"
-                : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
-            }`}
-          >
-            All Departments ({chapterMembers.length})
-          </button>
-          {chapterDepartments.map((dept: string) => {
-            const count = chapterMembers.filter(
-              (s) => s.department.toLowerCase() === dept.toLowerCase(),
-            ).length;
-            const isSelected =
-              selectedDepartmentFilter.toLowerCase() === dept.toLowerCase();
-            return (
-              <button
-                key={dept}
-                type="button"
-                onClick={() => setSelectedDepartmentFilter(dept)}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                  isSelected
-                    ? "bg-[var(--accent)] text-white shadow-sm"
-                    : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
-                }`}
-              >
-                {dept} ({count})
-              </button>
-            );
-          })}
-          {chapterMembers.some(
-            (s) => !s.department || s.department.toLowerCase() === "unassigned",
-          ) && (
-            <button
-              type="button"
-              onClick={() => setSelectedDepartmentFilter("Unassigned")}
-              className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                selectedDepartmentFilter.toLowerCase() === "unassigned"
-                  ? "bg-[var(--accent)] text-white shadow-sm"
-                  : "bg-bg-panel text-text-dim hover:text-text border border-border/50"
-              }`}
-            >
-              Unassigned (
-              {
-                chapterMembers.filter(
-                  (s) => !s.department || s.department.toLowerCase() === "unassigned",
-                ).length
+      {/* Modern Filter Toolbar */}
+      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/60 p-4 shadow-[var(--shadow-sm)] space-y-3.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full lg:max-w-md">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={
+                session.roleKey === "class_representative"
+                  ? "Search by Elevates ID (ELV-...), name, email, or phone..."
+                  : "Search by Elevates ID, name, email, role, or phone..."
               }
-              )
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Role Filter Pills */}
-      {session.roleKey !== "class_representative" && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <span className="text-xs text-text-dim mr-1">Role:</span>
-          {(["all", "Campus Lead", "Faculty", "Class Rep", "Student"] as const).map((r) => {
-            const isSelected =
-              selectedRoleFilter === (r === "all" ? "all" : r.toLowerCase());
-            return (
+              className="pl-9 pr-9 text-xs h-9 rounded-full bg-bg-page/70 border-border/60 focus:bg-bg-panel transition-all"
+            />
+            {search && (
               <button
-                key={r}
                 type="button"
-                onClick={() => setSelectedRoleFilter(r === "all" ? "all" : r.toLowerCase())}
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition ${
-                  isSelected
-                    ? "bg-text text-bg-page shadow-sm"
-                    : "bg-bg-panel text-text-dim hover:text-text border border-border/40"
-                }`}
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-mute hover:text-text p-0.5 rounded-full"
+                title="Clear search"
               >
-                {r}
+                <X size={13} />
               </button>
-            );
-          })}
+            )}
+          </div>
+
+          {/* Status Segmented Pills */}
+          <div className="inline-flex items-center gap-1 rounded-full bg-bg-page/80 p-1 border border-border/50 self-start lg:self-auto">
+            {(["all", "claimed", "unclaimed"] as const).map((st) => {
+              const isActive = filterStatus === st;
+              const count =
+                st === "all"
+                  ? chapterMembers.length
+                  : st === "claimed"
+                    ? activeSyncedCount
+                    : pendingCount;
+              const label =
+                st === "all"
+                  ? "All"
+                  : st === "claimed"
+                    ? "Active Synced"
+                    : "Unclaimed";
+              return (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setFilterStatus(st)}
+                  className={cn(
+                    "h-7 rounded-full px-3 text-xs font-semibold transition-all inline-flex items-center gap-1.5",
+                    isActive
+                      ? "bg-[var(--accent)] text-white shadow-sm"
+                      : "text-text-dim hover:text-text hover:bg-bg-panel"
+                  )}
+                >
+                  <span>{label}</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.2 text-[10px]",
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-bg-panel text-text-mute border border-border/40"
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      )}
+
+        {/* Filter Controls: Department & Role & Reset */}
+        {session.roleKey !== "class_representative" && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-border/40">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-text-dim">Dept:</span>
+                <select
+                  value={selectedDepartmentFilter}
+                  onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
+                  className="h-7 rounded-lg border border-border/60 bg-bg-page px-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                >
+                  <option value="all">All Departments ({chapterMembers.length})</option>
+                  {chapterDepartments.map((dept) => {
+                    const count = chapterMembers.filter(
+                      (s) => s.department.toLowerCase() === dept.toLowerCase()
+                    ).length;
+                    return (
+                      <option key={dept} value={dept}>
+                        {dept} ({count})
+                      </option>
+                    );
+                  })}
+                  {chapterMembers.some(
+                    (s) => !s.department || s.department.toLowerCase() === "unassigned"
+                  ) && (
+                    <option value="Unassigned">
+                      Unassigned (
+                      {
+                        chapterMembers.filter(
+                          (s) => !s.department || s.department.toLowerCase() === "unassigned"
+                        ).length
+                      }
+                      )
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-text-dim">Role:</span>
+                <select
+                  value={selectedRoleFilter}
+                  onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                  className="h-7 rounded-lg border border-border/60 bg-bg-page px-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="campus lead">Campus Lead</option>
+                  <option value="faculty">Faculty Coordinator</option>
+                  <option value="class rep">Class Representative</option>
+                  <option value="student">Student Member</option>
+                </select>
+              </div>
+
+              {(selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all" || search || filterStatus !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setFilterStatus("all");
+                    setSelectedDepartmentFilter("all");
+                    setSelectedRoleFilter("all");
+                  }}
+                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline font-medium ml-1"
+                >
+                  <RotateCcw size={11} /> Reset filters
+                </button>
+              )}
+            </div>
+
+            <div className="text-[11px] text-text-dim font-medium">
+              Showing <strong className="text-text font-semibold">{filteredStudents.length}</strong> of {chapterMembers.length} members
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Multi-Select Action Bar */}
       {selectedStudentIds.length > 0 && (
-        <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-[var(--accent)] bg-[var(--accent)]/10 p-4">
-          <span className="text-xs font-semibold text-text">
-            {selectedStudentIds.length} candidate(s) selected
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-xl)] border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-3.5 shadow-sm animate-fade-in">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={handleBatchReject} className="text-xs text-red-400">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-white text-[11px] font-bold">
+              {selectedStudentIds.length}
+            </span>
+            <span className="text-xs font-semibold text-text">
+              member{selectedStudentIds.length > 1 ? "s" : ""} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedStudentIds([])}
+              className="text-[11px] text-text-dim hover:text-text underline ml-1"
+            >
+              Clear selection
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={handleBatchReject} className="h-8 px-3 text-xs text-red-500 hover:bg-red-500/10">
               Reject Selected
             </Button>
-            <Button variant="orange" onClick={handleBatchApprove} className="text-xs">
-              <CheckCircle size={14} className="mr-1" /> Accept Selected ({selectedStudentIds.length})
+            <Button variant="orange" onClick={handleBatchApprove} className="h-8 px-3 text-xs">
+              <CheckCircle size={14} className="mr-1.5" /> Accept & Sync ({selectedStudentIds.length})
             </Button>
           </div>
         </div>
       )}
 
       {/* Student & Member List Table */}
-      <div className="rounded-[var(--radius-lg)] bg-bg-panel p-3.5 sm:p-5 shadow-[var(--shadow)]">
+      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/60 p-4 sm:p-5 shadow-[var(--shadow)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[700px] text-left text-xs">
             <thead>
@@ -749,18 +798,18 @@ export default function ChapterStudentsPage({
                     className="rounded border-border"
                   />
                 </th>
-                <th className="pb-3 font-semibold">Member Number</th>
-                <th className="pb-3 font-semibold">
-                  {session.roleKey === "class_representative" ? "Member Name" : "Member Name & Role"}
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Member ID</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">
+                  {session.roleKey === "class_representative" ? "Member Details" : "Member Details & Role"}
                 </th>
-                <th className="pb-3 font-semibold">Contact & Phone</th>
-                <th className="pb-3 font-semibold">Department & Year</th>
-                <th className="pb-3 font-semibold">Skills / Tags</th>
-                <th className="pb-3 font-semibold">Status</th>
-                <th className="pb-3 font-semibold text-right">Actions</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Contact</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Academic Cohort</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Skills / Focus</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Account Status</th>
+                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-border/60">
               {filteredStudents.length > 0 ? (
                 filteredStudents.map((stu) => {
                   const isSelected = selectedStudentIds.includes(stu.id);
@@ -769,11 +818,12 @@ export default function ChapterStudentsPage({
                   return (
                     <tr
                       key={stu.id}
-                      className={`group hover:bg-bg-page/50 transition-colors ${
-                        isSelected ? "bg-[var(--accent)]/5" : ""
-                      }`}
+                      className={cn(
+                        "group hover:bg-bg-page/70 transition-colors",
+                        isSelected && "bg-[var(--accent)]/5"
+                      )}
                     >
-                      <td className="py-3">
+                      <td className="py-3.5">
                         <input
                           type="checkbox"
                           checked={isSelected}
@@ -782,27 +832,23 @@ export default function ChapterStudentsPage({
                         />
                       </td>
 
-                      <td className="py-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/25">
-                            {stu.elevatesId}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(stu.elevatesId)}
-                            className="text-text-mute hover:text-text transition-colors p-1"
-                            title="Copy Member Number"
-                          >
-                            {isCopied ? (
-                              <Check size={12} className="text-emerald-400" />
-                            ) : (
-                              <Copy size={12} />
-                            )}
-                          </button>
-                        </div>
+                      <td className="py-3.5">
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(stu.elevatesId)}
+                          className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 hover:bg-[var(--accent)]/20 transition-colors inline-flex items-center gap-1.5"
+                          title="Click to copy Member ID"
+                        >
+                          <span>{stu.elevatesId}</span>
+                          {isCopied ? (
+                            <Check size={11} className="text-emerald-500" />
+                          ) : (
+                            <Copy size={11} className="opacity-60 group-hover:opacity-100" />
+                          )}
+                        </button>
                       </td>
 
-                      <td className="py-3">
+                      <td className="py-3.5">
                         <div className="flex items-center gap-2.5">
                           <span className="flex h-8 w-8 items-center justify-center shrink-0 overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
                             {initials(stu.fullName)}
@@ -810,69 +856,69 @@ export default function ChapterStudentsPage({
                           <div>
                             <Link
                               href={`/profile/${stu.elevatesId || stu.id}`}
-                              className="font-semibold text-text hover:text-[var(--accent)] hover:underline transition-colors"
+                              className="font-semibold text-text hover:text-[var(--accent)] hover:underline transition-colors block text-xs"
                             >
                               {stu.fullName}
                             </Link>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               {session.roleKey !== "class_representative" && (
                                 <Badge tone={stu.roleInfo.tone}>
                                   {stu.roleInfo.label}
                                 </Badge>
                               )}
                               {stu.volunteerTag && (
-                                <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 text-[10px] font-bold">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 text-[10px] font-semibold">
                                   <Tag size={9} />
                                   {stu.volunteerTag}
                                 </span>
                               )}
-                              {(stu.createdAt || stu.joinedAt) ? (
-                                <span className="font-mono text-[10px] text-text-mute">
+                              {(stu.createdAt || stu.joinedAt) && (
+                                <span className="text-[10px] text-text-mute font-mono">
                                   Joined {formatDateTime((stu.createdAt || stu.joinedAt)!)}
                                 </span>
-                              ) : null}
+                              )}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-3 text-text-dim">
+                      <td className="py-3.5 text-text-dim">
                         <div className="flex flex-col gap-0.5">
                           {stu.phone ? (
                             <a
                               href={`tel:${stu.phone}`}
-                              className="flex items-center gap-1 text-text hover:underline"
+                              className="flex items-center gap-1 text-text hover:underline text-xs"
                             >
-                              <Phone size={11} className="text-text-dim" /> {stu.phone}
+                              <Phone size={11} className="text-text-mute shrink-0" /> {stu.phone}
                             </a>
                           ) : (
                             <span className="text-[11px] text-text-mute">—</span>
                           )}
                           <a
                             href={`mailto:${stu.email}`}
-                            className="flex items-center gap-1 text-[11px] hover:text-[var(--accent)]"
+                            className="flex items-center gap-1 text-[11px] text-text-dim hover:text-[var(--accent)]"
                           >
-                            <Mail size={11} className="text-text-dim" /> {stu.email}
+                            <Mail size={11} className="text-text-mute shrink-0" /> {stu.email}
                           </a>
                         </div>
                       </td>
 
-                      <td className="py-3 text-text">
+                      <td className="py-3.5 text-text">
                         <div>
-                          <p className="font-medium">{stu.department}</p>
+                          <p className="font-semibold text-text">{stu.department}</p>
                           <p className="text-[11px] text-text-dim">
                             {stu.year} {stu.section ? `· Sec ${stu.section}` : ""}
                           </p>
                         </div>
                       </td>
 
-                      <td className="py-3">
+                      <td className="py-3.5">
                         <div className="flex flex-wrap gap-1 max-w-xs">
                           {stu.skills.length > 0 ? (
-                            stu.skills.map((sk) => (
+                            stu.skills.slice(0, 3).map((sk) => (
                               <span
                                 key={sk}
-                                className="rounded bg-[var(--neutral-100)] px-1.5 py-0.5 text-[10px] font-medium text-text"
+                                className="rounded-md bg-bg-page border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-text-dim"
                               >
                                 {sk}
                               </span>
@@ -880,10 +926,15 @@ export default function ChapterStudentsPage({
                           ) : (
                             <span className="text-[11px] text-text-mute">—</span>
                           )}
+                          {stu.skills.length > 3 && (
+                            <span className="rounded-md bg-bg-page border border-border/60 px-1 py-0.5 text-[10px] font-medium text-text-mute">
+                              +{stu.skills.length - 3}
+                            </span>
+                          )}
                         </div>
                       </td>
 
-                      <td className="py-3">
+                      <td className="py-3.5">
                         {stu.status === "claimed" ? (
                           <Badge tone="green">
                             <UserCheck size={11} className="mr-1" /> Active Profile
@@ -899,7 +950,7 @@ export default function ChapterStudentsPage({
                         )}
                       </td>
 
-                      <td className="py-3 text-right">
+                      <td className="py-3.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {stu.status === "unclaimed" && (
                             <Button
@@ -916,7 +967,7 @@ export default function ChapterStudentsPage({
                               variant="ghost"
                               size="sm"
                               onClick={() => handleDelete(stu.id)}
-                              className="h-7 px-2 text-red-500 hover:bg-red-50"
+                              className="h-7 px-2 text-red-500 hover:bg-red-50 hover:text-red-600"
                               title="Remove member from chapter"
                             >
                               <Trash2 size={13} />
@@ -930,13 +981,30 @@ export default function ChapterStudentsPage({
               ) : (
                 <tr>
                   <td colSpan={8} className="py-12 text-center text-text-dim">
-                    <Users size={32} className="mx-auto mb-2 text-text-mute opacity-50" />
-                    <p className="font-medium">No members found</p>
-                    <p className="text-[11px] text-text-mute mt-1">
-                      {search
-                        ? `No members match search query "${search}"`
-                        : "No members registered in this chapter yet."}
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-page border border-border/60 mx-auto mb-3 text-text-mute">
+                      <Users size={22} />
+                    </div>
+                    <p className="font-semibold text-text text-sm">No members found</p>
+                    <p className="text-xs text-text-mute mt-1 max-w-sm mx-auto">
+                      {search || filterStatus !== "all" || selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all"
+                        ? "No students match your active filter criteria. Try clearing search or resetting filters."
+                        : "No students registered in this chapter yet. Use 'Add Member' or 'Bulk CSV Import' to get started."}
                     </p>
+                    {(search || filterStatus !== "all" || selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all") && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setSearch("");
+                          setFilterStatus("all");
+                          setSelectedDepartmentFilter("all");
+                          setSelectedRoleFilter("all");
+                        }}
+                        className="mt-3 text-xs"
+                      >
+                        <RotateCcw size={12} className="mr-1.5" /> Clear All Filters
+                      </Button>
+                    )}
                   </td>
                 </tr>
               )}
@@ -947,18 +1015,18 @@ export default function ChapterStudentsPage({
 
       {/* Add Single Student Modal */}
       {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm">
-          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-4 sm:p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm animate-fade-in">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-[var(--radius-2xl)] bg-bg-panel p-5 sm:p-6 shadow-2xl border border-border/70">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
                 <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
                   Add Student to Database
                 </h3>
-                <p className="text-xs text-text-dim">Pre-collect skill & contact data for auto-sync</p>
+                <p className="text-xs text-text-dim mt-0.5">Pre-collect skill & contact data for auto-sync</p>
               </div>
               <button
                 onClick={() => setIsAdding(false)}
-                className="rounded-full p-1.5 text-text-dim hover:bg-bg-page hover:text-text"
+                className="rounded-full p-1.5 text-text-dim hover:bg-bg-page hover:text-text transition-colors"
               >
                 <X size={18} />
               </button>
@@ -1004,7 +1072,7 @@ export default function ChapterStudentsPage({
                 <div className="sm:col-span-2">
                   <label className="font-semibold text-text">Department</label>
                   <select
-                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page px-3 py-2 text-xs text-text"
+                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page px-3 py-2 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                   >
@@ -1020,7 +1088,7 @@ export default function ChapterStudentsPage({
                 <div>
                   <label className="font-semibold text-text">Year</label>
                   <select
-                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page px-3 py-2 text-xs text-text"
+                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page px-3 py-2 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                     value={formData.year}
                     onChange={(e) => setFormData({ ...formData, year: e.target.value })}
                   >
@@ -1057,7 +1125,7 @@ export default function ChapterStudentsPage({
                   Cancel
                 </Button>
                 <Button variant="orange" type="submit">
-                  Save to Student DB
+                  Save to Member Directory
                 </Button>
               </div>
             </form>
@@ -1067,18 +1135,18 @@ export default function ChapterStudentsPage({
 
       {/* Bulk CSV Modal */}
       {isBulkOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm">
-          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-xl)] bg-bg-panel p-4 sm:p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-2.5 sm:p-4 backdrop-blur-sm animate-fade-in">
+          <div className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-[var(--radius-2xl)] bg-bg-panel p-5 sm:p-6 shadow-2xl border border-border/70">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
                 <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
                   Bulk CSV Import
                 </h3>
-                <p className="text-xs text-text-dim">Paste CSV lines from Google Sheets / Excel</p>
+                <p className="text-xs text-text-dim mt-0.5">Paste CSV lines from Google Sheets / Excel</p>
               </div>
               <button
                 onClick={() => setIsBulkOpen(false)}
-                className="rounded-full p-1.5 text-text-dim hover:bg-bg-page hover:text-text"
+                className="rounded-full p-1.5 text-text-dim hover:bg-bg-page hover:text-text transition-colors"
               >
                 <X size={18} />
               </button>
@@ -1086,8 +1154,8 @@ export default function ChapterStudentsPage({
 
             {bulkReport ? (
               <div className="mt-4 space-y-4 text-xs">
-                <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-400">
-                  <span>
+                <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-400">
+                  <span className="font-medium">
                     Import Complete: {bulkReport.summary.succeeded} succeeded, {bulkReport.summary.failed} failed out of {bulkReport.summary.total} rows.
                   </span>
                 </div>
@@ -1099,10 +1167,12 @@ export default function ChapterStudentsPage({
                         <span className="text-text-mute">({res.email})</span>
                       </div>
                       <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${res.status === "success"
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : "bg-red-500/20 text-red-400"
-                          }`}
+                        className={cn(
+                          "rounded px-1.5 py-0.5 text-[10px] font-medium",
+                          res.status === "success"
+                            ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                            : "bg-red-500/20 text-red-500"
+                        )}
                       >
                         {res.status === "success" ? "Success" : res.message}
                       </span>
@@ -1124,10 +1194,10 @@ export default function ChapterStudentsPage({
               </div>
             ) : (
               <form onSubmit={handleBulkImport} className="mt-4 space-y-4 text-xs">
-                <div className="rounded-[var(--radius-md)] bg-[var(--neutral-100)] p-3 text-[11px] text-text-dim font-mono">
-                  Format: Name, Email, Phone, Department, Year, Skills (separated by semicolons)
+                <div className="rounded-[var(--radius-md)] bg-bg-page border border-border/70 p-3 text-[11px] text-text-dim font-mono">
+                  <strong className="text-text">Format:</strong> Name, Email, Phone, Department, Year, Skills (separated by semicolons)
                   <br />
-                  Example: John Doe, john@student.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git
+                  <span className="text-text-mute">Example: John Doe, john@student.edu.in, 9847123456, CSE, 3rd Year, React; Python; Git</span>
                 </div>
 
                 <div>
@@ -1138,7 +1208,7 @@ export default function ChapterStudentsPage({
                     value={bulkText}
                     onChange={(e) => setBulkText(e.target.value)}
                     placeholder="Paste multiple rows here..."
-                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page p-2.5 font-mono text-xs text-text"
+                    className="mt-1 w-full rounded-[var(--radius-md)] border border-border bg-bg-page p-2.5 font-mono text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
                   />
                 </div>
 

@@ -3,13 +3,15 @@
 import { useState, useMemo, useEffect, useRef, use } from "react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
+import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
 import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isExecutiveRole, resolveChapter } from "@/lib/access";
+import { isExecutiveRole, resolveChapter, chapterEyebrow } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 import { ElevatesCertificate } from "@/components/domain/elevates-certificate";
 import { CertificateTemplate } from "@/types";
 import {
@@ -434,41 +436,116 @@ export default function ChapterCertificatesPage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Certificates Center"
-        description={`Official, verifiable Elevates certificates with background check pattern, teacher PNG signatures, and template import options for ${chapter.name}.`}
+        eyebrow={chapterEyebrow(session.roleKey, "programs")}
+        title="Certificates & Credentials Center"
+        description={`Official, verifiable Elevates credentials with verified signatures, serial IDs, and template customization for ${chapter.name}.`}
         actions={
           <div className="flex items-center gap-2">
             <Button
-              variant={activeTab === "attendance" ? "orange" : "ghost"}
-              onClick={() => setActiveTab("attendance")}
-              className="text-xs flex items-center gap-1.5"
-            >
-              <Users size={14} /> Attendance Issuance
-            </Button>
-            <Button
-              variant={activeTab === "ledger" ? "orange" : "ghost"}
-              onClick={() => setActiveTab("ledger")}
-              className="text-xs flex items-center gap-1.5"
-            >
-              <Layers size={14} /> Issued Registry ({chapterCertificates.length})
-            </Button>
-            <Button
-              variant={activeTab === "designer" ? "orange" : "ghost"}
-              onClick={() => setActiveTab("designer")}
-              className="text-xs flex items-center gap-1.5"
-            >
-              <Palette size={14} /> Template Designer
-            </Button>
-            <Button
               variant="secondary"
               onClick={() => setImportTemplateModalOpen(true)}
-              className="text-xs flex items-center gap-1.5"
+              className="text-xs sm:text-sm flex items-center gap-1.5 font-semibold border border-border/80"
             >
-              <FileUp size={14} /> Import Template
+              <FileUp size={14} />
+              <span>Import Template</span>
             </Button>
           </div>
         }
       />
+
+      {/* 4-Stat Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat
+          label="Total Issued"
+          value={chapterCertificates.length}
+          hint="All time credentials"
+        />
+        <Stat
+          label="Active & Verifiable"
+          value={chapterCertificates.filter((c) => !c.isRevoked).length}
+          hint="Live cryptographic passes"
+          accent="orange"
+        />
+        <Stat
+          label="Eligible Attendees"
+          value={attendeesList.length}
+          hint="Present in selected event"
+        />
+        <Stat
+          label="Configured Templates"
+          value={templates.length}
+          hint="Available designs"
+        />
+      </div>
+
+      {/* Unified Segmented Tab Bar */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/80 pb-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab("attendance")}
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            activeTab === "attendance"
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
+        >
+          <Users size={13} />
+          <span>Attendance Issuance</span>
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              activeTab === "attendance" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+            )}
+          >
+            {unissuedAttendees.length} pending
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("ledger")}
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            activeTab === "ledger"
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
+        >
+          <Layers size={13} />
+          <span>Issued Registry</span>
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              activeTab === "ledger" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+            )}
+          >
+            {chapterCertificates.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("designer")}
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            activeTab === "designer"
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
+        >
+          <Palette size={13} />
+          <span>Template Designer</span>
+          <span
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              activeTab === "designer" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+            )}
+          >
+            {templates.length}
+          </span>
+        </button>
+      </div>
 
       {/* Live Notification Bar */}
       {notification && (

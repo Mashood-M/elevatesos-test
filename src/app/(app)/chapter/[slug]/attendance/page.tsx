@@ -1522,14 +1522,20 @@ export default function ChapterAttendancePage({
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title={isReadOnly ? "Attendance Overview" : "Attendance Desk"}
+        eyebrow={chapterEyebrow(session.roleKey, "programs")}
+        title={isReadOnly ? "Attendance Overview & Audit" : "Attendance Desk & QR Scanner"}
+        description={
+          isReadOnly
+            ? "Inspect verified student attendance, session completion checkpoints, and issued certificates."
+            : "High-speed QR check-in, on-spot registration, checkpoint session tracking, and attendance records."
+        }
         actions={
           !isReadOnly ? (
             <div className="flex flex-wrap items-center gap-2">
               {volunteerPowers.isVolunteer && !isCampusLead && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mr-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                   Volunteer: {volunteerPowers.effectiveTag}
                 </span>
@@ -1537,21 +1543,23 @@ export default function ChapterAttendancePage({
               {(isCampusLead || canRegisterWalkins) && hasEvent && (
                 <Button
                   variant="orange"
-                  className="text-xs"
+                  className="text-xs sm:text-sm font-bold gap-1.5 shadow-xs"
                   disabled={!attendanceTakeable.allowed}
                   title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                   onClick={() => setIsOnSpotOpen(true)}
                 >
-                  + On-Spot Check-in
+                  <Plus size={14} />
+                  On-Spot Check-in
                 </Button>
               )}
               {hasEvent && isMultiSession && (
                 <Button
                   variant="ghost"
-                  className="text-xs border border-border"
+                  className="text-xs sm:text-sm border border-border/70 hover:bg-bg-panel gap-1.5"
                   onClick={handleAddCustomCheckpoint}
                 >
-                  + Add Checkpoint Session
+                  <Plus size={14} />
+                  Add Checkpoint
                 </Button>
               )}
             </div>

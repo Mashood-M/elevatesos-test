@@ -7,11 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
+import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
+import { cn } from "@/lib/utils";
 import type { ClassCohort, Department } from "@/types";
 import {
   AlertCircle,
@@ -578,15 +580,15 @@ export default function ChapterClassesPage({
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Classes & Departments"
-        description="Manage college academic departments, class cohorts with representatives, and student directory by department."
+        title="Classes & Academic Departments"
+        description="Configure campus academic faculties, class division cohorts, appointed representatives, and student rosters."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
-              <span className="self-center rounded-full bg-[var(--accent)]/10 px-3 py-1 text-[12px] font-semibold text-[var(--accent)] border border-[var(--accent)]/20">
+              <span className="self-center rounded-full bg-[var(--accent)]/10 px-3 py-1 text-xs font-semibold text-[var(--accent)] border border-[var(--accent)]/20 animate-pulse">
                 {flash}
               </span>
             ) : null}
@@ -595,8 +597,10 @@ export default function ChapterClassesPage({
                 variant="orange"
                 onClick={startCreate}
                 disabled={!departments.length}
+                className="gap-1.5 shadow-xs text-xs sm:text-sm font-semibold"
               >
-                {showForm && !editingId ? "Close form" : "New class"}
+                <Plus size={14} />
+                <span>{showForm && !editingId ? "Close Form" : "New Class"}</span>
               </Button>
             ) : null}
             {canManage && activeTab === "departments" ? (
@@ -604,7 +608,7 @@ export default function ChapterClassesPage({
                 variant="secondary"
                 size="sm"
                 onClick={handleAddAllStandardDepts}
-                className="text-xs"
+                className="text-xs gap-1.5 border border-border/80"
               >
                 <Sparkles size={13} className="text-[var(--accent)]" />
                 <span>Add All Standard Depts</span>
@@ -614,25 +618,50 @@ export default function ChapterClassesPage({
         }
       />
 
-      {/* Unified Brand Tab Navigation */}
-      <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-border pb-3">
+      {/* 4-Stat Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat
+          label="Departments"
+          value={departments.length}
+          hint="Academic faculties"
+          accent="orange"
+        />
+        <Stat
+          label="Classes & Cohorts"
+          value={cohorts.length}
+          hint="Configured year/sections"
+        />
+        <Stat
+          label="Appointed Class Reps"
+          value={totalRepsCount}
+          hint="Active representatives"
+        />
+        <Stat
+          label="Enrolled Students"
+          value={chapterStudents.length}
+          hint="Total member directory"
+        />
+      </div>
+
+      {/* Unified Segmented Tab Bar */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/80 pb-3">
         <button
           type="button"
           onClick={() => setActiveTab("departments")}
-          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
             activeTab === "departments"
-              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
-          }`}
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
         >
-          <Building2 size={14} />
+          <Building2 size={13} />
           <span>Departments</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-              activeTab === "departments"
-                ? "bg-white/25 text-white"
-                : "bg-bg text-text-mute"
-            }`}
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              activeTab === "departments" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+            )}
           >
             {departments.length}
           </span>
@@ -641,20 +670,20 @@ export default function ChapterClassesPage({
         <button
           type="button"
           onClick={() => setActiveTab("classes")}
-          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
             activeTab === "classes"
-              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
-          }`}
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
         >
-          <GraduationCap size={14} />
+          <GraduationCap size={13} />
           <span>Classes & Divisions</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-              activeTab === "classes"
-                ? "bg-white/25 text-white"
-                : "bg-bg text-text-mute"
-            }`}
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              activeTab === "classes" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+            )}
           >
             {cohorts.length}
           </span>
@@ -663,22 +692,24 @@ export default function ChapterClassesPage({
         <button
           type="button"
           onClick={() => setActiveTab("assign")}
-          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold transition ${
+          className={cn(
+            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
             activeTab === "assign" || activeTab === "students"
-              ? "bg-[var(--accent)] text-white shadow-[var(--shadow-sm)]"
-              : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg-hover"
-          }`}
+              ? "bg-text text-bg shadow-sm"
+              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+          )}
         >
-          <UserCheck size={14} />
+          <UserCheck size={13} />
           <span>Assign Class Reps</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
               activeTab === "assign" || activeTab === "students"
-                ? "bg-white/25 text-white"
-                : "bg-bg text-text-mute"
-            }`}
+                ? "bg-bg/20 text-bg"
+                : "bg-border/60 text-text-dim",
+            )}
           >
-            {totalRepsCount} Appointed
+            {totalRepsCount}
           </span>
         </button>
       </div>

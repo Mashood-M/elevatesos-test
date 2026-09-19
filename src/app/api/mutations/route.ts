@@ -17,9 +17,94 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     if (type === "invite_tokens") {
-      const { data, error } = await admin
+      const { data: rawTokens, error } = await admin
         .from("invite_tokens")
         .select("*")
+        .order("created_at", { ascending: false });
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+
+      // Query referral activity logs to determine joined users
+      const { data: refLogs } = await admin
+        .from("activity_logs")
+        .select("actor_id, entity_id, meta, created_at")
+        .eq("action", "referral_invite_used")
+        .order("created_at", { ascending: false });
+
+      // Query profiles for student details
+      const { data: profiles } = await admin
+        .from("profiles")
+        .select("id, full_name, email, elevates_id");
+
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+      // Group logs by token string (case-insensitive)
+      const tokenLogsMap = new Map<string, any[]>();
+      if (refLogs) {
+        for (const log of refLogs) {
+          const key = (log.entity_id || "").toLowerCase();
+          if (!tokenLogsMap.has(key)) tokenLogsMap.set(key, []);
+          tokenLogsMap.get(key)!.push(log);
+        }
+      }
+
+      const data = (rawTokens || []).map((t: any) => {
+        const tokenKey = (t.token || "").toLowerCase();
+        const logs = tokenLogsMap.get(tokenKey) || [];
+        const joinedUsersMap = new Map<string, any>();
+
+        for (const log of logs) {
+          let metaObj: any = {};
+          try {
+            metaObj = typeof log.meta === "string" ? JSON.parse(log.meta) : (log.meta || {});
+          } catch {}
+
+          const uId = log.actor_id || metaObj.newUserId || metaObj.userId;
+          const userKey = uId || metaObj.studentEmail || log.created_at;
+          if (userKey && !joinedUsersMap.has(userKey)) {
+            const prof = uId ? profileMap.get(uId) : null;
+            joinedUsersMap.set(userKey, {
+              id: uId || userKey,
+              fullName: prof?.full_name || metaObj.studentName || "Student",
+              email: prof?.email || metaObj.studentEmail || "",
+              elevatesId: prof?.elevates_id || null,
+              joinedAt: log.created_at || metaObj.joinedAt || t.used_at,
+            });
+          }
+        }
+
+        // Also check used_by on token itself
+        if (t.used_by && !joinedUsersMap.has(t.used_by)) {
+          const prof = profileMap.get(t.used_by);
+          joinedUsersMap.set(t.used_by, {
+            id: t.used_by,
+            fullName: prof?.full_name || "Student",
+            email: prof?.email || "",
+            elevatesId: prof?.elevates_id || null,
+            joinedAt: t.used_at || t.created_at,
+          });
+        }
+
+        const joinedUsers = Array.from(joinedUsersMap.values());
+        const realCount = (tokenKey.startsWith("ref-") && joinedUsers.length > 0)
+          ? joinedUsers.length
+          : Math.max(Number(t.uses_count ?? 0), joinedUsers.length);
+
+        return {
+          ...t,
+          uses_count: realCount,
+          joinedUsers,
+        };
+      });
+
+      return NextResponse.json({ ok: true, data: data ?? [] });
+    }
+    if (type === "referral_activity") {
+      const { data, error } = await admin
+        .from("activity_logs")
+        .select("*")
+        .eq("action", "referral_invite_used")
         .order("created_at", { ascending: false });
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -2327,8 +2412,29 @@ export async function POST(req: Request) {
       const effectiveId = tokenRow?.id || tokenId;
       const effectiveToken = tokenRow?.token || cleanToken;
       const effectiveReferrer = tokenRow?.created_by || referrerId;
-      const currentUses = Number(tokenRow?.uses_count ?? 0);
-      const nextUses = currentUses + 1;
+
+      // Calculate distinct users who have joined with this token
+      const { data: priorLogs } = await admin
+        .from("activity_logs")
+        .select("actor_id, meta")
+        .eq("action", "referral_invite_used")
+        .eq("entity_id", effectiveToken);
+
+      const distinctUsers = new Set<string>();
+      if (priorLogs) {
+        for (const log of priorLogs) {
+          if (log.actor_id) distinctUsers.add(log.actor_id);
+          try {
+            const m = typeof log.meta === "string" ? JSON.parse(log.meta) : (log.meta || {});
+            if (m?.newUserId) distinctUsers.add(m.newUserId);
+            if (m?.studentEmail) distinctUsers.add(m.studentEmail.toLowerCase());
+          } catch {}
+        }
+      }
+      if (targetUserId) distinctUsers.add(targetUserId);
+      if (studentEmail) distinctUsers.add(studentEmail.toLowerCase());
+
+      const nextUses = Math.max(1, distinctUsers.size);
 
       // 2. Check if the 24-hour expiration has passed
       const isExpired = tokenRow?.expires_at && new Date(tokenRow.expires_at) < new Date();

@@ -1066,17 +1066,73 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           note: sc.note ?? undefined,
           updatedAt: sc.updated_at ?? new Date().toISOString(),
         })),
-        inviteTokens: (finalInviteRows ?? []).map((t: Record<string, any>) => ({
-          id: t.id,
-          token: t.token,
-          createdBy: t.created_by,
-          chapterId: t.chapter_id ?? undefined,
-          usedBy: t.used_by ?? undefined,
-          usedAt: t.used_at ?? undefined,
-          createdAt: t.created_at,
-          expiresAt: t.expires_at ?? undefined,
-          isActive: t.is_active ?? true,
-        })),
+        inviteTokens: (finalInviteRows ?? []).map((t: Record<string, any>) => {
+          const tokenStr = (t.token ?? "").toLowerCase();
+          const isRef = tokenStr.startsWith("ref-");
+          let joinedUsers: import("@/types").ReferralJoinedUser[] | undefined = t.joinedUsers;
+
+          if (isRef && (!joinedUsers || joinedUsers.length === 0)) {
+            const matchingLogs = (activityRows ?? []).filter(
+              (al: any) =>
+                al.action === "referral_invite_used" &&
+                (al.entity_id?.toLowerCase() === tokenStr ||
+                  (typeof al.meta === "string" && al.meta.toLowerCase().includes(tokenStr)))
+            );
+
+            if (matchingLogs.length > 0) {
+              const joinedMap = new Map<string, import("@/types").ReferralJoinedUser>();
+              for (const log of matchingLogs) {
+                let m: any = {};
+                try {
+                  m = typeof log.meta === "string" ? JSON.parse(log.meta) : (log.meta || {});
+                } catch {}
+                const uId = log.actor_id || m.newUserId || m.userId;
+                const userKey = uId || m.studentEmail || log.created_at;
+                if (userKey && !joinedMap.has(userKey)) {
+                  const prof = uId ? profiles.find((p) => p.id === uId) : null;
+                  joinedMap.set(userKey, {
+                    id: uId || userKey,
+                    fullName: prof?.fullName || m.studentName || "Student",
+                    email: prof?.email || m.studentEmail || "",
+                    elevatesId: prof?.elevatesId,
+                    joinedAt: log.created_at || m.joinedAt || t.used_at,
+                  });
+                }
+              }
+              if (t.used_by && !joinedMap.has(t.used_by)) {
+                const prof = profiles.find((p) => p.id === t.used_by);
+                joinedMap.set(t.used_by, {
+                  id: t.used_by,
+                  fullName: prof?.fullName || "Student",
+                  email: prof?.email || "",
+                  elevatesId: prof?.elevatesId,
+                  joinedAt: t.used_at || t.created_at,
+                });
+              }
+              joinedUsers = Array.from(joinedMap.values());
+            }
+          }
+
+          const realCount = (isRef && joinedUsers && joinedUsers.length > 0)
+            ? joinedUsers.length
+            : (t.uses_count !== undefined && t.uses_count !== null
+                ? Number(t.uses_count)
+                : (joinedUsers?.length ?? (t.used_by ? 1 : 0)));
+
+          return {
+            id: t.id,
+            token: t.token,
+            createdBy: t.created_by,
+            chapterId: t.chapter_id ?? undefined,
+            usedBy: t.used_by ?? undefined,
+            usedAt: t.used_at ?? undefined,
+            createdAt: t.created_at,
+            expiresAt: t.expires_at ?? undefined,
+            isActive: t.is_active ?? true,
+            usesCount: realCount,
+            joinedUsers,
+          };
+        }),
         chapterInviteCodes: (finalInviteRows ?? [])
           .filter((t: Record<string, any>) => {
             const tokenStr = (t.token ?? "").toUpperCase();

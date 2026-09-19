@@ -920,6 +920,14 @@ export interface ActivityLog {
   meta?: string;
 }
 
+export interface ReferralJoinedUser {
+  id: string;
+  fullName: string;
+  email?: string;
+  elevatesId?: string;
+  joinedAt?: string;
+}
+
 export interface InviteToken {
   id: string;
   token: string;
@@ -931,6 +939,7 @@ export interface InviteToken {
   expiresAt?: string;
   isActive: boolean;
   usesCount?: number;
+  joinedUsers?: ReferralJoinedUser[];
 }
 
 export interface DemoUserSession {

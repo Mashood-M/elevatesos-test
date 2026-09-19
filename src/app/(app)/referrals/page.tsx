@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import QRCode from "react-qr-code";
 import {
@@ -19,6 +19,7 @@ import {
   Phone,
   Plus,
   QrCode,
+  RefreshCw,
   Search,
   Share2,
   ShieldCheck,
@@ -86,6 +87,42 @@ export default function UnifiedReferralsPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokedIds, setRevokedIds] = useState<Set<string>>(new Set());
   const [localTokens, setLocalTokens] = useState<InviteToken[]>([]);
+  const [serverTokens, setServerTokens] = useState<InviteToken[] | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Auto-fetch latest tokens from server so newly registered accounts reflect immediately
+  const fetchServerTokens = useCallback(async () => {
+    try {
+      setIsSyncing(true);
+      const res = await fetch("/api/mutations?type=invite_tokens");
+      const json = await res.json();
+      if (json?.ok && Array.isArray(json.data)) {
+        setServerTokens(
+          json.data.map((t: any) => ({
+            id: t.id,
+            token: t.token,
+            createdBy: t.created_by,
+            chapterId: t.chapter_id ?? undefined,
+            usedBy: t.used_by ?? undefined,
+            usedAt: t.used_at ?? undefined,
+            createdAt: t.created_at,
+            expiresAt: t.expires_at ?? undefined,
+            isActive: t.is_active ?? true,
+            usesCount: t.uses_count !== undefined ? Number(t.uses_count) : (t.joinedUsers?.length ?? (t.used_by ? 1 : 0)),
+            joinedUsers: t.joinedUsers,
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn("Notice: fetchServerTokens:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchServerTokens();
+  }, [fetchServerTokens]);
 
   // Directory filter within Tab 1
   const [directoryFilter, setDirectoryFilter] = useState<"all" | "joined" | "pending" | "expired">("all");
@@ -102,15 +139,15 @@ export default function UnifiedReferralsPage() {
 
   const userId = session.userId;
 
-  // All tokens merged
+  // All tokens merged from server (or store) + local newly generated tokens
   const allTokens = useMemo(() => {
-    const existing = store.inviteTokens ?? [];
-    const merged = existing.map((t) => (revokedIds.has(t.id) ? { ...t, isActive: false } : t));
+    const baseList = serverTokens ?? store.inviteTokens ?? [];
+    const merged = baseList.map((t) => (revokedIds.has(t.id) ? { ...t, isActive: false } : t));
     const newLocals = localTokens
-      .filter((lt) => !existing.some((e) => e.id === lt.id))
+      .filter((lt) => !baseList.some((e) => e.id === lt.id))
       .map((t) => (revokedIds.has(t.id) ? { ...t, isActive: false } : t));
     return [...newLocals, ...merged];
-  }, [store.inviteTokens, localTokens, revokedIds]);
+  }, [serverTokens, store.inviteTokens, localTokens, revokedIds]);
 
   const profiles = store.profiles;
 
@@ -128,9 +165,10 @@ export default function UnifiedReferralsPage() {
     return true;
   });
 
-  const myJoinedTokens = myTokens.filter(
-    (t) => (t.usesCount ?? (t.usedBy ? 1 : 0)) > 0,
-  );
+  const myJoinedTokens = myTokens.filter((t) => {
+    const uses = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
+    return uses > 0;
+  });
 
   const myExpiredTokens = myTokens.filter((t) => {
     const isRevoked = revokedIds.has(t.id) || !t.isActive;
@@ -140,7 +178,7 @@ export default function UnifiedReferralsPage() {
   // Total students enrolled via user's referral links
   const totalStudentsReferred = useMemo(() => {
     return myTokens.reduce((sum, t) => {
-      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      const count = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
       return sum + count;
     }, 0);
   }, [myTokens]);
@@ -148,7 +186,7 @@ export default function UnifiedReferralsPage() {
   // Total community-wide referral joins
   const totalCommunityReferred = useMemo(() => {
     return allTokens.reduce((sum, t) => {
-      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      const count = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
       return sum + count;
     }, 0);
   }, [allTokens]);
@@ -158,7 +196,7 @@ export default function UnifiedReferralsPage() {
     return myTokens.filter((t) => {
       const isRevoked = revokedIds.has(t.id) || !t.isActive;
       const isExpired = isRevoked || msUntil(t.expiresAt) <= 0;
-      const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
+      const uses = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
       const isActive = !isExpired && (isReferralToken(t.token) || !t.usedBy);
 
       if (directoryFilter === "joined") return uses > 0;
@@ -244,7 +282,7 @@ export default function UnifiedReferralsPage() {
   const topReferrers = useMemo(() => {
     const counts: Record<string, number> = {};
     allTokens.forEach((t) => {
-      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      const count = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
       if (count > 0 && t.createdBy) {
         counts[t.createdBy] = (counts[t.createdBy] ?? 0) + count;
       }
@@ -267,7 +305,7 @@ export default function UnifiedReferralsPage() {
         const chapter = t.chapterId ? store.chapters.find((c) => c.id === t.chapterId) : null;
         const isRevoked = revokedIds.has(t.id) || !t.isActive;
         const expired = isRevoked || msUntil(t.expiresAt) <= 0;
-        const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
+        const uses = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
         return { token: t, referrer, invited, chapter, expired, uses };
       })
       .filter((row) => {
@@ -275,12 +313,19 @@ export default function UnifiedReferralsPage() {
         if (filterStatus === "unused" && (row.uses > 0 || row.expired)) return false;
         if (!q.trim()) return true;
         const needle = q.trim().toLowerCase();
+        const joinedMatch = row.token.joinedUsers?.some(
+          (u) =>
+            u.fullName.toLowerCase().includes(needle) ||
+            (u.email && u.email.toLowerCase().includes(needle)) ||
+            (u.elevatesId && u.elevatesId.toLowerCase().includes(needle)),
+        );
         return (
           row.referrer?.fullName.toLowerCase().includes(needle) ||
           row.referrer?.email.toLowerCase().includes(needle) ||
           row.invited?.fullName.toLowerCase().includes(needle) ||
           row.invited?.email.toLowerCase().includes(needle) ||
-          row.token.token.toLowerCase().includes(needle)
+          row.token.token.toLowerCase().includes(needle) ||
+          Boolean(joinedMatch)
         );
       });
   }, [allTokens, profiles, store.chapters, q, filterStatus, revokedIds]);
@@ -577,6 +622,18 @@ export default function UnifiedReferralsPage() {
             <TerminalPanel
               title="My Referral Directory"
               meta={`${myTokens.length} total invitations created`}
+              action={
+                <button
+                  type="button"
+                  onClick={fetchServerTokens}
+                  disabled={isSyncing}
+                  title="Refresh directory"
+                  className="flex items-center gap-1.5 rounded-lg border border-border/70 px-2.5 py-1 text-xs font-semibold text-text-dim hover:text-text hover:bg-bg/80 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={cn(isSyncing && "animate-spin")} />
+                  <span>Refresh</span>
+                </button>
+              }
             >
               {/* Directory Filter Pills */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-3 mb-2 border-b border-border/60">
@@ -634,117 +691,162 @@ export default function UnifiedReferralsPage() {
                     const isRevoked = revokedIds.has(t.id) || !t.isActive;
                     const isExpired = isRevoked || msUntil(t.expiresAt) <= 0;
                     const canRevoke = !isExpired && !isRevoked;
-                    const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
+                    const uses = Math.max(t.usesCount ?? 0, t.joinedUsers?.length ?? 0, t.usedBy ? 1 : 0);
+
+                    // Combine joinedUsers list with fallback to single invited user
+                    const joinedUsersList =
+                      t.joinedUsers && t.joinedUsers.length > 0
+                        ? t.joinedUsers
+                        : invited
+                          ? [
+                              {
+                                id: invited.id,
+                                fullName: invited.fullName,
+                                email: invited.email,
+                                elevatesId: invited.elevatesId,
+                                joinedAt: t.usedAt || t.createdAt || new Date().toISOString(),
+                              },
+                            ]
+                          : [];
 
                     return (
-                      <li key={t.id} className="py-3.5 first:pt-1 last:pb-0 flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <Link2 size={13} className="text-text-mute shrink-0" />
-                              <span className="font-mono text-[12px] font-semibold text-text select-all truncate">
-                                {t.token}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyLink(t.token)}
-                                title="Copy invite URL"
-                                className="text-text-mute hover:text-text cursor-pointer p-0.5 rounded transition-colors"
-                              >
-                                {copiedToken === t.token ? (
-                                  <Check size={12} className="text-emerald-500" />
-                                ) : (
-                                  <Copy size={12} />
+                      <li key={t.id} className="py-3.5 first:pt-1 last:pb-0 space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <Link2 size={13} className="text-text-mute shrink-0" />
+                                <span className="font-mono text-[12px] font-semibold text-text select-all truncate">
+                                  {t.token}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyLink(t.token)}
+                                  title="Copy invite URL"
+                                  className="text-text-mute hover:text-text cursor-pointer p-0.5 rounded transition-colors"
+                                >
+                                  {copiedToken === t.token ? (
+                                    <Check size={12} className="text-emerald-500" />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              </div>
+
+                              <p
+                                className={cn(
+                                  "text-[11px] font-medium",
+                                  isRevoked
+                                    ? "text-orange-500"
+                                    : isExpired
+                                      ? "text-red-400"
+                                      : "text-emerald-600 dark:text-emerald-400",
                                 )}
-                              </button>
+                              >
+                                {isRevoked
+                                  ? "Revoked by user"
+                                  : isExpired
+                                    ? (uses > 0 ? `Expired · ${uses} student${uses > 1 ? "s" : ""} joined` : "Expired link")
+                                    : (uses > 0
+                                        ? `Active (24h) · ${uses} student${uses > 1 ? "s" : ""} joined · open for unlimited joins`
+                                        : "Active (24h) · open for unlimited registrations")}
+                              </p>
                             </div>
 
-                            {/* Show attribution if students joined */}
-                            {invited ? (
-                              <div className="flex items-center gap-1.5 text-[12px] text-text font-medium pt-0.5">
-                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[9px] font-bold text-[var(--accent)]">
-                                  {invited.fullName.slice(0, 2).toUpperCase()}
-                                </span>
-                                <Link
-                                  href={`/profile/${invited.elevatesId || invited.id}`}
-                                  className="font-bold text-text hover:text-[var(--accent)] transition-colors truncate"
-                                >
-                                  {invited.fullName}
-                                </Link>
-                                {uses > 1 && (
-                                  <span className="text-text-dim text-[11px]">
-                                    +{uses - 1} more student{uses - 1 > 1 ? "s" : ""}
-                                  </span>
-                                )}
-                              </div>
-                            ) : null}
-
-                            <p
-                              className={cn(
-                                "text-[11px] font-medium",
-                                isRevoked
-                                  ? "text-orange-500"
-                                  : isExpired
-                                    ? "text-red-400"
-                                    : "text-emerald-600 dark:text-emerald-400",
-                              )}
-                            >
-                              {isRevoked
-                                ? "Revoked by user"
-                                : isExpired
-                                  ? (uses > 0 ? `Expired · ${uses} student${uses > 1 ? "s" : ""} joined` : "Expired link")
-                                  : (uses > 0
-                                      ? `Active (24h) · ${uses} student${uses > 1 ? "s" : ""} joined · open for unlimited joins`
-                                      : "Active (24h) · open for unlimited registrations")}
+                            <p className="font-mono text-[10px] text-text-mute">
+                              {t.expiresAt
+                                ? `Valid until ${formatDateTime(t.expiresAt)}`
+                                : `Created ${formatDateTime(t.createdAt)}`}
+                              {t.usedAt ? ` · Latest join ${formatDateTime(t.usedAt)}` : ""}
                             </p>
                           </div>
 
-                          <p className="font-mono text-[10px] text-text-mute">
-                            {t.expiresAt
-                              ? `Valid until ${formatDateTime(t.expiresAt)}`
-                              : `Created ${formatDateTime(t.createdAt)}`}
-                            {t.usedAt ? ` · Last join ${formatDateTime(t.usedAt)}` : ""}
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {uses > 0 && (
-                            <Badge tone="green">
-                              {uses} joined
-                            </Badge>
-                          )}
-                          <Badge
-                            tone={
-                              isRevoked
-                                ? "orange"
-                                : isExpired
-                                  ? "mute"
-                                  : expiryTone(t.expiresAt)
-                            }
-                          >
-                            {isRevoked
-                              ? "Revoked"
-                              : isExpired
-                                ? "Expired"
-                                : expiryLabel(t.expiresAt) || "Active"}
-                          </Badge>
-
-                          {canRevoke && (
-                            <button
-                              type="button"
-                              onClick={() => setRevokeTokenTarget(t.id)}
-                              disabled={revokingId === t.id}
-                              title="Revoke this invite link"
-                              className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/80 text-text-mute transition-colors hover:border-red-400 hover:bg-red-500/10 hover:text-red-500 disabled:opacity-40 cursor-pointer"
+                          <div className="flex items-center gap-2 shrink-0">
+                            {uses > 0 && (
+                              <Badge tone="green">
+                                {uses} joined
+                              </Badge>
+                            )}
+                            <Badge
+                              tone={
+                                isRevoked
+                                  ? "orange"
+                                  : isExpired
+                                    ? "mute"
+                                    : expiryTone(t.expiresAt)
+                              }
                             >
-                              {revokingId === t.id ? (
-                                <span className="animate-spin text-[10px]">⟳</span>
-                              ) : (
-                                <Trash2 size={12} />
-                              )}
-                            </button>
-                          )}
+                              {isRevoked
+                                ? "Revoked"
+                                : isExpired
+                                  ? "Expired"
+                                  : expiryLabel(t.expiresAt) || "Active"}
+                            </Badge>
+
+                            {canRevoke && (
+                              <button
+                                type="button"
+                                onClick={() => setRevokeTokenTarget(t.id)}
+                                disabled={revokingId === t.id}
+                                title="Revoke this invite link"
+                                className="flex h-7 w-7 items-center justify-center rounded-lg border border-border/80 text-text-mute transition-colors hover:border-red-400 hover:bg-red-500/10 hover:text-red-500 disabled:opacity-40 cursor-pointer"
+                              >
+                                {revokingId === t.id ? (
+                                  <span className="animate-spin text-[10px]">⟳</span>
+                                ) : (
+                                  <Trash2 size={12} />
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Joined students roster card */}
+                        {joinedUsersList.length > 0 && (
+                          <div className="rounded-xl border border-border/60 bg-bg/50 p-2.5 space-y-2">
+                            <div className="flex items-center justify-between text-[11px] font-bold text-text-dim">
+                              <span className="flex items-center gap-1.5">
+                                <Users size={12} className="text-[var(--accent)]" />
+                                <span>{joinedUsersList.length} student{joinedUsersList.length > 1 ? "s" : ""} joined via this link:</span>
+                              </span>
+                              <span className="font-mono text-[10px] font-bold text-[var(--accent)]">
+                                +{joinedUsersList.length} registered
+                              </span>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              {joinedUsersList.map((u) => (
+                                <div
+                                  key={u.id}
+                                  className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg-panel px-2.5 py-1.5 text-[11px]"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[9px] font-bold text-[var(--accent)]">
+                                      {(u.fullName || "U").slice(0, 2).toUpperCase()}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <Link
+                                        href={`/profile/${u.elevatesId || u.id}`}
+                                        className="font-bold text-text hover:text-[var(--accent)] transition-colors truncate block leading-tight"
+                                      >
+                                        {u.fullName || "Anonymous Student"}
+                                      </Link>
+                                      <div className="flex items-center gap-2 font-mono text-[9px] text-text-mute">
+                                        {u.elevatesId && (
+                                          <span className="font-bold text-[var(--accent)]">{u.elevatesId}</span>
+                                        )}
+                                        {u.email && <span className="truncate">{u.email}</span>}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="font-mono text-[9px] text-text-mute shrink-0">
+                                    {u.joinedAt ? formatDateTime(u.joinedAt) : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </li>
                     );
                   })}
@@ -985,7 +1087,21 @@ export default function UnifiedReferralsPage() {
                         {referrer?.fullName ?? "Unknown"}
                       </Link>
                       <span className="text-text-mute">→</span>
-                      {invited ? (
+                      {t.joinedUsers && t.joinedUsers.length > 0 ? (
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          {t.joinedUsers.map((u, i) => (
+                            <span key={u.id} className="inline-flex items-center gap-1">
+                              <Link
+                                href={`/profile/${u.elevatesId || u.id}`}
+                                className="font-bold text-[var(--accent)] hover:underline"
+                              >
+                                {u.fullName}
+                              </Link>
+                              {i < t.joinedUsers!.length - 1 && <span className="text-text-mute">,</span>}
+                            </span>
+                          ))}
+                        </span>
+                      ) : invited ? (
                         <Link
                           href={`/profile/${invited.elevatesId || invited.id}`}
                           className="font-bold text-[var(--accent)] hover:underline"

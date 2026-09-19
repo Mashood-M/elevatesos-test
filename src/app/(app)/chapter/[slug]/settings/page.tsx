@@ -3,6 +3,29 @@
 import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Building2,
+  KeyRound,
+  CheckCircle2,
+  History,
+  Copy,
+  Check,
+  MapPin,
+  Users,
+  Calendar,
+  Sparkles,
+  ExternalLink,
+  Shield,
+  Layers,
+  FolderGit2,
+  FileText,
+  BarChart2,
+  Pencil,
+  Save,
+  X,
+  Loader2,
+} from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +35,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate, formatDateTime, cn } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import type { Chapter } from "@/types";
@@ -34,6 +57,7 @@ export default function ChapterSettingsPage({
   const chapter = store.chapters.find((c) => c.slug === slug);
   const [flash, setFlash] = useState("");
   const [joinCopied, setJoinCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<"general" | "access" | "onboarding" | "activity">("general");
 
   const canManage = useMemo(() => {
     if (!chapter) return false;
@@ -128,32 +152,111 @@ export default function ChapterSettingsPage({
       .slice(0, 6);
   }, [store.activityLogs, ch.id, ch.slug, ch.name, members, leadershipTerms, executives]);
 
-  function saveField(
-    patch: Partial<
-      Pick<
-        Chapter,
-        | "name"
-        | "slug"
-        | "shortCode"
-        | "college"
-        | "city"
-        | "district"
-        | "state"
-        | "status"
-        | "facultyId"
-        | "campusLeadId"
-        | "notes"
-        | "coordinates"
-        | "latitude"
-        | "longitude"
-        | "location"
-        | "mapUrl"
-      >
-    >,
-  ) {
+  const initialFormData = useMemo(
+    () => ({
+      name: ch.name,
+      shortCode: ch.shortCode || deriveChapterShortCode(ch.name),
+      slug: ch.slug,
+      status: ch.status,
+      campusLeadId: currentCampusLeadId,
+      facultyId: ch.facultyId,
+      city: ch.city,
+      district: ch.district,
+      state: ch.state,
+      coordinates: ch.coordinates,
+      latitude: ch.latitude,
+      longitude: ch.longitude,
+      location: ch.location,
+      mapUrl: ch.mapUrl,
+      notes: ch.notes ?? "",
+    }),
+    [ch, currentCampusLeadId],
+  );
+
+  const [formData, setFormData] = useState(initialFormData);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Synchronize form buffer when chapter updates in store while not editing
+  useMemo(() => {
+    if (!isEditing) {
+      setFormData(initialFormData);
+    }
+  }, [initialFormData, isEditing]);
+
+  function handleStartEdit() {
+    if (!canManage) return;
+    setFormData(initialFormData);
+    setIsEditing(true);
+    setActiveTab("general");
+  }
+
+  function handleDiscard() {
+    setFormData(initialFormData);
+    setIsEditing(false);
+    setFlash("Edits discarded.");
+    window.setTimeout(() => setFlash(""), 1600);
+  }
+
+  async function handleSave() {
+    if (!canManage) return;
+    if (!formData.name.trim()) {
+      setFlash("Chapter name cannot be empty.");
+      window.setTimeout(() => setFlash(""), 2200);
+      return;
+    }
+    if (!formData.slug.trim()) {
+      setFlash("URL slug cannot be empty.");
+      window.setTimeout(() => setFlash(""), 2200);
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const cleanSlug = finalizeSlug(formData.slug);
+      const cleanShortCode =
+        formData.shortCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4) ||
+        deriveChapterShortCode(formData.name);
+
+      updateChapter(ch.id, {
+        name: formData.name.trim(),
+        college: formData.name.trim(),
+        shortCode: cleanShortCode,
+        slug: cleanSlug,
+        status: formData.status,
+        campusLeadId: formData.campusLeadId,
+        facultyId: formData.facultyId,
+        city: formData.city,
+        district: formData.district,
+        state: formData.state,
+        coordinates: formData.coordinates,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        location: formData.location,
+        mapUrl: formData.mapUrl,
+        notes: formData.notes,
+      });
+
+      setIsEditing(false);
+      setFlash("Settings saved successfully!");
+      window.setTimeout(() => setFlash(""), 2200);
+
+      if (cleanSlug !== slug) {
+        router.replace(`/chapter/${cleanSlug}/settings`);
+      }
+    } catch {
+      setFlash("Error saving chapter settings.");
+      window.setTimeout(() => setFlash(""), 2200);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function saveDirectField(patch: Partial<Chapter>) {
     if (!canManage) return;
     updateChapter(ch.id, patch);
-    setFlash("Saved.");
+    setFormData((prev) => ({ ...prev, ...patch }));
+    setFlash("Status updated.");
     window.setTimeout(() => setFlash(""), 1600);
     if (patch.slug && patch.slug !== slug) {
       router.replace(`/chapter/${patch.slug}/settings`);
@@ -161,19 +264,27 @@ export default function ChapterSettingsPage({
   }
 
   function focusCampusLead() {
-    const el = document.getElementById("campus-lead-picker");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.focus();
-    }
+    setActiveTab("general");
+    setIsEditing(true);
+    window.setTimeout(() => {
+      const el = document.getElementById("campus-lead-picker");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+    }, 120);
   }
 
   function focusFaculty() {
-    const el = document.getElementById("faculty-coordinator-picker");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.focus();
-    }
+    setActiveTab("general");
+    setIsEditing(true);
+    window.setTimeout(() => {
+      const el = document.getElementById("faculty-coordinator-picker");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+      }
+    }, 120);
   }
 
   const hasFaculty = Boolean(ch.facultyId);
@@ -250,7 +361,7 @@ export default function ChapterSettingsPage({
       actionLabel: isChapterActive ? undefined : "Activate",
       onAction:
         canManage && !isChapterActive
-          ? () => saveField({ status: "active" })
+          ? () => saveDirectField({ status: "active" })
           : undefined,
     },
   ];
@@ -273,442 +384,776 @@ export default function ChapterSettingsPage({
   }
 
   return (
-    <div>
+    <div className="space-y-6">
+      {/* 1. Top-Left Back Button Breadcrumb */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-bg-panel px-3 py-1.5 text-[12px] font-medium text-text-dim transition-colors hover:bg-bg hover:text-text shadow-2xs group cursor-pointer"
+        >
+          <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
+          <span>Back</span>
+        </button>
+        <span className="text-border">/</span>
+        <Link
+          href={`/chapter/${slug}`}
+          className="text-[12px] font-medium text-text-mute transition-colors hover:text-[var(--accent)]"
+        >
+          {chapter.name}
+        </Link>
+        <span className="text-border">/</span>
+        <span className="text-[12px] font-semibold text-text">Settings</span>
+      </div>
+
+      {/* 2. PageHeader with Status Badge and Actions */}
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title="Chapter management"
-        description={`${chapter.name} · college profile, faculty, onboarding, and shortcuts.`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Link href={`/chapter/${slug}/calendar`}>
-              <Button variant="ghost">Calendar</Button>
-            </Link>
-            <Link href={`/chapter/${slug}/students`}>
-              <Button variant="ghost">Students</Button>
-            </Link>
-            <Link href={`/chapter/${slug}`}>
-              <Button variant="ghost">Dashboard</Button>
-            </Link>
-            {isHqRole(session.roleKey) ? (
-              <Link href="/hq/chapters">
-                <Button variant="ghost">All chapters</Button>
-              </Link>
-            ) : null}
+        title="Chapter Settings"
+        badge={
+          <div className="flex items-center gap-1.5">
+            <Badge tone={isChapterActive ? "green" : ch.status === "onboarding" ? "orange" : "mute"}>
+              {ch.status}
+            </Badge>
+            {isEditing && (
+              <Badge tone="orange" className="font-semibold animate-pulse">
+                Editing
+              </Badge>
+            )}
           </div>
+        }
+        description={
+          isEditing
+            ? `Editing ${chapter.name} settings. Click "Save Changes" when finished or "Discard" to cancel.`
+            : `${chapter.name} · Campus details, access codes, departments, and launch configuration.`
+        }
+        actions={
+          canManage ? (
+            isEditing ? (
+              <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDiscard}
+                  disabled={isSaving}
+                  className="gap-1.5 border border-border/80 text-text-dim hover:text-text cursor-pointer"
+                >
+                  <X size={13} />
+                  <span>Discard</span>
+                </Button>
+                <Button
+                  variant="orange"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="gap-1.5 font-bold shadow-xs cursor-pointer"
+                >
+                  {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="orange"
+                size="sm"
+                onClick={handleStartEdit}
+                className="gap-1.5 font-bold shadow-xs cursor-pointer"
+              >
+                <Pencil size={13} />
+                <span>Edit Settings</span>
+              </Button>
+            )
+          ) : null
         }
       />
 
+      {/* 3. Flash Notification */}
       {flash ? (
-        <p className="mb-4 text-[13px] text-[var(--accent)]">{flash}</p>
-      ) : null}
-
-
-
-      {canManage ? (
-        <div className="mb-6 space-y-6">
-          <ChapterInviteCodeManager
-            chapterId={chapter.id}
-            chapterSlug={chapter.slug}
-          />
-          <ChapterDepartmentManager chapterId={chapter.id} />
+        <div className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 size={14} />
+          <span>{flash}</span>
         </div>
       ) : null}
 
       {!canManage ? (
-        <p className="mb-4 text-[13px] text-text-dim">
-          View only — switch to Campus Lead, Secretary, Faculty liaison, or HQ to edit.
-        </p>
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+          View only mode — switch to Campus Lead, Secretary, Faculty coordinator, or HQ admin to edit chapter configuration.
+        </div>
       ) : null}
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <Stat label="Members" value={members.length} />
-        <Stat label="Executives" value={executives.length} />
-        <Stat label="Clusters" value={clusters.length} />
+      {/* 4. High-Level 4-Metric Overview Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
+          <Stat label="Total Members" value={members.length} hint="Verified roster →" />
+        </Link>
+        <Link href={`/chapter/${slug}/leadership`} className="block transition hover:opacity-90">
+          <Stat label="Executives" value={executives.length} hint="Leadership cycle →" />
+        </Link>
+        <Link href={`/chapter/${slug}/clusters`} className="block transition hover:opacity-90">
+          <Stat label="Clusters" value={clusters.length} hint="Domain tracks →" />
+        </Link>
+        <Stat
+          label="Launch Readiness"
+          value={`${checklistDone}/${checklist.length}`}
+          hint={isChapterActive ? "Active & operational" : `${checklist.length - checklistDone} steps pending`}
+          accent={isChapterActive ? "green" : "orange"}
+        />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.25fr_1fr]">
-        <div className="space-y-4">
-          <TerminalPanel title="Chapter & Campus profile">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <FieldLabel>Chapter name</FieldLabel>
-                <Input
-                  defaultValue={chapter.name}
-                  disabled={!canManage}
-                  onBlur={(e) => {
-                    if (e.target.value !== chapter.name) {
-                      saveField({ name: e.target.value, college: e.target.value });
-                    }
-                  }}
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>
-                    <span>Shortcode (3 letters)</span>
-                    <span className="ml-1 text-[11px] font-normal text-muted-foreground">
-                      Invite prefix
-                    </span>
-                  </FieldLabel>
-                  <Input
-                    key={`shortCode-${chapter.shortCode || ""}`}
-                    defaultValue={chapter.shortCode || deriveChapterShortCode(chapter.name)}
-                    maxLength={4}
-                    disabled={!canManage}
-                    placeholder="e.g. SOS"
-                    className="font-mono font-bold uppercase tracking-wider"
-                    onBlur={(e) => {
-                      const clean = e.target.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 4);
-                      e.target.value = clean;
-                      if (clean && clean !== chapter.shortCode) {
-                        saveField({ shortCode: clean });
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Slug</FieldLabel>
-                  <Input
-                    defaultValue={chapter.slug}
-                    disabled={!canManage || !isHqRole(session.roleKey)}
-                    onChange={(e) => {
-                      e.target.value = formatSlugInput(e.target.value);
-                    }}
-                    onBlur={(e) => {
-                      const finalSlug = finalizeSlug(e.target.value);
-                      e.target.value = finalSlug;
-                      if (
-                        isHqRole(session.roleKey) &&
-                        finalSlug !== chapter.slug
-                      ) {
-                        saveField({ slug: finalSlug });
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="md:col-span-2">
-                <ChapterCitySelect
-                  city={chapter.city}
-                  district={chapter.district}
-                  state={chapter.state}
-                  disabled={!canManage}
-                  onChange={(sel) => {
-                    if (canManage) {
-                      saveField({
-                        city: sel.city,
-                        district: sel.district,
-                        state: sel.state,
-                      });
-                    }
-                  }}
-                  onCoordinatesSuggest={(coords) => {
-                    if (canManage && !chapter.coordinates) {
-                      saveField({
-                        coordinates: `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,
-                        latitude: coords.lat,
-                        longitude: coords.lng,
-                      });
-                    }
-                  }}
-                />
-              </div>
-              <div className="md:col-span-2">
-                <ChapterLocationPicker
-                  contextQuery={chapter.name || chapter.city}
-                  value={{
-                    coordinates: chapter.coordinates,
-                    latitude: chapter.latitude,
-                    longitude: chapter.longitude,
-                    location: chapter.location,
-                    mapUrl: chapter.mapUrl,
-                  }}
-                  onChange={(locVal) => {
-                    if (canManage) {
-                      saveField({
-                        coordinates: locVal.coordinates,
-                        latitude: locVal.latitude,
-                        longitude: locVal.longitude,
-                        location: locVal.location,
-                        mapUrl: locVal.mapUrl,
-                      });
-                    }
-                  }}
-                  onCityChange={(city, district, state) => {
-                    if (canManage) {
-                      saveField({
-                        city,
-                        ...(district ? { district } : {}),
-                        ...(state ? { state } : {}),
-                      });
-                    }
-                  }}
-                />
-              </div>
-              <div>
-                <FieldLabel>Status</FieldLabel>
-                <Select
-                  value={chapter.status}
-                  disabled={!canManage}
-                  onChange={(e) =>
-                    saveField({
-                      status: e.target.value as Chapter["status"],
-                    })
-                  }
-                >
-                  <option value="onboarding">Onboarding</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Disabled / Inactive</option>
-                </Select>
-              </div>
+      {/* 5. Modern Tabbed Navigation */}
+      <div className="flex border-b border-border/80 gap-1 overflow-x-auto pb-px">
+        <button
+          type="button"
+          onClick={() => setActiveTab("general")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            activeTab === "general"
+              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
+              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+          )}
+        >
+          <Building2 size={14} />
+          <span>General & Location</span>
+        </button>
 
-              <div className="hidden md:block" />
+        <button
+          type="button"
+          onClick={() => setActiveTab("access")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            activeTab === "access"
+              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
+              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+          )}
+        >
+          <KeyRound size={14} />
+          <span>Access & Departments</span>
+          <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+            {(store.departments ?? []).filter((d) => d.chapterId === ch.id).length}
+          </span>
+        </button>
 
-              <div className="md:col-span-2 grid gap-4 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("onboarding")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            activeTab === "onboarding"
+              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
+              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+          )}
+        >
+          <CheckCircle2 size={14} />
+          <span>Onboarding & Ops</span>
+          <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+            {checklistDone}/{checklist.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("activity")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            activeTab === "activity"
+              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
+              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+          )}
+        >
+          <History size={14} />
+          <span>Activity Logs</span>
+          {chapterLogs.length > 0 && (
+            <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+              {chapterLogs.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 6. Tab Contents */}
+
+      {/* TAB 1: General & Location */}
+      {activeTab === "general" && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Section: Profile & Identity */}
+          <div className="space-y-6">
+            <TerminalPanel title="Chapter Identity & Status">
+              <div className="space-y-4">
+                <div>
+                  <FieldLabel>Chapter Name</FieldLabel>
+                  <Input
+                    value={formData.name}
+                    disabled={!isEditing || !canManage}
+                    placeholder="e.g. Eranad Knowledge City Technical Campus"
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                  />
+                  <p className="mt-1 text-[11px] text-text-dim">
+                    Official collegiate institution name. Used on certificates and member badges.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <FieldLabel>
+                      <span>Shortcode</span>
+                      <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                        (3-4 chars)
+                      </span>
+                    </FieldLabel>
+                    <Input
+                      value={formData.shortCode}
+                      maxLength={4}
+                      disabled={!isEditing || !canManage}
+                      placeholder="e.g. SOS"
+                      className="font-mono font-bold uppercase tracking-wider"
+                      onChange={(e) => {
+                        const clean = e.target.value
+                          .trim()
+                          .toUpperCase()
+                          .replace(/[^A-Z0-9]/g, "")
+                          .slice(0, 4);
+                        setFormData((prev) => ({ ...prev, shortCode: clean }));
+                      }}
+                    />
+                    <p className="mt-1 text-[10px] text-text-mute">
+                      ID Prefix: ELV-{formData.shortCode || "SOS"}-0001
+                    </p>
+                  </div>
+
+                  <div>
+                    <FieldLabel>URL Slug</FieldLabel>
+                    <Input
+                      value={formData.slug}
+                      disabled={!isEditing || !canManage || !isHqRole(session.roleKey)}
+                      onChange={(e) => {
+                        const clean = formatSlugInput(e.target.value);
+                        setFormData((prev) => ({ ...prev, slug: clean }));
+                      }}
+                    />
+                    <p className="mt-1 text-[10px] text-text-mute">
+                      {isHqRole(session.roleKey) ? "Elevates HQ permission to edit" : "Locked (HQ only)"}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <FieldLabel>Operational Status</FieldLabel>
+                  <Select
+                    value={formData.status}
+                    disabled={!isEditing || !canManage}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        status: e.target.value as Chapter["status"],
+                      }))
+                    }
+                  >
+                    <option value="onboarding">Onboarding — Initial campus setup</option>
+                    <option value="active">Active — Live on network & accepting registrations</option>
+                    <option value="inactive">Disabled / Inactive</option>
+                  </Select>
+                </div>
+              </div>
+            </TerminalPanel>
+
+            <TerminalPanel title="Leadership Appointments">
+              <div className="space-y-4">
                 <ChapterUserSearchPicker
                   id="campus-lead-picker"
-                  label="Campus Lead"
-                  selectedUserId={currentCampusLeadId}
-                  disabled={!canManage}
+                  label="Campus Lead / Chairman"
+                  selectedUserId={formData.campusLeadId}
+                  disabled={!isEditing || !canManage}
                   chapterId={ch.id}
                   profiles={chapterMemberCandidates}
                   placeholder="Unassigned — Search Campus Lead"
-                  helperText="Search by name, unique ID (ELV-...), or email to assign Campus Lead."
+                  helperText="Primary student officer responsible for campus operations."
                   onSelect={(userId) => {
-                    saveField({ campusLeadId: userId });
+                    setFormData((prev) => ({ ...prev, campusLeadId: userId }));
                   }}
                 />
 
                 <ChapterUserSearchPicker
                   id="faculty-coordinator-picker"
-                  label="Faculty coordinator"
-                  selectedUserId={ch.facultyId}
-                  disabled={!canManage}
+                  label="Faculty Coordinator"
+                  selectedUserId={formData.facultyId}
+                  disabled={!isEditing || !canManage}
                   chapterId={ch.id}
                   profiles={chapterMemberCandidates}
-                  placeholder="Unassigned — Search Faculty coordinator"
-                  helperText="Search by name, unique ID (ELV-...), or email to assign Faculty coordinator."
+                  placeholder="Unassigned — Search Faculty Coordinator"
+                  helperText="Optional academic faculty liaison for university verification."
                   onSelect={(userId) => {
-                    saveField({ facultyId: userId });
+                    setFormData((prev) => ({ ...prev, facultyId: userId }));
                   }}
                 />
               </div>
+            </TerminalPanel>
+          </div>
 
-              <div className="md:col-span-2">
-                <FieldLabel>Internal notes</FieldLabel>
-                <TextArea
-                  rows={3}
-                  defaultValue={chapter.notes ?? ""}
-                  disabled={!canManage}
-                  placeholder="HQ / Campus Lead notes for this chapter"
-                  onBlur={(e) => {
-                    if (e.target.value !== (chapter.notes ?? "")) {
-                      saveField({ notes: e.target.value });
+          {/* Section: Location & Coordinates */}
+          <div className="space-y-6">
+            <TerminalPanel title="Campus Venue & Location">
+              <div className="space-y-4">
+                <ChapterCitySelect
+                  city={formData.city}
+                  district={formData.district}
+                  state={formData.state}
+                  disabled={!isEditing || !canManage}
+                  onChange={(sel) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      city: sel.city,
+                      district: sel.district,
+                      state: sel.state,
+                    }));
+                  }}
+                  onCoordinatesSuggest={(coords) => {
+                    if (!formData.coordinates) {
+                      setFormData((prev) => ({
+                        ...prev,
+                        coordinates: `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`,
+                        latitude: coords.lat,
+                        longitude: coords.lng,
+                      }));
                     }
                   }}
                 />
-              </div>
-            </div>
-            <dl className="mt-4 grid gap-2 text-[12px] text-text-dim sm:grid-cols-3">
-              <div className="flex justify-between gap-2 border-t border-border pt-2">
-                <dt>Founded / Created</dt>
-                <dd className="font-medium text-text font-mono text-[11px]">
-                  {chapter.createdAt ? formatDateTime(chapter.createdAt) : formatDate(chapter.foundedAt)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2 border-t border-border pt-2">
-                <dt>Campus Lead</dt>
-                <dd className="font-medium text-text truncate">
-                  {campusLead?.fullName ?? "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2 border-t border-border pt-2">
-                <dt>Faculty</dt>
-                <dd className="font-medium text-text truncate">
-                  {faculty?.fullName ?? "—"}
-                </dd>
-              </div>
-            </dl>
-          </TerminalPanel>
-        </div>
 
-        <div className="space-y-4">
-          <TerminalPanel
-            title="Onboarding checklist"
-            meta={
-              checklistDone === checklist.length
-                ? `${checklistDone}/${checklist.length} · Ready`
-                : `${checklistDone}/${checklist.length}`
-            }
-          >
-            <ul className="space-y-2">
-              {checklist.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-bg-card/40 p-2.5 text-[12px] transition-colors hover:border-border"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
-                        item.done
-                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                          : "bg-muted text-text-mute"
-                      }`}
+                <ChapterLocationPicker
+                  contextQuery={formData.name || formData.city}
+                  disabled={!isEditing || !canManage}
+                  value={{
+                    coordinates: formData.coordinates,
+                    latitude: formData.latitude,
+                    longitude: formData.longitude,
+                    location: formData.location,
+                    mapUrl: formData.mapUrl,
+                  }}
+                  onChange={(locVal) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      coordinates: locVal.coordinates,
+                      latitude: locVal.latitude,
+                      longitude: locVal.longitude,
+                      location: locVal.location,
+                      mapUrl: locVal.mapUrl,
+                    }));
+                  }}
+                  onCityChange={(city, district, state) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      city,
+                      ...(district ? { district } : {}),
+                      ...(state ? { state } : {}),
+                    }));
+                  }}
+                />
+              </div>
+            </TerminalPanel>
+
+            <TerminalPanel title="Internal Documentation & Notes">
+              <FieldLabel>Operational Notes</FieldLabel>
+              <TextArea
+                rows={3}
+                value={formData.notes}
+                disabled={!isEditing || !canManage}
+                placeholder="HQ & Campus Lead notes, auditorium approvals, or guidelines..."
+                onChange={(e) => {
+                  setFormData((prev) => ({ ...prev, notes: e.target.value }));
+                }}
+              />
+
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-border/80 pt-3 text-[12px]">
+                <div>
+                  <dt className="text-text-dim text-[11px]">Founded / Created</dt>
+                  <dd className="font-medium font-mono text-[11px] text-text mt-0.5">
+                    {chapter.createdAt ? formatDateTime(chapter.createdAt) : formatDate(chapter.foundedAt)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-text-dim text-[11px]">Chapter ID</dt>
+                  <dd className="font-medium font-mono text-[11px] text-text mt-0.5 truncate">
+                    {chapter.id}
+                  </dd>
+                </div>
+              </dl>
+            </TerminalPanel>
+          </div>
+
+          {/* Chapter Activity Logs & Edit Settings Action */}
+          <div className="lg:col-span-2">
+            <TerminalPanel
+              title="Chapter Activity"
+              meta={`${chapterLogs.length} recent logs`}
+              action={
+                canManage ? (
+                  isEditing ? (
+                    <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleDiscard}
+                        disabled={isSaving}
+                        className="gap-1.5 border border-border/80 text-text-dim hover:text-text cursor-pointer"
+                      >
+                        <X size={13} />
+                        <span>Discard</span>
+                      </Button>
+                      <Button
+                        variant="orange"
+                        size="sm"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="gap-1.5 font-bold shadow-xs cursor-pointer"
+                      >
+                        {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                        <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="orange"
+                      size="sm"
+                      onClick={handleStartEdit}
+                      className="gap-1.5 font-bold shadow-xs cursor-pointer"
                     >
-                      {item.done ? "✓" : "○"}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-medium leading-tight text-text truncate">
-                        {item.label}
-                      </p>
-                      {item.detail ? (
-                        <p className="text-[11px] text-text-dim truncate">
-                          {item.detail}
+                      <Pencil size={13} />
+                      <span>Edit Settings</span>
+                    </Button>
+                  )
+                ) : null
+              }
+            >
+              {!chapterLogs.length ? (
+                <p className="py-4 text-center text-[13px] text-text-mute">
+                  No recent activity logged for this chapter.
+                </p>
+              ) : (
+                <ul className="divide-y divide-border/60 text-[12px]">
+                  {chapterLogs.map((log) => {
+                    const actor = store.profiles.find((p) => p.id === log.actorId);
+                    return (
+                      <li key={log.id} className="py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-text">
+                            {actor?.fullName ?? "System Actor"}
+                          </span>
+                          <span className="font-mono text-[11px] text-text-dim">
+                            {formatDateTime(log.createdAt)}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-text-dim">
+                          <span className="font-mono text-[11px] uppercase tracking-wide text-[var(--accent)]">
+                            {log.action.replaceAll("_", " ")}
+                          </span>
+                          {log.meta ? (
+                            <span className="text-text-mute"> · {log.meta}</span>
+                          ) : null}
                         </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </TerminalPanel>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: Access & Departments */}
+      {activeTab === "access" && (
+        <div className="space-y-6">
+          {/* Join URL Banner */}
+          <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 shadow-[var(--shadow-sm)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <p className="text-[13px] font-semibold text-text flex items-center gap-2">
+                <Sparkles size={14} className="text-[var(--accent)]" />
+                <span>Public Membership Join Page</span>
+              </p>
+              <p className="text-[12px] text-text-dim mt-0.5">
+                Students can navigate to <code className="font-mono text-[11px] bg-bg px-1.5 py-0.5 rounded border border-border">{joinUrl}</code> and enter a 3-day invite code to onboard.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={copyJoinLink}
+                className="gap-1.5"
+              >
+                {joinCopied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                <span>{joinCopied ? "Link Copied" : "Copy Join URL"}</span>
+              </Button>
+              <Link href="/join" target="_blank">
+                <Button variant="ghost" size="sm" className="gap-1">
+                  <ExternalLink size={13} />
+                  <span>Preview</span>
+                </Button>
+              </Link>
+            </div>
+          </div>
+
+          {canManage ? (
+            <div className="space-y-6">
+              <ChapterInviteCodeManager
+                chapterId={chapter.id}
+                chapterSlug={chapter.slug}
+              />
+              <ChapterDepartmentManager chapterId={chapter.id} />
+            </div>
+          ) : (
+            <p className="text-xs text-text-dim">
+              You must have chapter management permissions to issue invite codes or modify academic departments.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* TAB 3: Onboarding & Operations */}
+      {activeTab === "onboarding" && (
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+          <div className="space-y-6">
+            <TerminalPanel
+              title="Launch Readiness Checklist"
+              meta={
+                checklistDone === checklist.length
+                  ? `${checklistDone}/${checklist.length} · 100% Ready`
+                  : `${checklistDone}/${checklist.length} Completed`
+              }
+            >
+              <p className="text-xs text-text-dim mb-4">
+                Required milestones for establishing a fully certified campus chapter across leadership, members, and active programs.
+              </p>
+
+              <ul className="space-y-2.5">
+                {checklist.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-bg-card/40 p-3 text-[12px] transition-colors hover:border-border hover:bg-bg-card/70"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                          item.done
+                            ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                            : "bg-muted text-text-mute"
+                        }`}
+                      >
+                        {item.done ? "✓" : "○"}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold leading-tight text-text truncate">
+                          {item.label}
+                        </p>
+                        {item.detail ? (
+                          <p className="text-[11px] text-text-dim truncate mt-0.5">
+                            {item.detail}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge tone={item.done ? "green" : "orange"}>
+                        {item.done ? "done" : "todo"}
+                      </Badge>
+                      {item.onAction ? (
+                        <button
+                          type="button"
+                          onClick={item.onAction}
+                          disabled={!canManage}
+                          className="text-[11px] font-semibold text-[var(--accent)] hover:underline disabled:opacity-50 cursor-pointer"
+                        >
+                          {item.actionLabel}
+                        </button>
+                      ) : item.href ? (
+                        <Link
+                          href={item.href}
+                          className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                        >
+                          {item.actionLabel} →
+                        </Link>
                       ) : null}
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge tone={item.done ? "green" : "orange"}>
-                      {item.done ? "done" : "todo"}
-                    </Badge>
-                    {item.onAction ? (
-                      <button
-                        type="button"
-                        onClick={item.onAction}
-                        disabled={!canManage}
-                        className="text-[11px] font-semibold text-[var(--accent)] hover:underline disabled:opacity-50"
-                      >
-                        {item.actionLabel}
-                      </button>
-                    ) : item.href ? (
-                      <Link
-                        href={item.href}
-                        className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
-                      >
-                        {item.actionLabel} →
-                      </Link>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
 
-            {canManage && !isChapterActive && checklistDone >= 4 ? (
-              <div className="mt-3 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3">
-                <p className="text-[12px] font-medium text-text">
-                  Prerequisites complete! Chapter is ready to be launched.
-                </p>
-                <Button
-                  variant="orange"
-                  size="sm"
-                  className="mt-2 w-full justify-center"
-                  onClick={() => saveField({ status: "active" })}
-                >
-                  Activate chapter now
-                </Button>
-              </div>
-            ) : null}
-
-            {isChapterActive && checklistDone === checklist.length ? (
-              <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 text-center">
-                <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                  ✓ Chapter is active & ready for events and registrations
-                </p>
-              </div>
-            ) : null}
-          </TerminalPanel>
-
-          <TerminalPanel title="Manage this chapter">
-            <ul className="space-y-2 text-[13px]">
-              {[
-                { href: `/chapter/${slug}/leadership`, label: "Leadership cycle" },
-                { href: `/chapter/${slug}/students`, label: "Students & members" },
-                { href: `/chapter/${slug}/events`, label: "Events" },
-                { href: `/chapter/${slug}/clusters`, label: "Clusters" },
-                { href: `/chapter/${slug}/projects`, label: "Projects" },
-                { href: `/chapter/${slug}/reports`, label: "Reports" },
-                { href: `/chapter/${slug}/analytics`, label: "Analytics" },
-              ].map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="font-medium text-text hover:text-[var(--accent)]"
+              {canManage && !isChapterActive && checklistDone >= 4 ? (
+                <div className="mt-4 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3.5">
+                  <p className="text-[12px] font-semibold text-text">
+                    Prerequisites Complete! Chapter is ready to be launched.
+                  </p>
+                  <p className="text-[11px] text-text-dim mt-0.5">
+                    Activating opens public registrations, event submissions, and enables student certificates.
+                  </p>
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    className="mt-2.5 w-full justify-center font-bold"
+                    onClick={() => saveDirectField({ status: "active" })}
                   >
-                    {link.label} →
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </TerminalPanel>
+                    Activate Chapter Now
+                  </Button>
+                </div>
+              ) : null}
 
-          <TerminalPanel
-            title="Chapter Members"
-            meta={`${members.length} registered`}
-            action={
-              <Link
-                href={`/chapter/${slug}/students`}
-                className="text-[12px] font-medium text-[var(--accent)] hover:underline"
-              >
-                Full Roster →
-              </Link>
-            }
-          >
-            <p className="text-[12px] text-text-dim leading-relaxed mb-3">
-              {members.length > 0
-                ? `${members.length} verified Supabase user profile${members.length === 1 ? "" : "s"} linked to this chapter.`
-                : "No members or students registered yet in this chapter."}
-            </p>
-            <Link href={`/chapter/${slug}/students`}>
-              <Button variant="secondary" size="sm" className="w-full justify-center text-xs">
-                Open Member Roster & Database ({members.length}) →
-              </Button>
-            </Link>
-          </TerminalPanel>
+              {isChapterActive && checklistDone === checklist.length ? (
+                <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
+                  <p className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    ✓ Chapter is fully verified & ready for campus operations
+                  </p>
+                </div>
+              ) : null}
+            </TerminalPanel>
+          </div>
 
-          {(isExecutiveRole(session.roleKey) ||
-            isFacultyRole(session.roleKey) ||
-            isHqRole(session.roleKey)) &&
-          activeTerm ? (
-            <TerminalPanel title="Active term" meta={activeTerm.academicYear}>
-              <p className="text-[13px] font-semibold">{activeTerm.title}</p>
-              <p className="mt-1 text-[12px] text-text-dim">
-                {formatDate(activeTerm.startDate)} –{" "}
-                {formatDate(activeTerm.endDate)}
+          <div className="space-y-6">
+            <TerminalPanel title="Chapter Operations Hub">
+              <p className="text-xs text-text-dim mb-3">
+                Quick jump to operational modules for this chapter:
               </p>
-              <Link
-                href={`/chapter/${slug}/leadership`}
-                className="mt-3 inline-block text-[12px] font-medium text-[var(--accent)] hover:underline"
-              >
-                Edit leadership →
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { href: `/chapter/${slug}/leadership`, label: "Leadership Cycle", icon: Shield },
+                  { href: `/chapter/${slug}/students`, label: "Students Roster", icon: Users },
+                  { href: `/chapter/${slug}/events`, label: "Events & Tickets", icon: Calendar },
+                  { href: `/chapter/${slug}/clusters`, label: "Interest Clusters", icon: Layers },
+                  { href: `/chapter/${slug}/projects`, label: "Builder Projects", icon: FolderGit2 },
+                  { href: `/chapter/${slug}/reports`, label: "Formal Reports", icon: FileText },
+                  { href: `/chapter/${slug}/analytics`, label: "Chapter Analytics", icon: BarChart2 },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-bg p-2.5 text-[12px] font-medium text-text transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                    >
+                      <Icon size={14} className="text-text-mute shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </TerminalPanel>
+
+            {(isExecutiveRole(session.roleKey) ||
+              isFacultyRole(session.roleKey) ||
+              isHqRole(session.roleKey)) &&
+            activeTerm ? (
+              <TerminalPanel title="Active Leadership Term" meta={activeTerm.academicYear}>
+                <div className="space-y-1">
+                  <p className="text-[13px] font-bold text-text">{activeTerm.title}</p>
+                  <p className="text-[12px] text-text-dim">
+                    {formatDate(activeTerm.startDate)} – {formatDate(activeTerm.endDate)}
+                  </p>
+                </div>
+                <Link
+                  href={`/chapter/${slug}/leadership`}
+                  className="mt-3 inline-block text-[12px] font-semibold text-[var(--accent)] hover:underline"
+                >
+                  Manage leadership tenure →
+                </Link>
+              </TerminalPanel>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: Activity & Audit Logs */}
+      {activeTab === "activity" && (
+        <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
+          <div className="space-y-6">
+            <TerminalPanel
+              title="Registered Members"
+              meta={`${members.length} members`}
+              action={
+                <Link
+                  href={`/chapter/${slug}/students`}
+                  className="text-[12px] font-semibold text-[var(--accent)] hover:underline"
+                >
+                  View Roster →
+                </Link>
+              }
+            >
+              <p className="text-[12px] text-text-dim leading-relaxed mb-4">
+                {members.length > 0
+                  ? `${members.length} verified member profile${members.length === 1 ? "" : "s"} enrolled in ${chapter.name}.`
+                  : "No students or members registered yet."}
+              </p>
+              <Link href={`/chapter/${slug}/students`}>
+                <Button variant="secondary" size="sm" className="w-full justify-center text-xs font-semibold">
+                  Open Member Directory ({members.length}) →
+                </Button>
               </Link>
             </TerminalPanel>
-          ) : null}
+          </div>
 
           <TerminalPanel
-            title="Chapter Activity"
-            meta={`${chapterLogs.length} recent logs`}
+            title="Chapter Mutation Audit Trail"
+            meta={`${chapterLogs.length} recent events`}
+            action={
+              canManage ? (
+                isEditing ? (
+                  <div className="flex items-center gap-2 animate-in fade-in duration-150">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDiscard}
+                      disabled={isSaving}
+                      className="gap-1.5 border border-border/80 text-text-dim hover:text-text cursor-pointer"
+                    >
+                      <X size={13} />
+                      <span>Discard</span>
+                    </Button>
+                    <Button
+                      variant="orange"
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="gap-1.5 font-bold shadow-xs cursor-pointer"
+                    >
+                      {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                      <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    onClick={handleStartEdit}
+                    className="gap-1.5 font-bold shadow-xs cursor-pointer"
+                  >
+                    <Pencil size={13} />
+                    <span>Edit Settings</span>
+                  </Button>
+                )
+              ) : null
+            }
           >
             {!chapterLogs.length ? (
-              <p className="py-3 text-[13px] text-text-mute">
-                No activity logged yet for this chapter.
+              <p className="py-6 text-center text-[13px] text-text-mute">
+                No recent activity logged for this chapter.
               </p>
             ) : (
               <ul className="divide-y divide-border/60 text-[12px]">
                 {chapterLogs.map((log) => {
                   const actor = store.profiles.find((p) => p.id === log.actorId);
                   return (
-                    <li key={log.id} className="py-2.5">
+                    <li key={log.id} className="py-3 first:pt-0 last:pb-0">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-text">
-                          {actor?.fullName ?? "System"}
+                          {actor?.fullName ?? "System Actor"}
                         </span>
-                        <span className="font-mono text-[10px] text-[var(--accent)]">
+                        <span className="font-mono text-[11px] text-text-dim">
                           {formatDateTime(log.createdAt)}
                         </span>
                       </div>
                       <p className="mt-0.5 text-text-dim">
-                        {log.action.replaceAll("_", " ")}
+                        <span className="font-mono text-[11px] uppercase tracking-wide text-[var(--accent)]">
+                          {log.action.replaceAll("_", " ")}
+                        </span>
                         {log.meta ? (
                           <span className="text-text-mute"> · {log.meta}</span>
                         ) : null}
@@ -720,7 +1165,7 @@ export default function ChapterSettingsPage({
             )}
           </TerminalPanel>
         </div>
-      </div>
+      )}
     </div>
   );
 }

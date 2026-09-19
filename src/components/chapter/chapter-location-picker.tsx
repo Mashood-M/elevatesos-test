@@ -341,11 +341,13 @@ export function ChapterLocationPicker({
   onChange,
   onCityChange,
   contextQuery,
+  disabled = false,
 }: {
   value: ChapterLocationValue;
   onChange: (val: ChapterLocationValue) => void;
   onCityChange?: (city: string, district?: string, state?: string) => void;
   contextQuery?: string;
+  disabled?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<"map" | "type">("map");
   const [isGmapsAssistantOpen, setIsGmapsAssistantOpen] = useState(false);
@@ -613,6 +615,7 @@ export function ChapterLocationPicker({
       district?: string,
       state?: string,
     ) => {
+      if (disabled) return;
       const formatted = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
       setCoordsInput(formatted);
       setCenter({ lat, lng });
@@ -630,7 +633,7 @@ export function ChapterLocationPicker({
         onCityChange(city, district, state);
       }
     },
-    [onChange, onCityChange, value],
+    [disabled, onChange, onCityChange, value],
   );
 
   // Interactive Map pointer handlers
@@ -883,20 +886,25 @@ export function ChapterLocationPicker({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Pick via Google Maps Assistant button */}
-          <button
-            type="button"
-            onClick={() => setIsGmapsAssistantOpen((prev) => !prev)}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
-              isGmapsAssistantOpen
-                ? "bg-[var(--accent)] text-white border-[var(--accent)] shadow-xs"
-                : "bg-bg border-border text-text hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            }`}
-            title="Import location directly from Google Maps link or coordinates"
-          >
-            <ArrowUpRight size={13} className="text-emerald-400" />
-            Pick via Google Maps
-          </button>
+          {disabled ? (
+            <span className="text-[10px] text-text-mute font-medium px-2 py-0.5 bg-muted/80 rounded-full border border-border/60">
+              View Only
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsGmapsAssistantOpen((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-medium border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                isGmapsAssistantOpen
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)] shadow-xs"
+                  : "bg-bg border-border text-text hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              }`}
+              title="Import location directly from Google Maps link or coordinates"
+            >
+              <ArrowUpRight size={13} className="text-emerald-400" />
+              Pick via Google Maps
+            </button>
+          )}
 
           {/* Mode Switcher */}
           <div className="flex rounded-md border border-border bg-bg p-0.5 text-[11px]">

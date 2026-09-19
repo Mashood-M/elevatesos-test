@@ -15,7 +15,7 @@ WHERE name LIKE '% Volunteers'
   AND (member_ids IS NULL OR cardinality(member_ids) = 0)
   AND (is_preset IS FALSE OR is_preset IS NULL);
 
--- 3. Ensure events table has volunteer_student_ids column for direct roster sync
+-- 3. Ensure events table has volunteer_student_ids column for direct directory sync
 ALTER TABLE public.events
   ADD COLUMN IF NOT EXISTS volunteer_student_ids TEXT[] DEFAULT '{}';
 

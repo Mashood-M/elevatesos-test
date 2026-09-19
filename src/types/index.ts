@@ -459,7 +459,7 @@ export interface VolunteerPowers {
   canVerifyTickets: boolean;   // Verify student registration tickets & passes
   canRegisterWalkins: boolean; // Add walk-ins on spot at venue
   canManageTasks: boolean;     // Check off operational tasks/checklists
-  canViewRoster: boolean;      // View attendee list and registration details
+  canViewdirectory: boolean;      // View attendee list and registration details
 }
 
 export type VolunteerGroupType = "listed" | "temp";
@@ -826,11 +826,11 @@ export interface Task {
   eventId?: string;
   title: string;
   category:
-    | "venue"
-    | "marketing"
-    | "registration"
-    | "certificates"
-    | "documentation";
+  | "venue"
+  | "marketing"
+  | "registration"
+  | "certificates"
+  | "documentation";
   assigneeId: string;
   status: TaskStatus;
   dueDate: string;

@@ -299,7 +299,7 @@ export default function ChapterStudentsPage({
     setTimeout(() => setCopiedId(null), 1800);
   };
 
-  const exportRosterToCsv = () => {
+  const exportdirectoryToCsv = () => {
     const headers = [
       "Member Number (Elevates ID)",
       "Full Name",
@@ -331,7 +331,7 @@ export default function ChapterStudentsPage({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `${targetChapter.slug}-member-roster.csv`);
+    link.setAttribute("download", `${targetChapter.slug}-member-directory.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -492,15 +492,15 @@ export default function ChapterStudentsPage({
     <div className="space-y-6">
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title={`${targetChapter.name} Members Roster`}
+        title={`${targetChapter.name} Members directory`}
         description={`Official student directory and member profiles registered in ${targetChapter.name} (${targetChapter.college}).`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
-              onClick={exportRosterToCsv}
+              onClick={exportdirectoryToCsv}
               className="flex items-center gap-1.5 text-xs"
-              title="Download full member roster as CSV spreadsheet"
+              title="Download full member directory as CSV spreadsheet"
             >
               <Download size={14} /> Export CSV
             </Button>
@@ -701,16 +701,16 @@ export default function ChapterStudentsPage({
                   {chapterMembers.some(
                     (s) => !s.department || s.department.toLowerCase() === "unassigned"
                   ) && (
-                    <option value="Unassigned">
-                      Unassigned (
-                      {
-                        chapterMembers.filter(
-                          (s) => !s.department || s.department.toLowerCase() === "unassigned"
-                        ).length
-                      }
-                      )
-                    </option>
-                  )}
+                      <option value="Unassigned">
+                        Unassigned (
+                        {
+                          chapterMembers.filter(
+                            (s) => !s.department || s.department.toLowerCase() === "unassigned"
+                          ).length
+                        }
+                        )
+                      </option>
+                    )}
                 </select>
               </div>
 

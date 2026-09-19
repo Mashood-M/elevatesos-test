@@ -85,19 +85,35 @@ export async function GET(req: Request) {
       }
 
       // Query invite_tokens case-insensitively
-      const { data, error } = await admin
+      let tokenData: any = null;
+      let queryError: any = null;
+
+      const res = await admin
         .from("invite_tokens")
-        .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
+        .select("id, token, created_by, chapter_id, is_active, used_by, expires_at, uses_count")
         .ilike("token", token)
         .maybeSingle();
 
-      if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      tokenData = res.data;
+      queryError = res.error;
+
+      if (queryError && queryError.message?.includes("uses_count")) {
+        const fallback = await admin
+          .from("invite_tokens")
+          .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
+          .ilike("token", token)
+          .maybeSingle();
+        tokenData = fallback.data ? { ...fallback.data, uses_count: 0 } : null;
+        queryError = fallback.error;
       }
-      if (!data) {
+
+      if (queryError) {
+        return NextResponse.json({ ok: false, error: queryError.message }, { status: 500 });
+      }
+      if (!tokenData) {
         return NextResponse.json({ ok: false, error: "Invite token not found" }, { status: 404 });
       }
-      return NextResponse.json({ ok: true, data });
+      return NextResponse.json({ ok: true, data: tokenData });
     }
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
@@ -2060,7 +2076,8 @@ export async function POST(req: Request) {
             { status: 400 },
           );
         }
-        if (tokenRow.used_by && !tokenRow.chapter_id) {
+        const isReferral = Boolean(tokenRow.token && tokenRow.token.toLowerCase().startsWith("ref-"));
+        if (!isReferral && tokenRow.used_by && !tokenRow.chapter_id) {
           return NextResponse.json(
             { ok: false, error: "This single-use invite link has already been used." },
             { status: 400 },
@@ -2281,6 +2298,91 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json({ ok: true, id: insRow?.id || id });
+    }
+
+    if (type === "record_referral_use" || type === "referral_invite_join") {
+      const { tokenId, token, userId, newUserId, referrerId, studentName, studentEmail } = data || {};
+      const targetUserId = userId || newUserId;
+      const cleanToken = (token || "").trim();
+
+      // 1. Fetch the token row
+      let tokenRow: any = null;
+      if (isUuid(tokenId)) {
+        const { data: byId } = await admin
+          .from("invite_tokens")
+          .select("id, token, created_by, uses_count, expires_at, is_active")
+          .eq("id", tokenId)
+          .maybeSingle();
+        tokenRow = byId;
+      }
+      if (!tokenRow && cleanToken) {
+        const { data: byCode } = await admin
+          .from("invite_tokens")
+          .select("id, token, created_by, uses_count, expires_at, is_active")
+          .ilike("token", cleanToken)
+          .maybeSingle();
+        tokenRow = byCode;
+      }
+
+      const effectiveId = tokenRow?.id || tokenId;
+      const effectiveToken = tokenRow?.token || cleanToken;
+      const effectiveReferrer = tokenRow?.created_by || referrerId;
+      const currentUses = Number(tokenRow?.uses_count ?? 0);
+      const nextUses = currentUses + 1;
+
+      // 2. Check if the 24-hour expiration has passed
+      const isExpired = tokenRow?.expires_at && new Date(tokenRow.expires_at) < new Date();
+      if (isExpired) {
+        return NextResponse.json({ ok: false, error: "Referral invite link has expired (24h validity reached)." }, { status: 400 });
+      }
+      if (tokenRow && tokenRow.is_active === false) {
+        return NextResponse.json({ ok: false, error: "Referral invite link has been revoked." }, { status: 400 });
+      }
+
+      // 3. Update token: increment uses_count, set used_at and latest used_by, keep is_active = true!
+      if (effectiveId && isUuid(effectiveId)) {
+        try {
+          const updatePayload: Record<string, any> = {
+            uses_count: nextUses,
+            used_at: new Date().toISOString(),
+            is_active: true,
+          };
+          if (targetUserId && isUuid(targetUserId)) {
+            updatePayload.used_by = targetUserId;
+          }
+          const { error: updErr } = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
+          if (updErr && updErr.message?.includes("uses_count")) {
+            delete updatePayload.uses_count;
+            await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
+          }
+        } catch (uErr) {
+          console.warn("Notice: invite_tokens update in record_referral_use:", uErr);
+        }
+      }
+
+      // 4. Record permanent log entry in activity_logs
+      try {
+        await admin.from("activity_logs").insert({
+          actor_id: targetUserId && isUuid(targetUserId) ? targetUserId : null,
+          action: "referral_invite_used",
+          entity: "referral_invite",
+          entity_id: effectiveToken || effectiveId || "UNKNOWN",
+          meta: JSON.stringify({
+            tokenId: effectiveId,
+            token: effectiveToken,
+            referrerId: effectiveReferrer,
+            newUserId: targetUserId,
+            studentName: studentName || null,
+            studentEmail: studentEmail || null,
+            joinedAt: new Date().toISOString(),
+            usesCount: nextUses,
+          }),
+        });
+      } catch (logErr) {
+        console.warn("Notice: activity_logs insert in record_referral_use:", logErr);
+      }
+
+      return NextResponse.json({ ok: true, usesCount: nextUses });
     }
 
     if (type === "chapter_invite_code") {

@@ -1280,7 +1280,9 @@ export async function createInviteToken(createdById: string): Promise<{
   };
 }
 
-/** Validate invite token — returns token row or null if invalid/expired/used. */
+/** Validate invite token — returns token row or null if invalid/expired/used.
+ * For 24-hour referral links (ref-...), allows multiple uses within its 24h lifespan.
+ */
 export async function validateInviteToken(token: string): Promise<{
   id: string;
   token: string;
@@ -1289,9 +1291,11 @@ export async function validateInviteToken(token: string): Promise<{
   isActive: boolean;
   usedBy?: string;
   expiresAt?: string;
+  usesCount?: number;
 } | null> {
   const clean = (token || "").trim();
   if (!clean) return null;
+  const isReferralToken = clean.toLowerCase().startsWith("ref-");
 
   // 1. Try authoritative service-role API validation first (bypasses RLS)
   if (typeof window !== "undefined") {
@@ -1300,7 +1304,8 @@ export async function validateInviteToken(token: string): Promise<{
       const json = await res.json().catch(() => null);
       if (json?.ok && json.data) {
         const d = json.data;
-        if (!d.is_active || d.isRevoked || d.used_by) return null;
+        if (!d.is_active || d.isRevoked) return null;
+        if (!isReferralToken && d.used_by) return null;
         if (d.expires_at && new Date(d.expires_at) < new Date()) return null;
         return {
           id: d.id,
@@ -1310,6 +1315,7 @@ export async function validateInviteToken(token: string): Promise<{
           isActive: d.is_active,
           usedBy: d.used_by ?? undefined,
           expiresAt: d.expires_at ?? undefined,
+          usesCount: d.uses_count ? Number(d.uses_count) : undefined,
         };
       } else if (json?.ok === false && json?.error?.includes("not found")) {
         return null;
@@ -1328,8 +1334,9 @@ export async function validateInviteToken(token: string): Promise<{
     .ilike("token", clean)
     .maybeSingle();
   if (error || !data) return null;
-  if (!data.is_active || data.used_by) return null; // already used or deactivated
-  // Reject if past expiry
+  if (!data.is_active) return null; // deactivated or revoked
+  if (!isReferralToken && data.used_by) return null; // only non-referral tokens are single-use
+  // Reject if past 24h expiry
   if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
   return {
     id: data.id,
@@ -1342,10 +1349,55 @@ export async function validateInviteToken(token: string): Promise<{
   };
 }
 
-/** Mark an invite token as used after successful registration. */
-export async function markInviteTokenUsed(tokenId: string, newUserId: string): Promise<boolean> {
+/** Mark an invite token as used after successful registration.
+ * For 24-hour referral links (ref-...), keeps the token active so multiple students can join,
+ * incrementing uses_count and logging multi-user attribution in activity_logs.
+ */
+export async function markInviteTokenUsed(
+  tokenId: string,
+  newUserId: string,
+  tokenString?: string,
+  meta?: { studentName?: string; studentEmail?: string }
+): Promise<boolean> {
+  const isReferral = (tokenString || "").toLowerCase().startsWith("ref-");
+
+  if (isReferral && typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/mutations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "record_referral_use",
+          data: {
+            tokenId,
+            token: tokenString,
+            userId: newUserId,
+            newUserId,
+            studentName: meta?.studentName,
+            studentEmail: meta?.studentEmail,
+          },
+        }),
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch (err) {
+      console.warn("Notice: record_referral_use mutation:", err);
+    }
+  }
+
   const supabase = createClient();
   if (!supabase) return false;
+
+  if (isReferral) {
+    // Keep 24-hour referral link active for countless users
+    const { error } = await supabase
+      .from("invite_tokens")
+      .update({ used_by: newUserId, used_at: new Date().toISOString() })
+      .eq("id", tokenId);
+    return !error;
+  }
+
   const { error } = await supabase
     .from("invite_tokens")
     .update({ used_by: newUserId, used_at: new Date().toISOString(), is_active: false })

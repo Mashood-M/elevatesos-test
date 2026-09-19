@@ -13,7 +13,7 @@ export const DEFAULT_VOLUNTEER_POWERS: VolunteerPowers = {
   canVerifyTickets: true,
   canRegisterWalkins: false,
   canManageTasks: false,
-  canViewRoster: true,
+  canViewdirectory: true,
 };
 
 export interface PowerDefinition {
@@ -61,10 +61,10 @@ export const VOLUNTEER_POWER_DEFINITIONS: PowerDefinition[] = [
     category: "operations",
   },
   {
-    key: "canViewRoster",
-    label: "View Attendee Roster",
-    description: "Can search and view attendee roster list, department info, and contact details",
-    badge: "Roster",
+    key: "canViewdirectory",
+    label: "View Attendee directory",
+    description: "Can search and view attendee directory list, department info, and contact details",
+    badge: "directory",
     category: "access",
   },
 ];
@@ -80,14 +80,14 @@ export const VOLUNTEER_POWER_PRESETS: VolunteerPowerPreset[] = [
   {
     id: "checkin_desk",
     name: "Check-in Desk",
-    description: "Scan QR codes, mark attendance, verify tickets, and view roster",
+    description: "Scan QR codes, mark attendance, verify tickets, and view directory",
     powers: {
       canTakeAttendance: true,
       canScanQr: true,
       canVerifyTickets: true,
       canRegisterWalkins: false,
       canManageTasks: false,
-      canViewRoster: true,
+      canViewdirectory: true,
     },
   },
   {
@@ -100,20 +100,20 @@ export const VOLUNTEER_POWER_PRESETS: VolunteerPowerPreset[] = [
       canVerifyTickets: true,
       canRegisterWalkins: true,
       canManageTasks: false,
-      canViewRoster: true,
+      canViewdirectory: true,
     },
   },
   {
     id: "logistics",
     name: "Logistics & Tasks",
-    description: "Manage event operational checklist, verify tickets, and view roster",
+    description: "Manage event operational checklist, verify tickets, and view directory",
     powers: {
       canTakeAttendance: false,
       canScanQr: false,
       canVerifyTickets: true,
       canRegisterWalkins: false,
       canManageTasks: true,
-      canViewRoster: true,
+      canViewdirectory: true,
     },
   },
   {
@@ -126,7 +126,7 @@ export const VOLUNTEER_POWER_PRESETS: VolunteerPowerPreset[] = [
       canVerifyTickets: true,
       canRegisterWalkins: true,
       canManageTasks: true,
-      canViewRoster: true,
+      canViewdirectory: true,
     },
   },
 ];
@@ -175,7 +175,7 @@ export function getUserVolunteerPowers(
     canVerifyTickets: false,
     canRegisterWalkins: false,
     canManageTasks: false,
-    canViewRoster: false,
+    canViewdirectory: false,
   };
 
   const fullPowers: VolunteerPowers = {
@@ -184,7 +184,7 @@ export function getUserVolunteerPowers(
     canVerifyTickets: true,
     canRegisterWalkins: true,
     canManageTasks: true,
-    canViewRoster: true,
+    canViewdirectory: true,
   };
 
   if (!userId) {
@@ -279,7 +279,7 @@ export function getUserVolunteerPowers(
     resolvedPowers.canTakeAttendance = true;
     resolvedPowers.canScanQr = true;
     resolvedPowers.canVerifyTickets = true;
-    resolvedPowers.canViewRoster = true;
+    resolvedPowers.canViewdirectory = true;
   }
 
   // Merge from groups

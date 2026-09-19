@@ -4,7 +4,7 @@ const DEFAULT_VOLUNTEER_POWERS = {
   canVerifyTickets: true,
   canRegisterWalkins: false,
   canManageTasks: false,
-  canViewRoster: true,
+  canViewdirectory: true,
 };
 
 type VolunteerPowers = typeof DEFAULT_VOLUNTEER_POWERS;

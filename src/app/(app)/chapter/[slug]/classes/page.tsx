@@ -584,7 +584,7 @@ export default function ChapterClassesPage({
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "programs")}
         title="Classes & Academic Departments"
-        description="Configure campus academic faculties, class division cohorts, appointed representatives, and student rosters."
+        description="Configure campus academic faculties, class division cohorts, appointed representatives, and student directorys."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
@@ -826,11 +826,10 @@ export default function ChapterClassesPage({
                         type="button"
                         onClick={() => !isAdded && handleAddStandardDept(dept)}
                         disabled={isAdded}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition ${
-                          isAdded
+                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition ${isAdded
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 cursor-default"
                             : "bg-bg-panel hover:bg-[var(--accent)]/10 text-text-dim hover:text-[var(--accent)] border border-border hover:border-[var(--accent)]/30 cursor-pointer active:scale-95"
-                        }`}
+                          }`}
                       >
                         {isAdded ? (
                           <>
@@ -1319,11 +1318,10 @@ export default function ChapterClassesPage({
                 <button
                   type="button"
                   onClick={() => setSelectedDeptFilter("all")}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                    selectedDeptFilter === "all"
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${selectedDeptFilter === "all"
                       ? "bg-[var(--accent)] text-white shadow-sm"
                       : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
-                  }`}
+                    }`}
                 >
                   All Departments ({chapterStudents.length})
                 </button>
@@ -1338,11 +1336,10 @@ export default function ChapterClassesPage({
                       key={dept.id}
                       type="button"
                       onClick={() => setSelectedDeptFilter(dept.name)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                        isSelected
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isSelected
                           ? "bg-[var(--accent)] text-white shadow-sm"
                           : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
-                      }`}
+                        }`}
                     >
                       {dept.name} ({count})
                     </button>
@@ -1351,24 +1348,23 @@ export default function ChapterClassesPage({
                 {chapterStudents.some(
                   (s) => !s.department || s.department === "Unassigned",
                 ) && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDeptFilter("Unassigned")}
-                    className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                      selectedDeptFilter === "Unassigned"
-                        ? "bg-[var(--accent)] text-white shadow-sm"
-                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
-                    }`}
-                  >
-                    Unassigned (
-                    {
-                      chapterStudents.filter(
-                        (s) => !s.department || s.department === "Unassigned",
-                      ).length
-                    }
-                    )
-                  </button>
-                )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDeptFilter("Unassigned")}
+                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${selectedDeptFilter === "Unassigned"
+                          ? "bg-[var(--accent)] text-white shadow-sm"
+                          : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                        }`}
+                    >
+                      Unassigned (
+                      {
+                        chapterStudents.filter(
+                          (s) => !s.department || s.department === "Unassigned",
+                        ).length
+                      }
+                      )
+                    </button>
+                  )}
               </div>
 
               {/* Students List Table */}

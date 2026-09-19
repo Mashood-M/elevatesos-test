@@ -86,14 +86,14 @@ export async function getPublicChapter(slug: string) {
     .eq("status", "active")
     .limit(1);
 
-  let roster: Array<{ name: string; role: string; roleKey: string }> = [];
+  let directory: Array<{ name: string; role: string; roleKey: string }> = [];
   if (terms?.[0]) {
     const { data: assignments } = await admin
       .from("leadership_assignments")
       .select("title, role_key, profiles(full_name)")
       .eq("term_id", terms[0].id);
 
-    roster = (assignments ?? []).map((a) => {
+    directory = (assignments ?? []).map((a) => {
       const profile = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
       return {
         name: profile?.full_name ?? a.title,
@@ -114,7 +114,7 @@ export async function getPublicChapter(slug: string) {
     eventCount: chapter.event_count,
     projectCount: chapter.project_count,
     foundedAt: chapter.founded_at,
-    roster,
+    directory,
   };
 }
 

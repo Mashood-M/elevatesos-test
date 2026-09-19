@@ -99,7 +99,7 @@ export default function ChapterAttendancePage({
   const [selectedRegs, setSelectedRegs] = useState<string[]>([]);
   const offlineDesk = false;
   const [offlineQueue, setOfflineQueue] = useState<OfflineCheckInItem[]>([]);
-  const [rosterQuery, setRosterQuery] = useState("");
+  const [directoryQuery, setdirectoryQuery] = useState("");
   const [attendanceSort, setAttendanceSort] = useState<
     | "registered_recent"
     | "registered_oldest"
@@ -110,7 +110,7 @@ export default function ChapterAttendancePage({
     | "elevates_id"
   >("registered_recent");
   const [online, setOnline] = useState(true);
-  const [rosterTab, setRosterTab] = useState<"approved" | "team" | "waitlist" | "chapter">("approved");
+  const [directoryTab, setdirectoryTab] = useState<"approved" | "team" | "waitlist" | "chapter">("approved");
   const [isOnSpotOpen, setIsOnSpotOpen] = useState(false);
   const [onSpotSearch, setOnSpotSearch] = useState("");
   const [isVolunteerModalOpen, setIsVolunteerModalOpen] = useState(false);
@@ -272,7 +272,7 @@ export default function ChapterAttendancePage({
       .filter((a) => a.eventId === eventId && a.status === "active")
       .forEach((a) => assignedVolIds.add(a.userId));
 
-    // Ensure all assigned team volunteers are listed in the roster
+    // Ensure all assigned team volunteers are listed in the directory
     assignedVolIds.forEach((vUserId) => {
       if (!raw.some((r) => r.userId === vUserId)) {
         const u = store.profiles.find((p) => p.id === vUserId);
@@ -484,11 +484,11 @@ export default function ChapterAttendancePage({
     return team;
   }, [currentEvent, eventId, store.profiles, store.attendance, store.volunteerGroups, store.volunteerAssignments]);
 
-  const filteredRoster = useMemo(() => {
+  const filtereddirectory = useMemo(() => {
     let list = approvedRegs;
 
     // 1. Filter by search query
-    const q = rosterQuery.trim().toLowerCase();
+    const q = directoryQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((reg) => {
         const user = store.profiles.find((p) => p.id === reg.userId);
@@ -508,11 +508,11 @@ export default function ChapterAttendancePage({
         const userAttRecords = store.attendance.filter((att) => att.registrationId === reg.id);
         const att = isMultiSession
           ? userAttRecords.find(
-              (r) =>
-                r.sessionId === activeSessionObj?.id ||
-                r.session === activeSessionObj?.id ||
-                r.sessionName === activeSessionObj?.name,
-            )
+            (r) =>
+              r.sessionId === activeSessionObj?.id ||
+              r.session === activeSessionObj?.id ||
+              r.sessionName === activeSessionObj?.name,
+          )
           : userAttRecords[0];
 
         const isExplicitAbsent = att?.status === "absent";
@@ -550,19 +550,19 @@ export default function ChapterAttendancePage({
 
       const attA = isMultiSession
         ? recordsA.find(
-            (r) =>
-              r.sessionId === activeSessionObj?.id ||
-              r.session === activeSessionObj?.id ||
-              r.sessionName === activeSessionObj?.name,
-          )
+          (r) =>
+            r.sessionId === activeSessionObj?.id ||
+            r.session === activeSessionObj?.id ||
+            r.sessionName === activeSessionObj?.name,
+        )
         : recordsA[0];
       const attB = isMultiSession
         ? recordsB.find(
-            (r) =>
-              r.sessionId === activeSessionObj?.id ||
-              r.session === activeSessionObj?.id ||
-              r.sessionName === activeSessionObj?.name,
-          )
+          (r) =>
+            r.sessionId === activeSessionObj?.id ||
+            r.session === activeSessionObj?.id ||
+            r.sessionName === activeSessionObj?.name,
+        )
         : recordsB[0];
 
       const isPresentA =
@@ -618,7 +618,7 @@ export default function ChapterAttendancePage({
     return list;
   }, [
     approvedRegs,
-    rosterQuery,
+    directoryQuery,
     attendanceFilter,
     attendanceSort,
     store.profiles,
@@ -630,7 +630,7 @@ export default function ChapterAttendancePage({
   ]);
 
   const filteredWaitlist = useMemo(() => {
-    const q = rosterQuery.trim().toLowerCase();
+    const q = directoryQuery.trim().toLowerCase();
     if (!q) return waitlistedRegs;
     return waitlistedRegs.filter((reg) => {
       const user = store.profiles.find((p) => p.id === reg.userId);
@@ -641,10 +641,10 @@ export default function ChapterAttendancePage({
         reg.qrCode.toLowerCase().includes(q)
       );
     });
-  }, [waitlistedRegs, rosterQuery, store.profiles]);
+  }, [waitlistedRegs, directoryQuery, store.profiles]);
 
   const filteredChapterStudents = useMemo(() => {
-    const q = rosterQuery.trim().toLowerCase();
+    const q = directoryQuery.trim().toLowerCase();
     if (!q) return chapterStudents;
     return chapterStudents.filter((student) => {
       return (
@@ -655,7 +655,7 @@ export default function ChapterAttendancePage({
         student.elevatesId?.toLowerCase().includes(q)
       );
     });
-  }, [chapterStudents, rosterQuery]);
+  }, [chapterStudents, directoryQuery]);
 
   const filteredOnSpotStudents = useMemo(() => {
     const q = onSpotSearch.trim().toLowerCase();
@@ -704,7 +704,7 @@ export default function ChapterAttendancePage({
   }, [chapter, store.volunteerGroups]);
 
   const filteredTeam = useMemo(() => {
-    const q = rosterQuery.trim().toLowerCase();
+    const q = directoryQuery.trim().toLowerCase();
     if (!q) return eventTeam;
     return eventTeam.filter((m) => {
       return (
@@ -715,7 +715,7 @@ export default function ChapterAttendancePage({
         (m.elevatesId && m.elevatesId.toLowerCase().includes(q))
       );
     });
-  }, [eventTeam, rosterQuery]);
+  }, [eventTeam, directoryQuery]);
 
   useEffect(() => {
     setOfflineQueue(loadOfflineQueue(eventId));
@@ -753,7 +753,7 @@ export default function ChapterAttendancePage({
   const stats = useMemo(() => {
     const checked = store.attendance.filter((a) => a.eventId === eventId);
     const approvedUserIds = new Set(approvedRegs.map((r) => r.userId));
-    
+
     // Deduplicate by distinct approved student (userId) to accurately count unique attendees
     // Volunteers and speakers are marked and counted as present
     const uniqueCheckedInUserIds = new Set(
@@ -1165,13 +1165,13 @@ export default function ChapterAttendancePage({
             const segments = parsedUrl.pathname.split("/").filter(Boolean);
             if (segments.length > 0) rawCode = segments[segments.length - 1].trim();
           }
-        } catch {}
+        } catch { }
       } else if (rawCode.startsWith("{") && rawCode.endsWith("}")) {
         try {
           const parsed = JSON.parse(rawCode);
           const q = parsed.qrCode || parsed.code || parsed.id;
           if (q) rawCode = String(q).trim();
-        } catch {}
+        } catch { }
       }
 
       const code = rawCode;
@@ -1659,7 +1659,7 @@ export default function ChapterAttendancePage({
                   setSelectedEvent(e.target.value);
                   setFlash(null);
                   setSelectedRegs([]);
-                  setRosterQuery("");
+                  setdirectoryQuery("");
                   setAttendanceSort("registered_recent");
                 }}
               >
@@ -1761,7 +1761,7 @@ export default function ChapterAttendancePage({
                 setSelectedEvent(e.target.value);
                 setFlash(null);
                 setSelectedRegs([]);
-                setRosterQuery("");
+                setdirectoryQuery("");
                 setAttendanceSort("registered_recent");
               }}
             >
@@ -1951,27 +1951,27 @@ export default function ChapterAttendancePage({
       <TerminalPanel
         title="Directory"
         meta={
-          rosterTab === "approved"
-            ? `${filteredRoster.length}${rosterQuery ? ` / ${approvedRegs.length}` : ""} approved`
-            : rosterTab === "team"
-              ? `${filteredTeam.length}${rosterQuery ? ` / ${eventTeam.length}` : ""} event team`
-              : rosterTab === "waitlist"
-                ? `${filteredWaitlist.length}${rosterQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
-                : `${filteredChapterStudents.length}${rosterQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
+          directoryTab === "approved"
+            ? `${filtereddirectory.length}${directoryQuery ? ` / ${approvedRegs.length}` : ""} approved`
+            : directoryTab === "team"
+              ? `${filteredTeam.length}${directoryQuery ? ` / ${eventTeam.length}` : ""} event team`
+              : directoryTab === "waitlist"
+                ? `${filteredWaitlist.length}${directoryQuery ? ` / ${waitlistedRegs.length}` : ""} waitlisted`
+                : `${filteredChapterStudents.length}${directoryQuery ? ` / ${chapterStudents.length}` : ""} chapter students`
         }
         className="mt-4"
       >
         <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-1 min-w-0 w-full sm:max-w-md">
             <Input
-              value={rosterQuery}
-              onChange={(e) => setRosterQuery(e.target.value)}
+              value={directoryQuery}
+              onChange={(e) => setdirectoryQuery(e.target.value)}
               placeholder={
-                rosterTab === "approved"
+                directoryTab === "approved"
                   ? "Search name, email, or QR..."
-                  : rosterTab === "team"
+                  : directoryTab === "team"
                     ? "Search coordinator, speaker, or volunteer..."
-                    : rosterTab === "waitlist"
+                    : directoryTab === "waitlist"
                       ? "Search waitlisted student..."
                       : "Search any student in chapter..."
               }
@@ -1984,12 +1984,12 @@ export default function ChapterAttendancePage({
           <div className="flex flex-wrap items-center gap-2">
             {(isCampusLead || isFaculty) && (
               <select
-                value={rosterTab}
+                value={directoryTab}
                 onChange={(e) => {
-                  setRosterTab(e.target.value as "approved" | "team" | "waitlist" | "chapter");
-                  setRosterQuery("");
+                  setdirectoryTab(e.target.value as "approved" | "team" | "waitlist" | "chapter");
+                  setdirectoryQuery("");
                 }}
-                aria-label="Filter roster category"
+                aria-label="Filter directory category"
                 className="h-8 rounded-lg border border-border/80 bg-bg-panel hover:bg-bg-elevated text-text text-xs font-medium px-2.5 pr-7 outline-none cursor-pointer transition-colors focus:ring-1 focus:ring-orange-500/30 focus:border-orange-500/40"
               >
                 <option value="approved">Approved Attendees ({approvedRegs.length})</option>
@@ -1999,7 +1999,7 @@ export default function ChapterAttendancePage({
               </select>
             )}
 
-            {isCampusLead && hasEvent && unscannedCount > 0 && attendanceTakeable.allowed && rosterTab === "approved" && (
+            {isCampusLead && hasEvent && unscannedCount > 0 && attendanceTakeable.allowed && directoryTab === "approved" && (
               <button
                 type="button"
                 onClick={handleMarkAllUnscannedAbsent}
@@ -2035,7 +2035,7 @@ export default function ChapterAttendancePage({
           </div>
         </div>
 
-        {rosterTab === "approved" && (
+        {directoryTab === "approved" && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-[12px]">
               <thead>
@@ -2168,7 +2168,7 @@ export default function ChapterAttendancePage({
                 </tr>
               </thead>
               <tbody>
-                {filteredRoster.length === 0 && (
+                {filtereddirectory.length === 0 && (
                   <tr>
                     <td
                       colSpan={
@@ -2177,10 +2177,10 @@ export default function ChapterAttendancePage({
                       }
                       className="py-10 text-center text-text-mute"
                     >
-                      {rosterQuery ? (
+                      {directoryQuery ? (
                         <div>
                           <p className="font-medium text-text text-sm">
-                            No students found matching &ldquo;{rosterQuery}&rdquo;
+                            No students found matching &ldquo;{directoryQuery}&rdquo;
                           </p>
                           <p className="text-[11px] text-text-dim mt-1">
                             Try checking for typos or clearing your search.
@@ -2199,7 +2199,7 @@ export default function ChapterAttendancePage({
                     </td>
                   </tr>
                 )}
-                {filteredRoster.map((reg) => {
+                {filtereddirectory.map((reg) => {
                   const user = store.profiles.find((p) => p.id === reg.userId);
                   const teamMember = eventTeam.find((t) => t.userId === reg.userId);
                   const isAutoPresent = Boolean(teamMember);
@@ -2508,7 +2508,7 @@ export default function ChapterAttendancePage({
           </div>
         )}
 
-        {rosterTab === "team" && (
+        {directoryTab === "team" && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-[12px]">
               <thead>
@@ -2524,112 +2524,112 @@ export default function ChapterAttendancePage({
                 {filteredTeam.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-text-dim">
-                      No coordinators or speakers found matching &quot;{rosterQuery}&quot;.
+                      No coordinators or speakers found matching &quot;{directoryQuery}&quot;.
                     </td>
                   </tr>
                 ) : (
                   filteredTeam.map((member) => {
-                  const memberAttRecord = store.attendance.find(
-                    (a) =>
-                      a.eventId === eventId &&
-                      a.userId === member.userId &&
-                      (isMultiSession
-                        ? (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id || a.sessionName === activeSessionObj?.name)
-                        : true),
-                  );
-                  const isExplicitAbsent = memberAttRecord?.status === "absent";
+                    const memberAttRecord = store.attendance.find(
+                      (a) =>
+                        a.eventId === eventId &&
+                        a.userId === member.userId &&
+                        (isMultiSession
+                          ? (a.sessionId === activeSessionObj?.id || a.session === activeSessionObj?.id || a.sessionName === activeSessionObj?.name)
+                          : true),
+                    );
+                    const isExplicitAbsent = memberAttRecord?.status === "absent";
 
-                  return (
-                    <tr key={member.id} className="border-b border-border/50">
-                      <td className="py-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="font-semibold text-text">{member.fullName}</p>
-                          {member.role === "speaker" && member.isStudentMember && (
-                            <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-400 border border-purple-500/30">
-                              Student Speaker
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-text-mute">{member.email}</p>
-                      </td>
-                      <td className="py-3">
-                        {member.role === "coordinator" ? (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                            <Crown size={11} className="mr-1" /> {member.roleLabel}
-                          </span>
-                        ) : member.role === "speaker" ? (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                            <Mic size={11} className="mr-1" /> {member.roleLabel}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                            <Sparkles size={11} className="mr-1" /> {member.roleLabel}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 text-[11px] text-text-dim">
-                        {member.department} {member.year !== "—" ? `· Year ${member.year}` : ""}
-                      </td>
-                      <td className="py-3 font-mono text-[11px] text-text-dim">
-                        {member.elevatesId || "—"}
-                      </td>
-                      <td className="py-3 text-right">
-                        <div className="inline-flex items-center gap-2.5 justify-end">
-                          <div className="inline-flex flex-col items-end">
-                            {isExplicitAbsent ? (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
-                                <XCircle size={12} className="mr-1 text-red-400" /> Absent
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present {memberAttRecord ? "(Verified)" : "(Auto)"}
+                    return (
+                      <tr key={member.id} className="border-b border-border/50">
+                        <td className="py-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-text">{member.fullName}</p>
+                            {member.role === "speaker" && member.isStudentMember && (
+                              <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-400 border border-purple-500/30">
+                                Student Speaker
                               </span>
                             )}
-                            <span className="text-[10px] text-text-dim mt-0.5">
-                              {member.role === "speaker"
-                                ? "Session Speaker · Managing Session"
-                                : member.role === "coordinator"
-                                  ? "Host / Coordinator · Auto-Marked"
-                                  : "Event Volunteer · Operations"}
-                            </span>
                           </div>
-
-                          {isCampusLead && member.userId && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={cn(
-                                "h-7 px-2.5 text-[11px] border shrink-0 font-medium",
-                                isExplicitAbsent
-                                  ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
-                                  : "border-red-500/40 text-red-400 hover:bg-red-500/10",
-                              )}
-                              disabled={!attendanceTakeable.allowed}
-                              title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
-                              onClick={() => {
-                                if (member.userId) {
-                                  handleToggleTeamMemberAttendance(
-                                    member.userId,
-                                    isExplicitAbsent ? "present" : "absent",
-                                  );
-                                }
-                              }}
-                            >
-                              {isExplicitAbsent ? "Mark Present" : "Mark Absent"}
-                            </Button>
+                          <p className="text-[11px] text-text-mute">{member.email}</p>
+                        </td>
+                        <td className="py-3">
+                          {member.role === "coordinator" ? (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                              <Crown size={11} className="mr-1" /> {member.roleLabel}
+                            </span>
+                          ) : member.role === "speaker" ? (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                              <Mic size={11} className="mr-1" /> {member.roleLabel}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              <Sparkles size={11} className="mr-1" /> {member.roleLabel}
+                            </span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                        </td>
+                        <td className="py-3 text-[11px] text-text-dim">
+                          {member.department} {member.year !== "—" ? `· Year ${member.year}` : ""}
+                        </td>
+                        <td className="py-3 font-mono text-[11px] text-text-dim">
+                          {member.elevatesId || "—"}
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="inline-flex items-center gap-2.5 justify-end">
+                            <div className="inline-flex flex-col items-end">
+                              {isExplicitAbsent ? (
+                                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+                                  <XCircle size={12} className="mr-1 text-red-400" /> Absent
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <CheckCircle2 size={12} className="mr-1 text-emerald-400" /> Present {memberAttRecord ? "(Verified)" : "(Auto)"}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-text-dim mt-0.5">
+                                {member.role === "speaker"
+                                  ? "Session Speaker · Managing Session"
+                                  : member.role === "coordinator"
+                                    ? "Host / Coordinator · Auto-Marked"
+                                    : "Event Volunteer · Operations"}
+                              </span>
+                            </div>
+
+                            {isCampusLead && member.userId && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn(
+                                  "h-7 px-2.5 text-[11px] border shrink-0 font-medium",
+                                  isExplicitAbsent
+                                    ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                                    : "border-red-500/40 text-red-400 hover:bg-red-500/10",
+                                )}
+                                disabled={!attendanceTakeable.allowed}
+                                title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
+                                onClick={() => {
+                                  if (member.userId) {
+                                    handleToggleTeamMemberAttendance(
+                                      member.userId,
+                                      isExplicitAbsent ? "present" : "absent",
+                                    );
+                                  }
+                                }}
+                              >
+                                {isExplicitAbsent ? "Mark Present" : "Mark Absent"}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         )}
 
-        {rosterTab === "waitlist" && (
+        {directoryTab === "waitlist" && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-[12px]">
               <thead>
@@ -2701,7 +2701,7 @@ export default function ChapterAttendancePage({
           </div>
         )}
 
-        {rosterTab === "chapter" && (
+        {directoryTab === "chapter" && (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] text-[12px]">
               <thead>
@@ -2717,7 +2717,7 @@ export default function ChapterAttendancePage({
                 {filteredChapterStudents.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-text-dim">
-                      No chapter students matching &quot;{rosterQuery}&quot;.
+                      No chapter students matching &quot;{directoryQuery}&quot;.
                     </td>
                   </tr>
                 ) : (
@@ -2854,11 +2854,10 @@ export default function ChapterAttendancePage({
                         key={preset.id}
                         type="button"
                         onClick={() => handleApplyPreset(preset)}
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
-                          allAssigned
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${allAssigned
                             ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 cursor-default"
                             : "bg-orange-500/10 border-orange-500/30 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 active:scale-95 cursor-pointer shadow-2xs"
-                        }`}
+                          }`}
                         title={`Apply "${preset.name}" (${count} students) directly to this event`}
                       >
                         <Sparkles size={10} className="shrink-0 text-orange-500" />

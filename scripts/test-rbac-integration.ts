@@ -99,7 +99,7 @@ async function runTests() {
           canVerifyTickets: true,
           canRegisterWalkins: false,
           canManageTasks: false,
-          canViewRoster: true,
+          canViewdirectory: true,
         },
         memberIds: ["u-vol-1", "u-vol-2"],
         customMemberPowers: {
@@ -120,7 +120,7 @@ async function runTests() {
           canVerifyTickets: false,
           canRegisterWalkins: false,
           canManageTasks: true,
-          canViewRoster: false,
+          canViewdirectory: false,
         },
         memberIds: ["u-vol-1"],
       },

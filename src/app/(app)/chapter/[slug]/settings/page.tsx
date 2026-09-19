@@ -484,7 +484,7 @@ export default function ChapterSettingsPage({
       {/* 4. High-Level 4-Metric Overview Strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
-          <Stat label="Total Members" value={members.length} hint="Verified roster →" />
+          <Stat label="Total Members" value={members.length} hint="Verified directory →" />
         </Link>
         <Link href={`/chapter/${slug}/leadership`} className="block transition hover:opacity-90">
           <Stat label="Executives" value={executives.length} hint="Leadership cycle →" />
@@ -934,11 +934,10 @@ export default function ChapterSettingsPage({
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
-                          item.done
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${item.done
                             ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
                             : "bg-muted text-text-mute"
-                        }`}
+                          }`}
                       >
                         {item.done ? "✓" : "○"}
                       </span>
@@ -1016,7 +1015,7 @@ export default function ChapterSettingsPage({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
                   { href: `/chapter/${slug}/leadership`, label: "Leadership Cycle", icon: Shield },
-                  { href: `/chapter/${slug}/students`, label: "Students Roster", icon: Users },
+                  { href: `/chapter/${slug}/students`, label: "Students directory", icon: Users },
                   { href: `/chapter/${slug}/events`, label: "Events & Tickets", icon: Calendar },
                   { href: `/chapter/${slug}/clusters`, label: "Interest Clusters", icon: Layers },
                   { href: `/chapter/${slug}/projects`, label: "Builder Projects", icon: FolderGit2 },
@@ -1041,7 +1040,7 @@ export default function ChapterSettingsPage({
             {(isExecutiveRole(session.roleKey) ||
               isFacultyRole(session.roleKey) ||
               isHqRole(session.roleKey)) &&
-            activeTerm ? (
+              activeTerm ? (
               <TerminalPanel title="Active Leadership Term" meta={activeTerm.academicYear}>
                 <div className="space-y-1">
                   <p className="text-[13px] font-bold text-text">{activeTerm.title}</p>
@@ -1073,7 +1072,7 @@ export default function ChapterSettingsPage({
                   href={`/chapter/${slug}/students`}
                   className="text-[12px] font-semibold text-[var(--accent)] hover:underline"
                 >
-                  View Roster →
+                  View directory →
                 </Link>
               }
             >

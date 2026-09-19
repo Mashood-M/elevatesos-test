@@ -66,6 +66,10 @@ function expiryTone(iso?: string): "green" | "orange" | "mute" {
   return "green";
 }
 
+function isReferralToken(tokenStr?: string): boolean {
+  return Boolean(tokenStr && tokenStr.toLowerCase().startsWith("ref-"));
+}
+
 export default function UnifiedReferralsPage() {
   const { store, revokeChapterInviteCode } = useStore();
   const { session, profile } = useCurrentUser();
@@ -114,26 +118,52 @@ export default function UnifiedReferralsPage() {
   const myTokens = allTokens.filter(
     (t) => t.createdBy === userId || (session.authUserId && t.createdBy === session.authUserId),
   );
-  const myActiveTokens = myTokens.filter(
-    (t) =>
-      !t.usedBy &&
-      t.isActive &&
-      !revokedIds.has(t.id) &&
-      msUntil(t.expiresAt) > 0,
+
+  // Active tokens: valid within 24h window and not revoked.
+  // Referral tokens remain active for unlimited joins during the full 24h window!
+  const myActiveTokens = myTokens.filter((t) => {
+    const isRevoked = revokedIds.has(t.id) || !t.isActive;
+    if (isRevoked || msUntil(t.expiresAt) <= 0) return false;
+    if (!isReferralToken(t.token) && t.usedBy) return false;
+    return true;
+  });
+
+  const myJoinedTokens = myTokens.filter(
+    (t) => (t.usesCount ?? (t.usedBy ? 1 : 0)) > 0,
   );
-  const myUsedTokens = myTokens.filter((t) => !!t.usedBy);
-  const myExpiredTokens = myTokens.filter(
-    (t) => !t.usedBy && (msUntil(t.expiresAt) <= 0 || !t.isActive),
-  );
+
+  const myExpiredTokens = myTokens.filter((t) => {
+    const isRevoked = revokedIds.has(t.id) || !t.isActive;
+    return isRevoked || msUntil(t.expiresAt) <= 0;
+  });
+
+  // Total students enrolled via user's referral links
+  const totalStudentsReferred = useMemo(() => {
+    return myTokens.reduce((sum, t) => {
+      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      return sum + count;
+    }, 0);
+  }, [myTokens]);
+
+  // Total community-wide referral joins
+  const totalCommunityReferred = useMemo(() => {
+    return allTokens.reduce((sum, t) => {
+      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      return sum + count;
+    }, 0);
+  }, [allTokens]);
 
   // Filtered tokens for directory
   const filteredMyTokens = useMemo(() => {
     return myTokens.filter((t) => {
       const isRevoked = revokedIds.has(t.id) || !t.isActive;
-      const expired = !t.usedBy && (msUntil(t.expiresAt) <= 0 || isRevoked);
-      if (directoryFilter === "joined") return !!t.usedBy;
-      if (directoryFilter === "pending") return !t.usedBy && !expired;
-      if (directoryFilter === "expired") return expired;
+      const isExpired = isRevoked || msUntil(t.expiresAt) <= 0;
+      const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
+      const isActive = !isExpired && (isReferralToken(t.token) || !t.usedBy);
+
+      if (directoryFilter === "joined") return uses > 0;
+      if (directoryFilter === "pending") return isActive;
+      if (directoryFilter === "expired") return isExpired;
       return true;
     });
   }, [myTokens, directoryFilter, revokedIds]);
@@ -182,7 +212,7 @@ export default function UnifiedReferralsPage() {
 
   function handleShareWhatsApp(token: string) {
     const url = buildInviteUrl(token);
-    const text = `Join me on Elevates OS! Here is your exclusive 24-hour invite link to register your student account:\n\n${url}`;
+    const text = `Join me on Elevates OS! Here is your exclusive 24-hour invite link. Countless students can join using this link before it expires:\n\n${url}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   }
 
@@ -203,18 +233,21 @@ export default function UnifiedReferralsPage() {
     setRevokingId(null);
   }
 
-  const latestActiveTokenObj = myActiveTokens[0] ?? (newToken ? { token: newToken, expiresAt: undefined } : null);
+  const latestActiveTokenObj = myActiveTokens[0] ?? (newToken ? { token: newToken, expiresAt: undefined, usesCount: 0 } : null);
   const latestPendingToken = latestActiveTokenObj?.token ?? null;
   const latestExpiresAt =
     latestActiveTokenObj && "expiresAt" in latestActiveTokenObj
       ? (latestActiveTokenObj as { expiresAt?: string }).expiresAt
       : undefined;
 
-  // Top Referrers Leaderboard
+  // Top Referrers Leaderboard - aggregates total joins per referrer
   const topReferrers = useMemo(() => {
     const counts: Record<string, number> = {};
     allTokens.forEach((t) => {
-      if (t.usedBy) counts[t.createdBy] = (counts[t.createdBy] ?? 0) + 1;
+      const count = t.usesCount ?? (t.usedBy ? 1 : 0);
+      if (count > 0 && t.createdBy) {
+        counts[t.createdBy] = (counts[t.createdBy] ?? 0) + count;
+      }
     });
     return Object.entries(counts)
       .map(([uId, count]) => ({
@@ -232,12 +265,14 @@ export default function UnifiedReferralsPage() {
         const referrer = profiles.find((p) => p.id === t.createdBy);
         const invited = t.usedBy ? profiles.find((p) => p.id === t.usedBy) : null;
         const chapter = t.chapterId ? store.chapters.find((c) => c.id === t.chapterId) : null;
-        const expired = !t.usedBy && msUntil(t.expiresAt) <= 0;
-        return { token: t, referrer, invited, chapter, expired };
+        const isRevoked = revokedIds.has(t.id) || !t.isActive;
+        const expired = isRevoked || msUntil(t.expiresAt) <= 0;
+        const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
+        return { token: t, referrer, invited, chapter, expired, uses };
       })
       .filter((row) => {
-        if (filterStatus === "used" && !row.token.usedBy) return false;
-        if (filterStatus === "unused" && (row.token.usedBy || row.expired)) return false;
+        if (filterStatus === "used" && row.uses === 0) return false;
+        if (filterStatus === "unused" && (row.uses > 0 || row.expired)) return false;
         if (!q.trim()) return true;
         const needle = q.trim().toLowerCase();
         return (
@@ -248,7 +283,7 @@ export default function UnifiedReferralsPage() {
           row.token.token.toLowerCase().includes(needle)
         );
       });
-  }, [allTokens, profiles, store.chapters, q, filterStatus]);
+  }, [allTokens, profiles, store.chapters, q, filterStatus, revokedIds]);
 
   // User's rank in top referrers
   const myRank = useMemo(() => {
@@ -262,21 +297,21 @@ export default function UnifiedReferralsPage() {
       <PageHeader
         eyebrow="Network & Growth"
         title="Referrals & Invites"
-        description="Invite fellow students with single-use links, track who registered, and expand your campus network."
+        description="Share your 24-hour invite link. Countless students can join using your link within the 24-hour window before it expires."
       />
 
       {/* 2. Global Overview Stats Strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat
           label="Your Referrals"
-          value={myUsedTokens.length}
-          hint="Enrolled student members"
+          value={totalStudentsReferred}
+          hint="Students enrolled via your links"
           accent="orange"
         />
         <Stat
-          label="Active Pending Links"
-          value={myActiveTokens.length}
-          hint={myActiveTokens.length > 0 ? "Ready to share (24h valid)" : "No active link generated"}
+          label="Active 24h Link"
+          value={myActiveTokens.length > 0 ? "Live" : "None"}
+          hint={myActiveTokens.length > 0 ? "Unlimited joins within 24h" : "No active link generated"}
         />
         <Stat
           label="Campus Rank"
@@ -285,7 +320,7 @@ export default function UnifiedReferralsPage() {
         />
         <Stat
           label="Total Network Growth"
-          value={allTokens.filter((t) => t.usedBy).length}
+          value={totalCommunityReferred}
           hint="Community-wide members joined"
         />
       </div>
@@ -357,7 +392,7 @@ export default function UnifiedReferralsPage() {
           <div className="space-y-6">
             <TerminalPanel
               title="Invite Link Hub"
-              meta="Single-use 24-hour links"
+              meta="24-Hour Multi-Use Links"
               action={
                 <Button
                   variant="secondary"
@@ -372,7 +407,7 @@ export default function UnifiedReferralsPage() {
               }
             >
               <p className="text-[13px] text-text-dim leading-relaxed mb-4">
-                Elevates OS membership is invite-only. Each link is single-use, expires in 24 hours, and automatically links the new student profile to your referral profile.
+                Elevates OS membership is invite-only. Share your link with classmates and student groups — countless students can join using your link within its 24-hour window. Once the 24 hours expire, the link automatically closes.
               </p>
 
               {/* Active / last generated link showcase */}
@@ -382,7 +417,7 @@ export default function UnifiedReferralsPage() {
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                       <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--accent)]">
-                        Active Single-Use Link
+                        Active 24-Hour Link (Unlimited Joins)
                       </span>
                     </div>
                     {latestExpiresAt && (
@@ -399,6 +434,14 @@ export default function UnifiedReferralsPage() {
                       <code className="flex-1 font-mono text-[12px] text-text truncate select-all">
                         {buildInviteUrl(latestPendingToken)}
                       </code>
+                    </div>
+
+                    <div className="flex items-center justify-between px-1 text-[11px] text-text-dim">
+                      <span>
+                        {(latestActiveTokenObj && "usesCount" in latestActiveTokenObj && (latestActiveTokenObj.usesCount ?? 0) > 0)
+                          ? `🎉 ${latestActiveTokenObj.usesCount} student${(latestActiveTokenObj.usesCount ?? 0) > 1 ? "s" : ""} joined so far · link remains open`
+                          : "Ready to share · countless students can register before expiry"}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
@@ -444,15 +487,9 @@ export default function UnifiedReferralsPage() {
                   </div>
 
                   <div className="flex items-center justify-between border-t border-border/60 pt-3 text-[11px] text-text-mute">
-                    <a
-                      href={buildInviteUrl(latestPendingToken)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 font-semibold text-[var(--accent)] hover:underline"
-                    >
-                      <span>Preview invite page</span>
-                      <ExternalLink size={10} />
-                    </a>
+                    <span className="text-[11px] text-text-dim">
+                      24h Multi-Use Access
+                    </span>
                     {latestActiveTokenObj && "id" in latestActiveTokenObj && (
                       <button
                         type="button"
@@ -472,7 +509,7 @@ export default function UnifiedReferralsPage() {
                   <div>
                     <p className="text-[13px] font-bold text-text">No active invite link ready</p>
                     <p className="mt-1 text-[12px] text-text-dim max-w-sm mx-auto">
-                      Click below to generate an exclusive 24-hour invite link you can share directly or send on WhatsApp.
+                      Click below to generate an exclusive 24-hour invite link. Countless students can join using your link before the 24-hour validity period expires.
                     </p>
                   </div>
                   <Button
@@ -503,7 +540,7 @@ export default function UnifiedReferralsPage() {
                   <div>
                     <p className="font-bold text-text">Generate & Share Your Link</p>
                     <p className="mt-0.5 text-text-dim leading-relaxed">
-                      Send your link to classmates, project collaborators, or students looking to join your campus chapter.
+                      Send your link to classmates, group chats, or students looking to join your campus chapter.
                     </p>
                   </div>
                 </div>
@@ -513,9 +550,9 @@ export default function UnifiedReferralsPage() {
                     2
                   </span>
                   <div>
-                    <p className="font-bold text-text">Exclusive 24-Hour Validity</p>
+                    <p className="font-bold text-text">24-Hour Multi-Use Window</p>
                     <p className="mt-0.5 text-text-dim leading-relaxed">
-                      Each link can only be claimed once to maintain campus verification integrity. Expired links can be regenerated anytime.
+                      Your link remains active for 24 hours. Countless students can join through the exact same link within this window — it only expires after the 24 hours have elapsed.
                     </p>
                   </div>
                 </div>
@@ -527,7 +564,7 @@ export default function UnifiedReferralsPage() {
                   <div>
                     <p className="font-bold text-text">Earn Recognition & Climb Ranks</p>
                     <p className="mt-0.5 text-text-dim leading-relaxed">
-                      Every student who joins is attributed to your profile, increasing your campus standing on the global leaderboard.
+                      Every student who joins is attributed to your profile, increasing your campus standing and leaderboard rank.
                     </p>
                   </div>
                 </div>
@@ -546,8 +583,8 @@ export default function UnifiedReferralsPage() {
                 {(
                   [
                     { key: "all", label: "All", count: myTokens.length },
-                    { key: "joined", label: "Joined", count: myUsedTokens.length },
-                    { key: "pending", label: "Pending", count: myActiveTokens.length },
+                    { key: "pending", label: "Active (24h)", count: myActiveTokens.length },
+                    { key: "joined", label: "With Joins", count: myJoinedTokens.length },
                     { key: "expired", label: "Expired", count: myExpiredTokens.length },
                   ] as const
                 ).map((f) => (
@@ -586,8 +623,8 @@ export default function UnifiedReferralsPage() {
                     {directoryFilter === "joined"
                       ? "None of your invited classmates have registered yet."
                       : directoryFilter === "pending"
-                        ? "You have no pending active links right now."
-                        : "Share your invite link to start building your campus network roster."}
+                        ? "You have no active 24-hour links right now. Click 'New Link' to generate one."
+                        : "Share your invite link to start building your campus network directory."}
                   </p>
                 </div>
               ) : (
@@ -595,108 +632,101 @@ export default function UnifiedReferralsPage() {
                   {displayedMyTokens.map((t) => {
                     const invited = t.usedBy ? profiles.find((p) => p.id === t.usedBy) : null;
                     const isRevoked = revokedIds.has(t.id) || !t.isActive;
-                    const expired = !t.usedBy && (msUntil(t.expiresAt) <= 0 || isRevoked);
-                    const canRevoke = !t.usedBy && !expired && !isRevoked;
+                    const isExpired = isRevoked || msUntil(t.expiresAt) <= 0;
+                    const canRevoke = !isExpired && !isRevoked;
+                    const uses = t.usesCount ?? (t.usedBy ? 1 : 0);
 
                     return (
                       <li key={t.id} className="py-3.5 first:pt-1 last:pb-0 flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1 space-y-1">
-                          {invited ? (
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[11px] font-bold text-[var(--accent)]">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <Link2 size={13} className="text-text-mute shrink-0" />
+                              <span className="font-mono text-[12px] font-semibold text-text select-all truncate">
+                                {t.token}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyLink(t.token)}
+                                title="Copy invite URL"
+                                className="text-text-mute hover:text-text cursor-pointer p-0.5 rounded transition-colors"
+                              >
+                                {copiedToken === t.token ? (
+                                  <Check size={12} className="text-emerald-500" />
+                                ) : (
+                                  <Copy size={12} />
+                                )}
+                              </button>
+                            </div>
+
+                            {/* Show attribution if students joined */}
+                            {invited ? (
+                              <div className="flex items-center gap-1.5 text-[12px] text-text font-medium pt-0.5">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] font-mono text-[9px] font-bold text-[var(--accent)]">
                                   {invited.fullName.slice(0, 2).toUpperCase()}
                                 </span>
-                                <div className="min-w-0">
-                                  <Link
-                                    href={`/profile/${invited.elevatesId || invited.id}`}
-                                    className="font-bold text-[13px] text-text hover:text-[var(--accent)] truncate block transition-colors"
-                                  >
-                                    {invited.fullName}
-                                  </Link>
-                                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-dim">
-                                    {invited.elevatesId && (
-                                      <span className="font-mono font-bold text-[var(--accent)]">
-                                        {invited.elevatesId}
-                                      </span>
-                                    )}
-                                    {invited.phone && (
-                                      <span className="flex items-center gap-1 font-mono text-text-mute">
-                                        <Phone size={10} />
-                                        {invited.phone}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <Link2 size={13} className="text-text-mute shrink-0" />
-                                <span className="font-mono text-[12px] font-semibold text-text select-all truncate">
-                                  {t.token}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyLink(t.token)}
-                                  title="Copy invite URL"
-                                  className="text-text-mute hover:text-text cursor-pointer p-0.5 rounded transition-colors"
+                                <Link
+                                  href={`/profile/${invited.elevatesId || invited.id}`}
+                                  className="font-bold text-text hover:text-[var(--accent)] transition-colors truncate"
                                 >
-                                  {copiedToken === t.token ? (
-                                    <Check size={12} className="text-emerald-500" />
-                                  ) : (
-                                    <Copy size={12} />
-                                  )}
-                                </button>
-                              </div>
-                              <p
-                                className={cn(
-                                  "text-[11px] font-medium",
-                                  isRevoked
-                                    ? "text-orange-500"
-                                    : expired
-                                      ? "text-red-400"
-                                      : "text-emerald-600 dark:text-emerald-400",
+                                  {invited.fullName}
+                                </Link>
+                                {uses > 1 && (
+                                  <span className="text-text-dim text-[11px]">
+                                    +{uses - 1} more student{uses - 1 > 1 ? "s" : ""}
+                                  </span>
                                 )}
-                              >
-                                {isRevoked
-                                  ? "Revoked by user"
-                                  : expired
-                                    ? "Expired link"
-                                    : "Active — awaiting student registration"}
-                              </p>
-                            </div>
-                          )}
+                              </div>
+                            ) : null}
+
+                            <p
+                              className={cn(
+                                "text-[11px] font-medium",
+                                isRevoked
+                                  ? "text-orange-500"
+                                  : isExpired
+                                    ? "text-red-400"
+                                    : "text-emerald-600 dark:text-emerald-400",
+                              )}
+                            >
+                              {isRevoked
+                                ? "Revoked by user"
+                                : isExpired
+                                  ? (uses > 0 ? `Expired · ${uses} student${uses > 1 ? "s" : ""} joined` : "Expired link")
+                                  : (uses > 0
+                                      ? `Active (24h) · ${uses} student${uses > 1 ? "s" : ""} joined · open for unlimited joins`
+                                      : "Active (24h) · open for unlimited registrations")}
+                            </p>
+                          </div>
 
                           <p className="font-mono text-[10px] text-text-mute">
-                            {t.usedAt
-                              ? `Joined ${formatDateTime(t.usedAt)}`
-                              : t.expiresAt
-                                ? `Expires ${formatDateTime(t.expiresAt)}`
-                                : `Created ${formatDateTime(t.createdAt)}`}
+                            {t.expiresAt
+                              ? `Valid until ${formatDateTime(t.expiresAt)}`
+                              : `Created ${formatDateTime(t.createdAt)}`}
+                            {t.usedAt ? ` · Last join ${formatDateTime(t.usedAt)}` : ""}
                           </p>
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          {uses > 0 && (
+                            <Badge tone="green">
+                              {uses} joined
+                            </Badge>
+                          )}
                           <Badge
                             tone={
-                              t.usedBy
-                                ? "green"
-                                : isRevoked
-                                  ? "orange"
-                                  : expired
-                                    ? "mute"
-                                    : expiryTone(t.expiresAt)
+                              isRevoked
+                                ? "orange"
+                                : isExpired
+                                  ? "mute"
+                                  : expiryTone(t.expiresAt)
                             }
                           >
-                            {t.usedBy
-                              ? "Joined"
-                              : isRevoked
-                                ? "Revoked"
-                                : expired
-                                  ? "Expired"
-                                  : expiryLabel(t.expiresAt) || "Pending"}
+                            {isRevoked
+                              ? "Revoked"
+                              : isExpired
+                                ? "Expired"
+                                : expiryLabel(t.expiresAt) || "Active"}
                           </Badge>
 
                           {canRevoke && (
@@ -881,7 +911,7 @@ export default function UnifiedReferralsPage() {
               <div className="flex items-center justify-between text-xs">
                 <span className="text-text-dim">Members Enrolled:</span>
                 <span className="font-bold text-[var(--accent)] font-mono">
-                  {myUsedTokens.length} students
+                  {totalStudentsReferred} students
                 </span>
               </div>
             </div>
@@ -943,7 +973,7 @@ export default function UnifiedReferralsPage() {
             </div>
           ) : (
             <ul className="divide-y divide-border/60 text-[12px]">
-              {networkRows.map(({ token: t, referrer, invited, chapter, expired }) => (
+              {networkRows.map(({ token: t, referrer, invited, chapter, expired, uses }) => (
                 <li key={t.id} className="py-3.5 first:pt-1 last:pb-0 flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0 flex-1 space-y-1">
                     {/* Referrer → Invitee Relationship */}
@@ -961,9 +991,10 @@ export default function UnifiedReferralsPage() {
                           className="font-bold text-[var(--accent)] hover:underline"
                         >
                           {invited.fullName}
+                          {uses > 1 && ` (+${uses - 1} more)`}
                         </Link>
                       ) : (
-                        <span className="text-text-mute italic text-xs">Awaiting registration</span>
+                        <span className="text-text-mute italic text-xs">Awaiting registrations</span>
                       )}
                     </div>
 
@@ -972,8 +1003,8 @@ export default function UnifiedReferralsPage() {
                       <code className="font-mono text-text-dim font-bold">{t.token}</code>
                       {chapter && <span>· {chapter.name}</span>}
                       <span>· Created {formatDateTime(t.createdAt)}</span>
-                      {t.usedAt && <span>· Joined {formatDateTime(t.usedAt)}</span>}
-                      {!t.usedBy && t.expiresAt && (
+                      {t.usedAt && <span>· Latest join {formatDateTime(t.usedAt)}</span>}
+                      {t.expiresAt && (
                         <span
                           className={cn(
                             "flex items-center gap-1 font-semibold",
@@ -989,9 +1020,14 @@ export default function UnifiedReferralsPage() {
                     </div>
                   </div>
 
-                  <Badge tone={t.usedBy ? "green" : expired ? "mute" : expiryTone(t.expiresAt)}>
-                    {t.usedBy ? "Joined" : expired ? "Expired" : expiryLabel(t.expiresAt) || "Pending"}
-                  </Badge>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {uses > 0 && (
+                      <Badge tone="green">{uses} joined</Badge>
+                    )}
+                    <Badge tone={expired ? "mute" : expiryTone(t.expiresAt)}>
+                      {expired ? "Expired" : expiryLabel(t.expiresAt) || "Active"}
+                    </Badge>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1004,7 +1040,7 @@ export default function UnifiedReferralsPage() {
         open={Boolean(revokeTokenTarget)}
         onClose={() => setRevokeTokenTarget(null)}
         title="Revoke Invite Link"
-        description="Are you sure you want to revoke this invite link? The student will no longer be able to use it to register."
+        description="Are you sure you want to revoke this invite link? New students will no longer be able to use it to register even if the 24-hour window has not elapsed."
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -1032,7 +1068,7 @@ export default function UnifiedReferralsPage() {
         }
       >
         <div className="py-2 text-xs text-text-dim">
-          This single-use invite code will immediately become invalid. You can generate a fresh link anytime.
+          This 24-hour invite link will immediately become invalid for new registrations. You can generate a fresh link anytime.
         </div>
       </Dialog>
 

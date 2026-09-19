@@ -1724,7 +1724,7 @@ ALTER TABLE public.chapter_standard_checks
 -- 11. VOLUNTEER TEAMS, GROUPS & DELEGATED EVENT POWERS
 -- ============================================================================
 
--- 1. Ensure events has volunteer_student_ids column for direct roster sync
+-- 1. Ensure events has volunteer_student_ids column for direct directory sync
 ALTER TABLE public.events
   ADD COLUMN IF NOT EXISTS volunteer_student_ids TEXT[] DEFAULT '{}';
 
@@ -1739,7 +1739,7 @@ CREATE TABLE IF NOT EXISTS public.volunteer_groups (
   event_id UUID REFERENCES public.events(id) ON DELETE SET NULL,
   valid_from TIMESTAMPTZ,
   valid_to TIMESTAMPTZ,
-  powers JSONB NOT NULL DEFAULT '{"canTakeAttendance":true,"canScanQr":true,"canVerifyTickets":true,"canRegisterWalkins":false,"canManageTasks":false,"canViewRoster":true}'::jsonb,
+  powers JSONB NOT NULL DEFAULT '{"canTakeAttendance":true,"canScanQr":true,"canVerifyTickets":true,"canRegisterWalkins":false,"canManageTasks":false,"canViewdirectory":true}'::jsonb,
   member_ids UUID[] DEFAULT '{}',
   custom_member_powers JSONB DEFAULT '{}'::jsonb,
   created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -1766,7 +1766,7 @@ CREATE TABLE IF NOT EXISTS public.volunteer_assignments (
   event_id UUID REFERENCES public.events(id) ON DELETE CASCADE,
   group_id UUID REFERENCES public.volunteer_groups(id) ON DELETE SET NULL,
   tag TEXT DEFAULT 'Volunteer',
-  powers JSONB NOT NULL DEFAULT '{"canTakeAttendance":true,"canScanQr":true,"canVerifyTickets":true,"canRegisterWalkins":false,"canManageTasks":false,"canViewRoster":true}'::jsonb,
+  powers JSONB NOT NULL DEFAULT '{"canTakeAttendance":true,"canScanQr":true,"canVerifyTickets":true,"canRegisterWalkins":false,"canManageTasks":false,"canViewdirectory":true}'::jsonb,
   valid_from TIMESTAMPTZ,
   valid_to TIMESTAMPTZ,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'expired')),

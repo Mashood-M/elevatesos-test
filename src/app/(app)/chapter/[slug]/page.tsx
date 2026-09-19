@@ -183,7 +183,7 @@ export default function ChapterDashboardPage({
             />
           </Link>
           <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
-            <Stat label="Members" value={members.length} hint="Student roster →" />
+            <Stat label="Members" value={members.length} hint="Student directory →" />
           </Link>
           <Link href={`/chapter/${slug}/events`} className="block transition hover:opacity-90">
             <Stat label="Events" value={events.length} hint="Active & scheduled →" />

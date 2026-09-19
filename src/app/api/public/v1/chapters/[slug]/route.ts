@@ -29,7 +29,7 @@ export async function GET(
           .eq("status", "active")
           .limit(1);
 
-        let roster: Array<{
+        let directory: Array<{
           fullName: string;
           title: string;
           roleKey: string;
@@ -42,7 +42,7 @@ export async function GET(
             .select("title, role_key, user_id, profiles(full_name, avatar_url, is_public)")
             .eq("term_id", terms[0].id);
 
-          roster =
+          directory =
             assignments?.map((a) => {
               const profile = Array.isArray(a.profiles) ? a.profiles[0] : a.profiles;
               return {
@@ -68,7 +68,7 @@ export async function GET(
           eventCount: Number(chapter.event_count ?? 19),
           projectCount: Number(chapter.project_count ?? 4),
           foundedAt: chapter.founded_at,
-          roster,
+          directory,
         });
       }
     }

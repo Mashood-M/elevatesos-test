@@ -319,7 +319,7 @@ export default function ChapterVolunteerTeamPage({
     flashMsg(`✓ Assigned ${activeTeam.name} to "${assignedEv?.title || "event"}"!`);
   }
 
-  // Clear Event from Active Team (Reset for future events while keeping volunteer roster intact)
+  // Clear Event from Active Team (Reset for future events while keeping volunteer directory intact)
   function handleClearActiveTeamEvent() {
     if (!activeTeam || !chapter) return;
     const oldEventId = activeTeam.eventId;
@@ -731,105 +731,105 @@ export default function ChapterVolunteerTeamPage({
                   )}
                 </div>
 
-            {/* Members Roster of Active Team */}
-            {activeTeamMemberIds.size === 0 ? (
-              <div className="rounded-[12px] border border-dashed border-border/80 bg-bg/50 p-8 text-center space-y-3">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
-                  <UserPlus size={24} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm text-text">
-                    No Volunteers in {activeTeam?.name || "this team"} Yet
-                  </h4>
-                  <p className="text-xs text-text-dim max-w-sm mx-auto mt-1">
-                    Select students from the <strong>Student Directory</strong> on the right and click the orange <strong>+</strong> button to add them into <strong>{activeTeam?.name || "this team"}</strong>.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {Array.from(activeTeamMemberIds).map((userId) => {
-                  const student = store.profiles.find((p) => p.id === userId);
-                  const studentMeta = [
-                    student?.year ? `Yr ${student.year}` : null,
-                    student?.section ? `Sec ${student.section}` : null,
-                    student?.email || "Chapter Member",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
-
-                  return (
-                    <div
-                      key={userId}
-                      className="rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500/40 transition"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs shadow-sm">
-                          {initials(student?.fullName ?? "Volunteer")}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Link
-                              href={`/profile/${student?.elevatesId || userId}`}
-                              className="font-bold text-sm text-text hover:text-[var(--accent)] hover:underline truncate"
-                            >
-                              {student?.fullName ?? "Unknown Student"}
-                            </Link>
-                            {student?.elevatesId && (
-                              <span className="font-mono text-[10px] bg-bg-panel border border-border px-1.5 py-0.2 rounded font-semibold text-text-dim shrink-0">
-                                {student.elevatesId}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-text-dim mt-0.5 truncate">
-                            {studentMeta}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Action Buttons: Replace & Remove */}
-                      {canManage && (
-                        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                          <Button
-                            variant="ghost"
-                            className="h-7 px-2.5 text-[11px] border border-border/70 hover:bg-bg-panel text-text-dim hover:text-text font-medium"
-                            onClick={() => {
-                              if (!activeTeam) return;
-                              setReplacingVolunteer({
-                                userId,
-                                studentName: student?.fullName ?? "Volunteer",
-                                teamId: activeTeam.id,
-                              });
-                              setReplacementStudentId(availableStudentsForReplacement[0]?.id || "");
-                            }}
-                            title={`Replace ${student?.fullName ?? "volunteer"}`}
-                          >
-                            <ArrowLeftRight size={11} className="mr-1 text-text-dim" />
-                            <span>Replace</span>
-                          </Button>
-
-                          <Button
-                            variant="ghost"
-                            className="h-7 px-2 text-[11px] text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-200 dark:hover:border-red-900/40"
-                            onClick={() =>
-                              handleRemoveStudentFromActiveTeam(
-                                userId,
-                                student?.fullName ?? "Volunteer",
-                              )
-                            }
-                            title={`Remove ${student?.fullName ?? "volunteer"}`}
-                          >
-                            <Trash2 size={12} />
-                          </Button>
-                        </div>
-                      )}
+                {/* Members directory of Active Team */}
+                {activeTeamMemberIds.size === 0 ? (
+                  <div className="rounded-[12px] border border-dashed border-border/80 bg-bg/50 p-8 text-center space-y-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500">
+                      <UserPlus size={24} />
                     </div>
-                  );
-                })}
-              </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-text">
+                        No Volunteers in {activeTeam?.name || "this team"} Yet
+                      </h4>
+                      <p className="text-xs text-text-dim max-w-sm mx-auto mt-1">
+                        Select students from the <strong>Student Directory</strong> on the right and click the orange <strong>+</strong> button to add them into <strong>{activeTeam?.name || "this team"}</strong>.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {Array.from(activeTeamMemberIds).map((userId) => {
+                      const student = store.profiles.find((p) => p.id === userId);
+                      const studentMeta = [
+                        student?.year ? `Yr ${student.year}` : null,
+                        student?.section ? `Sec ${student.section}` : null,
+                        student?.email || "Chapter Member",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+
+                      return (
+                        <div
+                          key={userId}
+                          className="rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500/40 transition"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-xs shadow-sm">
+                              {initials(student?.fullName ?? "Volunteer")}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Link
+                                  href={`/profile/${student?.elevatesId || userId}`}
+                                  className="font-bold text-sm text-text hover:text-[var(--accent)] hover:underline truncate"
+                                >
+                                  {student?.fullName ?? "Unknown Student"}
+                                </Link>
+                                {student?.elevatesId && (
+                                  <span className="font-mono text-[10px] bg-bg-panel border border-border px-1.5 py-0.2 rounded font-semibold text-text-dim shrink-0">
+                                    {student.elevatesId}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-text-dim mt-0.5 truncate">
+                                {studentMeta}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: Replace & Remove */}
+                          {canManage && (
+                            <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                              <Button
+                                variant="ghost"
+                                className="h-7 px-2.5 text-[11px] border border-border/70 hover:bg-bg-panel text-text-dim hover:text-text font-medium"
+                                onClick={() => {
+                                  if (!activeTeam) return;
+                                  setReplacingVolunteer({
+                                    userId,
+                                    studentName: student?.fullName ?? "Volunteer",
+                                    teamId: activeTeam.id,
+                                  });
+                                  setReplacementStudentId(availableStudentsForReplacement[0]?.id || "");
+                                }}
+                                title={`Replace ${student?.fullName ?? "volunteer"}`}
+                              >
+                                <ArrowLeftRight size={11} className="mr-1 text-text-dim" />
+                                <span>Replace</span>
+                              </Button>
+
+                              <Button
+                                variant="ghost"
+                                className="h-7 px-2 text-[11px] text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-200 dark:hover:border-red-900/40"
+                                onClick={() =>
+                                  handleRemoveStudentFromActiveTeam(
+                                    userId,
+                                    student?.fullName ?? "Volunteer",
+                                  )
+                                }
+                                title={`Remove ${student?.fullName ?? "volunteer"}`}
+                              >
+                                <Trash2 size={12} />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
-            </>
-          )}
           </TerminalPanel>
         </div>
 
@@ -903,8 +903,8 @@ export default function ChapterVolunteerTeamPage({
                   const conflict = studentEventMap.get(student.id);
                   const isConflictWithOtherEvent = Boolean(
                     conflict &&
-                      activeTeam?.eventId &&
-                      conflict.eventId !== activeTeam.eventId,
+                    activeTeam?.eventId &&
+                    conflict.eventId !== activeTeam.eventId,
                   );
 
                   const metaLine = [
@@ -922,8 +922,8 @@ export default function ChapterVolunteerTeamPage({
                         isInActiveTeam
                           ? "bg-emerald-500/[0.04] border-emerald-500/30"
                           : isConflictWithOtherEvent
-                          ? "bg-amber-500/[0.04] border-amber-500/20 opacity-80"
-                          : "bg-bg border-border hover:border-border/90",
+                            ? "bg-amber-500/[0.04] border-amber-500/20 opacity-80"
+                            : "bg-bg border-border hover:border-border/90",
                       )}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">

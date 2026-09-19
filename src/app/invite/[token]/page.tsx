@@ -64,13 +64,17 @@ export default function InviteSignUpPage({
   // Validate token on mount
   useEffect(() => {
     async function checkToken() {
+      const cleanToken = token.trim();
+      const isReferralToken = cleanToken.toLowerCase().startsWith("ref-");
+
       // First check via service-role endpoint to guarantee RLS bypass & instant revocation awareness
       try {
-        const res = await fetch(`/api/mutations?type=validate_invite&token=${encodeURIComponent(token.trim())}`);
+        const res = await fetch(`/api/mutations?type=validate_invite&token=${encodeURIComponent(cleanToken)}`);
         const json = await res.json().catch(() => null);
         if (json?.ok && json.data) {
           const raw = json.data;
-          if (raw.used_by) {
+          // Referral links remain valid for 24h even if other students have already joined
+          if (!isReferralToken && raw.used_by) {
             setInvalidReason("used");
             setTokenStatus("invalid");
             return;
@@ -100,10 +104,10 @@ export default function InviteSignUpPage({
         const { data: raw } = await supabaseRaw
           .from("invite_tokens")
           .select("is_active, used_by, expires_at")
-          .ilike("token", token.trim())
+          .ilike("token", cleanToken)
           .maybeSingle();
         if (raw) {
-          if (raw.used_by) {
+          if (!isReferralToken && raw.used_by) {
             setInvalidReason("used");
             setTokenStatus("invalid");
             return;
@@ -121,7 +125,7 @@ export default function InviteSignUpPage({
         }
       }
 
-      const info = await validateInviteToken(token);
+      const info = await validateInviteToken(cleanToken);
       if (!info) {
         setTokenStatus("invalid");
         return;
@@ -132,7 +136,6 @@ export default function InviteSignUpPage({
       // Load referrer name for display (chapter is only loaded if not a personal referral token)
       const supabase = createClient();
       if (!supabase) return;
-      const isReferralToken = token.toLowerCase().startsWith("ref-");
       const [{ data: referrer }, { data: chapter }] = await Promise.all([
         supabase.from("profiles").select("full_name").eq("id", info.createdBy).maybeSingle(),
         info.chapterId && !isReferralToken
@@ -196,7 +199,8 @@ export default function InviteSignUpPage({
       setLoading(false);
       return;
     }
-    if (liveToken.usedBy) {
+    const isReferral = token.trim().toLowerCase().startsWith("ref-");
+    if (!isReferral && liveToken.usedBy) {
       setError("This single-use invite link has already been used.");
       setTokenStatus("invalid");
       setLoading(false);
@@ -295,8 +299,11 @@ export default function InviteSignUpPage({
         });
       }
 
-      // 4. Mark the invite token as used
-      await markInviteTokenUsed(tokenInfo.id, profileId);
+      // 4. Mark invite token usage (for 24h referral links, keeps link active for other students)
+      await markInviteTokenUsed(tokenInfo.id, profileId, tokenInfo.token, {
+        studentName: name,
+        studentEmail: cleanEmail,
+      });
 
       // 5. Sign in user and enter Elevates OS immediately as a student member
       let { error: signInError } = await supabase.auth.signInWithPassword({
@@ -402,7 +409,7 @@ export default function InviteSignUpPage({
         <div className="relative space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-[11px] font-mono tracking-wide text-white/80">
             <ShieldCheck size={13} className="text-[var(--accent)]" />
-            INVITE-ONLY ACCESS
+            24-HOUR INVITE ACCESS
           </div>
           <h1 className="max-w-[15ch] font-[family-name:var(--font-display)] text-[2.5rem] font-extrabold leading-[1.05] tracking-[-0.035em]">
             You&apos;ve been invited.

@@ -81,6 +81,9 @@ export function hasPermission(
   if (permission === "attendance.view") {
     return canViewAttendance(roleKey);
   }
+  if (permission === "report.approve") {
+    return roleKey === "faculty_coordinator" || isSuperAdmin(roleKey);
+  }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {
     return true;
@@ -120,6 +123,8 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
     } else if (p.key === "event.create" && canCreateEvent(roleKey)) {
       allowed = true;
     } else if (p.key === "class.manage" && canManageClasses(roleKey)) {
+      allowed = true;
+    } else if (p.key === "report.approve" && (roleKey === "faculty_coordinator" || isSuperAdmin(roleKey))) {
       allowed = true;
     }
     return { ...p, allowed };

@@ -62,7 +62,11 @@ export default function FacultyPage() {
           value={openEvents.length}
           accent="orange"
         />
-        <Stat label="Reports shared" value={submittedReports.length} />
+        <Stat
+          label="Pending reports"
+          value={submittedReports.length}
+          accent={submittedReports.length > 0 ? "orange" : undefined}
+        />
         <Stat label="Students" value={students.length} />
       </div>
 
@@ -98,22 +102,43 @@ export default function FacultyPage() {
       </TerminalPanel>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <TerminalPanel title="Report review">
+        <TerminalPanel
+          title="Report review"
+          meta={`${submittedReports.length} pending`}
+        >
           <ul className="divide-y divide-border/80">
             {submittedReports.map((r) => {
               const submitter = store.profiles.find(
                 (p) => p.id === r.submittedBy,
               );
               return (
-                <li key={r.id} className="py-3">
-                  <div className="flex justify-between gap-2">
-                    <span className="font-semibold">{r.title}</span>
-                    <Badge tone="orange">{r.status}</Badge>
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {chapter ? (
+                        <Link
+                          href={`/chapter/${chapter.slug}/reports/${r.id}`}
+                          className="font-semibold hover:text-[var(--accent)]"
+                        >
+                          {r.title}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold">{r.title}</span>
+                      )}
+                      <Badge tone="orange">{r.status}</Badge>
+                    </div>
+                    <p className="mt-1 text-[12px] text-text-dim">
+                      By {submitter?.fullName ?? "Author"} ·{" "}
+                      {r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
+                    </p>
                   </div>
-                  <p className="mt-1 text-[12px] text-text-dim">
-                    By {submitter?.fullName} ·{" "}
-                    {r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
-                  </p>
+                  {chapter ? (
+                    <Link href={`/chapter/${chapter.slug}/reports/${r.id}`}>
+                      <Button variant="primary" className="h-7 text-[11px]">
+                        Review
+                      </Button>
+                    </Link>
+                  ) : null}
                 </li>
               );
             })}

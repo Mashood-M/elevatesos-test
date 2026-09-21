@@ -2071,10 +2071,10 @@ export async function POST(req: Request) {
         images: rep.images ?? [],
         source: rep.source ?? "manual",
         status: rep.status ?? "draft",
-        submitted_by: isUuid(rep.submittedBy) && (auth.isHq || isCampusLead(auth.roleKey)) ? rep.submittedBy : auth.userId,
+        submitted_by: isUuid(rep.submittedBy) && (auth.isHq || isCampusLead(auth.roleKey) || isFacultyRole(auth.roleKey)) ? rep.submittedBy : auth.userId,
         submitted_at: rep.submittedAt ?? new Date().toISOString(),
         hq_comment: rep.hqComment,
-        approved_by: approvedBy ?? (isUuid(rep.approvedBy) && auth.isHq ? rep.approvedBy : null),
+        approved_by: approvedBy ?? (isUuid(rep.approvedBy) && (auth.isHq || isFacultyRole(auth.roleKey)) ? rep.approvedBy : null),
         updated_at: new Date().toISOString(),
       });
 

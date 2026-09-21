@@ -33,6 +33,8 @@ export function HqReportViewer({
   eventTitle,
   authorName,
   canReview,
+  backHref = "/hq/reports",
+  backLabel = "Queue",
   onExportDocx,
   onReview,
 }: {
@@ -41,6 +43,8 @@ export function HqReportViewer({
   eventTitle?: string;
   authorName?: string;
   canReview: boolean;
+  backHref?: string;
+  backLabel?: string;
   onExportDocx?: () => void;
   onReview: (decision: ReviewAction, comment: string) => void;
 }) {
@@ -88,11 +92,11 @@ export function HqReportViewer({
     <div className="flex min-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-bg-panel shadow-[var(--shadow)]">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3 md:px-5">
         <Link
-          href="/hq/reports"
+          href={backHref}
           className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[12px] text-text-dim hover:bg-bg-hover hover:text-text"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Queue
+          {backLabel}
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -121,7 +125,7 @@ export function HqReportViewer({
 
       {report.hqComment ? (
         <div className="shrink-0 border-b border-border bg-[#faf8f5] px-4 py-2.5 text-[12px] text-text-dim md:px-5">
-          <span className="font-semibold text-text">HQ comment: </span>
+          <span className="font-semibold text-text">Reviewer feedback: </span>
           {report.hqComment}
         </div>
       ) : null}

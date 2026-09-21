@@ -824,6 +824,43 @@ function activeChairmanIds(store: ElevatesStore): string[] {
     .map((a) => a.userId);
 }
 
+function chapterFacultyUserIds(store: ElevatesStore, chapterId: string): string[] {
+  const chapter = store.chapters.find((c) => c.id === chapterId);
+  const userIds = new Set<string>();
+
+  if (chapter?.facultyId) {
+    userIds.add(chapter.facultyId);
+  }
+
+  // From userRoles
+  store.userRoles.forEach((ur) => {
+    if (ur.roleKey === "faculty_coordinator") {
+      if (ur.chapterId === chapterId) {
+        userIds.add(ur.userId);
+      } else if (!ur.chapterId) {
+        const p = store.profiles.find((prof) => prof.id === ur.userId);
+        if (p?.chapterId === chapterId) {
+          userIds.add(ur.userId);
+        }
+      }
+    }
+  });
+
+  // From profiles
+  store.profiles.forEach((p) => {
+    if (p.chapterId === chapterId) {
+      const hasFacultyRole = store.userRoles.some(
+        (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator",
+      );
+      if (hasFacultyRole || p.role === "faculty_coordinator") {
+        userIds.add(p.id);
+      }
+    }
+  });
+
+  return Array.from(userIds);
+}
+
 function applyReportReview(
   store: ElevatesStore,
   setStore: Dispatch<SetStateAction<ElevatesStore>>,
@@ -847,14 +884,31 @@ function applyReportReview(
         ? "report_correction_requested"
         : "report_rejected";
   const note = comment.trim();
+  const reviewerProfile = store.profiles.find((p) => p.id === actorId);
+  const reviewerRole = store.userRoles.find((ur) => ur.userId === actorId)?.roleKey;
+  const isFacultyReviewer = reviewerRole === "faculty_coordinator" || reviewerProfile?.role === "faculty_coordinator";
   const hqComment =
     note ||
     (decision === "approve"
-      ? "Approved by HQ."
+      ? (isFacultyReviewer ? "Approved by Faculty Coordinator." : "Approved by Reviewer.")
       : decision === "correction"
         ? "Please revise and resubmit."
-        : "Rejected by HQ.");
+        : (isFacultyReviewer ? "Rejected by Faculty Coordinator." : "Rejected by Reviewer."));
   const approvedBy = decision === "approve" ? actorId : undefined;
+
+  const chapter = store.chapters.find((c) => c.id === existing.chapterId);
+  const submitterAlerts = existing.submittedBy
+    ? notifyUsers([existing.submittedBy], {
+        title:
+          decision === "approve"
+            ? "Report approved"
+            : decision === "correction"
+              ? "Report changes requested"
+              : "Report rejected",
+        body: `“${existing.title}” was ${decision === "approve" ? "approved" : decision === "correction" ? "sent back for changes" : "rejected"} by ${reviewerProfile?.fullName ?? (isFacultyReviewer ? "Faculty Coordinator" : "Reviewer")}${note ? `: "${note}"` : "."}`,
+        href: `/chapter/${chapter?.slug ?? ""}/reports/${reportId}`,
+      })
+    : [];
 
   setStore((s) => ({
     ...s,
@@ -870,6 +924,7 @@ function applyReportReview(
         }
         : r,
     ),
+    notifications: [...submitterAlerts, ...s.notifications],
     activityLogs: [
       log(actorId, action, "report", reportId, existing.title),
       ...s.activityLogs,
@@ -6622,11 +6677,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const now = new Date().toISOString();
         const chapter = store.chapters.find((c) => c.id === existing.chapterId);
-        const hqAlerts = notifyUsers(hqUserIds(store), {
-          title: "Report awaiting HQ review",
-          body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
-          href: "/hq/reports",
-        });
+        const facultyIds = chapterFacultyUserIds(store, existing.chapterId);
+        const reportAlerts =
+          facultyIds.length > 0
+            ? notifyUsers(facultyIds, {
+                title: "Report awaiting faculty review",
+                body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
+                href: `/chapter/${chapter?.slug ?? ""}/reports/${existing.id}`,
+              })
+            : notifyUsers(hqUserIds(store), {
+                title: "Report awaiting review (No faculty assigned)",
+                body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
+                href: `/chapter/${chapter?.slug ?? ""}/reports/${existing.id}`,
+              });
         const submittedReport: Report = {
           ...existing,
           status: "submitted" as const,
@@ -6638,7 +6701,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStore((s) => ({
           ...s,
           reports: s.reports.map((r) => (r.id === id ? submittedReport : r)),
-          notifications: [...hqAlerts, ...s.notifications],
+          notifications: [...reportAlerts, ...s.notifications],
           activityLogs: [
             log(actorId, "report_submitted", "report", id),
             ...s.activityLogs,
@@ -6719,15 +6782,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedBy: input.submittedBy,
         };
         const chapter = store.chapters.find((c) => c.id === input.chapterId);
-        const hqAlerts = notifyUsers(hqUserIds(store), {
-          title: "Report awaiting HQ review",
-          body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
-          href: "/hq/reports",
-        });
+        const facultyIds = chapterFacultyUserIds(store, input.chapterId);
+        const reportAlerts =
+          facultyIds.length > 0
+            ? notifyUsers(facultyIds, {
+                title: "Report awaiting faculty review",
+                body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
+                href: `/chapter/${chapter?.slug ?? ""}/reports/${report.id}`,
+              })
+            : notifyUsers(hqUserIds(store), {
+                title: "Report awaiting review (No faculty assigned)",
+                body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
+                href: `/chapter/${chapter?.slug ?? ""}/reports/${report.id}`,
+              });
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
-          notifications: [...hqAlerts, ...s.notifications],
+          notifications: [...reportAlerts, ...s.notifications],
           activityLogs: [
             log(input.submittedBy, "report_submitted", "report", report.id),
             ...s.activityLogs,

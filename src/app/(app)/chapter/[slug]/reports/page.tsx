@@ -51,6 +51,7 @@ export default function ChapterReportsPage({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -97,9 +98,7 @@ export default function ChapterReportsPage({
   const reports = useMemo(() => {
     if (!chapter) return [];
     let list = store.reports.filter((r) => r.chapterId === chapter.id);
-    if (isFaculty) {
-      list = list.filter((r) => r.status === "approved");
-    } else if (isStudent && !isExecOrHq) {
+    if (isStudent && !isExecOrHq && !isFaculty) {
       list = list.filter(
         (r) =>
           r.submittedBy === session.userId ||
@@ -155,6 +154,7 @@ export default function ChapterReportsPage({
   // Auto-fill sensible outcomes when event is selected if outcomes is empty
   useEffect(() => {
     if (selectedEvent && !outcomes.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setOutcomes(
         `Successfully hosted ${selectedEvent.title} with high student engagement, hands-on activities, and positive peer collaboration.`,
       );
@@ -283,8 +283,8 @@ export default function ChapterReportsPage({
         title="Reports"
         description={
           isFaculty
-            ? "Download approved Elevates reports as Word documents for college head / management."
-            : "Write Word-like reports, auto-generate from events with attendance ratios and reviews, submit to HQ, and download .docx."
+            ? "Review submissions, approve chapter reports, and download formatted Word documents for college administration."
+            : "Write Word-like reports, auto-generate from events with attendance ratios and reviews, submit to Faculty Coordinator, and download .docx."
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -317,7 +317,7 @@ export default function ChapterReportsPage({
           <div className="py-8 text-center">
             <p className="text-[13px] text-text-dim">
               {isFaculty
-                ? "No approved reports yet for college submission."
+                ? "No reports submitted yet for review."
                 : "No reports yet. Click 'New report' to select an event and generate an activity report."}
             </p>
             {canCreateReport && !isFaculty ? (
@@ -381,13 +381,15 @@ export default function ChapterReportsPage({
                     </p>
                     {report.hqComment ? (
                       <p className="mt-1 text-[12px] text-[var(--secondary)]">
-                        HQ: {report.hqComment}
+                        Reviewer note: {report.hqComment}
                       </p>
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <Link href={`/chapter/${slug}/reports/${report.id}`}>
-                      <Button variant="ghost">Open</Button>
+                      <Button variant={isFaculty && report.status === "submitted" ? "primary" : "ghost"}>
+                        {isFaculty && report.status === "submitted" ? "Review" : "Open"}
+                      </Button>
                     </Link>
                     {(canDownload || report.status === "approved") &&
                     (isFaculty
@@ -409,13 +411,13 @@ export default function ChapterReportsPage({
                         variant="primary"
                         onClick={() => {
                           if (submitReportDraft(report.id, session.userId)) {
-                            flashMsg("Submitted to HQ");
+                            flashMsg("Submitted to Faculty");
                           }
                         }}
                       >
                         {report.status === "changes_requested"
-                          ? "Resubmit"
-                          : "Submit to HQ"}
+                          ? "Resubmit to Faculty"
+                          : "Submit to Faculty"}
                       </Button>
                     ) : null}
                   </div>

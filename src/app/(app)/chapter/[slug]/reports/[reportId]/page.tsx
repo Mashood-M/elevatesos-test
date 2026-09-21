@@ -2,8 +2,10 @@
 
 import { use, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DocumentEditor } from "@/components/domain/document-editor";
 import type { SaveState } from "@/components/domain/document-editor";
+import { HqReportViewer } from "@/components/domain/reports/hq-report-viewer";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
@@ -17,7 +19,8 @@ export default function ChapterReportDocumentPage({
   params: Promise<{ slug: string; reportId: string }>;
 }) {
   const { slug, reportId } = use(params);
-  const { store, updateReportDocument, submitReportDraft } = useStore();
+  const router = useRouter();
+  const { store, updateReportDocument, submitReportDraft, reviewReport } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
   const report = store.reports.find((r) => r.id === reportId);
@@ -30,6 +33,7 @@ export default function ChapterReportDocumentPage({
   const canDownload = hasPermission(store, session.roleKey, "report.download");
   const isFaculty = isFacultyRole(session.roleKey);
   const isHq = isHqRole(session.roleKey);
+  const canReview = hasPermission(store, session.roleKey, "report.approve") || isFaculty;
 
   const isVolunteerForEvent = report?.eventId
     ? isUserAppointedVolunteerForEvent(store, session.userId, report.eventId)
@@ -114,6 +118,30 @@ export default function ChapterReportDocumentPage({
       forCollege,
       approverName: approver?.fullName,
     });
+  }
+
+  if ((isFaculty || canReview) && currentReport.status === "submitted") {
+    return (
+      <HqReportViewer
+        report={currentReport}
+        chapterName={currentChapter.name}
+        eventTitle={event?.title}
+        authorName={author?.fullName}
+        canReview={canReview}
+        backHref={`/chapter/${slug}/reports`}
+        backLabel="Chapter reports"
+        onExportDocx={() => void handleDownload(isFaculty)}
+        onReview={(decision, comment) => {
+          const ok = reviewReport(
+            currentReport.id,
+            decision,
+            comment,
+            session.userId,
+          );
+          if (ok) router.push(`/chapter/${slug}/reports`);
+        }}
+      />
+    );
   }
 
   return (

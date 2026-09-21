@@ -25,7 +25,7 @@ export function CommentsPanel({
       {hqComment ? (
         <div className="rounded-[10px] border border-green/30 bg-green/5 p-2.5">
           <p className="text-[10px] font-semibold uppercase text-green">
-            HQ comment
+            Reviewer feedback
           </p>
           <p className="mt-1 text-[12px] text-text-dim">{hqComment}</p>
         </div>

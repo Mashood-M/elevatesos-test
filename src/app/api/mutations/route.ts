@@ -1339,7 +1339,7 @@ export async function POST(req: Request) {
         if (prof) validUserId = prof.id;
       }
 
-      // Check if registration already exists for (event_id, user_id) to prevent duplicate rows
+      // Check if registration already exists for (event_id, user_id) to prevent duplicate rows and block re-registration with a clear error
       if (validUserId && isUuid(reg.eventId)) {
         const { data: existingReg } = await admin
           .from("event_registrations")
@@ -1348,34 +1348,76 @@ export async function POST(req: Request) {
           .eq("user_id", validUserId)
           .maybeSingle();
         if (existingReg) {
-          regId = existingReg.id;
-        }
-      }
-
-      // Check event chapter scope
-      let eventChapterId: string | null = null;
-      if (isUuid(reg.eventId)) {
-        const { data: evRow } = await admin.from("events").select("chapter_id").eq("id", reg.eventId).maybeSingle();
-        eventChapterId = evRow?.chapter_id || null;
-      }
-
-      // Security check: If registration status is being approved manually, only Campus Lead, Chairman, or HQ Admin can approve
-      let approvedBy: string | null = null;
-      if (reg.status === "approved") {
-        const isAuthorized = auth.isHq || isCampusLead(auth.roleKey) || auth.roleKey === "chairman";
-        if (!isAuthorized) {
           return NextResponse.json(
-            {
-              ok: false,
-              error:
-                "Access restricted: Only the Campus Lead or Chairman is authorized to approve student event registrations from the waiting list.",
-            },
-            { status: 403 },
+            { ok: false, error: "You are already registered for this event." },
+            { status: 400 },
           );
         }
-        const chapErr = checkChapterScope(eventChapterId);
-        if (chapErr) return chapErr;
-        approvedBy = auth.userId;
+      }
+
+      // Check event chapter scope and compute registration status server-side from live capacity.
+      // Never trust the client-sent status for regular students — only privileged roles can force-approve.
+      let eventChapterId: string | null = null;
+      let resolvedStatus = "pending";
+      let approvedBy: string | null = null;
+
+      const isPrivileged = auth.isHq || isCampusLead(auth.roleKey) || isExecutiveRole(auth.roleKey) || auth.roleKey === "chairman";
+
+      if (isUuid(reg.eventId)) {
+        const { data: evRow } = await admin
+          .from("events")
+          .select("chapter_id, capacity, waitlist_capacity")
+          .eq("id", reg.eventId)
+          .maybeSingle();
+        eventChapterId = evRow?.chapter_id || null;
+
+        if (reg.status === "approved" && isPrivileged) {
+          // Privileged user explicitly force-approving
+          const chapErr = checkChapterScope(eventChapterId);
+          if (chapErr) return chapErr;
+          resolvedStatus = "approved";
+          approvedBy = auth.userId;
+        } else {
+          // Compute status from live DB seat counts
+          const capacity: number = (evRow?.capacity as number) ?? 100;
+          const waitlistCapacity: number = (evRow?.waitlist_capacity as number) ?? 0;
+
+          const { count: approvedCount } = await admin
+            .from("event_registrations")
+            .select("id", { count: "exact", head: true })
+            .eq("event_id", reg.eventId)
+            .eq("status", "approved");
+
+          const { count: waitlistedCount } = await admin
+            .from("event_registrations")
+            .select("id", { count: "exact", head: true })
+            .eq("event_id", reg.eventId)
+            .eq("status", "waitlisted");
+
+          const seatsLeft = Math.max(0, capacity - (approvedCount ?? 0));
+          const waitlistLeft = waitlistCapacity > 0
+            ? Math.max(0, waitlistCapacity - (waitlistedCount ?? 0))
+            : 0;
+
+          if (seatsLeft > 0) {
+            resolvedStatus = "approved";
+            approvedBy = auth.userId;
+          } else if (waitlistCapacity > 0 && waitlistLeft > 0) {
+            resolvedStatus = "waitlisted";
+          } else if (waitlistCapacity > 0) {
+            return NextResponse.json(
+              { ok: false, error: "Registration is closed. Both event capacity and waiting list are full." },
+              { status: 409 },
+            );
+          } else {
+            return NextResponse.json(
+              { ok: false, error: "Registration is closed. All available seats have been filled." },
+              { status: 409 },
+            );
+          }
+        }
+      } else {
+        resolvedStatus = reg.status ?? "pending";
       }
 
       const { error } = await admin.from("event_registrations").upsert({
@@ -1384,7 +1426,7 @@ export async function POST(req: Request) {
         user_id: validUserId,
         guest_email: reg.guestEmail || null,
         guest_name: reg.guestName || null,
-        status: reg.status ?? "pending",
+        status: resolvedStatus,
         representative_id: isUuid(reg.representativeId) ? reg.representativeId : null,
         answers: reg.answers || {},
         qr_code: reg.qrCode || "",
@@ -1396,7 +1438,7 @@ export async function POST(req: Request) {
         console.error("Mutation error (registration):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
-      return NextResponse.json({ ok: true, id: regId });
+      return NextResponse.json({ ok: true, id: regId, status: resolvedStatus });
     }
 
     if (type === "delete_registration") {

@@ -470,6 +470,10 @@ DROP POLICY IF EXISTS "outbound_messages_select_own" ON public.outbound_messages
 DROP POLICY IF EXISTS "outbound_messages_service_role_all" ON public.outbound_messages;
 REVOKE ALL ON public.outbound_messages FROM anon;
 
+-- Ensure column exists (in case migration 009 was not fully applied)
+ALTER TABLE public.outbound_messages
+  ADD COLUMN IF NOT EXISTS to_user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+
 CREATE POLICY "outbound_messages_select_own"
   ON public.outbound_messages
   FOR SELECT

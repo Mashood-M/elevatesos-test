@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { isHqRole, isSuperAdmin, isCampusLead } from "@/lib/permissions";
+import { isHqRole, isSuperAdmin, isCampusLead, canCreateEvent } from "@/lib/permissions";
 import { isExecutiveRole } from "@/lib/access";
 import type { RoleKey } from "@/types";
 
@@ -10,6 +10,7 @@ export interface AuthenticatedUser {
   userId: string;
   roleKey: RoleKey;
   chapterId: string | null;
+  allowedChapterIds: string[];
   email: string | null;
   isHq: boolean;
   assignedKeys: RoleKey[];
@@ -22,6 +23,7 @@ export interface AuthErrorResponse {
   userId?: undefined;
   roleKey?: undefined;
   chapterId?: undefined;
+  allowedChapterIds?: undefined;
   email?: undefined;
   isHq?: undefined;
   assignedKeys?: undefined;
@@ -36,6 +38,7 @@ const ROLE_PRIORITY: RoleKey[] = [
   "media_team",
   "technical_team",
   "innovation_team",
+  "faculty_coordinator",
   "class_representative",
   "media_lead",
   "technical_lead",
@@ -46,7 +49,6 @@ const ROLE_PRIORITY: RoleKey[] = [
   "chairman",
   "elevates_coordinator",
   "campus_lead",
-  "faculty_coordinator",
   "industry_mentor",
   "hq_mentor",
   "hq_admin",
@@ -99,7 +101,7 @@ export async function requireUser(): Promise<RequireUserResult> {
   // 1. Resolve Profile
   const { data: profileById } = await admin
     .from("profiles")
-    .select("id, email, chapter_id")
+    .select("id, email, chapter_id, designation, role")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -107,7 +109,7 @@ export async function requireUser(): Promise<RequireUserResult> {
   if (!matchedProfile && user.email) {
     const { data: profileByEmail } = await admin
       .from("profiles")
-      .select("id, email, chapter_id")
+      .select("id, email, chapter_id, designation, role")
       .ilike("email", user.email.trim())
       .maybeSingle();
     matchedProfile = profileByEmail;
@@ -115,10 +117,10 @@ export async function requireUser(): Promise<RequireUserResult> {
 
   const effectiveUserId = matchedProfile?.id || user.id;
 
-  // 2. Resolve User Roles
+  // 2. Resolve User Roles from user_roles
   const { data: userRolesData } = await admin
     .from("user_roles")
-    .select("id, role_key, role_id, chapter_id")
+    .select("id, role_key, role, role_id, chapter_id")
     .or(`user_id.eq.${effectiveUserId},user_id.eq.${user.id}`);
 
   const userRoles = userRolesData || [];
@@ -143,18 +145,102 @@ export async function requireUser(): Promise<RequireUserResult> {
 
   const assignedKeys: RoleKey[] = [];
   let resolvedChapterId: string | null = matchedProfile?.chapter_id || null;
+  const allowedChapterIds: string[] = [];
+  if (matchedProfile?.chapter_id) {
+    allowedChapterIds.push(matchedProfile.chapter_id);
+  }
 
   for (const ur of userRoles) {
-    if (ur.chapter_id && !resolvedChapterId) {
-      resolvedChapterId = ur.chapter_id;
+    if (ur.chapter_id) {
+      if (!allowedChapterIds.includes(ur.chapter_id)) {
+        allowedChapterIds.push(ur.chapter_id);
+      }
+      if (!resolvedChapterId) {
+        resolvedChapterId = ur.chapter_id;
+      }
     }
-    const k = (ur.role_key as RoleKey) || roleKeyMap[ur.role_id];
-    if (k && (k as string) !== "volunteer") {
+    const raw = ur.role_key || ur.role || roleKeyMap[ur.role_id];
+    if (raw) {
+      const k = String(raw).toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
+      if (k && (k as string) !== "volunteer" && !assignedKeys.includes(k)) {
+        assignedKeys.push(k);
+      }
+    }
+  }
+
+  // 3. Check Profile designation and role
+  if (matchedProfile?.designation) {
+    const d = matchedProfile.designation.toLowerCase().trim();
+    if (d === "campus_lead" && !assignedKeys.includes("campus_lead")) {
+      assignedKeys.push("campus_lead");
+    } else if (d === "chairman" && !assignedKeys.includes("chairman")) {
+      assignedKeys.push("chairman");
+    } else if (d === "class_rep" && !assignedKeys.includes("class_representative")) {
+      assignedKeys.push("class_representative");
+    }
+  }
+  if (matchedProfile?.role) {
+    const r = matchedProfile.role.toLowerCase().trim();
+    if (r.includes("campus lead") && !assignedKeys.includes("campus_lead")) {
+      assignedKeys.push("campus_lead");
+    } else if (r.includes("chairman") && !assignedKeys.includes("chairman")) {
+      assignedKeys.push("chairman");
+    } else if (r.includes("class representative") && !assignedKeys.includes("class_representative")) {
+      assignedKeys.push("class_representative");
+    }
+  }
+
+  // 4. Check if user is appointed as campus_lead_id in chapters table
+  try {
+    const { data: leadChapters } = await admin
+      .from("chapters")
+      .select("id, campus_lead_id")
+      .or(`campus_lead_id.eq.${effectiveUserId},campus_lead_id.eq.${user.id}`);
+
+    if (leadChapters && leadChapters.length > 0) {
+      for (const lc of leadChapters) {
+        if (!allowedChapterIds.includes(lc.id)) {
+          allowedChapterIds.push(lc.id);
+        }
+      }
+      if (!assignedKeys.includes("campus_lead")) {
+        assignedKeys.push("campus_lead");
+      }
+      if (!resolvedChapterId) {
+        resolvedChapterId = leadChapters[0].id;
+      }
+    }
+  } catch {}
+
+  // 5. Check leadership_assignments
+  try {
+    const { data: leadAssignments } = await admin
+      .from("leadership_assignments")
+      .select("role_key, term_id")
+      .or(`user_id.eq.${effectiveUserId},user_id.eq.${user.id}`);
+
+    if (leadAssignments && leadAssignments.length > 0) {
+      for (const la of leadAssignments) {
+        if (la.role_key && la.role_key !== "volunteer") {
+          const k = String(la.role_key).toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
+          if (!assignedKeys.includes(k)) {
+            assignedKeys.push(k);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 6. Check user metadata
+  const metaRole = (user.user_metadata?.role_key || user.user_metadata?.role || user.user_metadata?.designation) as string | undefined;
+  if (metaRole) {
+    const k = metaRole.toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
+    if (k && k !== "volunteer" && !assignedKeys.includes(k)) {
       assignedKeys.push(k);
     }
   }
 
-  // Fallback matching using email / user ID heuristics if no explicit roles found
+  // 7. Fallback matching using email / user ID heuristics if no explicit roles found
   if (assignedKeys.length === 0) {
     const emailLower = (matchedProfile?.email || user.email || "").toLowerCase();
     const idLower = effectiveUserId.toLowerCase();
@@ -189,6 +275,7 @@ export async function requireUser(): Promise<RequireUserResult> {
     userId: effectiveUserId,
     roleKey: topRoleKey,
     chapterId: resolvedChapterId,
+    allowedChapterIds,
     email: user.email || matchedProfile?.email || null,
     isHq,
     assignedKeys,
@@ -208,5 +295,20 @@ export function canUserManageChapter(
   if (isUserHq(auth)) return true;
   if (!targetChapterId) return false;
   if (auth.chapterId !== targetChapterId) return false;
-  return isCampusLead(auth.roleKey) || isExecutiveRole(auth.roleKey) || isSuperAdmin(auth.roleKey);
+  return (
+    isCampusLead(auth.roleKey) ||
+    isExecutiveRole(auth.roleKey) ||
+    isSuperAdmin(auth.roleKey) ||
+    auth.assignedKeys.some((k) => isCampusLead(k) || isExecutiveRole(k) || isSuperAdmin(k))
+  );
 }
+
+/** Check if user has permission to create or delete events */
+export function canAuthUserCreateEvent(auth: AuthenticatedUser): boolean {
+  return (
+    auth.isHq ||
+    canCreateEvent(auth.roleKey) ||
+    auth.assignedKeys.some((k) => canCreateEvent(k))
+  );
+}
+

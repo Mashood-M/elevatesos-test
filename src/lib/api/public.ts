@@ -18,21 +18,16 @@ export function requireClientToken(req: Request): NextResponse | null {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 }
 
-export function clientIp(req: Request): string {
-  return (
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip") ||
-    "unknown"
-  );
-}
-
 export function rateLimit(
   req: Request,
   key: string,
   limit: number,
   windowMs: number,
 ): boolean {
-  const ip = clientIp(req);
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown";
   const bucketKey = `${key}:${ip}`;
   const now = Date.now();
   const entry = buckets.get(bucketKey);
@@ -82,64 +77,15 @@ export function jsonError(message: string, status = 400) {
   );
 }
 
-export function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": process.env.WEB_ORIGIN ?? "*",
-    "Access-Control-Allow-Headers":
-      "Content-Type, x-elevates-client, x-elevates-token, Authorization",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  };
-}
-
 export function corsOptions() {
   return new NextResponse(null, {
     status: 204,
     headers: {
-      ...corsHeaders(),
+      "Access-Control-Allow-Origin": process.env.WEB_ORIGIN ?? "*",
+      "Access-Control-Allow-Headers":
+        "Content-Type, x-elevates-client, x-elevates-token, Authorization",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Max-Age": "86400",
     },
   });
-}
-
-export const optionsOk = corsOptions;
-
-export function assertWriteToken(req: Request): boolean {
-  const expected = process.env.OS_API_TOKEN;
-  if (!expected) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[SECURITY ERROR] OS_API_TOKEN is missing in production environment. Denying write request.");
-      return false;
-    }
-    return true;
-  }
-  const header =
-    req.headers.get("x-elevates-token") ||
-    req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  return header === expected;
-}
-
-export async function verifyTurnstile(token: string | undefined): Promise<boolean> {
-  const secret = process.env.TURNSTILE_SECRET_KEY;
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("[SECURITY ERROR] TURNSTILE_SECRET_KEY is missing in production environment. Denying verification.");
-      return false;
-    }
-    return true;
-  }
-  if (!token) return false;
-  try {
-    const res = await fetch(
-      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ secret, response: token }),
-      },
-    );
-    const body = (await res.json()) as { success?: boolean };
-    return Boolean(body.success);
-  } catch {
-    return false;
-  }
 }

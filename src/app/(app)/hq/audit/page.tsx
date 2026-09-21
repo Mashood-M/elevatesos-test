@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
-import { downloadCsv, formatDateTime } from "@/lib/utils";
+import { formatDateTime } from "@/lib/utils";
 
 function humanizeAction(action: string) {
   return action.replaceAll("_", " ");
@@ -110,7 +110,15 @@ export default function HqAuditPage() {
         ].join(",");
       }),
     ];
-    downloadCsv(lines.join("\n"), "elevates-audit-log.csv");
+    const blob = new Blob([lines.join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "elevates-audit-log.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   return (

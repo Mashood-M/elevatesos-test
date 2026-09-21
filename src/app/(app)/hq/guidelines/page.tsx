@@ -41,14 +41,14 @@ function emptyDraft(): Draft {
   };
 }
 
-export function parseSections(text: string): string[] {
+function parseSections(text: string): string[] {
   return text
     .split(/[\n,]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-export function statusTone(
+function statusTone(
   status: GuidelineStatus,
 ): "mute" | "green" | "orange" | "magenta" {
   if (status === "published") return "green";

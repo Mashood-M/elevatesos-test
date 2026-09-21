@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/api/require-user";
-import { genUuid } from "@/lib/uuid";
 
 export async function POST(req: Request) {
   try {
@@ -173,7 +172,7 @@ export async function POST(req: Request) {
     }
 
     if (!finalUserId) {
-      finalUserId = targetUser.id || genUuid();
+      finalUserId = targetUser.id || genRandomUuid();
     }
 
     // 5. Upsert profile row
@@ -411,4 +410,12 @@ export async function DELETE(req: Request) {
     console.error("Delete user exception:", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+}
+
+function genRandomUuid() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }

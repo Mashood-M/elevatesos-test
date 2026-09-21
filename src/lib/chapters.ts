@@ -193,44 +193,6 @@ export function generateChapterElevatesId(id: string): string {
 }
 
 /**
- * Formats a sequence number into the official sequential Student Elevates ID:
- * - 1 to 999: "ELV-0001" to "ELV-0999"
- * - 1,000 to 26,999: "ELV-A000" to "ELV-Z999"
- * - 27,000+: "ELV-AA00" to "ELV-ZZ99"
- */
-export function formatElevatesId(n: number): string {
-  if (n < 1000) {
-    return `ELV-${String(n).padStart(4, "0")}`;
-  } else if (n < 27000) {
-    const letterIdx = Math.floor((n - 1000) / 1000);
-    const letter = String.fromCharCode(65 + letterIdx);
-    const rem = (n - 1000) % 1000;
-    return `ELV-${letter}${String(rem).padStart(3, "0")}`;
-  } else if (n < 703000) {
-    const twoLetterOffset = Math.floor((n - 27000) / 100);
-    const firstLetter = String.fromCharCode(65 + Math.floor(twoLetterOffset / 26));
-    const secondLetter = String.fromCharCode(65 + (twoLetterOffset % 26));
-    const rem = (n - 27000) % 100;
-    return `ELV-${firstLetter}${secondLetter}${String(rem).padStart(2, "0")}`;
-  }
-  return `ELV-${String(n).padStart(6, "0")}`;
-}
-
-/**
- * Deterministically generates a valid Student Elevates ID from a user UUID/string.
- */
-export function generateElevatesId(id: string): string {
-  if (!id) return "ELV-0001";
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash << 5) - hash + id.charCodeAt(i);
-    hash |= 0;
-  }
-  const n = (Math.abs(hash) % 999) + 1;
-  return formatElevatesId(n);
-}
-
-/**
  * Returns the chapter's official Elevates ID, guaranteeing a valid "CHP-XXXX" string
  * even if the database record had a null or empty elevates_id.
  */

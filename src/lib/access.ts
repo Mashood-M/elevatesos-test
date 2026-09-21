@@ -1,10 +1,4 @@
-import {
-  isHqRole,
-  isSuperAdmin,
-  isExecutiveRole,
-  isFacultyRole,
-  EXECUTIVE_ROLES,
-} from "@/lib/permissions";
+import { isHqRole, isSuperAdmin } from "@/lib/permissions";
 import type { Chapter, RoleKey } from "@/types";
 
 export function resolveChapter(
@@ -60,11 +54,29 @@ export function resolveChapter(
   return chapter;
 }
 
-export {
-  EXECUTIVE_ROLES,
-  isExecutiveRole,
-  isFacultyRole,
-};
+const EXECUTIVE_ROLES: RoleKey[] = [
+  "campus_lead",
+  "chairman",
+  "vice_chairman",
+  "secretary",
+  "joint_secretary",
+  "elevates_coordinator",
+  "technical_lead",
+  "technical_team",
+  "media_lead",
+  "media_team",
+  "innovation_lead",
+  "innovation_team",
+  "class_representative",
+];
+
+export function isExecutiveRole(roleKey: RoleKey) {
+  return EXECUTIVE_ROLES.includes(roleKey);
+}
+
+export function isFacultyRole(roleKey: RoleKey) {
+  return roleKey === "faculty_coordinator";
+}
 
 export function homeForRole(roleKey: RoleKey, chapterSlug = "") {
   if (isHqRole(roleKey)) return "/hq";

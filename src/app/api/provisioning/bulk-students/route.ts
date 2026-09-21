@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { requireUser } from "@/lib/api/require-user";
-import { genUuid } from "@/lib/uuid";
 
 export interface BulkRowResult {
   row: number;
@@ -135,7 +134,7 @@ export async function POST(req: Request) {
         .eq("email", email.toLowerCase())
         .maybeSingle();
 
-      const userId = existing?.id || genUuid();
+      const userId = existing?.id || genRandomUuid();
 
       const { error: profErr } = await admin.from("profiles").upsert({
         id: userId,
@@ -212,4 +211,12 @@ export async function POST(req: Request) {
     console.error("Bulk upload handler exception:", err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
+}
+
+function genRandomUuid() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }

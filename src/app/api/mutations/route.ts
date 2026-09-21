@@ -1,13 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { revalidateWeb } from "@/lib/api/revalidate-web";
+import { slugify } from "@/lib/public/http";
+import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
-import { embedLocationInNotes, slugify } from "@/lib/slug";
+import { embedLocationInNotes } from "@/lib/slug";
 import { getChapterElevatesId } from "@/lib/chapters";
-import { requireUser } from "@/lib/api/require-user";
+import { requireUser, canAuthUserCreateEvent } from "@/lib/api/require-user";
 import {
-  canCreateEvent,
   canManageClasses,
   canVerifyAttendance,
   isCampusLead,
@@ -485,7 +485,11 @@ export async function POST(req: Request) {
     // Helper: enforce that caller cannot mutate another chapter's resources
     function checkChapterScope(targetChapterId?: string | null): NextResponse | null {
       if (auth.isHq) return null;
-      if (!targetChapterId || !auth.chapterId || targetChapterId !== auth.chapterId) {
+      const isAllowedChapter =
+        Boolean(targetChapterId) &&
+        (targetChapterId === auth.chapterId ||
+          (Array.isArray(auth.allowedChapterIds) && auth.allowedChapterIds.includes(targetChapterId!)));
+      if (!isAllowedChapter) {
         return NextResponse.json(
           { ok: false, error: "Permission denied: cross-chapter mutation not permitted" },
           { status: 403 },
@@ -677,7 +681,7 @@ export async function POST(req: Request) {
     // 1. EVENT MUTATIONS
     if (type === "event") {
       const event = data;
-      if (!canCreateEvent(auth.roleKey) && !auth.isHq) {
+      if (!canAuthUserCreateEvent(auth)) {
         return NextResponse.json(
           { ok: false, error: "Permission denied: event creation requires event.create permission" },
           { status: 403 },
@@ -800,7 +804,7 @@ export async function POST(req: Request) {
     }
 
     if (type === "delete_event") {
-      if (!canCreateEvent(auth.roleKey) && !auth.isHq) {
+      if (!canAuthUserCreateEvent(auth)) {
         return NextResponse.json(
           { ok: false, error: "Permission denied: event deletion requires event.create permission" },
           { status: 403 },

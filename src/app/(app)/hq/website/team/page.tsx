@@ -11,8 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { resolveMediaUrl } from "@/lib/data/media";
 import { FOUNDING_TEAM_IMAGE, Founder, Advisor } from "@/lib/data/founders-team";
-import { Field, TInput } from "@/components/domain/cms-form-inputs";
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[11px] font-semibold text-text-dim uppercase tracking-wider block">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function TInput({ value, onChange, placeholder, mono }: { value: string; onChange: (v: string) => void; placeholder?: string; mono?: boolean }) {
+  return <input className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />;
+}
 
 function AvatarImage({ src, alt }: { src?: string; alt: string }) {
   const [imgSrc, setImgSrc] = useState<string>(src ? resolveMediaUrl(src) : "");

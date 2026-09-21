@@ -824,39 +824,6 @@ function activeChairmanIds(store: ElevatesStore): string[] {
     .map((a) => a.userId);
 }
 
-function chapterFacultyUserIds(
-  store: ElevatesStore,
-  chapterId: string,
-  eventId?: string,
-): string[] {
-  const result = new Set<string>();
-  const chapter = store.chapters.find((c) => c.id === chapterId);
-  if (chapter?.facultyId) {
-    result.add(chapter.facultyId);
-  }
-
-  if (eventId) {
-    const ev = store.events.find((e) => e.id === eventId);
-    if (ev?.facultyId) {
-      result.add(ev.facultyId);
-    }
-  }
-
-  const facultyRole = store.roles.find((r) => r.key === "faculty_coordinator");
-  if (facultyRole) {
-    const chapterMemberIds = new Set(
-      store.profiles.filter((p) => p.chapterId === chapterId).map((p) => p.id),
-    );
-    for (const ur of store.userRoles) {
-      if (ur.roleId === facultyRole.id && chapterMemberIds.has(ur.userId)) {
-        result.add(ur.userId);
-      }
-    }
-  }
-
-  return Array.from(result);
-}
-
 function applyReportReview(
   store: ElevatesStore,
   setStore: Dispatch<SetStateAction<ElevatesStore>>,
@@ -883,30 +850,11 @@ function applyReportReview(
   const hqComment =
     note ||
     (decision === "approve"
-      ? "Approved by Faculty Coordinator."
+      ? "Approved by HQ."
       : decision === "correction"
         ? "Please revise and resubmit."
-        : "Rejected by Faculty Coordinator.");
+        : "Rejected by HQ.");
   const approvedBy = decision === "approve" ? actorId : undefined;
-
-  const submitterAlerts = existing.submittedBy
-    ? notifyUsers([existing.submittedBy], {
-        title:
-          decision === "approve"
-            ? "Report approved by Faculty"
-            : decision === "correction"
-              ? "Report corrections requested by Faculty"
-              : "Report rejected by Faculty",
-        body: `Your report “${existing.title}” was ${
-          decision === "approve"
-            ? "approved"
-            : decision === "correction"
-              ? "returned for corrections"
-              : "rejected"
-        } by Faculty Coordinator.`,
-        href: `/chapter/${store.chapters.find((c) => c.id === existing.chapterId)?.slug ?? ""}/reports/${existing.id}`,
-      })
-    : [];
 
   setStore((s) => ({
     ...s,
@@ -922,7 +870,6 @@ function applyReportReview(
         }
         : r,
     ),
-    notifications: [...submitterAlerts, ...s.notifications],
     activityLogs: [
       log(actorId, action, "report", reportId, existing.title),
       ...s.activityLogs,
@@ -1151,51 +1098,6 @@ function maybeIssueCert(
     },
     ...s.certificates,
   ];
-}
-
-function checkCertificateEligibility(params: {
-  ev?: EventItem;
-  att?: AttendanceRecord;
-  userId: string;
-  userProf?: Profile;
-}): { eligible: boolean; isAutoPresent: boolean; errorReason?: string } {
-  const { ev, att, userId, userProf } = params;
-  const isOrganizer =
-    ev?.organizerId === userId ||
-    ev?.facultyId === userId ||
-    Boolean(ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
-  const isSpeaker = Boolean(
-    ev?.hosts &&
-      ev.hosts.some(
-        (h) =>
-          h.name &&
-          userProf?.fullName &&
-          h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase(),
-      ),
-  );
-  const isVolunteer =
-    (att && att.status === "volunteer") ||
-    Boolean(ev?.volunteerStudentIds && ev.volunteerStudentIds.includes(userId)) ||
-    Boolean(ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
-  const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
-
-  if (
-    !isAutoPresent &&
-    (!att ||
-      !(
-        att.status === "present" ||
-        att.status === "volunteer" ||
-        att.status === "speaker"
-      ))
-  ) {
-    return {
-      eligible: false,
-      isAutoPresent: false,
-      errorReason: "Requires verified attendance (present).",
-    };
-  }
-
-  return { eligible: true, isAutoPresent };
 }
 
 
@@ -2015,7 +1917,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
 
       createTask: (input) => {
-        const id = genUuid();
+        const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
         const newTask: Task = {
           id,
           chapterId: input.chapterId,
@@ -3137,18 +3039,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           let att = s.attendance.find(
             (a) => a.eventId === eventId && a.userId === userId,
           );
+          const isOrganizer = ev?.organizerId === userId || ev?.facultyId === userId || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
           const userProf = s.profiles.find((p) => p.id === userId);
-          const { eligible, isAutoPresent, errorReason } = checkCertificateEligibility({
-            ev,
-            att,
-            userId,
-            userProf,
-          });
+          const isSpeaker = ev?.hosts && ev.hosts.some((h) => h.name && userProf?.fullName && h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase());
+          const isVolunteer =
+            (att && att.status === "volunteer") ||
+            (ev?.volunteerStudentIds && ev.volunteerStudentIds.includes(userId)) ||
+            (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+          const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
 
-          if (!eligible) {
+          if (
+            !isAutoPresent &&
+            (!att ||
+              !(
+                att.status === "present" ||
+                att.status === "volunteer" ||
+                att.status === "speaker"
+              )
+            )
+          ) {
             result = {
               ok: false,
-              message: errorReason || "Requires verified attendance (present).",
+              message: "Requires verified attendance (present).",
             };
             return s;
           }
@@ -3250,18 +3162,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             let att = currentAtt.find(
               (a) => a.eventId === eventId && a.userId === userId
             );
+            const isOrganizer = ev?.organizerId === userId || ev?.facultyId === userId || (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
             const userProf = s.profiles.find((p) => p.id === userId);
-            const { eligible, isAutoPresent, errorReason } = checkCertificateEligibility({
-              ev,
-              att,
-              userId,
-              userProf,
-            });
+            const isSpeaker = ev?.hosts && ev.hosts.some((h) => h.name && userProf?.fullName && h.name.trim().toLowerCase() === userProf.fullName.trim().toLowerCase());
+            const isVolunteer =
+              (att && att.status === "volunteer") ||
+              (ev?.volunteerStudentIds && ev.volunteerStudentIds.includes(userId)) ||
+              (ev?.managingStudentIds && ev.managingStudentIds.includes(userId));
+            const isAutoPresent = Boolean(isOrganizer || isSpeaker || isVolunteer);
 
-            if (!eligible) {
+            if (
+              !isAutoPresent &&
+              (!att ||
+                !(
+                  att.status === "present" ||
+                  att.status === "volunteer" ||
+                  att.status === "speaker"
+                ))
+            ) {
               results.push({
                 userId,
-                result: { ok: false, message: errorReason || "Requires verified attendance (present)." },
+                result: { ok: false, message: "Requires verified attendance (present)." },
               });
               failedCount++;
               continue;
@@ -4636,7 +4557,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             !["rejected", "withdrawn"].includes(a.status),
         );
         if (dup) return false;
-        const appId = genUuid();
+        const appId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
         const app: LeadershipApplication = {
           id: appId,
           termId: input.termId,
@@ -6313,7 +6234,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true;
       },
       createProject: (input) => {
-        const id = genUuid();
+        const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : genUuid();
         const project: Project = {
           id,
           chapterId: input.chapterId,
@@ -6701,11 +6622,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         const now = new Date().toISOString();
         const chapter = store.chapters.find((c) => c.id === existing.chapterId);
-        const facultyIds = chapterFacultyUserIds(store, existing.chapterId, existing.eventId);
-        const facultyAlerts = notifyUsers(facultyIds, {
-          title: "Report awaiting faculty review",
+        const hqAlerts = notifyUsers(hqUserIds(store), {
+          title: "Report awaiting HQ review",
           body: `${chapter?.name ?? "Chapter"} submitted “${existing.title}”.`,
-          href: `/chapter/${chapter?.slug ?? ""}/reports/${existing.id}`,
+          href: "/hq/reports",
         });
         const submittedReport: Report = {
           ...existing,
@@ -6718,7 +6638,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setStore((s) => ({
           ...s,
           reports: s.reports.map((r) => (r.id === id ? submittedReport : r)),
-          notifications: [...facultyAlerts, ...s.notifications],
+          notifications: [...hqAlerts, ...s.notifications],
           activityLogs: [
             log(actorId, "report_submitted", "report", id),
             ...s.activityLogs,
@@ -6799,16 +6719,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           updatedBy: input.submittedBy,
         };
         const chapter = store.chapters.find((c) => c.id === input.chapterId);
-        const facultyIds = chapterFacultyUserIds(store, input.chapterId);
-        const facultyAlerts = notifyUsers(facultyIds, {
-          title: "Report awaiting faculty review",
+        const hqAlerts = notifyUsers(hqUserIds(store), {
+          title: "Report awaiting HQ review",
           body: `${chapter?.name ?? "Chapter"} submitted “${report.title}”.`,
-          href: `/chapter/${chapter?.slug ?? ""}/reports/${report.id}`,
+          href: "/hq/reports",
         });
         setStore((s) => ({
           ...s,
           reports: [report, ...s.reports],
-          notifications: [...facultyAlerts, ...s.notifications],
+          notifications: [...hqAlerts, ...s.notifications],
           activityLogs: [
             log(input.submittedBy, "report_submitted", "report", report.id),
             ...s.activityLogs,

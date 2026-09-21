@@ -96,10 +96,13 @@ export function TicketCard({
     </>
   );
 
+  const hasCustomBg = Boolean(className && /\bbg-/.test(className));
+
   return (
     <article
       className={cn(
-        "rounded-[var(--radius)] bg-bg-panel p-4 shadow-[var(--shadow)] transition hover:shadow-[0_8px_28px_rgba(45,45,52,0.08)]",
+        "rounded-[var(--radius)] p-4 shadow-[var(--shadow)] transition hover:shadow-[0_8px_28px_rgba(45,45,52,0.08)]",
+        !hasCustomBg && "bg-bg-panel",
         className,
       )}
     >

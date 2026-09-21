@@ -177,7 +177,7 @@ export async function downloadReportDocx(options: {
       new Paragraph({
         children: [
           new TextRun({
-            text: `Approved by Faculty Coordinator${approverName ? ` (${approverName})` : ""}`,
+            text: `Approved by HQ${approverName ? ` (${approverName})` : ""}`,
             bold: true,
           }),
         ],
@@ -188,7 +188,7 @@ export async function downloadReportDocx(options: {
       footer.push(
         new Paragraph({
           children: [
-            new TextRun({ text: "Faculty comment: ", bold: true }),
+            new TextRun({ text: "HQ comment: ", bold: true }),
             new TextRun(report.hqComment),
           ],
         }),

@@ -17,10 +17,19 @@ import {
 } from "@/lib/brand/kit";
 import { hasPermission } from "@/lib/permissions";
 import { resourceCategoryLabel } from "@/lib/resources/categories";
-import { cn, readFileAsDataUrl } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type { BrandKit } from "@/types";
 
 const BRAND_CATEGORIES = ["logo", "poster", "certificate", "sponsor_deck"] as const;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 type Draft = {
   name: string;

@@ -20,7 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
-import { Field, TInput, TArea } from "@/components/domain/cms-form-inputs";
 
 type ProjectStatus =
   | "live"
@@ -324,6 +323,31 @@ const ALL_FLAGSHIP_PROJECTS: FlagshipProject[] = [];
 const DEFAULT_SHOWCASES: MemberShowcase[] = [];
 const DEFAULT_ARCHIVE: AlsoBuiltItem[] = [];
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[11px] font-semibold text-text-dim uppercase tracking-wider block">{label}</label>
+      {children}
+    </div>
+  );
+}
+function TInput({ value, onChange, onBlur, placeholder, mono }: { value: string; onChange: (v: string) => void; onBlur?: () => void; placeholder?: string; mono?: boolean }) {
+  return (
+    <input
+      className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text ${mono ? "font-mono" : ""}`}
+      value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} placeholder={placeholder}
+    />
+  );
+}
+function TArea({ value, onChange, placeholder, rows = 3 }: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number }) {
+  return (
+    <textarea
+      rows={rows}
+      className="w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-xs text-text resize-none"
+      value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+    />
+  );
+}
 
 function MetricRows({ items, onChange }: { items: Metric[]; onChange: (v: Metric[]) => void }) {
   return (

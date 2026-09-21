@@ -14,10 +14,23 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { hasPermission } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import type { GuidelineStatus } from "@/types";
-import { parseSections, statusTone } from "../page";
 
 const STATUSES: GuidelineStatus[] = ["draft", "published", "archived"];
 
+function statusTone(
+  status: GuidelineStatus,
+): "mute" | "green" | "orange" {
+  if (status === "published") return "green";
+  if (status === "draft") return "orange";
+  return "mute";
+}
+
+function parseSections(text: string): string[] {
+  return text
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export default function HqGuidelineDetailPage() {
   const params = useParams();

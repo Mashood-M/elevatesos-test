@@ -13,7 +13,6 @@ import {
   ThumbsDown,
   ThumbsUp,
   Users,
-  GraduationCap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,7 +98,7 @@ export default function ChapterReportsPage({
     if (!chapter) return [];
     let list = store.reports.filter((r) => r.chapterId === chapter.id);
     if (isFaculty) {
-      list = list.filter((r) => r.status !== "draft");
+      list = list.filter((r) => r.status === "approved");
     } else if (isStudent && !isExecOrHq) {
       list = list.filter(
         (r) =>
@@ -152,20 +151,6 @@ export default function ChapterReportsPage({
   const isVolunteerForSelected = Boolean(
     selectedEvent && appointedEventIds.has(selectedEvent.id),
   );
-
-  const assignedFaculty = useMemo(() => {
-    const facId = selectedEvent?.facultyId || currentChapter?.facultyId;
-    if (facId) return store.profiles.find((p) => p.id === facId);
-    const facultyRole = store.roles.find((r) => r.key === "faculty_coordinator");
-    if (!facultyRole || !currentChapter) return null;
-    const chMemberIds = new Set(
-      store.profiles.filter((p) => p.chapterId === currentChapter.id).map((p) => p.id),
-    );
-    const ur = store.userRoles.find(
-      (u) => u.roleId === facultyRole.id && chMemberIds.has(u.userId),
-    );
-    return ur ? store.profiles.find((p) => p.id === ur.userId) : null;
-  }, [selectedEvent?.facultyId, currentChapter, store.profiles, store.roles, store.userRoles]);
 
   // Auto-fill sensible outcomes when event is selected if outcomes is empty
   useEffect(() => {
@@ -223,7 +208,7 @@ export default function ChapterReportsPage({
     setImages(next.slice(0, 4));
   }
 
-  function handleGenerate(autoSubmit = false) {
+  function handleGenerate() {
     setWizardError("");
     if (!selectedEvent) {
       setWizardError("Please select an event to generate the report.");
@@ -275,13 +260,7 @@ export default function ChapterReportsPage({
     setOutcomes("");
     setAttendanceNote("");
     setImages([]);
-
-    if (autoSubmit) {
-      submitReportDraft(report.id, session.userId);
-      flashMsg("Report generated & submitted to Faculty Coordinator");
-    } else {
-      router.push(`/chapter/${slug}/reports/${report.id}`);
-    }
+    router.push(`/chapter/${slug}/reports/${report.id}`);
   }
 
   async function handleDownload(reportId: string, forCollege = false) {
@@ -304,8 +283,8 @@ export default function ChapterReportsPage({
         title="Reports"
         description={
           isFaculty
-            ? "Review and approve chapter event reports, or download approved reports as Word documents for college administration."
-            : "Write Word-like reports, auto-generate from events with attendance ratios and reviews, submit to Faculty Coordinator, and download .docx."
+            ? "Download approved Elevates reports as Word documents for college head / management."
+            : "Write Word-like reports, auto-generate from events with attendance ratios and reviews, submit to HQ, and download .docx."
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -402,7 +381,7 @@ export default function ChapterReportsPage({
                     </p>
                     {report.hqComment ? (
                       <p className="mt-1 text-[12px] text-[var(--secondary)]">
-                        Faculty review note: {report.hqComment}
+                        HQ: {report.hqComment}
                       </p>
                     ) : null}
                   </div>
@@ -410,13 +389,6 @@ export default function ChapterReportsPage({
                     <Link href={`/chapter/${slug}/reports/${report.id}`}>
                       <Button variant="ghost">Open</Button>
                     </Link>
-                    {isFaculty && report.status === "submitted" ? (
-                      <Link href={`/chapter/${slug}/reports/${report.id}`}>
-                        <Button variant="orange">
-                          Review & Approve
-                        </Button>
-                      </Link>
-                    ) : null}
                     {(canDownload || report.status === "approved") &&
                     (isFaculty
                       ? report.status === "approved"
@@ -437,13 +409,13 @@ export default function ChapterReportsPage({
                         variant="primary"
                         onClick={() => {
                           if (submitReportDraft(report.id, session.userId)) {
-                            flashMsg("Submitted to Faculty Coordinator");
+                            flashMsg("Submitted to HQ");
                           }
                         }}
                       >
                         {report.status === "changes_requested"
-                          ? "Resubmit to Faculty"
-                          : "Submit to Faculty"}
+                          ? "Resubmit"
+                          : "Submit to HQ"}
                       </Button>
                     ) : null}
                   </div>
@@ -490,24 +462,6 @@ export default function ChapterReportsPage({
               </p>
             ) : null}
           </div>
-
-          {/* Assigned Faculty Coordinator Info Card */}
-          {selectedEvent ? (
-            <div className="rounded-xl border border-cyan/30 bg-cyan/5 p-3 flex items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2.5">
-                <GraduationCap className="h-5 w-5 text-cyan shrink-0" />
-                <div>
-                  <p className="font-semibold text-text">
-                    Reviewer: {assignedFaculty ? assignedFaculty.fullName : "Chapter Faculty Coordinator"}
-                  </p>
-                  <p className="text-[11px] text-text-dim">
-                    {assignedFaculty?.email ? assignedFaculty.email : "Assigned faculty coordinator will review and approve this report"}
-                  </p>
-                </div>
-              </div>
-              <Badge tone="cyan">Faculty Reviewer</Badge>
-            </div>
-          ) : null}
 
           {/* Dynamic Event Data Display when selected */}
           {selectedEvent && selectedAnalytics ? (
@@ -714,19 +668,11 @@ export default function ChapterReportsPage({
               </Button>
               <Button
                 type="button"
-                variant="ghost"
-                onClick={() => handleGenerate(false)}
+                variant="orange"
+                onClick={handleGenerate}
                 disabled={!selectedEvent}
               >
-                Generate draft
-              </Button>
-              <Button
-                type="button"
-                variant="primary"
-                onClick={() => handleGenerate(true)}
-                disabled={!selectedEvent}
-              >
-                Generate & Submit to Faculty
+                Generate & edit report
               </Button>
             </div>
           </div>

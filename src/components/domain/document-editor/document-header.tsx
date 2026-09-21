@@ -18,10 +18,6 @@ export function DocumentHeader({
   onSave,
   onSubmit,
   showSubmit,
-  submitLabel,
-  showApprove,
-  onApprove,
-  onRequestCorrection,
   saveState,
   toolQuery,
   onToolQueryChange,
@@ -38,10 +34,6 @@ export function DocumentHeader({
   onSave?: () => void;
   onSubmit?: () => void;
   showSubmit?: boolean;
-  submitLabel?: string;
-  showApprove?: boolean;
-  onApprove?: (comment: string) => void;
-  onRequestCorrection?: (comment: string) => void;
   saveState: SaveState;
   toolQuery: string;
   onToolQueryChange: (q: string) => void;
@@ -153,30 +145,8 @@ export function DocumentHeader({
             className="h-8 text-[12px]"
             onClick={onSubmit}
           >
-            {submitLabel ?? "Submit to Faculty"}
+            Submit
           </Button>
-        ) : null}
-        {showApprove && onApprove ? (
-          <div className="flex items-center gap-1.5">
-            <Button
-              type="button"
-              variant="green"
-              className="h-8 text-[12px]"
-              onClick={() => onApprove("")}
-            >
-              Approve
-            </Button>
-            {onRequestCorrection ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 text-[12px]"
-                onClick={() => onRequestCorrection("")}
-              >
-                Request changes
-              </Button>
-            ) : null}
-          </div>
         ) : null}
       </div>
     </header>

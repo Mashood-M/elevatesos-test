@@ -15,7 +15,7 @@ import {
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole } from "@/lib/access";
 import { roleKeyLabel } from "@/lib/leadership";
-import { isHqRole, roleRank } from "@/lib/permissions";
+import { isHqRole } from "@/lib/permissions";
 import {
   filterAndSortChapters,
   isTestChapter,
@@ -45,6 +45,21 @@ const CHAPTER_ROLES: SwitchableRole[] = [
 ];
 
 const ALL_SWITCHABLE_ROLES: SwitchableRole[] = [...HQ_ROLES, ...CHAPTER_ROLES];
+
+const ROLE_PRIORITY: RoleKey[] = [
+  "alumni",
+  "student",
+  "faculty_coordinator",
+  "class_representative",
+  "campus_lead",
+  "hq_admin",
+  "founder",
+];
+
+function roleRank(key: RoleKey): number {
+  const idx = ROLE_PRIORITY.indexOf(key);
+  return idx === -1 ? 0 : idx;
+}
 
 export function RoleSwitcher() {
   const router = useRouter();

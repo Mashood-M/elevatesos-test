@@ -461,9 +461,9 @@ export default function ChapterEventsPage({
       )}
 
       {/* Main Events Workspace */}
-      <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow-sm)]">
+      <div className="space-y-5">
         {/* Search & Filter Bar */}
-        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" size={15} />
             <Input
@@ -617,7 +617,7 @@ export default function ChapterEventsPage({
                   key={ev.id}
                   event={ev}
                   href={`/chapter/${slug}/events/${ev.id}`}
-                  className="bg-bg border border-border/60 hover:border-border transition-all shadow-[var(--shadow-sm)]"
+                  className="bg-white border border-border/60 hover:border-border transition-all shadow-[var(--shadow-sm)]"
                   hideStatus={!canManageThisEvent}
                   meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
                   footer={
@@ -627,12 +627,12 @@ export default function ChapterEventsPage({
                         {isFacultyRole(session.roleKey) ? (
                           <div className="flex items-center gap-2">
                             <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-panel">
+                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-hover">
                                 View Details
                               </Button>
                             </Link>
                             <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-panel">
+                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-hover">
                                 Attendance
                               </Button>
                             </Link>
@@ -666,13 +666,13 @@ export default function ChapterEventsPage({
                           </Link>
                         ) : isEnded ? (
                           <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                            <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 text-text-dim hover:text-text hover:bg-bg-panel">
+                            <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 text-text-dim hover:text-text hover:bg-bg-hover">
                               View Details
                             </Button>
                           </Link>
                         ) : regState.status === "upcoming" || regState.isUpcoming ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg-panel rounded border border-border/60">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg rounded border border-border/60">
                               <Clock size={11} />
                               Opens {new Date(ev.registrationStart).toLocaleDateString()}
                             </span>
@@ -684,7 +684,7 @@ export default function ChapterEventsPage({
                           </div>
                         ) : regState.isClosed ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg-panel rounded border border-border/60">
+                            <span className="px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg rounded border border-border/60">
                               {ev.status === "registration_closed" ? "Reg. Stopped" : "Reg. Closed"}
                             </span>
                             <Link href={`/chapter/${slug}/events/${ev.id}`}>
@@ -732,7 +732,7 @@ export default function ChapterEventsPage({
                               End Event
                             </Button>
                           ) : isEnded ? (
-                            <span className="text-[11px] font-medium text-text-dim px-2 py-0.5 rounded bg-bg-panel border border-border/50">
+                            <span className="text-[11px] font-medium text-text-dim px-2 py-0.5 rounded bg-bg border border-border/50">
                               Completed
                             </span>
                           ) : (
@@ -777,7 +777,7 @@ export default function ChapterEventsPage({
                             <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
                               <Button
                                 variant="ghost"
-                                className="h-8 px-2.5 text-xs border border-border/80 hover:bg-bg-panel font-medium"
+                                className="h-8 px-2.5 text-xs border border-border/80 hover:bg-bg-hover font-medium"
                               >
                                 Attendance
                               </Button>

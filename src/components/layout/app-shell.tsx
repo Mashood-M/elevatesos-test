@@ -40,6 +40,7 @@ function isNavActive(pathname: string, href: string) {
     "/chapter/students",
     "/chapter/calendar",
     "/chapter/reports",
+    "/chapter/peer-labs",
   ]);
   if (/^\/chapter\/[^/]+$/.test(href) && !knownChapterSubroutes.has(href)) {
     return pathname === href;

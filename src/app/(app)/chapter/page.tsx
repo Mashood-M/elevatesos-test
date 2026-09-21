@@ -15,6 +15,7 @@ import { isFacultyRole } from "@/lib/access";
 import { BookOpen, QrCode, Share2, User } from "lucide-react";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
+import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 import type { EventItem } from "@/types";
 
 export default function ChapterIndexPage() {
@@ -48,28 +49,16 @@ export default function ChapterIndexPage() {
   }, [router, session, store.chapters, hydrated]);
 
   if (!mounted || !hydrated) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-center font-mono text-xs text-text-dim animate-pulse">
-          Loading workspace...
-        </div>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
-  // If user has a valid assigned chapter, show loading indicator while redirecting
+  // If user has a valid assigned chapter, show loading skeleton while redirecting
   const assignedChapter = session.chapterId
     ? store.chapters.find((c) => c.id === session.chapterId || c.slug === session.chapterId)
     : null;
 
   if (session.chapterId && assignedChapter?.slug) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="text-center font-mono text-xs text-text-dim">
-          Redirecting to your chapter workspace...
-        </div>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   // Independent Student Hub (no chapter assigned) — privacy preserving, open-to-all events only

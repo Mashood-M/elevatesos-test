@@ -57,27 +57,50 @@ CREATE TABLE IF NOT EXISTS public.chapters (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Helper function: generate unique 6-char alphanumeric chapter token (CHP-XXXXXX)
+-- Sequence & formatting for sequential Chapter Elevates ID (CHP-0001 .. CHP-0999, CHP-A000 .. CHP-Z999)
+CREATE SEQUENCE IF NOT EXISTS public.chapters_elevates_id_seq START WITH 1;
+
+CREATE OR REPLACE FUNCTION public.format_chapter_elevates_id(n BIGINT)
+RETURNS TEXT LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  letter_idx INT;
+  letter CHAR(1);
+  rem INT;
+  first_letter CHAR(1);
+  second_letter CHAR(1);
+  two_letter_offset INT;
+BEGIN
+  IF n < 1000 THEN
+    RETURN 'CHP-' || LPAD(n::TEXT, 4, '0');
+  ELSIF n < 27000 THEN
+    letter_idx := (n - 1000) / 1000;
+    letter := chr(65 + letter_idx);
+    rem := (n - 1000) % 1000;
+    RETURN 'CHP-' || letter || LPAD(rem::TEXT, 3, '0');
+  ELSIF n < 703000 THEN
+    two_letter_offset := (n - 27000) / 100;
+    first_letter := chr(65 + (two_letter_offset / 26));
+    second_letter := chr(65 + (two_letter_offset % 26));
+    rem := (n - 27000) % 100;
+    RETURN 'CHP-' || first_letter || second_letter || LPAD(rem::TEXT, 2, '0');
+  ELSE
+    RETURN 'CHP-' || LPAD(n::TEXT, 6, '0');
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.generate_chapter_elevates_id()
 RETURNS TEXT LANGUAGE plpgsql AS $$
 DECLARE
-  chars  TEXT    := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; -- no 0/O/1/I confusion
-  result TEXT    := '';
-  i      INT;
-  attempts INT   := 0;
+  next_val BIGINT;
+  candidate TEXT;
 BEGIN
   LOOP
-    result := '';
-    FOR i IN 1..6 LOOP
-      result := result || substr(chars, floor(random() * length(chars) + 1)::INT, 1);
-    END LOOP;
-    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.chapters WHERE elevates_id = 'CHP-' || result);
-    attempts := attempts + 1;
-    IF attempts > 100 THEN
-      RAISE EXCEPTION 'generate_chapter_elevates_id: too many collisions';
-    END IF;
+    next_val := nextval('public.chapters_elevates_id_seq');
+    candidate := public.format_chapter_elevates_id(next_val);
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.chapters WHERE elevates_id = candidate);
   END LOOP;
-  RETURN 'CHP-' || result;
+  RETURN candidate;
 END;
 $$;
 
@@ -130,27 +153,57 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Helper function: generate unique 6-char alphanumeric user token (ELV-XXXXXX)
+-- Sequence & formatting for sequential User Elevates ID (ELV-0001 .. ELV-0999, ELV-A000 .. ELV-Z999)
+CREATE SEQUENCE IF NOT EXISTS public.profiles_elevates_id_seq START WITH 1;
+
+CREATE OR REPLACE FUNCTION public.format_elevates_id(n BIGINT)
+RETURNS TEXT LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  letter_idx INT;
+  letter CHAR(1);
+  rem INT;
+  first_letter CHAR(1);
+  second_letter CHAR(1);
+  two_letter_offset INT;
+BEGIN
+  -- 1 to 999: 4 digits padded with zeros (ELV-0001 to ELV-0999, e.g. ELV-0155)
+  IF n < 1000 THEN
+    RETURN 'ELV-' || LPAD(n::TEXT, 4, '0');
+
+  -- 1000 to 26999: 1 letter + 3 digits (ELV-A000 to ELV-Z999, 26,000 users)
+  ELSIF n < 27000 THEN
+    letter_idx := (n - 1000) / 1000;
+    letter := chr(65 + letter_idx);
+    rem := (n - 1000) % 1000;
+    RETURN 'ELV-' || letter || LPAD(rem::TEXT, 3, '0');
+
+  -- 27000 to 702999: 2 letters + 2 digits (ELV-AA00 to ELV-ZZ99, 676,000 users)
+  ELSIF n < 703000 THEN
+    two_letter_offset := (n - 27000) / 100;
+    first_letter := chr(65 + (two_letter_offset / 26));
+    second_letter := chr(65 + (two_letter_offset % 26));
+    rem := (n - 27000) % 100;
+    RETURN 'ELV-' || first_letter || second_letter || LPAD(rem::TEXT, 2, '0');
+
+  -- Fallback for > 700k+
+  ELSE
+    RETURN 'ELV-' || LPAD(n::TEXT, 6, '0');
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.generate_elevates_id()
 RETURNS TEXT LANGUAGE plpgsql AS $$
 DECLARE
-  chars  TEXT    := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  result TEXT    := '';
-  i      INT;
-  attempts INT   := 0;
+  next_val BIGINT;
+  candidate TEXT;
 BEGIN
   LOOP
-    result := '';
-    FOR i IN 1..6 LOOP
-      result := result || substr(chars, floor(random() * length(chars) + 1)::INT, 1);
-    END LOOP;
-    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.profiles WHERE elevates_id = 'ELV-' || result);
-    attempts := attempts + 1;
-    IF attempts > 100 THEN
-      RAISE EXCEPTION 'generate_elevates_id: too many collisions';
-    END IF;
+    next_val := nextval('public.profiles_elevates_id_seq');
+    candidate := public.format_elevates_id(next_val);
+    EXIT WHEN NOT EXISTS (SELECT 1 FROM public.profiles WHERE elevates_id = candidate);
   END LOOP;
-  RETURN 'ELV-' || result;
+  RETURN candidate;
 END;
 $$;
 
@@ -158,7 +211,9 @@ $$;
 CREATE OR REPLACE FUNCTION public.assign_elevates_id()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.elevates_id IS NULL OR NEW.elevates_id = '' THEN
+  IF NEW.elevates_id IS NULL
+     OR NEW.elevates_id = ''
+     OR (NEW.elevates_id ~ '^ELV-[A-Z0-9]{6}$' AND NOT NEW.elevates_id ~ '^ELV-([0-9]{4}|[A-Z][0-9]{3}|[A-Z]{2}[0-9]{2})$') THEN
     NEW.elevates_id := public.generate_elevates_id();
   END IF;
   RETURN NEW;

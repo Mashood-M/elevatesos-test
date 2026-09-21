@@ -7,6 +7,7 @@ import { deriveChapterShortCode, ensureTestChapter, getChapterElevatesId } from 
 import { extractLocationFromNotes } from "@/lib/slug";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isHqRole } from "@/lib/permissions";
+import { generateElevatesId } from "@/lib/forms/helpers";
 import type {
   ActivityLog,
   Announcement,
@@ -135,9 +136,7 @@ export function transformProfileRow(p: Record<string, any>): Profile {
     elevatesId:
       p.elevatesId ||
       p.elevates_id ||
-      (p.id
-        ? `ELV-${String(p.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`
-        : undefined),
+      (p.id ? generateElevatesId(p.id) : undefined),
     email: p.email,
     fullName: p.fullName ?? p.full_name,
     createdAt: p.createdAt ?? p.created_at ?? undefined,

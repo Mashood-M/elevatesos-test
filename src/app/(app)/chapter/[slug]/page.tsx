@@ -20,6 +20,7 @@ import { formatDate, formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { getChapterElevatesId } from "@/lib/chapters";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
+import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 
 const STUDENT_START = [
   {
@@ -66,11 +67,7 @@ export default function ChapterDashboardPage({
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   if (!mounted) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-mono text-xs text-text-dim animate-pulse">Loading chapter...</p>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   const activityScore = chapter ? calculateChapterActivityScore(store, chapter.id) : 0;

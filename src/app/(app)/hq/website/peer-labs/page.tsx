@@ -37,6 +37,7 @@ export interface LabResource {
   title: string;
   url: string;
   type: string;
+  isGated?: boolean;
 }
 
 export interface PeerLabSeriesItem {
@@ -47,9 +48,11 @@ export interface PeerLabSeriesItem {
   description: string;
   /** Host campus: chapters.id, or null for a network-wide lab */
   chapterId: string | null;
-  status: "Completed" | "Active" | "Upcoming";
+  status: "Draft" | "Completed" | "Active" | "Upcoming";
   joinedCount: number;
   featured: boolean;
+  posterUrl?: string;
+  thumbnailUrl?: string;
   facilitators: Facilitator[];
   resources: LabResource[];
   lessons: LessonPhase[];
@@ -111,9 +114,11 @@ export default function PeerLabsCMSPage() {
           subtitle: l.subtitle || "",
           description: l.description || "",
           chapterId: l.chapterId ?? null,
-          status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as PeerLabSeriesItem["status"],
+          status: (l.status === "draft" ? "Draft" : l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as PeerLabSeriesItem["status"],
           joinedCount: l.enrolledCount || 0,
           featured: Boolean(l.featured),
+          posterUrl: (l as any).poster_url || (l as any).posterUrl || "",
+          thumbnailUrl: (l as any).thumbnail_url || (l as any).thumbnailUrl || "",
           facilitators: (l.facilitators || []).map((f) => ({ name: f.name, role: f.role || "Facilitator" })),
           resources: l.resources || [],
           lessons: (l.phases || []).map((p) => ({
@@ -157,8 +162,10 @@ export default function PeerLabsCMSPage() {
     status: "Upcoming",
     joinedCount: 0,
     featured: false,
+    posterUrl: "",
+    thumbnailUrl: "",
     facilitators: [{ name: "", role: "" }],
-    resources: [{ title: "", url: "", type: "Doc" }],
+    resources: [{ title: "", url: "", type: "Doc", isGated: true }],
     lessons: [
       {
         id: `phase-${Date.now()}`,
@@ -409,6 +416,45 @@ export default function PeerLabsCMSPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="font-semibold text-text-dim block mb-1">Poster / Banner URL</label>
+                  <Input
+                    placeholder="https://.../poster.png"
+                    value={editingLab.posterUrl || ""}
+                    onChange={(e) =>
+                      setEditingLab({ ...editingLab, posterUrl: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-text-dim block mb-1">Custom Thumbnail URL</label>
+                  <Input
+                    placeholder="https://.../thumb.png"
+                    value={editingLab.thumbnailUrl || ""}
+                    onChange={(e) =>
+                      setEditingLab({ ...editingLab, thumbnailUrl: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              {(editingLab.posterUrl || editingLab.thumbnailUrl) ? (
+                <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-page p-2">
+                  <img
+                    src={editingLab.posterUrl || editingLab.thumbnailUrl}
+                    alt="Peer lab artwork"
+                    className="h-12 w-20 object-cover rounded border border-border"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = "none";
+                    }}
+                  />
+                  <span className="text-[11px] text-text-dim">
+                    Poster artwork preview
+                  </span>
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="font-semibold text-text-dim block mb-1">Campus Host</label>
                   <select
                     className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
@@ -585,6 +631,105 @@ export default function PeerLabsCMSPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Exclusive Gated Resources */}
+              <div className="pt-3 border-t border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="font-bold text-text uppercase tracking-wider block">
+                      🎁 Track Resources (Exclusive / Gated)
+                    </label>
+                    <p className="text-[11px] text-text-dim">
+                      Slide decks, GitHub repos, and cheatsheets for registered members.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setEditingLab({
+                        ...editingLab,
+                        resources: [
+                          ...editingLab.resources,
+                          { title: "", url: "", type: "Slides", isGated: true },
+                        ],
+                      })
+                    }
+                  >
+                    <Plus size={12} /> Add Resource
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {editingLab.resources.map((res, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 flex-wrap sm:flex-nowrap rounded-[var(--radius-md)] border border-border bg-bg-page p-2"
+                    >
+                      <input
+                        className="h-8 flex-1 min-w-[140px] rounded border border-border bg-bg px-2 text-xs text-text"
+                        placeholder="Title (e.g. Lab Handbook)"
+                        value={res.title}
+                        onChange={(e) => {
+                          const next = [...editingLab.resources];
+                          next[idx] = { ...next[idx], title: e.target.value };
+                          setEditingLab({ ...editingLab, resources: next });
+                        }}
+                      />
+                      <input
+                        className="h-8 flex-1 min-w-[150px] rounded border border-border bg-bg px-2 text-xs text-text font-mono"
+                        placeholder="URL (https://...)"
+                        value={res.url}
+                        onChange={(e) => {
+                          const next = [...editingLab.resources];
+                          next[idx] = { ...next[idx], url: e.target.value };
+                          setEditingLab({ ...editingLab, resources: next });
+                        }}
+                      />
+                      <select
+                        className="h-8 rounded border border-border bg-bg px-2 text-xs text-text shrink-0"
+                        value={res.type || "Doc"}
+                        onChange={(e) => {
+                          const next = [...editingLab.resources];
+                          next[idx] = { ...next[idx], type: e.target.value };
+                          setEditingLab({ ...editingLab, resources: next });
+                        }}
+                      >
+                        <option value="Slides">Slides</option>
+                        <option value="Code">Code</option>
+                        <option value="Doc">Doc</option>
+                        <option value="Video">Video</option>
+                        <option value="Cheatsheet">Cheatsheet</option>
+                      </select>
+                      <label className="flex items-center gap-1 text-[11px] text-text-dim cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={res.isGated !== false}
+                          onChange={(e) => {
+                            const next = [...editingLab.resources];
+                            next[idx] = { ...next[idx], isGated: e.target.checked };
+                            setEditingLab({ ...editingLab, resources: next });
+                          }}
+                          className="accent-[var(--accent)]"
+                        />
+                        <span>Gated</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingLab({
+                            ...editingLab,
+                            resources: editingLab.resources.filter((_, j) => j !== idx),
+                          })
+                        }
+                        className="text-text-dim hover:text-red-500 p-1"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-3 border-t border-border">
@@ -618,6 +763,8 @@ export default function PeerLabsCMSPage() {
                           chapterId: lab.chapterId,
                           status: lab.status.toLowerCase(),
                           featured: lab.featured,
+                          poster_url: lab.posterUrl,
+                          thumbnail_url: lab.thumbnailUrl,
                           resources: lab.resources.filter((r) => r.title || r.url),
                           facilitators: lab.facilitators,
                           phases: lab.lessons,

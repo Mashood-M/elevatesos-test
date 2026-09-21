@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/context/store-context";
 import { canAccessPath, homeForRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { WorkspaceSkeleton } from "@/components/layout/workspace-skeleton";
 
 export function RoleGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -40,30 +41,14 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, userId, roleKey, chapterSlug, router, hydrated, store.session.authRoleKey, isVolunteer]);
 
-  // While store is hydrating from Supabase, render loading indicator
+  // While store is hydrating from Supabase, render full modern ERP workspace skeleton
   if (!hydrated) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-[13px] text-text-mute">
-        Loading workspace…
-      </div>
-    );
+    return <WorkspaceSkeleton />;
   }
 
-  // Once hydrated, if no session userId exists, show redirect message
-  if (!userId) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-[13px] text-text-mute">
-        Redirecting to sign in…
-      </div>
-    );
-  }
-
-  if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey, isVolunteer)) {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center text-[13px] text-text-mute">
-        Redirecting to your workspace…
-      </div>
-    );
+  // Once hydrated, if no session userId exists or user doesn't have path access, show clean skeleton while redirecting
+  if (!userId || !canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey, isVolunteer)) {
+    return <WorkspaceSkeleton />;
   }
 
   return <>{children}</>;

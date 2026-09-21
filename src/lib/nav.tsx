@@ -157,6 +157,7 @@ export function navGroupsForRole(
           { href: base, label: "Chapter Overview", icon: I.home },
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
+          { href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook },
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/students`, label: "Students", icon: I.students },
           { href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership },
@@ -188,6 +189,7 @@ export function navGroupsForRole(
         items: [
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
+          { href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook },
           ...(roleKey !== "class_representative"
             ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
             : []),
@@ -253,6 +255,7 @@ export function navGroupsForRole(
       items: [
         { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
         { href: eventsHref, label: "Events", icon: I.events },
+        { href: slug ? `${base}/peer-labs` : "/peer-labs", label: "Peer Labs", icon: I.playbook },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
         { href: `${base}/projects`, label: "Projects", icon: I.projects },
         {

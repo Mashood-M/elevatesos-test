@@ -86,17 +86,31 @@ export async function GET(req: Request) {
     }
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
+    const requestedChapterId = searchParams.get("chapterId");
     if (type === "peer_labs") {
-      if (!auth.isHq) {
-        return NextResponse.json(
-          { ok: false, error: "Permission denied: Only HQ can access full peer labs CMS data" },
-          { status: 403 },
-        );
-      }
-      const { data: labs, error: labsErr } = await admin
+      let query = admin
         .from("peer_labs")
         .select("*")
         .order("created_at", { ascending: false });
+
+      const isLeadOrExec = isExecutiveRole(auth.roleKey) || isFacultyRole(auth.roleKey);
+      const effectiveChapterId =
+        auth.chapterId ||
+        (requestedChapterId && isUuid(requestedChapterId) ? requestedChapterId : null);
+
+      if (!auth.isHq) {
+        if (effectiveChapterId) {
+          if (isLeadOrExec) {
+            query = query.or(`chapter_id.is.null,chapter_id.eq.${effectiveChapterId}`);
+          } else {
+            query = query.or(`chapter_id.is.null,chapter_id.eq.${effectiveChapterId}`).in("status", ["upcoming", "active", "completed"]);
+          }
+        } else {
+          query = query.is("chapter_id", null).in("status", ["upcoming", "active", "completed"]);
+        }
+      }
+
+      const { data: labs, error: labsErr } = await query;
       if (labsErr) {
         return NextResponse.json({ ok: false, error: labsErr.message }, { status: 500 });
       }
@@ -114,6 +128,8 @@ export async function GET(req: Request) {
         applications_open?: boolean;
         featured?: boolean;
         banner_url?: string | null;
+        poster_url?: string | null;
+        thumbnail_url?: string | null;
         max_participants?: number | null;
         enrolled_count?: number;
         resources?: unknown[];
@@ -154,6 +170,19 @@ export async function GET(req: Request) {
         phases = (ph.data ?? []) as unknown as PhaseItem[];
         facilitators = (fa.data ?? []) as unknown as FacilitatorItem[];
       }
+      const userEnrollmentsMap = new Map<string, { id: string; status: string }>();
+      if (auth.userId) {
+        const { data: enrolls } = await admin
+          .from("peer_lab_enrollments")
+          .select("id, peer_lab_id, status")
+          .eq("user_id", auth.userId);
+        if (enrolls) {
+          for (const e of enrolls) {
+            userEnrollmentsMap.set(e.peer_lab_id, { id: e.id, status: e.status });
+          }
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         peerLabs: labRows.map((l) => ({
@@ -169,8 +198,12 @@ export async function GET(req: Request) {
           applicationsOpen: l.applications_open ?? true,
           featured: l.featured ?? false,
           bannerUrl: l.banner_url ?? null,
+          posterUrl: l.poster_url ?? null,
+          thumbnailUrl: l.thumbnail_url ?? null,
           maxParticipants: l.max_participants ?? null,
           enrolledCount: l.enrolled_count ?? 0,
+          enrolled: userEnrollmentsMap.has(l.id),
+          enrollmentStatus: userEnrollmentsMap.get(l.id)?.status ?? null,
           resources: Array.isArray(l.resources) ? l.resources : [],
           facilitators: facilitators
             .filter((f) => f.peer_lab_id === l.id)
@@ -464,8 +497,6 @@ export async function POST(req: Request) {
       "organization",
       "org_settings_patch",
       "website_section",
-      "peer_lab",
-      "delete_peer_lab",
       "leadership_term",
       "system_ui_state",
       "discord_integration",
@@ -763,16 +794,32 @@ export async function POST(req: Request) {
       if (Array.isArray(event.volunteerStudentIds)) eventPayload.volunteer_student_ids = event.volunteerStudentIds.filter(isUuid);
       if (event.platform) eventPayload.platform = event.platform;
       if (event.caseStudy) eventPayload.case_study = event.caseStudy;
+      if (event.posterUrl) eventPayload.poster_url = event.posterUrl;
+      if (event.thumbnailUrl) eventPayload.thumbnail_url = event.thumbnailUrl;
+      if (event.seriesTitle) eventPayload.series_title = event.seriesTitle;
+      if (event.seriesPill) eventPayload.series_pill = event.seriesPill;
+      if (Array.isArray(event.lessons)) eventPayload.lessons = event.lessons;
+      if (Array.isArray(event.resources)) eventPayload.resources = event.resources;
 
       let { error } = await admin.from("events").upsert(eventPayload);
 
-      // Graceful fallback if database migration 023 has not yet added hosts/organizers
-      if (error && (error.message?.includes("hosts") || error.message?.includes("organizers"))) {
-        console.warn("Retrying event upsert without hosts/organizers. Run migration 023 in Supabase SQL editor.");
-        delete eventPayload.hosts;
-        delete eventPayload.organizers;
+      // Generic PGRST204 recovery: PostgREST returns PGRST204 when a column in the
+      // payload does not exist in the target table. Parse the error message to find
+      // which column is unknown, remove it from the payload, and retry. This loop
+      // means new UI-only fields (e.g. series_pill, series_title) never need a
+      // hardcoded allowlist — they are auto-stripped until a migration adds them.
+      let stripAttempts = 0;
+      while (error && stripAttempts < 20) {
+        // PostgREST error messages look like:
+        //   "Could not find the 'series_pill' column of 'events' in the schema cache"
+        const colMatch = error.message?.match(/Could not find the '([^']+)' column/);
+        if (!colMatch) break; // not a missing-column error, propagate as-is
+        const badCol = colMatch[1];
+        console.warn(`[mutations] events upsert: stripping unknown column '${badCol}' and retrying`);
+        delete (eventPayload as Record<string, unknown>)[badCol];
         const retryRes = await admin.from("events").upsert(eventPayload);
         error = retryRes.error;
+        stripAttempts++;
       }
 
       if (error) {
@@ -961,18 +1008,77 @@ export async function POST(req: Request) {
 
     // 2b. PEER LAB MUTATIONS (own tables: peer_labs, peer_lab_phases, peer_lab_facilitators)
     if (type === "peer_lab") {
+      const isLeadOrExec = isExecutiveRole(auth.roleKey) || isFacultyRole(auth.roleKey);
+      if (!auth.isHq && !isLeadOrExec) {
+        return NextResponse.json(
+          { ok: false, error: "Permission denied: Only Campus Leads, Executives, and HQ can manage Peer Labs" },
+          { status: 403 },
+        );
+      }
+
       const l = data ?? {};
       const title = String(l.title ?? "").trim();
       if (!title) {
         return NextResponse.json({ ok: false, error: "Title is required" }, { status: 400 });
       }
-      const slug = slugify(String(l.slug || title));
+      let slug = slugify(String(l.slug || title));
       if (!slug) {
         return NextResponse.json({ ok: false, error: "Could not build a slug from the title" }, { status: 400 });
       }
       const labId = isUuid(l.id) ? l.id : genUuid();
 
-      const { data: existing } = await admin.from("peer_labs").select("id").eq("id", labId).maybeSingle();
+      const { data: existing } = await admin.from("peer_labs").select("id, chapter_id, slug").eq("id", labId).maybeSingle();
+
+      // Scoping:
+      // If NOT HQ, chapterId is FORCED to user's chapterId (cannot create open-to-all or edit other chapters' labs)
+      let targetChapterId: string | null = null;
+      if (auth.isHq) {
+        targetChapterId = isUuid(l.chapterId) ? l.chapterId : null; // null = open-to-all
+      } else {
+        const userEffectiveChapterId =
+          auth.chapterId ||
+          (isUuid(l.chapterId) && (auth.allowedChapterIds?.includes(l.chapterId) || isLeadOrExec) ? l.chapterId : null);
+
+        if (!userEffectiveChapterId) {
+          return NextResponse.json(
+            { ok: false, error: "You must belong to a chapter to manage Peer Labs" },
+            { status: 403 },
+          );
+        }
+        if (existing && existing.chapter_id && existing.chapter_id !== userEffectiveChapterId) {
+          return NextResponse.json(
+            { ok: false, error: "Permission denied: You can only manage Peer Labs for your chapter" },
+            { status: 403 },
+          );
+        }
+        targetChapterId = userEffectiveChapterId;
+      }
+
+      // If creating new lab, ensure slug is unique by auto-incrementing if needed
+      if (!existing) {
+        let candidateSlug = slug;
+        let counter = 1;
+        while (true) {
+          const { data: slugMatch } = await admin
+            .from("peer_labs")
+            .select("id")
+            .eq("slug", candidateSlug)
+            .maybeSingle();
+          if (!slugMatch || slugMatch.id === labId) {
+            slug = candidateSlug;
+            break;
+          }
+          counter++;
+          candidateSlug = `${slug}-${counter}`;
+        }
+      }
+
+      const phases = (Array.isArray(l.phases) ? l.phases : []).filter((p: Record<string, unknown>) =>
+        String(p?.title ?? "").trim(),
+      );
+      const facilitators = (Array.isArray(l.facilitators) ? l.facilitators : []).filter((f: Record<string, unknown>) =>
+        String(f?.name ?? "").trim(),
+      );
 
       const row: Record<string, unknown> = {
         id: labId,
@@ -981,38 +1087,61 @@ export async function POST(req: Request) {
         subtitle: l.subtitle || null,
         track: l.track || null,
         description: l.description || null,
-        chapter_id: isUuid(l.chapterId) ? l.chapterId : null,
+        chapter_id: targetChapterId,
         cluster_id: isUuid(l.clusterId) ? l.clusterId : null,
         status: normalizePeerLabStatus(l.status),
         applications_open: l.applicationsOpen ?? true,
         featured: l.featured ?? false,
         banner_url: l.bannerUrl || null,
+        poster_url: l.poster_url || l.posterUrl || null,
+        thumbnail_url: l.thumbnail_url || l.thumbnailUrl || null,
         max_participants: Number.isFinite(l.maxParticipants) ? l.maxParticipants : null,
         resources: Array.isArray(l.resources) ? l.resources : [],
+        phases,
+        facilitators,
       };
-      if (!existing) row.created_by = auth.userId;
 
-      const { error: labErr } = await admin.from("peer_labs").upsert(row);
+      if (!existing && isUuid(auth.userId)) {
+        const { data: pCheck } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("id", auth.userId)
+          .maybeSingle();
+        if (pCheck) {
+          row.created_by = auth.userId;
+        }
+      }
+
+      let { error: labErr } = await admin.from("peer_labs").upsert(row);
+      if (
+        labErr &&
+        (labErr.message?.includes("poster_url") ||
+          labErr.message?.includes("thumbnail_url") ||
+          labErr.message?.includes("resources") ||
+          labErr.message?.includes("cluster_id") ||
+          labErr.message?.includes("column"))
+      ) {
+        delete row.poster_url;
+        delete row.thumbnail_url;
+        delete row.resources;
+        delete row.cluster_id;
+        const retry = await admin.from("peer_labs").upsert(row);
+        labErr = retry.error;
+      }
       if (labErr) {
         console.error("Mutation error (peer_lab):", labErr);
         const msg = labErr.code === "23505" ? "A peer lab with this slug already exists" : labErr.message;
         return NextResponse.json({ ok: false, error: msg }, { status: 400 });
       }
 
-      const phases = (Array.isArray(l.phases) ? l.phases : []).filter((p: Record<string, unknown>) => String(p?.title ?? "").trim());
-      const facilitators = (Array.isArray(l.facilitators) ? l.facilitators : []).filter((f: Record<string, unknown>) =>
-        String(f?.name ?? "").trim(),
-      );
-
-      const [delPh, delFa] = await Promise.all([
-        admin.from("peer_lab_phases").delete().eq("peer_lab_id", labId),
-        admin.from("peer_lab_facilitators").delete().eq("peer_lab_id", labId),
-      ]);
-      if (delPh.error || delFa.error) {
-        return NextResponse.json(
-          { ok: false, error: `Peer lab saved, but its phases/facilitators could not be updated: ${(delPh.error || delFa.error)!.message}` },
-          { status: 500 },
-        );
+      // Sync child tables (peer_lab_phases, peer_lab_facilitators)
+      try {
+        await Promise.all([
+          admin.from("peer_lab_phases").delete().eq("peer_lab_id", labId),
+          admin.from("peer_lab_facilitators").delete().eq("peer_lab_id", labId),
+        ]);
+      } catch (delErr) {
+        console.warn("Could not clear existing phases/facilitators:", delErr);
       }
 
       if (phases.length > 0) {
@@ -1059,12 +1188,192 @@ export async function POST(req: Request) {
       if (!isUuid(id) && !slug) {
         return NextResponse.json({ ok: false, error: "id or slug is required" }, { status: 400 });
       }
-      const { error } = await admin.from("peer_labs").delete().match(isUuid(id) ? { id } : { slug });
+      const { data: existing } = await admin
+        .from("peer_labs")
+        .select("id, chapter_id, slug")
+        .match(isUuid(id) ? { id } : { slug })
+        .maybeSingle();
+
+      if (!existing) {
+        return NextResponse.json({ ok: false, error: "Peer lab not found" }, { status: 404 });
+      }
+
+      if (!auth.isHq) {
+        const isLeadOrExec = isExecutiveRole(auth.roleKey) || isFacultyRole(auth.roleKey);
+        if (!isLeadOrExec || existing.chapter_id !== auth.chapterId) {
+          return NextResponse.json(
+            { ok: false, error: "Permission denied: You can only delete Peer Labs from your chapter" },
+            { status: 403 },
+          );
+        }
+      }
+
+      const { error } = await admin.from("peer_labs").delete().eq("id", existing.id);
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
-      await revalidateWeb(["peer-labs", `peer-lab:${slug ?? id}`]);
+      await revalidateWeb(["peer-labs", `peer-lab:${existing.slug || slug || id}`]);
       return NextResponse.json({ ok: true });
+    }
+
+    if (type === "enroll_peer_lab") {
+      const { labId, action } = data ?? {};
+      if (!labId || !isUuid(labId)) {
+        return NextResponse.json({ ok: false, error: "Valid peer lab ID is required" }, { status: 400 });
+      }
+
+      const { data: lab, error: labErr } = await admin
+        .from("peer_labs")
+        .select("id, slug, title, chapter_id, applications_open, status, max_participants, enrolled_count")
+        .eq("id", labId)
+        .maybeSingle();
+
+      if (labErr || !lab) {
+        return NextResponse.json({ ok: false, error: "Peer lab not found" }, { status: 404 });
+      }
+
+      // Check access boundary: Student can enroll if Open-to-All (chapter_id IS NULL) or matches user chapter
+      if (lab.chapter_id && !auth.isHq) {
+        const isAllowed =
+          !auth.chapterId ||
+          auth.chapterId === lab.chapter_id ||
+          (Array.isArray(auth.allowedChapterIds) && auth.allowedChapterIds.includes(lab.chapter_id));
+        if (!isAllowed) {
+          return NextResponse.json({ ok: false, error: "This peer lab is exclusive to another campus chapter" }, { status: 403 });
+        }
+      }
+
+      if (action === "withdraw") {
+        const { error: delErr } = await admin
+          .from("peer_lab_enrollments")
+          .delete()
+          .match({ peer_lab_id: labId, user_id: auth.userId });
+
+        if (delErr) {
+          return NextResponse.json({ ok: false, error: delErr.message }, { status: 400 });
+        }
+        return NextResponse.json({ ok: true, enrolled: false });
+      }
+
+      if (!lab.applications_open) {
+        return NextResponse.json({ ok: false, error: "Registrations for this peer lab are currently closed" }, { status: 409 });
+      }
+
+      if (lab.max_participants && (lab.enrolled_count ?? 0) >= lab.max_participants) {
+        return NextResponse.json({ ok: false, error: "This peer lab has reached maximum capacity" }, { status: 409 });
+      }
+
+      const { data: profile } = await admin
+        .from("profiles")
+        .select("full_name, email, phone, elevates_id")
+        .eq("id", auth.userId)
+        .maybeSingle();
+
+      const displayName = profile?.full_name || auth.email?.split("@")[0] || "Student";
+
+      // Robust find + update or insert (avoids PostgreSQL 42P10 partial unique index error with ON CONFLICT)
+      const { data: existingEnrollment } = await admin
+        .from("peer_lab_enrollments")
+        .select("id, status")
+        .eq("peer_lab_id", labId)
+        .eq("user_id", auth.userId)
+        .maybeSingle();
+
+      let enrollment;
+      if (existingEnrollment) {
+        const { data: updated, error: upErr } = await admin
+          .from("peer_lab_enrollments")
+          .update({
+            full_name: displayName,
+            email: (auth.email || "").toLowerCase(),
+            phone: profile?.phone || null,
+            status: "approved",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingEnrollment.id)
+          .select("id, status")
+          .single();
+
+        if (upErr) {
+          console.error("Peer lab enrollment update error:", upErr);
+          return NextResponse.json({ ok: false, error: upErr.message }, { status: 400 });
+        }
+        enrollment = updated;
+      } else {
+        const { data: inserted, error: inErr } = await admin
+          .from("peer_lab_enrollments")
+          .insert({
+            peer_lab_id: labId,
+            user_id: auth.userId,
+            full_name: displayName,
+            email: (auth.email || "").toLowerCase(),
+            phone: profile?.phone || null,
+            status: "approved",
+          })
+          .select("id, status")
+          .single();
+
+        if (inErr) {
+          console.error("Peer lab enrollment insert error:", inErr);
+          return NextResponse.json({ ok: false, error: inErr.message }, { status: 400 });
+        }
+        enrollment = inserted;
+      }
+
+      return NextResponse.json({ ok: true, enrolled: true, enrollment });
+    }
+
+    if (type === "publish_peer_lab") {
+      const { labId, status = "upcoming", applicationsOpen } = data ?? {};
+      if (!isUuid(labId)) {
+        return NextResponse.json({ ok: false, error: "Valid peer lab ID is required" }, { status: 400 });
+      }
+      const { data: existing, error: findErr } = await admin
+        .from("peer_labs")
+        .select("id, chapter_id, slug, status, applications_open")
+        .eq("id", labId)
+        .maybeSingle();
+
+      if (findErr || !existing) {
+        return NextResponse.json({ ok: false, error: "Peer lab not found" }, { status: 404 });
+      }
+
+      if (!auth.isHq) {
+        const isLeadOrExec = isExecutiveRole(auth.roleKey) || isFacultyRole(auth.roleKey);
+        const userEffectiveChapterId =
+          auth.chapterId ||
+          (existing.chapter_id && auth.allowedChapterIds?.includes(existing.chapter_id) ? existing.chapter_id : null);
+        if (!isLeadOrExec || (existing.chapter_id && existing.chapter_id !== userEffectiveChapterId)) {
+          return NextResponse.json(
+            { ok: false, error: "Permission denied: You can only publish peer labs for your chapter" },
+            { status: 403 },
+          );
+        }
+      }
+
+      const normalizedStatus = normalizePeerLabStatus(status);
+      const updates: Record<string, unknown> = {
+        status: normalizedStatus,
+        updated_at: new Date().toISOString(),
+      };
+      if (typeof applicationsOpen === "boolean") {
+        updates.applications_open = applicationsOpen;
+      } else if (normalizedStatus === "upcoming" || normalizedStatus === "active") {
+        updates.applications_open = true;
+      }
+
+      const { error: upErr } = await admin
+        .from("peer_labs")
+        .update(updates)
+        .eq("id", labId);
+
+      if (upErr) {
+        console.error("Publish peer lab error:", upErr);
+        return NextResponse.json({ ok: false, error: upErr.message }, { status: 400 });
+      }
+
+      await revalidateWeb(["peer-labs", `peer-lab:${existing.slug}`]);
+      return NextResponse.json({ ok: true, status: updates.status, applicationsOpen: updates.applications_open });
     }
 
     // 3. CLUSTER MUTATIONS

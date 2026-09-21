@@ -263,7 +263,7 @@ export default function InviteSignUpPage({
           status: "active",
           chapter_id: null,
         })
-        .select("id")
+        .select("id, elevates_id")
         .single();
 
       if (profileError) {

@@ -33,7 +33,9 @@ import { fromLocalInput, toLocalInput, formatDateTime } from "@/lib/datetime";
 import { Search, Users, GraduationCap, X, Plus, Trash2, Clock, CheckCircle2, Bell, AlertCircle, Ban, Play, Crown, Mic, Sparkles, XCircle } from "lucide-react";
 import { DeleteEventDialog } from "@/components/domain/delete-event-dialog";
 import { EventRemindersPanel } from "@/components/domain/event-reminders-panel";
-import type { EventAttendanceSession, EventItem, EventStatus, Profile, RegistrationStatus, Visibility } from "@/types";
+import { EventLessonsCard, LessonGlyph } from "@/components/domain/event-lessons-card";
+import { EventGatedResources } from "@/components/domain/event-gated-resources";
+import type { EventAttendanceSession, EventItem, EventStatus, Profile, RegistrationStatus, Visibility, EventLesson, EventResource } from "@/types";
 
 
 function Stat({
@@ -82,6 +84,12 @@ type EventDraft = {
   repoUrl: string;
   highlightMetric: string;
   architectureSummary: string;
+  posterUrl: string;
+  thumbnailUrl: string;
+  seriesTitle: string;
+  seriesPill: string;
+  lessons: EventLesson[];
+  resources: EventResource[];
 };
 
 function draftFromEvent(event: EventItem): EventDraft {
@@ -113,6 +121,12 @@ function draftFromEvent(event: EventItem): EventDraft {
     repoUrl: event.platform?.repoUrl ?? event.caseStudy?.repoUrl ?? "",
     highlightMetric: event.platform?.highlightMetric ?? event.caseStudy?.highlightMetric ?? "",
     architectureSummary: event.platform?.architectureSummary ?? event.caseStudy?.architectureSummary ?? "",
+    posterUrl: event.posterUrl || event.bannerUrl || "",
+    thumbnailUrl: event.thumbnailUrl || "",
+    seriesTitle: event.seriesTitle || "",
+    seriesPill: event.seriesPill || "STUDY JAM",
+    lessons: event.lessons || [],
+    resources: event.resources || [],
   };
 }
 
@@ -636,7 +650,12 @@ export default function EventDetailPage({
       parentEventId: draft.eventType === "sub" ? draft.parentEventId || undefined : undefined,
       attendanceSessions: draft.attendanceSessions,
       platform: platformData,
-
+      posterUrl: draft.posterUrl || undefined,
+      thumbnailUrl: draft.thumbnailUrl || undefined,
+      seriesTitle: draft.seriesTitle || undefined,
+      seriesPill: draft.seriesPill || undefined,
+      lessons: draft.lessons,
+      resources: draft.resources,
 
       caseStudy: isPlatformActive
         ? {
@@ -751,6 +770,25 @@ export default function EventDetailPage({
 
   const detailsReadonly = (
     <>
+      {(event.posterUrl || event.thumbnailUrl) ? (
+        <div className="mb-4 overflow-hidden rounded-[14px] border border-border/80 bg-bg shadow-sm">
+          <img
+            src={event.posterUrl || event.thumbnailUrl}
+            alt={event.title}
+            className="h-44 w-full object-cover"
+          />
+          {event.seriesTitle ? (
+            <div className="flex items-center gap-2 border-t border-border/60 bg-bg-panel px-3 py-1.5 text-[11px]">
+              <span className="font-mono text-[9px] font-bold uppercase tracking-wider text-[var(--accent)]">
+                {event.seriesPill || "STUDY JAM"}
+              </span>
+              <span className="text-text-dim">·</span>
+              <span className="font-medium text-text">{event.seriesTitle}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {parentEvent ? (
         <div className="mb-4 flex items-center justify-between gap-2 rounded-[12px] border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3.5 py-2.5 text-[12px]">
           <div>
@@ -1078,6 +1116,21 @@ export default function EventDetailPage({
                 </p>
               ) : null}
             </TerminalPanel>
+
+            {event.lessons && event.lessons.length > 0 ? (
+              <EventLessonsCard
+                lessons={event.lessons}
+                seriesTitle={event.seriesTitle}
+              />
+            ) : null}
+
+            {event.resources && event.resources.length > 0 ? (
+              <EventGatedResources
+                resources={event.resources}
+                isRegistered={Boolean(myReg && myReg.status !== "rejected")}
+                onRegisterClick={() => setRegisterOpen(true)}
+              />
+            ) : null}
           </div>
 
           <TerminalPanel
@@ -1933,6 +1986,338 @@ export default function EventDetailPage({
                 ) : null}
               </div>
 
+              {/* Poster, Thumbnail & Series Ribbon */}
+              <div className="md:col-span-2 rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)] space-y-3">
+                <FieldLabel>Poster, Artwork & Series Ribbon</FieldLabel>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <span className="text-[11px] font-semibold text-text-dim block mb-1">
+                      Event Poster / Banner Image URL
+                    </span>
+                    <Input
+                      placeholder="https://images.unsplash.com/... or /events/poster.png"
+                      value={draft.posterUrl}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, posterUrl: e.target.value } : d))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-semibold text-text-dim block mb-1">
+                      Custom Thumbnail URL (Card Grid)
+                    </span>
+                    <Input
+                      placeholder="https://images.unsplash.com/... or thumbnail"
+                      value={draft.thumbnailUrl}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, thumbnailUrl: e.target.value } : d))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-semibold text-text-dim block mb-1">
+                      Series Ribbon Badge (e.g. STUDY JAM, BOOTCAMP)
+                    </span>
+                    <Input
+                      placeholder="STUDY JAM"
+                      value={draft.seriesPill}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, seriesPill: e.target.value.toUpperCase() } : d))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-semibold text-text-dim block mb-1">
+                      Series Subtitle (e.g. Elevates Peer Lab Track)
+                    </span>
+                    <Input
+                      placeholder="Elevates Peer Lab Track"
+                      value={draft.seriesTitle}
+                      onChange={(e) =>
+                        setDraft((d) => (d ? { ...d, seriesTitle: e.target.value } : d))
+                      }
+                    />
+                  </div>
+                </div>
+
+                {(draft.posterUrl || draft.thumbnailUrl) ? (
+                  <div className="pt-2 border-t border-border/50 flex items-center gap-3">
+                    <img
+                      src={draft.posterUrl || draft.thumbnailUrl}
+                      alt="Event artwork preview"
+                      className="w-20 h-14 object-cover rounded-lg border border-border shadow-xs"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = "none";
+                      }}
+                    />
+                    <span className="text-[11px] text-text-dim">
+                      Previewing poster artwork
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Multi-Day Lessons Curriculum */}
+              <div className="md:col-span-2 rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)] space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <FieldLabel>Multi-Day Workshop / Peer Lab Lessons</FieldLabel>
+                    <p className="text-[11px] text-text-dim">
+                      Structured curriculum with geometric glyphs, session dates, time, and action links.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-7 text-[11px] px-2"
+                      onClick={() => {
+                        const baseDate = draft.startsAt ? new Date(draft.startsAt) : new Date();
+                        const next: EventLesson[] = [
+                          {
+                            id: `ls-${Date.now()}-1`,
+                            dayNumber: 1,
+                            dayLabel: "Day 1",
+                            dateText: baseDate.toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
+                            timeText: "06:30 PM – 08:30 PM",
+                            title: "Foundations & Architecture Setup",
+                            mode: "Online Session",
+                            iconColor: "magenta",
+                            iconShape: "clover",
+                          },
+                          {
+                            id: `ls-${Date.now()}-2`,
+                            dayNumber: 2,
+                            dayLabel: "Day 2",
+                            dateText: new Date(baseDate.getTime() + 86400000).toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
+                            timeText: "06:30 PM – 08:30 PM",
+                            title: "Deep Dive Implementation & Logic",
+                            mode: "Online Session",
+                            iconColor: "green",
+                            iconShape: "shield",
+                          },
+                          {
+                            id: `ls-${Date.now()}-3`,
+                            dayNumber: 3,
+                            dayLabel: "Day 3",
+                            dateText: new Date(baseDate.getTime() + 172800000).toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
+                            timeText: "06:30 PM – 08:30 PM",
+                            title: "Production Deployment & Showcase",
+                            mode: "Live Demo",
+                            iconColor: "orange",
+                            iconShape: "cross",
+                          },
+                        ];
+                        setDraft((d) => (d ? { ...d, lessons: next } : d));
+                      }}
+                    >
+                      3-Day Preset
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-7 text-[11px] px-2"
+                      onClick={() => {
+                        const count = (draft.lessons || []).length + 1;
+                        const next: EventLesson = {
+                          id: `ls-${Date.now()}`,
+                          dayNumber: count,
+                          dayLabel: `Day ${count}`,
+                          dateText: "TBA",
+                          timeText: "07:00 PM – 08:30 PM",
+                          title: `Lesson ${count}: New Topic`,
+                          mode: "Online Session",
+                          iconColor: count % 4 === 1 ? "magenta" : count % 4 === 2 ? "green" : count % 4 === 3 ? "orange" : "cyan",
+                          iconShape: count % 4 === 1 ? "clover" : count % 4 === 2 ? "shield" : count % 4 === 3 ? "cross" : "wings",
+                        };
+                        setDraft((d) => (d ? { ...d, lessons: [...(d.lessons || []), next] } : d));
+                      }}
+                    >
+                      <Plus size={11} className="mr-1" /> Add Lesson
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {(draft.lessons || []).map((ls, idx) => (
+                    <div
+                      key={ls.id || idx}
+                      className="rounded-lg border border-border/80 bg-bg-panel p-2.5 space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <LessonGlyph
+                            color={ls.iconColor || "magenta"}
+                            shape={ls.iconShape || "clover"}
+                            className="w-6 h-6 shrink-0"
+                          />
+                          <span className="text-[11px] font-bold text-text">
+                            Lesson {ls.dayNumber || idx + 1}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDraft((d) =>
+                              d
+                                ? {
+                                    ...d,
+                                    lessons: (d.lessons || []).filter((_, j) => j !== idx),
+                                  }
+                                : d,
+                            );
+                          }}
+                          className="text-text-dim hover:text-red-500 p-1 cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        <Input
+                          placeholder="Day Label (e.g. Day 1)"
+                          value={ls.dayLabel}
+                          onChange={(e) => {
+                            const updated = [...(draft.lessons || [])];
+                            updated[idx] = { ...updated[idx], dayLabel: e.target.value };
+                            setDraft((d) => (d ? { ...d, lessons: updated } : d));
+                          }}
+                        />
+                        <Input
+                          placeholder="Date (e.g. Sep 08)"
+                          value={ls.dateText}
+                          onChange={(e) => {
+                            const updated = [...(draft.lessons || [])];
+                            updated[idx] = { ...updated[idx], dateText: e.target.value };
+                            setDraft((d) => (d ? { ...d, lessons: updated } : d));
+                          }}
+                        />
+                        <Input
+                          placeholder="Time (e.g. 7:45 PM – 8:30 PM)"
+                          value={ls.timeText}
+                          onChange={(e) => {
+                            const updated = [...(draft.lessons || [])];
+                            updated[idx] = { ...updated[idx], timeText: e.target.value };
+                            setDraft((d) => (d ? { ...d, lessons: updated } : d));
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          placeholder="Topic / Title (e.g. Architecture Overview)"
+                          value={ls.title}
+                          onChange={(e) => {
+                            const updated = [...(draft.lessons || [])];
+                            updated[idx] = { ...updated[idx], title: e.target.value };
+                            setDraft((d) => (d ? { ...d, lessons: updated } : d));
+                          }}
+                        />
+                        <Input
+                          placeholder="Mode (e.g. Online Session / Room 204)"
+                          value={ls.mode}
+                          onChange={(e) => {
+                            const updated = [...(draft.lessons || [])];
+                            updated[idx] = { ...updated[idx], mode: e.target.value };
+                            setDraft((d) => (d ? { ...d, lessons: updated } : d));
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Exclusive Gated Resources */}
+              <div className="md:col-span-2 rounded-[12px] border border-border/80 bg-bg p-3.5 shadow-[var(--shadow-sm)] space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <FieldLabel>🎁 Exclusive Gated Resources</FieldLabel>
+                    <p className="text-[11px] text-text-dim">
+                      Only registered attendees will unlock and access these resources.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-7 text-[11px] px-2"
+                    onClick={() => {
+                      const next: EventResource = {
+                        id: `res-${Date.now()}`,
+                        title: "Session Slides & Notes",
+                        url: "",
+                        type: "Slides",
+                        isGated: true,
+                      };
+                      setDraft((d) => (d ? { ...d, resources: [...(d.resources || []), next] } : d));
+                    }}
+                  >
+                    <Plus size={11} className="mr-1" /> Add Resource
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {(draft.resources || []).map((res, idx) => (
+                    <div
+                      key={res.id || idx}
+                      className="rounded-lg border border-border/80 bg-bg-panel p-2 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
+                    >
+                      <Input
+                        className="flex-1 min-w-[140px]"
+                        placeholder="Resource Title (e.g. Workshop Deck)"
+                        value={res.title}
+                        onChange={(e) => {
+                          const updated = [...(draft.resources || [])];
+                          updated[idx] = { ...updated[idx], title: e.target.value };
+                          setDraft((d) => (d ? { ...d, resources: updated } : d));
+                        }}
+                      />
+                      <Input
+                        className="flex-1 min-w-[160px] font-mono text-xs"
+                        placeholder="URL (https://...)"
+                        value={res.url}
+                        onChange={(e) => {
+                          const updated = [...(draft.resources || [])];
+                          updated[idx] = { ...updated[idx], url: e.target.value };
+                          setDraft((d) => (d ? { ...d, resources: updated } : d));
+                        }}
+                      />
+                      <Select
+                        className="w-28 shrink-0 text-xs"
+                        value={res.type || "Slides"}
+                        onChange={(e) => {
+                          const updated = [...(draft.resources || [])];
+                          updated[idx] = { ...updated[idx], type: e.target.value as any };
+                          setDraft((d) => (d ? { ...d, resources: updated } : d));
+                        }}
+                      >
+                        <option value="Slides">Slides</option>
+                        <option value="Code">Code</option>
+                        <option value="Doc">Doc</option>
+                        <option value="Video">Video</option>
+                        <option value="Cheatsheet">Cheatsheet</option>
+                      </Select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraft((d) =>
+                            d
+                              ? {
+                                  ...d,
+                                  resources: (d.resources || []).filter((_, j) => j !== idx),
+                                }
+                              : d,
+                          );
+                        }}
+                        className="text-text-dim hover:text-red-500 p-1 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="md:col-span-2">
                 <label className="flex items-center gap-2 text-sm text-text-dim">
                   <input
@@ -2161,6 +2546,24 @@ export default function EventDetailPage({
           </TerminalPanel>
         )}
       </div>
+
+      {event.lessons && event.lessons.length > 0 ? (
+        <div className="mb-6">
+          <EventLessonsCard
+            lessons={event.lessons}
+            seriesTitle={event.seriesTitle}
+          />
+        </div>
+      ) : null}
+
+      {event.resources && event.resources.length > 0 ? (
+        <div className="mb-6">
+          <EventGatedResources
+            resources={event.resources}
+            isRegistered={true}
+          />
+        </div>
+      ) : null}
 
       {isOps ? (
         <TerminalPanel

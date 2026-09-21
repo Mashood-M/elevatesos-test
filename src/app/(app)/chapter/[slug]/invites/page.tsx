@@ -10,6 +10,7 @@ import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
+import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 
 export default function ChapterInvitesPage({
   params,
@@ -58,11 +59,7 @@ export default function ChapterInvitesPage({
   }, [chapterCodes]);
 
   if (!mounted) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-mono text-xs text-text-dim animate-pulse">Loading invite codes...</p>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   if (!chapter) {

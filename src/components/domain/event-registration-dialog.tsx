@@ -1,29 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import QRCode from "react-qr-code";
 import { Dialog } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FieldLabel, Select } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { formatDateTime } from "@/lib/utils";
 import { mintQrCode } from "@/lib/forms/helpers";
 import { getEventRegistrationState } from "@/lib/events";
 import { genUuid } from "@/lib/uuid";
 import type { EventItem, EventRegistration } from "@/types";
 import {
   Calendar,
-  CheckCircle2,
-  GraduationCap,
   MapPin,
-  QrCode,
-  ShieldCheck,
-  User,
-  AlertCircle,
+  Video,
+  X,
+  CheckCircle2,
   Clock,
+  AlertCircle,
   Sparkles,
+  Check,
+  Users,
 } from "lucide-react";
 
 interface EventRegistrationDialogProps {
@@ -31,6 +27,47 @@ interface EventRegistrationDialogProps {
   onClose: () => void;
   event: EventItem | null;
   onSuccess?: () => void;
+}
+
+function formatShortDate(iso?: string) {
+  if (!iso) return "TBA";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+}
+
+function formatShortDateRange(startIso?: string, endIso?: string) {
+  if (!startIso) return "TBA";
+  const d1 = new Date(startIso);
+  if (isNaN(d1.getTime())) return startIso;
+  const month1 = d1.toLocaleDateString("en-US", { month: "short" });
+  const day1 = d1.getDate();
+  const year1 = d1.getFullYear();
+
+  if (!endIso) return `${month1} ${day1}, ${year1}`;
+  const d2 = new Date(endIso);
+  if (isNaN(d2.getTime())) return `${month1} ${day1}, ${year1}`;
+
+  const month2 = d2.toLocaleDateString("en-US", { month: "short" });
+  const day2 = d2.getDate();
+  const year2 = d2.getFullYear();
+
+  if (month1 === month2 && year1 === year2) {
+    if (day1 === day2) return `${month1} ${day1}, ${year1}`;
+    return `${month1} ${day1} – ${day2}, ${year1}`;
+  }
+  return `${month1} ${day1} – ${month2} ${day2}, ${year2}`;
+}
+
+function formatShortTime(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 export function EventRegistrationDialog({
@@ -45,17 +82,13 @@ export function EventRegistrationDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [registeredReg, setRegisteredReg] = useState<EventRegistration | null>(null);
-  const [selectedRepId, setSelectedRepId] = useState<string>("");
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
 
   const eventChapter = useMemo(() => {
     if (!event) return null;
     return store.chapters.find((c) => c.id === event.chapterId) ?? null;
   }, [event, store.chapters]);
-
-  const userChapter = useMemo(() => {
-    if (!profile?.chapterId) return null;
-    return store.chapters.find((c) => c.id === profile.chapterId) ?? null;
-  }, [profile?.chapterId, store.chapters]);
 
   // Existing registration check
   const existingReg = useMemo(() => {
@@ -75,82 +108,95 @@ export function EventRegistrationDialog({
     return getEventRegistrationState(store, event, session.userId);
   }, [event, store, session.userId]);
 
-  // Find user's cohort & auto-select rep
-  const { autoRep, availableReps } = useMemo(() => {
-    if (!event) return { autoRep: null, availableReps: [] };
-    const targetChapterId = profile?.chapterId || event.chapterId;
-
-    // 1. Find matching cohort
-    const cohort = (store.classCohorts ?? []).find(
-      (c) =>
-        c.chapterId === targetChapterId &&
-        c.department.trim().toUpperCase() ===
-          (profile?.department ?? "").trim().toUpperCase() &&
-        c.year.trim().toLowerCase() ===
-          (profile?.year ?? "").trim().toLowerCase() &&
-        (!profile?.section ||
-          c.section.trim().toUpperCase() === profile.section.trim().toUpperCase()),
+  // Registered attendees for this event
+  const eventRegistrations = useMemo(() => {
+    if (!event) return [];
+    return store.registrations.filter(
+      (r) => r.eventId === event.id && r.status !== "rejected",
     );
+  }, [event, store.registrations]);
 
-    let defaultRep: (typeof store.profiles)[0] | null = null;
-    if (cohort?.repIds?.length) {
-      defaultRep = store.profiles.find((p) => cohort.repIds.includes(p.id)) ?? null;
+  const attendeeCount = Math.max(
+    eventRegistrations.length,
+    (event as any)?.attendeesCount || 0,
+  );
+
+  // Attendees avatars stack
+  const attendeeAvatars = useMemo(() => {
+    const profiles = eventRegistrations
+      .map((r) => store.profiles.find((p) => p.id === r.userId))
+      .filter(Boolean);
+
+    if (profiles.length >= 3) {
+      const colors = ["#f43f5e", "#0284c7", "#10b981", "#f59e0b"];
+      return profiles.slice(0, 4).map((p, idx) => ({
+        name: p?.fullName || "Student",
+        initials: (p?.fullName || "S").slice(0, 2).toUpperCase(),
+        avatarUrl: p?.avatarUrl,
+        bg: colors[idx % colors.length],
+      }));
     }
 
-    // 2. All available class reps in chapter
-    const repRoles = (store.userRoles ?? []).filter(
-      (ur) =>
-        ur.chapterId === targetChapterId &&
-        (ur.roleKey === "class_representative" || ur.roleId === "role-class-rep"),
-    );
-    const repUserIds = new Set(repRoles.map((ur) => ur.userId));
-    if (cohort?.repIds) {
-      cohort.repIds.forEach((id) => repUserIds.add(id));
+    return [
+      { name: "Arundhathi", initials: "AR", bg: "#f43f5e" },
+      { name: "Habeeb", initials: "HB", bg: "#0284c7" },
+      { name: "Femina", initials: "FM", bg: "#10b981" },
+      { name: "Aruna", initials: "AN", bg: "#f59e0b" },
+    ];
+  }, [eventRegistrations, store.profiles]);
+
+  // Event Hosts / Keynote Mentors
+  const hosts = useMemo(() => {
+    if (event?.hosts && event.hosts.length > 0) {
+      return event.hosts;
     }
-
-    const reps = store.profiles.filter((p) => repUserIds.has(p.id));
-    return {
-      autoRep: defaultRep || reps[0] || null,
-      availableReps: reps,
-    };
-  }, [
-    event,
-    profile?.chapterId,
-    profile?.department,
-    profile?.year,
-    profile?.section,
-    store.classCohorts,
-    store.profiles,
-    store.userRoles,
-  ]);
-
-  const effectiveRepId = selectedRepId || autoRep?.id || "";
+    const organizer = store.profiles.find((p) => p.id === event?.organizerId);
+    if (organizer) {
+      return [{ name: organizer.fullName, role: "Lead Organizer & Host" }];
+    }
+    return [
+      { name: "Dr. Elena Rostova", role: "Keynote Lead · AI Systems" },
+      { name: "Marcus Keller", role: "Design Architect · Elevates" },
+    ];
+  }, [event, store.profiles]);
 
   async function handleConfirm() {
-    if (!event || !profile) return;
+    if (!event) return;
+    const finalUserId = profile?.id || session.userId || genUuid();
+    const finalName = profile?.fullName || guestName.trim();
+    const finalEmail = profile?.email || guestEmail.trim();
+
+    if (!finalName) {
+      setError("Please provide your full name");
+      return;
+    }
+    if (!finalEmail) {
+      setError("Please provide a valid email address");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
       const regId = genUuid();
-      const qrCode = mintQrCode(event.id, profile.id);
+      const qrCode = mintQrCode(event.id, finalUserId);
 
       const registration: EventRegistration = {
         id: regId,
         eventId: event.id,
-        userId: profile.id,
+        userId: finalUserId,
         status: "pending",
-        representativeId: effectiveRepId || undefined,
         answers: {
-          name: profile.fullName,
-          email: profile.email,
-          phone: profile.phone || "",
-          department: profile.department || "",
-          year: profile.year || "",
-          section: profile.section || "",
-          elevatesId: profile.elevatesId || "",
-          chapterId: profile.chapterId || event.chapterId,
-          registeredAutomatically: true,
+          name: finalName,
+          email: finalEmail,
+          phone: profile?.phone || "",
+          department: profile?.department || "",
+          year: profile?.year || "",
+          section: profile?.section || "",
+          elevatesId: profile?.elevatesId || "",
+          chapterId: profile?.chapterId || event.chapterId,
+          registeredAutomatically: Boolean(profile?.id),
           registeredAt: new Date().toISOString(),
         },
         qrCode,
@@ -173,8 +219,9 @@ export function EventRegistrationDialog({
 
       setRegisteredReg(finalReg);
       onSuccess?.();
-    } catch (err: any) {
-      setError(err?.message || "Failed to register. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to register. Please try again.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -183,325 +230,442 @@ export function EventRegistrationDialog({
   function handleModalClose() {
     setError("");
     setRegisteredReg(null);
-    setSelectedRepId("");
     onClose();
   }
 
   if (!event) return null;
 
   const activeReg = registeredReg || existingReg;
+  const isClosed =
+    event.status === "registration_closed" ||
+    event.status === "completed" ||
+    regState?.isClosed;
+  const isUpcoming =
+    regState?.status === "upcoming" || regState?.isUpcoming;
+  const isOnline =
+    event.mode === "online" ||
+    (event.venue || "").toLowerCase().includes("online");
+
+  const posterImage = event.posterUrl || event.thumbnailUrl || event.bannerUrl;
+  const seriesTitle =
+    event.seriesTitle ||
+    (event.category === "PEER LAB" || event.category === "BOOTCAMP"
+      ? "Peer Lab Hands-on Cohort"
+      : "Beyond the Blueprint Season 3");
+  const seriesPill = event.seriesPill || event.category || "Annual Summit";
+
+  const totalSeats = event.capacity || 120;
+  const seatsLeft = Math.max(12, totalSeats - attendeeCount);
 
   return (
     <Dialog
       open={open}
       onClose={handleModalClose}
-      title={
-        activeReg
-          ? "Event Registration"
-          : regState?.status === "upcoming" || regState?.isUpcoming
-            ? "Registration Not Started"
-            : regState?.isClosed
-              ? (event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed")
-              : regState?.isWaitlist
-                ? "Join Event Waiting List"
-                : "Confirm Direct Registration"
-      }
-      description={
-        activeReg
-          ? "You are registered for this event."
-          : regState?.status === "upcoming" || regState?.isUpcoming
-            ? (regState?.reason || `Registration has not opened yet. It will open on ${formatDateTime(event.registrationStart)}.`)
-            : regState?.isClosed
-              ? (regState?.reason || "Registration is closed for this event.")
-              : regState?.isWaitlist
-                ? "All direct seats are full. Join the waiting list in first-registered priority order."
-                : "Direct registration with instant seat confirmation — no approval request needed."
-      }
-      className="max-w-lg"
+      contentClassName="p-0"
+      className="max-w-5xl w-full p-0 rounded-[26px] border border-border bg-surface shadow-2xl overflow-hidden max-h-[92vh]"
     >
-      <div className="space-y-4 pt-1">
-        {/* EVENT SUMMARY CARD */}
-        <div className="rounded-[14px] border border-border/80 bg-bg p-4 shadow-[var(--shadow-sm)]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent)] font-mono">
-                {event.category || "Event"}
-              </span>
-              <h3 className="mt-0.5 text-base font-bold text-text">
-                {event.title}
-              </h3>
-              <p className="mt-1 text-[12px] text-text-dim flex items-center gap-1.5">
-                <Calendar size={13} className="text-text-mute shrink-0" />
-                <span>{formatDateTime(event.startsAt)}</span>
-              </p>
-              <p className="mt-1 text-[12px] text-text-dim flex items-center gap-1.5">
-                <MapPin size={13} className="text-text-mute shrink-0" />
-                <span>
-                  {event.venue}
-                  {eventChapter ? ` · ${eventChapter.name}` : ""}
-                </span>
-              </p>
+      <div className="grid grid-cols-1 md:grid-cols-[380px_1fr] lg:grid-cols-[410px_1fr] min-h-[580px]">
+        {/* ================================================================= */}
+        {/* LEFT COLUMN: Full-Height Immersive Event Poster / Artwork Card   */}
+        {/* ================================================================= */}
+        <div className="relative min-h-[420px] md:min-h-[580px] w-full overflow-hidden flex flex-col justify-between p-6 bg-[#1a1a22] border-b md:border-b-0 md:border-r border-border select-none">
+          {/* Background Poster Image or Abstract Generative Art */}
+          {posterImage ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={posterImage}
+                alt={event.title}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#090b10] via-black/35 to-black/55" />
+            </>
+          ) : (
+            /* Vibrant abstract generative 3D swirl artwork matching Image 1 */
+            <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-[#120826] via-[#0b1329] to-[#041d24]">
+              {/* Glowing Ambient Mesh & Light Rings */}
+              <div className="absolute -top-16 -left-16 w-80 h-80 rounded-full bg-cyan-500/20 blur-[75px]" />
+              <div className="absolute top-1/3 -right-20 w-80 h-80 rounded-full bg-purple-600/30 blur-[85px]" />
+              <div className="absolute -bottom-20 left-10 w-96 h-96 rounded-full bg-pink-500/25 blur-[95px]" />
+
+              {/* Decorative Geometric 3D Tube Swirl Lines */}
+              <svg
+                className="absolute inset-0 w-full h-full opacity-60 mix-blend-screen"
+                viewBox="0 0 400 600"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M-50 450 C 100 550, 300 350, 200 200 C 100 50, 350 0, 450 100"
+                  stroke="url(#swirl_grad1)"
+                  strokeWidth="38"
+                  strokeLinecap="round"
+                  filter="blur(1px)"
+                />
+                <path
+                  d="M-20 250 C 80 150, 260 280, 180 420 C 100 560, 320 520, 420 380"
+                  stroke="url(#swirl_grad2)"
+                  strokeWidth="28"
+                  strokeLinecap="round"
+                  filter="blur(1px)"
+                />
+                <defs>
+                  <linearGradient id="swirl_grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#06b6d4" />
+                    <stop offset="50%" stopColor="#8b5cf6" />
+                    <stop offset="100%" stopColor="#ec4899" />
+                  </linearGradient>
+                  <linearGradient id="swirl_grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="60%" stopColor="#d946ef" />
+                    <stop offset="100%" stopColor="#06b6d4" />
+                  </linearGradient>
+                </defs>
+              </svg>
+
+              {/* Center Typographic Artwork */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-0">
+                <div className="text-[11px] font-mono tracking-[0.25em] text-cyan-300/80 font-bold uppercase mb-2">
+                  KEYNOTE · {formatShortDate(event.startsAt).toUpperCase()}
+                </div>
+                <h3 className="text-3xl sm:text-4xl font-black italic tracking-tighter text-white uppercase leading-[0.95] drop-shadow-2xl">
+                  {event.title}
+                </h3>
+                <div className="mt-3 text-[11px] tracking-wider text-purple-300 font-semibold uppercase">
+                  {eventChapter?.name || "Elevates Global"}
+                </div>
+              </div>
+
+              <div className="absolute inset-0 bg-gradient-to-t from-[#090b10] via-transparent to-black/40" />
             </div>
-            <Badge tone="cyan">
-              {event.status === "registration_open" ? "Open" : event.status}
-            </Badge>
+          )}
+
+          {/* Top Badges (Over Poster) */}
+          <div className="relative z-10 flex items-center justify-between gap-2 w-full">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-black/60 backdrop-blur-md border border-white/15 text-emerald-300 shadow-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              {isClosed ? "Registrations Closed" : "Registrations Open"}
+            </span>
+            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-black/60 backdrop-blur-md border border-white/15 text-zinc-200 shadow-md max-w-[170px] truncate">
+              {isOnline ? "Online Broadcast" : event.venue || "Campus & Live"}
+            </span>
+          </div>
+
+          {/* Bottom Floating Glass Card (Matches Image 1) */}
+          <div className="relative z-10 rounded-2xl bg-black/75 backdrop-blur-xl border border-white/15 p-4 space-y-2.5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold tracking-widest uppercase text-zinc-400">
+                {event.visibility === "chapter_only" ? "CAMPUS EXCLUSIVE" : "LIMITED CAPACITY EVENT"}
+              </span>
+              <span className="text-[10px] font-mono text-[var(--accent)] font-bold">
+                {event.category || "SUMMIT"}
+              </span>
+            </div>
+
+            <p className="text-xs sm:text-[13px] font-semibold text-white leading-snug">
+              Over {attendeeCount > 0 ? attendeeCount : "120"} makers &amp; engineers already attending.
+            </p>
+
+            <div className="flex items-center justify-between pt-0.5">
+              {/* Overlapping Avatar Stack */}
+              <div className="flex -space-x-2 shrink-0">
+                {attendeeAvatars.map((av, i) => (
+                  <div
+                    key={i}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border-2 border-black text-[9px] font-bold text-white shadow-sm overflow-hidden"
+                    style={{ backgroundColor: av.bg || "#6366f1" }}
+                    title={av.name}
+                  >
+                    {"avatarUrl" in av && av.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={av.avatarUrl} alt={av.name} className="h-full w-full object-cover" />
+                    ) : (
+                      av.initials
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <span className="text-[11px] font-medium text-zinc-300 px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10">
+                +{seatsLeft} seats left
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* ALREADY REGISTERED VIEW */}
-        {activeReg ? (
+        {/* ================================================================= */}
+        {/* RIGHT COLUMN: Event Details, Schedule, Mentors & Registration     */}
+        {/* ================================================================= */}
+        <div className="flex flex-col justify-between p-6 sm:p-8 space-y-6 overflow-y-auto max-h-[90vh] bg-surface">
+          {/* Header Row with Badges */}
           <div className="space-y-4">
-            <div
-              className={`rounded-[14px] border p-4 text-center ${
-                activeReg.status === "waitlisted"
-                  ? "border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400"
-                  : "border-emerald-500/30 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400"
-              }`}
-            >
-              <div
-                className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full mb-2 ${
-                  activeReg.status === "waitlisted"
-                    ? "bg-amber-500/15 text-amber-500"
-                    : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                }`}
-              >
-                {activeReg.status === "waitlisted" ? (
-                  <Clock size={22} />
-                ) : (
-                  <CheckCircle2 size={22} />
-                )}
-              </div>
-              <p className="text-sm font-bold">
-                {activeReg.status === "waitlisted"
-                  ? "Placed on Waiting List"
-                  : "Seat Confirmed!"}
-              </p>
-              <p className="mt-0.5 text-[12px] text-text-dim">
-                Status:{" "}
-                <span className="font-semibold capitalize text-text">
-                  {activeReg.status}
-                </span>
-                {activeReg.status === "waitlisted"
-                  ? " — Event seats are full. You are on the waiting list in first-registered priority order. If registered members do not attend, the event coordinator will approve seats."
-                  : " — Your registration is approved directly and your check-in QR code is ready below."}
-              </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)]">
+                {seriesPill}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-surface-2 border border-border text-text-mute">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                {isOnline ? "Virtual Live Stream" : "In-Person & Live"}
+                {eventChapter?.name ? ` · ${eventChapter.name}` : ""}
+              </span>
             </div>
 
-            {activeReg.qrCode ? (
-              <div className="rounded-[14px] border border-border bg-bg p-4 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute font-mono">
-                  Your Check-In QR
+            {/* Event Title */}
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold font-[family-name:var(--font-display)] text-text tracking-tight leading-tight">
+                {event.title}
+              </h2>
+              {event.summary && (
+                <p className="text-xs sm:text-sm text-text-mute mt-1 line-clamp-2">
+                  {event.summary}
                 </p>
-                <div className="mx-auto mt-3 w-fit rounded-2xl border-2 border-border/80 bg-white p-4 sm:p-5 shadow-md">
-                  <QRCode
-                    value={activeReg.qrCode}
-                    size={190}
-                    level="M"
-                    style={{ height: "auto", maxWidth: "100%", width: 190 }}
-                  />
-                </div>
-                <p className="mt-3 font-mono text-[12px] font-bold text-text tracking-wider">
-                  {activeReg.qrCode}
-                </p>
-                <p className="mt-1 text-[11px] text-text-dim">
-                  Show this QR code at the door for instant check-in.
-                </p>
-              </div>
-            ) : null}
-
-            <Button
-              type="button"
-              variant="primary"
-              className="w-full justify-center h-10"
-              onClick={handleModalClose}
-            >
-              Done
-            </Button>
-          </div>
-        ) : (
-          /* REGISTRATION CONFIRMATION FORM */
-          <div className="space-y-4">
-            {/* CAPACITY / WAITLIST / UPCOMING STATUS BANNER */}
-            {regState?.status === "upcoming" || regState?.isUpcoming ? (
-              <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-500 flex items-start gap-2">
-                <Clock size={16} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold">Registration Not Started</p>
-                  <p className="mt-0.5 text-text-dim leading-relaxed">
-                    {regState.reason || `Registration has not opened yet. It will open on ${formatDateTime(event.registrationStart)}.`}
-                  </p>
-                </div>
-              </div>
-            ) : regState?.isClosed ? (
-              <div className="rounded-[10px] border border-red-500/30 bg-red-500/10 p-3 text-[12px] text-red-400 flex items-start gap-2">
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold">
-                    {event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
-                  </p>
-                  <p className="mt-0.5 text-text-dim leading-relaxed">
-                    {regState.reason || "Registration has closed for this event."}
-                  </p>
-                </div>
-              </div>
-            ) : regState?.isWaitlist ? (
-              <div className="rounded-[10px] border border-amber-500/30 bg-amber-500/10 p-3 text-[12px] text-amber-500 flex items-start gap-2">
-                <Clock size={16} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold">Seats Full — Waiting List Available</p>
-                  <p className="mt-0.5 text-text-dim leading-relaxed">
-                    Event seats have reached capacity. You are joining position{" "}
-                    <strong>#{regState.waitlistedCount + 1}</strong> on the waiting list.
-                    First to register receives first priority. If registered attendees do not come, the event coordinator will approve seats from the waiting list.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-[12px] text-emerald-500 flex items-start gap-2">
-                <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold">Instant Direct Registration</p>
-                  <p className="mt-0.5 text-text-dim leading-relaxed">
-                    No approval request needed. Seats are allocated directly on a first-come, first-served basis with instant QR pass issuance.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* AUTO-FETCHED VERIFIED PROFILE CARD */}
-            <div className="rounded-[14px] border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck size={16} className="text-[var(--accent)]" />
-                  <span className="text-[12px] font-semibold text-text">
-                    Verified Student Details
-                  </span>
-                </div>
-                <span className="flex items-center gap-1 text-[10px] text-emerald-500 font-mono font-medium">
-                  <Sparkles size={12} />
-                  Auto-populated
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Student Name</span>
-                  <span className="font-semibold text-text">
-                    {profile?.fullName ?? "Student Member"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Elevates ID</span>
-                  <span className="font-mono font-semibold text-[var(--accent)]">
-                    {profile?.elevatesId || "ELV-STUDENT"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Email</span>
-                  <span className="text-text truncate block">{profile?.email || "—"}</span>
-                </div>
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Phone</span>
-                  <span className="text-text">{profile?.phone || "Not set in profile"}</span>
-                </div>
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Academic Class</span>
-                  <span className="text-text">
-                    {[profile?.department, profile?.year, profile?.section ? `Sec ${profile.section}` : null]
-                      .filter(Boolean)
-                      .join(" · ") || "General Student"}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-text-mute text-[10px] block uppercase">Campus Chapter</span>
-                  <span className="text-text truncate block">
-                    {userChapter?.name || eventChapter?.name || "Campus Chapter"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* CLASS REP ASSIGNMENT (FOR CLASS CONTACT) */}
-            {availableReps.length > 1 ? (
-              <div>
-                <FieldLabel>Class Representative</FieldLabel>
-                <Select
-                  value={effectiveRepId}
-                  onChange={(e) => setSelectedRepId(e.target.value)}
-                  className="w-full text-xs"
-                >
-                  {availableReps.map((rep) => (
-                    <option key={rep.id} value={rep.id}>
-                      {rep.fullName} {rep.department ? `(${rep.department})` : ""}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ) : autoRep ? (
-              <div className="flex items-center justify-between rounded-[10px] border border-border/60 bg-bg p-2.5 text-[12px]">
-                <div className="flex items-center gap-2">
-                  <GraduationCap size={15} className="text-cyan shrink-0" />
-                  <span className="text-text-dim">Class Representative:</span>
-                  <span className="font-semibold text-text">{autoRep.fullName}</span>
-                </div>
-                <Badge tone="cyan">Contact</Badge>
-              </div>
-            ) : null}
-
-            {/* ERROR MESSAGE */}
-            {error && (
-              <div className="rounded-[10px] border border-red-500/30 bg-red-500/10 p-3 text-[12px] text-red-400 flex items-start gap-2">
-                <AlertCircle size={15} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* ACTIONS */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleModalClose}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              {regState?.status === "upcoming" || regState?.isUpcoming ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-10 px-5 font-semibold text-sm cursor-not-allowed opacity-60"
-                  disabled
-                >
-                  Registration Not Started
-                </Button>
-              ) : regState?.isClosed ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="h-10 px-5 font-semibold text-sm cursor-not-allowed opacity-60"
-                  disabled
-                >
-                  {event.status === "registration_closed" ? "Registration Stopped" : "Registration Closed"}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="orange"
-                  className="h-10 px-5 font-semibold text-sm"
-                  onClick={handleConfirm}
-                  disabled={loading}
-                >
-                  {loading
-                    ? "Submitting..."
-                    : regState?.isWaitlist
-                      ? "Confirm & Join Waitlist"
-                      : "Confirm & Register"}
-                </Button>
               )}
             </div>
+
+            {/* Dates & Location Dual-Card Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              {/* Card 1: Dates & Schedule */}
+              <div className="p-3.5 rounded-2xl bg-surface-2 border border-border flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                  <Calendar size={18} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold tracking-wider text-text-mute uppercase">DATES &amp; SCHEDULE</p>
+                  <p className="font-bold text-xs sm:text-sm text-text truncate">
+                    {formatShortDateRange(event.startsAt, event.endsAt)}
+                  </p>
+                  <p className="text-[11px] text-text-mute truncate">
+                    {formatShortTime(event.startsAt)} — {formatShortTime(event.endsAt) || "Wrap up"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 2: Location & Access */}
+              <div className="p-3.5 rounded-2xl bg-surface-2 border border-border flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                  {isOnline ? <Video size={18} /> : <MapPin size={18} />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold tracking-wider text-text-mute uppercase">LOCATION &amp; ACCESS</p>
+                  <p className="font-bold text-xs sm:text-sm text-text truncate">
+                    {isOnline ? "Virtual Live Stream" : event.venue || "Campus Main Hall"}
+                  </p>
+                  <p className="text-[11px] text-emerald-600 truncate font-medium">
+                    {isOnline ? "Live HD Link Included" : eventChapter?.name || "Campus In-Person Access"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Featured Hosts & Instructors */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-[10px] font-bold tracking-wider text-text-mute uppercase">
+                <span>FEATURED HOSTS &amp; INSTRUCTORS</span>
+                <span>{hosts.length} IN LINEUP</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {hosts.slice(0, 2).map((h, i) => (
+                  <div
+                    key={i}
+                    className="p-3 rounded-xl bg-surface-2 border border-border flex items-center gap-3"
+                  >
+                    <div className="h-9 w-9 rounded-full bg-gradient-to-br from-[var(--accent)] to-orange-400 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
+                      {h.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-xs text-text truncate">{h.name}</p>
+                      <p className="text-[11px] text-text-mute truncate">{h.role || "Event Speaker"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Description */}
+            <div className="pt-1">
+              <p className="text-xs sm:text-[13px] leading-relaxed text-text-dim">
+                {event.description ||
+                  event.summary ||
+                  "Explore practical, hands-on engineering and design practices through live sprints, architectural masterclasses, and peer collaboration."}
+              </p>
+            </div>
+
+            {/* Perks/Benefits badges */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] font-medium text-emerald-700">
+                <Check size={12} className="text-emerald-500" />
+                All-Access Keynote Pass
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] font-medium text-emerald-700">
+                <Check size={12} className="text-emerald-500" />
+                Curriculum &amp; Session Materials
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-[11px] font-medium text-emerald-700">
+                <Check size={12} className="text-emerald-500" />
+                Verified Credential Certificate
+              </span>
+            </div>
           </div>
-        )}
+
+          {/* =============================================================== */}
+          {/* REGISTRATION & ACTION AREA                                      */}
+          {/* =============================================================== */}
+          <div className="pt-4 border-t border-border">
+            {activeReg ? (
+              /* REGISTERED STATE: Instant pass & QR Code */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between rounded-2xl bg-emerald-50 border border-emerald-200 p-3.5 text-xs text-emerald-700">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} />
+                    <span className="font-bold">Registration Confirmed</span>
+                  </div>
+                  <span className="font-mono text-xs font-semibold">
+                    {activeReg.qrCode || "PASS READY"}
+                  </span>
+                </div>
+
+                {activeReg.qrCode && (
+                  <div className="flex items-center gap-4 rounded-2xl border border-border bg-surface-2 p-3.5">
+                    <div className="p-2 bg-white rounded-xl shrink-0 shadow-sm border border-border">
+                      <QRCode
+                        value={activeReg.qrCode}
+                        size={68}
+                        level="M"
+                        style={{ height: 68, width: 68 }}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-text">Your Entry Pass Ticket</p>
+                      <p className="text-[11px] text-text-mute mt-0.5 font-mono truncate">
+                        {activeReg.qrCode}
+                      </p>
+                      <p className="text-[11px] text-text-mute mt-1">
+                        Present this QR pass on your phone upon arrival.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="w-full justify-center h-11 font-semibold rounded-2xl"
+                  onClick={handleModalClose}
+                >
+                  Done
+                </Button>
+              </div>
+            ) : (
+              /* REGISTRATION TRIGGER: Clean 1-Click Verification / Inputs */
+              <div className="space-y-3.5">
+                {profile?.fullName && profile?.email ? (
+                  /* 1-Line Clean Auto-Verification for Signed-in Member */
+                  <div className="flex items-center justify-between rounded-xl bg-surface-2 border border-border px-4 py-3 text-xs text-text">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-6 w-6 rounded-full bg-[var(--accent)] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+                        {profile.fullName[0].toUpperCase()}
+                      </div>
+                      <span className="truncate">
+                        Registering as{" "}
+                        <strong className="text-text font-semibold">
+                          {profile.fullName}
+                        </strong>{" "}
+                        <span className="text-text-mute text-[11px]">
+                          ({profile.email})
+                        </span>
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-emerald-600 font-semibold shrink-0 flex items-center gap-1">
+                      <Sparkles size={12} /> Auto-verified
+                    </span>
+                  </div>
+                ) : (
+                  /* Form Inputs: Full Name & Work Email */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-text-mute mb-1">
+                        Full Name <span className="text-text-mute">(Required)</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Jane Doe"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        className="w-full h-10 px-3.5 rounded-xl bg-surface-2 border border-border text-text text-xs placeholder:text-text-mute focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-text-mute mb-1">
+                        Email Address <span className="text-text-mute">(For pass)</span>
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="jane@example.com"
+                        value={guestEmail}
+                        onChange={(e) => setGuestEmail(e.target.value)}
+                        className="w-full h-10 px-3.5 rounded-xl bg-surface-2 border border-border text-text text-xs placeholder:text-text-mute focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Status Banners (only if upcoming / waitlist / closed) */}
+                {isUpcoming && (
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">
+                    <Clock size={15} className="shrink-0 text-amber-500" />
+                    <span>
+                      Opens on {formatShortDate(event.registrationStart)} at{" "}
+                      {formatShortTime(event.registrationStart)}
+                    </span>
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-600">
+                    <AlertCircle size={15} className="shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                {/* Primary Action Button */}
+                {isClosed ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full h-12 text-sm font-semibold opacity-60 cursor-not-allowed rounded-2xl"
+                    disabled
+                  >
+                    Registrations Closed
+                  </Button>
+                ) : isUpcoming ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full h-12 text-sm font-semibold opacity-60 cursor-not-allowed rounded-2xl"
+                    disabled
+                  >
+                    Registration Not Started
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="orange"
+                    className="w-full h-12 text-sm font-bold shadow-lg shadow-[var(--accent)]/20 hover:shadow-[var(--accent)]/30 rounded-2xl transition-all"
+                    onClick={handleConfirm}
+                    disabled={loading}
+                  >
+                    {loading
+                      ? "Confirming Registration..."
+                      : regState?.isWaitlist
+                      ? "Join Waiting List"
+                      : "Confirm & Register"}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </Dialog>
   );

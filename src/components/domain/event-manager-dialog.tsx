@@ -30,7 +30,8 @@ import {
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { DEFAULT_EVENT_CATEGORIES, getAllEventCategories } from "@/lib/events";
-import type { EventItem as StoreEventItem } from "@/types";
+import type { EventItem as StoreEventItem, EventLesson, EventResource } from "@/types";
+import { LessonGlyph } from "@/components/domain/event-lessons-card";
 
 export type EventStatus = "Draft" | "Upcoming" | "Ongoing" | "Completed" | "Cancelled";
 export type EventFormat = "Campus Exclusive" | "Open" | "Online" | "Multi-Campus";
@@ -80,6 +81,10 @@ export interface CmsEventItem {
   attendeesCount: number;
   waitlistCapacity?: number;
   coverImage: string;
+  posterUrl?: string;
+  thumbnailUrl?: string;
+  seriesTitle?: string;
+  seriesPill?: string;
   featured: boolean;
   registrationStartDate?: string;
   registrationStartTime?: string;
@@ -93,6 +98,8 @@ export interface CmsEventItem {
   peerLabTitle?: string;
   chapterSlug: string;
   chapterName: string;
+  lessons?: EventLesson[];
+  resources?: EventResource[];
 }
 
 export function Field({
@@ -343,6 +350,12 @@ export function createBlankCmsEvent(
     attendeesCount: 0,
     waitlistCapacity: 0,
     coverImage: "",
+    posterUrl: "",
+    thumbnailUrl: "",
+    seriesTitle: "",
+    seriesPill: "STUDY JAM",
+    lessons: [],
+    resources: [],
     featured: false,
     platform: {
       enabled: false,
@@ -950,14 +963,379 @@ export function EventEditor({
               placeholder="Main Seminar Hall / Campus Auditorium"
             />
           </Field>
-          <Field label="Cover Image Path">
-            <TInput
-              value={d.coverImage}
-              onChange={(v) => u({ coverImage: v })}
-              mono
-              placeholder="/images/events/my-event.jpeg"
-            />
-          </Field>
+
+          {/* ── POSTER & CUSTOM THUMBNAIL ── */}
+          <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 space-y-3">
+            <h4 className="text-xs font-bold uppercase text-text tracking-wide">
+              🖼️ Poster & Custom Thumbnail
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label="Poster / Banner Artwork URL">
+                <TInput
+                  value={d.posterUrl || d.coverImage || ""}
+                  onChange={(v) => u({ posterUrl: v, coverImage: v })}
+                  placeholder="https://images.unsplash.com/... or /images/..."
+                />
+              </Field>
+              <Field label="Custom Thumbnail URL (Card Preview)">
+                <TInput
+                  value={d.thumbnailUrl || ""}
+                  onChange={(v) => u({ thumbnailUrl: v })}
+                  placeholder="https://images.unsplash.com/..."
+                />
+              </Field>
+            </div>
+
+            {/* Poster Live Preview */}
+            {(d.posterUrl || d.coverImage) && (
+              <div className="pt-2">
+                <span className="text-[10px] text-text-dim font-medium block mb-1.5">
+                  Live Poster Preview:
+                </span>
+                <div className="relative aspect-[16/9] max-w-sm rounded-[12px] overflow-hidden border border-border/80 shadow-sm bg-bg">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={d.posterUrl || d.coverImage}
+                    alt="Poster Preview"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = "none";
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <Field label="Series Ribbon Text (e.g. Beyond the Blueprint Season 3)">
+                <TInput
+                  value={d.seriesTitle || ""}
+                  onChange={(v) => u({ seriesTitle: v })}
+                  placeholder="Beyond the Blueprint Season 3"
+                />
+              </Field>
+              <Field label="Series Badge (e.g. STUDY JAM, PEER LAB)">
+                <TInput
+                  value={d.seriesPill || ""}
+                  onChange={(v) => u({ seriesPill: v.toUpperCase() })}
+                  placeholder="STUDY JAM"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* ── CURRICULUM LESSONS (MULTI-DAY WORKSHOPS / PEER LABS) ── */}
+          <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-bold uppercase text-text tracking-wide">
+                  📚 Curriculum Lessons (Multi-Day Workshop / Bootcamp)
+                </h4>
+                <p className="text-[11px] text-text-dim">
+                  Add sessions across workshop days with colorful emblems, date &amp; time, and stream links.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs text-[var(--accent)] font-semibold hover:bg-[var(--accent)]/10"
+                  onClick={() => {
+                    const sampleLessons: EventLesson[] = [
+                      {
+                        id: `ls-${Date.now()}-1`,
+                        date: "08 Sep",
+                        time: "07:45PM",
+                        title: "Shitty First Drafts",
+                        location: "Online",
+                        iconColor: "magenta",
+                        iconShape: "clover",
+                      },
+                      {
+                        id: `ls-${Date.now()}-2`,
+                        date: "15 Sep",
+                        time: "07:45PM",
+                        title: "Rapid Prototyping & Layouts",
+                        location: "Online",
+                        iconColor: "green",
+                        iconShape: "shield",
+                      },
+                      {
+                        id: `ls-${Date.now()}-3`,
+                        date: "22 Sep",
+                        time: "07:45PM",
+                        title: "Production Architecture",
+                        location: "Online",
+                        iconColor: "orange",
+                        iconShape: "cross",
+                      },
+                      {
+                        id: `ls-${Date.now()}-4`,
+                        date: "29 Sep",
+                        time: "07:45PM",
+                        title: "Demo Day & Shipping",
+                        location: "Online",
+                        iconColor: "cyan",
+                        iconShape: "wings",
+                      },
+                    ];
+                    u({ lessons: sampleLessons });
+                  }}
+                >
+                  ⚡ Preset 4-Day Series
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const next: EventLesson[] = [
+                      ...(d.lessons || []),
+                      {
+                        id: `ls-${Date.now()}`,
+                        title: `Lesson ${(d.lessons?.length || 0) + 1}`,
+                        date: "08 Sep",
+                        time: "07:45PM",
+                        location: "Online",
+                        iconColor: (["magenta", "green", "orange", "cyan"] as const)[
+                          (d.lessons?.length || 0) % 4
+                        ],
+                        iconShape: (["clover", "shield", "cross", "wings"] as const)[
+                          (d.lessons?.length || 0) % 4
+                        ],
+                      },
+                    ];
+                    u({ lessons: next });
+                  }}
+                >
+                  <Plus size={12} /> Add Lesson
+                </Button>
+              </div>
+            </div>
+
+            {/* Lesson Cards Editor */}
+            <div className="space-y-2.5">
+              {(d.lessons || []).map((ls, idx) => (
+                <div
+                  key={ls.id || idx}
+                  className="rounded-[12px] border border-border/80 bg-bg p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="shrink-0">
+                        <LessonGlyph
+                          color={ls.iconColor}
+                          shape={ls.iconShape}
+                          className="w-7 h-7"
+                        />
+                      </div>
+                      <input
+                        className="h-8 flex-1 font-semibold text-xs bg-transparent border-b border-border text-text px-1 outline-none focus:border-[var(--accent)]"
+                        placeholder="Lesson title (e.g. Shitty First Drafts)"
+                        value={ls.title}
+                        onChange={(e) => {
+                          const updated = [...(d.lessons || [])];
+                          updated[idx] = { ...updated[idx], title: e.target.value };
+                          u({ lessons: updated });
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (d.lessons || []).filter((_, j) => j !== idx);
+                        u({ lessons: updated });
+                      }}
+                      className="text-text-dim hover:text-red-500 p-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                    <div>
+                      <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
+                        Date
+                      </span>
+                      <input
+                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text"
+                        placeholder="e.g. 08 Sep"
+                        value={ls.date}
+                        onChange={(e) => {
+                          const updated = [...(d.lessons || [])];
+                          updated[idx] = { ...updated[idx], date: e.target.value };
+                          u({ lessons: updated });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
+                        Time
+                      </span>
+                      <input
+                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text"
+                        placeholder="e.g. 07:45PM"
+                        value={ls.time}
+                        onChange={(e) => {
+                          const updated = [...(d.lessons || [])];
+                          updated[idx] = { ...updated[idx], time: e.target.value };
+                          u({ lessons: updated });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
+                        Mode / Venue
+                      </span>
+                      <input
+                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text"
+                        placeholder="e.g. Online"
+                        value={ls.location}
+                        onChange={(e) => {
+                          const updated = [...(d.lessons || [])];
+                          updated[idx] = { ...updated[idx], location: e.target.value };
+                          u({ lessons: updated });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
+                        Color Glyph
+                      </span>
+                      <select
+                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text font-medium"
+                        value={ls.iconColor || "magenta"}
+                        onChange={(e) => {
+                          const updated = [...(d.lessons || [])];
+                          const color = e.target.value as EventLesson["iconColor"];
+                          const shapeMap = {
+                            magenta: "clover",
+                            green: "shield",
+                            orange: "cross",
+                            cyan: "wings",
+                          } as const;
+                          updated[idx] = {
+                            ...updated[idx],
+                            iconColor: color,
+                            iconShape: shapeMap[color as keyof typeof shapeMap] || "clover",
+                          };
+                          u({ lessons: updated });
+                        }}
+                      >
+                        <option value="magenta">Magenta Clover</option>
+                        <option value="green">Green Shield</option>
+                        <option value="orange">Orange Cross</option>
+                        <option value="cyan">Cyan Wings</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── EXCLUSIVE GATED RESOURCES ── */}
+          <div className="rounded-[var(--radius-xl)] border border-border bg-bg-panel p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 className="text-xs font-bold uppercase text-text tracking-wide">
+                  🎁 Exclusive Event Resources (Gated for Registered Attendees)
+                </h4>
+                <p className="text-[11px] text-text-dim">
+                  Files, slide decks, and repos that only registered pass holders can view and download.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  const next: EventResource[] = [
+                    ...(d.resources || []),
+                    {
+                      id: `res-${Date.now()}`,
+                      title: `Workshop Slide Deck`,
+                      url: "",
+                      type: "Slides",
+                      isGated: true,
+                    },
+                  ];
+                  u({ resources: next });
+                }}
+              >
+                <Plus size={12} /> Add Resource
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {(d.resources || []).map((res, idx) => (
+                <div
+                  key={res.id || idx}
+                  className="rounded-[10px] border border-border/80 bg-bg p-2.5 flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap"
+                >
+                  <input
+                    className="h-8 flex-1 min-w-[140px] rounded border border-border bg-bg-panel px-2 text-xs text-text"
+                    placeholder="Resource Title (e.g. Session Slides & Figma)"
+                    value={res.title}
+                    onChange={(e) => {
+                      const updated = [...(d.resources || [])];
+                      updated[idx] = { ...updated[idx], title: e.target.value };
+                      u({ resources: updated });
+                    }}
+                  />
+                  <input
+                    className="h-8 flex-1 min-w-[160px] rounded border border-border bg-bg-panel px-2 text-xs text-text font-mono"
+                    placeholder="URL (https://drive.google.com/...)"
+                    value={res.url}
+                    onChange={(e) => {
+                      const updated = [...(d.resources || [])];
+                      updated[idx] = { ...updated[idx], url: e.target.value };
+                      u({ resources: updated });
+                    }}
+                  />
+                  <select
+                    className="h-8 rounded border border-border bg-bg-panel px-2 text-xs text-text shrink-0"
+                    value={res.type || "Slides"}
+                    onChange={(e) => {
+                      const updated = [...(d.resources || [])];
+                      updated[idx] = { ...updated[idx], type: e.target.value };
+                      u({ resources: updated });
+                    }}
+                  >
+                    <option value="Slides">Slides</option>
+                    <option value="Code">Code</option>
+                    <option value="Doc">Doc</option>
+                    <option value="Video">Video</option>
+                    <option value="Cheatsheet">Cheatsheet</option>
+                  </select>
+                  <label className="flex items-center gap-1 text-[11px] text-text-dim cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={res.isGated !== false}
+                      onChange={(e) => {
+                        const updated = [...(d.resources || [])];
+                        updated[idx] = { ...updated[idx], isGated: e.target.checked };
+                        u({ resources: updated });
+                      }}
+                      className="accent-[var(--accent)]"
+                    />
+                    <span>Gated</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = (d.resources || []).filter((_, j) => j !== idx);
+                      u({ resources: updated });
+                    }}
+                    className="text-text-dim hover:text-red-500 p-1"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
@@ -1181,7 +1559,13 @@ export function EventManagerCreateDialog({
       hosts: (saved.hosts || []).filter((h) => h.name.trim() !== ""),
       organizers: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
       organizer: (saved.organizer || []).filter((o) => o.name.trim() !== ""),
-      bannerUrl: saved.coverImage || undefined,
+      bannerUrl: saved.posterUrl || saved.coverImage || undefined,
+      posterUrl: saved.posterUrl || saved.coverImage || undefined,
+      thumbnailUrl: saved.thumbnailUrl || saved.posterUrl || saved.coverImage || undefined,
+      seriesTitle: saved.seriesTitle || undefined,
+      seriesPill: saved.seriesPill || undefined,
+      lessons: saved.lessons || [],
+      resources: saved.resources || [],
       platform: saved.platform?.enabled
         ? {
             enabled: true,

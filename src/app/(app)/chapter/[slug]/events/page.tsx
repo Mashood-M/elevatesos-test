@@ -25,6 +25,7 @@ import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
+import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 import {
   CheckCircle2,
   Play,
@@ -124,11 +125,7 @@ export default function ChapterEventsPage({
   }, [store.registrations, store.events, chapter?.id]);
 
   if (!mounted) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-mono text-xs text-text-dim animate-pulse">Loading events...</p>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   if (!chapter) {

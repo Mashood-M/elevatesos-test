@@ -27,6 +27,7 @@ import type {
   VolunteerAssignment,
 } from "@/types";
 import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
+import { generateElevatesId } from "@/lib/forms/helpers";
 
 const defaultBrandKit: BrandKit = {
   logoUrl: "/logo.svg",
@@ -384,6 +385,10 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         publishedAt: e.published_at ?? undefined,
         summary: e.summary ?? undefined,
         bannerUrl: e.banner_url ?? undefined,
+        posterUrl: e.poster_url ?? undefined,
+        thumbnailUrl: e.thumbnail_url ?? undefined,
+        seriesTitle: e.series_title ?? undefined,
+        seriesPill: e.series_pill ?? undefined,
         mode: e.mode ?? undefined,
         topics: Array.isArray(e.topics) ? e.topics : [],
         hosts: Array.isArray(e.hosts) ? e.hosts : [],
@@ -393,6 +398,8 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         caseStudy: e.case_study ?? undefined,
         attendanceSessions: Array.isArray(e.attendance_sessions) ? e.attendance_sessions : undefined,
         volunteerStudentIds: Array.isArray(e.volunteer_student_ids) ? e.volunteer_student_ids : [],
+        lessons: Array.isArray(e.lessons) ? e.lessons : [],
+        resources: Array.isArray(e.resources) ? e.resources : [],
       })) ?? [],
     );
 
@@ -438,9 +445,7 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         id: p.id,
         elevatesId:
           p.elevates_id ||
-          (p.id
-            ? `ELV-${String(p.id).replace(/[^a-zA-Z0-9]/g, "").slice(0, 6).toUpperCase()}`
-            : undefined),
+          (p.id ? generateElevatesId(p.id) : undefined),
         email: p.email,
         emailVerified: Boolean(
           p.email_verified ||

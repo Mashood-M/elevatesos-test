@@ -983,7 +983,7 @@ export default function UnifiedReferralsPage() {
                   <div>
                     <p className="font-bold text-text">Automatic Elevates ID</p>
                     <p className="text-[12px] text-text-mute mt-0.5">
-                      Every invited member automatically receives an official collegiate identifier code (<code className="font-mono text-[11px]">ELV-XXX-0001</code>).
+                      Every invited member automatically receives an official collegiate identifier code (<code className="font-mono text-[11px]">ELV-0155</code>).
                     </p>
                   </div>
                 </div>

@@ -123,7 +123,9 @@ export function canAccessPath(
     pathname.startsWith("/eos/") ||
     pathname === "/my-qr" ||
     pathname === "/events" ||
-    pathname.startsWith("/events/")
+    pathname.startsWith("/events/") ||
+    pathname === "/peer-labs" ||
+    pathname.startsWith("/peer-labs/")
   ) {
     return true;
   }
@@ -159,9 +161,9 @@ export function canAccessPath(
     const isEventDetail = rest.startsWith("events/");
     if (!isEventDetail && effectiveSlug && slug !== effectiveSlug) return false;
 
-    // Reports — students + exec + faculty (document system)
+    // Reports & Peer Labs — students + exec + faculty
     const firstSeg = rest.split("/")[0] ?? "";
-    if (firstSeg === "reports") {
+    if (firstSeg === "reports" || firstSeg === "peer-labs") {
       return true;
     }
 

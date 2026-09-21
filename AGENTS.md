@@ -179,6 +179,8 @@ Contains migrations `001` through `040` representing the Postgres relational dat
 - **`038_discord_bot_restructure_sync_and_otp_fix.sql`**: Discord bot sync queue and verification structures.
 - **`039_fix_missing_tables_and_peer_labs.sql`**: Dedicated Peer Labs tables (`peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`), student referrals, chapter standards, and discord integrations.
 - **`040_lock_down_rls.sql`**: Hardens Row-Level Security across all Discord tables, leadership/volunteer write paths (`service_role` only), integrations, and anonymous access to profiles.
+- **`041_peer_lab_lessons_and_resources.sql`**: Extends Peer Labs and Events with multi-day lessons (`lessons`), gated resources (`resources`), `poster_url`, and `thumbnail_url`.
+- **`042_fix_sequential_elevates_id.sql`**: Permanently fixes Elevates ID generation across all sign-up pathways (`ELV-0155` vs `ELV-3VHC4E`), ensures `profiles_elevates_id_seq` sequence, updates sanitization triggers, and renumbers legacy random IDs.
 - **`FULL_DATABASE_SETUP.sql`**: Consolidated script for bootstrapping a fresh Supabase database in a single run.
 
 #### Migration Execution Order for Existing Databases
@@ -186,6 +188,8 @@ When applying new migrations to an existing database, execute them in this exact
 1. `supabase/migrations/037_email_verification_support.sql`
 2. `supabase/migrations/039_fix_missing_tables_and_peer_labs.sql`
 3. `supabase/migrations/040_lock_down_rls.sql`
+4. `supabase/migrations/041_peer_lab_lessons_and_resources.sql`
+5. `supabase/migrations/042_fix_sequential_elevates_id.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

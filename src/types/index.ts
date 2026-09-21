@@ -360,6 +360,30 @@ export interface EventPlatformRef {
   architectureSummary?: string;
 }
 
+export interface EventLesson {
+  id: string;
+  title: string;
+  date?: string;
+  time?: string;
+  location?: string;
+  linkUrl?: string;
+  iconColor?: "magenta" | "green" | "orange" | "cyan" | "blue" | "purple";
+  iconShape?: "clover" | "shield" | "cross" | "wings";
+  dayNumber?: number;
+  dayLabel?: string;
+  dateText?: string;
+  timeText?: string;
+  mode?: string;
+}
+
+export interface EventResource {
+  id: string;
+  title: string;
+  url: string;
+  type?: "Slides" | "Code" | "Doc" | "Video" | "Cheatsheet" | "Tool" | string;
+  isGated?: boolean;
+}
+
 export interface EventItem {
   id: string;
   chapterId: string;
@@ -390,6 +414,10 @@ export interface EventItem {
   publishedAt?: string;
   summary?: string;
   bannerUrl?: string;
+  posterUrl?: string;
+  thumbnailUrl?: string;
+  seriesTitle?: string;
+  seriesPill?: string;
   mode?: "in_person" | "online" | "hybrid";
   topics?: string[];
   caseStudy?: EventCaseStudy;
@@ -403,15 +431,17 @@ export interface EventItem {
   platform?: EventPlatformRef;
   /** Configurable attendance sessions (e.g. 1 session for workshop, 3-4 checkpoints for hackathon) */
   attendanceSessions?: EventAttendanceSession[];
-  hosts?: Array<{ name: string; role: string }>;
-  organizers?: Array<{ name: string }>;
-  organizer?: Array<{ name: string }>;
+  hosts?: Array<{ name: string; role: string; avatarUrl?: string }>;
+  organizers?: Array<{ name: string; avatarUrl?: string }>;
+  organizer?: Array<{ name: string; avatarUrl?: string }>;
   managingTeamMode?: "permanent" | "temporary";
   mediaTeamMode?: "permanent" | "temporary";
   managingStudentIds?: string[];
   mediaStudentIds?: string[];
   volunteerStudentIds?: string[];
   reminders?: EventReminder[];
+  lessons?: EventLesson[];
+  resources?: EventResource[];
 }
 
 export type EventReminderTrigger =

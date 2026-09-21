@@ -33,6 +33,7 @@ import { isUserAppointedVolunteerForEvent } from "@/lib/volunteers";
 import { formatDate } from "@/lib/datetime";
 import { formatDateTime } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
+import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 import type { ReportImage, ReportType } from "@/types";
 
 const statusTone = {
@@ -188,11 +189,7 @@ export default function ChapterReportsPage({
   }, [selectedEvent, outcomes]);
 
   if (!mounted) {
-    return (
-      <div className="py-20 text-center">
-        <p className="font-mono text-xs text-text-dim animate-pulse">Loading reports...</p>
-      </div>
-    );
+    return <ContentSkeleton />;
   }
 
   if (!chapter) {

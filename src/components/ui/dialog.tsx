@@ -11,6 +11,7 @@ type DialogProps = {
   description?: string;
   children: ReactNode;
   className?: string;
+  contentClassName?: string;
   footer?: ReactNode;
 };
 
@@ -21,6 +22,7 @@ export function Dialog({
   description,
   children,
   className,
+  contentClassName,
   footer,
 }: DialogProps) {
   const titleId = useId();
@@ -116,7 +118,7 @@ export function Dialog({
         )}
 
         {/* Scrollable Body */}
-        <div className="scrollbar-thin flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className={cn("scrollbar-thin flex-1 overflow-y-auto", contentClassName ?? "p-4 sm:p-6")}>
           {children}
         </div>
 

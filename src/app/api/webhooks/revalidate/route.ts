@@ -1,8 +1,8 @@
-import { jsonError, jsonOk, optionsOk } from "@/lib/public/http";
-import { revalidateWeb } from "@/lib/public/catalog";
+import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
+import { revalidateWeb } from "@/lib/api/revalidate-web";
 
 export function OPTIONS() {
-  return optionsOk();
+  return corsOptions();
 }
 
 /** Internal publish hook: OS pages can POST here after a publish action. */

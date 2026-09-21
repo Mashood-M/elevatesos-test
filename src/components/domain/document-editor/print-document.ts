@@ -4,6 +4,7 @@ import {
   type PageOrientation,
   type PageSizeId,
 } from "./page-geometry";
+import { escapeHtml } from "@/lib/utils";
 
 /** Print only TipTap document HTML (iframe), not the immersive Word chrome. */
 export function printDocument(
@@ -142,12 +143,4 @@ export function printDocument(
     });
     window.setTimeout(runPrint, 300);
   }
-}
-
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

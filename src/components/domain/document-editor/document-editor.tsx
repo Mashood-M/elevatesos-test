@@ -64,7 +64,10 @@ export function DocumentEditor({
   onExportDocx,
   onSubmit,
   showSubmit,
+  submitLabel,
   onApprove,
+  onRequestCorrection,
+  onReject: _onReject,
   showApprove,
   exportLabel,
   className,
@@ -296,6 +299,10 @@ export function DocumentEditor({
           onSave={editable ? handleSave : undefined}
           onSubmit={onSubmit}
           showSubmit={showSubmit}
+          submitLabel={submitLabel}
+          showApprove={showApprove}
+          onApprove={onApprove ? () => onApprove(approveComment) : undefined}
+          onRequestCorrection={onRequestCorrection ? () => onRequestCorrection(approveComment) : undefined}
           saveState={saveState}
           toolQuery={toolQuery}
           onToolQueryChange={setToolQuery}
@@ -395,6 +402,7 @@ export function DocumentEditor({
                 approveComment={approveComment}
                 onApproveCommentChange={setApproveComment}
                 onApprove={() => onApprove?.(approveComment)}
+                onRequestCorrection={onRequestCorrection ? () => onRequestCorrection(approveComment) : undefined}
               />
             ) : null}
             {rightTab === "ai" ? (

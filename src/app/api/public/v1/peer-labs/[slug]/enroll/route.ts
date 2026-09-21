@@ -5,9 +5,9 @@ import {
   jsonOk,
   rateLimit,
   requireClientToken,
+  verifyTurnstile,
 } from "@/lib/api/public";
 import { registerSchema } from "@/lib/api/schemas";
-import { verifyTurnstile } from "@/lib/public/http";
 
 export function OPTIONS() {
   return corsOptions();

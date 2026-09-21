@@ -10,12 +10,14 @@ export function CommentsPanel({
   approveComment,
   onApproveCommentChange,
   onApprove,
+  onRequestCorrection,
 }: {
   hqComment?: string;
   showApprove?: boolean;
   approveComment: string;
   onApproveCommentChange: (v: string) => void;
   onApprove?: () => void;
+  onRequestCorrection?: () => void;
 }) {
   const [notes, setNotes] = useState<{ id: string; text: string }[]>([]);
   const [draft, setDraft] = useState("");
@@ -23,9 +25,9 @@ export function CommentsPanel({
   return (
     <div className="space-y-4">
       {hqComment ? (
-        <div className="rounded-[10px] border border-green/30 bg-green/5 p-2.5">
-          <p className="text-[10px] font-semibold uppercase text-green">
-            HQ comment
+        <div className="rounded-[10px] border border-cyan/30 bg-cyan/5 p-2.5">
+          <p className="text-[10px] font-semibold uppercase text-cyan">
+            Faculty Review Note
           </p>
           <p className="mt-1 text-[12px] text-text-dim">{hqComment}</p>
         </div>
@@ -34,7 +36,7 @@ export function CommentsPanel({
       {showApprove ? (
         <div className="space-y-2">
           <p className="text-[10px] font-semibold uppercase text-text-mute">
-            Approve with comment
+            Review report
           </p>
           <TextArea
             rows={3}
@@ -42,9 +44,21 @@ export function CommentsPanel({
             onChange={(e) => onApproveCommentChange(e.target.value)}
             placeholder="Feedback for the chapter…"
           />
-          <Button variant="green" className="h-8 w-full text-[12px]" onClick={onApprove}>
-            Approve report
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="green" className="h-8 flex-1 text-[12px]" onClick={onApprove}>
+              Approve report
+            </Button>
+            {onRequestCorrection ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 text-[12px]"
+                onClick={onRequestCorrection}
+              >
+                Request changes
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

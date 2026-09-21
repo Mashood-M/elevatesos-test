@@ -6,7 +6,7 @@ import { deduplicateEvents } from "@/lib/events";
 import { deriveChapterShortCode, ensureTestChapter, getChapterElevatesId } from "@/lib/chapters";
 import { extractLocationFromNotes } from "@/lib/slug";
 import { roleKeyLabel } from "@/lib/leadership";
-import { isHqRole } from "@/lib/permissions";
+import { isHqRole, roleRank } from "@/lib/permissions";
 import type {
   ActivityLog,
   Announcement,
@@ -38,20 +38,7 @@ import type {
   UserRole,
 } from "@/types";
 
-export const ROLE_PRIORITY: RoleKey[] = [
-  "alumni",
-  "student",
-  "faculty_coordinator",
-  "class_representative",
-  "campus_lead",
-  "hq_admin",
-  "founder",
-];
-
-export function roleRank(key: RoleKey): number {
-  const idx = ROLE_PRIORITY.indexOf(key);
-  return idx === -1 ? 0 : idx;
-}
+export { ROLE_PRIORITY, roleRank } from "@/lib/permissions";
 
 // ── TRANSFORMERS (DB Snake_case -> Store CamelCase) ──────────────────────────
 

@@ -98,28 +98,41 @@ export default function FacultyPage() {
       </TerminalPanel>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-2">
-        <TerminalPanel title="Report review">
+        <TerminalPanel title="Report review" meta={`${submittedReports.length} pending`}>
           <ul className="divide-y divide-border/80">
             {submittedReports.map((r) => {
               const submitter = store.profiles.find(
                 (p) => p.id === r.submittedBy,
               );
+              const repChapter =
+                store.chapters.find((c) => c.id === r.chapterId) ?? chapter;
               return (
                 <li key={r.id} className="py-3">
-                  <div className="flex justify-between gap-2">
-                    <span className="font-semibold">{r.title}</span>
-                    <Badge tone="orange">{r.status}</Badge>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="font-semibold">{r.title}</span>
+                      <p className="mt-1 text-[12px] text-text-dim">
+                        By {submitter?.fullName ?? "Author"} ·{" "}
+                        {r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge tone="orange">Awaiting review</Badge>
+                      {repChapter ? (
+                        <Link href={`/chapter/${repChapter.slug}/reports/${r.id}`}>
+                          <Button size="sm" variant="secondary">
+                            Review
+                          </Button>
+                        </Link>
+                      ) : null}
+                    </div>
                   </div>
-                  <p className="mt-1 text-[12px] text-text-dim">
-                    By {submitter?.fullName} ·{" "}
-                    {r.submittedAt ? formatDateTime(r.submittedAt) : "—"}
-                  </p>
                 </li>
               );
             })}
             {submittedReports.length === 0 ? (
               <li className="py-2 text-[13px] text-text-dim">
-                No submitted reports
+                No submitted reports awaiting review
               </li>
             ) : null}
           </ul>
@@ -128,7 +141,7 @@ export default function FacultyPage() {
               href={`/chapter/${chapter.slug}/reports`}
               className="mt-3 inline-block text-[12px] font-medium text-[var(--accent)] hover:underline"
             >
-              Chapter reports →
+              All chapter reports →
             </Link>
           ) : null}
         </TerminalPanel>

@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { slugify } from "@/lib/public/http";
-import { revalidateWeb } from "@/lib/public/catalog";
+import { revalidateWeb } from "@/lib/api/revalidate-web";
 import { isUuid, genUuid } from "@/lib/uuid";
-import { embedLocationInNotes } from "@/lib/slug";
+import { embedLocationInNotes, slugify } from "@/lib/slug";
 import { getChapterElevatesId } from "@/lib/chapters";
 import { requireUser } from "@/lib/api/require-user";
 import {

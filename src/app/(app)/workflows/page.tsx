@@ -41,12 +41,12 @@ export default function WorkflowsPage() {
     {
       id: "ops-loop",
       title: "Ops loop",
-      persona: "Executive → HQ",
+      persona: "Executive → Faculty",
       steps: [
         { label: "Tasks", detail: "Update task status on chapter tasks" },
         { label: "Announce", detail: "Publish a chapter announcement" },
-        { label: "Submit report", detail: "New report → submitted to HQ" },
-        { label: "HQ approve", detail: "Founder/HQ Admin approves with comment" },
+        { label: "Submit report", detail: "Select event → submit report to Faculty" },
+        { label: "Faculty approve", detail: "Faculty Coordinator reviews and approves report" },
       ],
       href: chapterSlug ? `/chapter/${chapterSlug}/tasks` : "/chapter",
     },

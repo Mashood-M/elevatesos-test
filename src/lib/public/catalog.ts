@@ -1,41 +1,23 @@
 import { z } from "zod";
 import { createServiceClient } from "@/lib/supabase/service";
-import { slugify } from "@/lib/public/http";
+import { slugify } from "@/lib/slug";
+import { revalidateWeb } from "@/lib/api/revalidate-web";
+import {
+  registerSchema,
+  formSubmitSchema,
+  collegeLeadSchema,
+  joinLeadSchema,
+  joinLeadSchema as joinSchema,
+} from "@/lib/api/schemas";
 
-export const registerSchema = z.object({
-  name: z.string().min(2).max(120),
-  email: z.string().email(),
-  phone: z.string().max(32).optional(),
-  chapter: z.string().optional(),
-  answers: z.record(z.string(), z.unknown()).optional(),
-  turnstileToken: z.string().optional(),
-});
-
-export const formSubmitSchema = z.object({
-  answers: z.record(z.string(), z.unknown()),
-  email: z.string().email().optional(),
-  name: z.string().max(120).optional(),
-  turnstileToken: z.string().optional(),
-});
-
-export const collegeLeadSchema = z.object({
-  college: z.string().min(2),
-  contactName: z.string().min(2),
-  email: z.string().email(),
-  phone: z.string().optional(),
-  role: z.string().optional(),
-  message: z.string().optional(),
-  turnstileToken: z.string().optional(),
-});
-
-export const joinSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  college: z.string().min(2),
-  role: z.string().optional(),
-  message: z.string().optional(),
-  turnstileToken: z.string().optional(),
-});
+export {
+  revalidateWeb,
+  registerSchema,
+  formSubmitSchema,
+  collegeLeadSchema,
+  joinLeadSchema,
+  joinSchema,
+};
 
 function eventSlug(title: string, id: string) {
   return slugify(title) || slugify(id);
@@ -362,7 +344,7 @@ export async function registerForEvent(slug: string, input: z.infer<typeof regis
     event_id: row.id,
     status: "pending",
     guest_email: input.email,
-    guest_name: input.name,
+    guest_name: input.fullName,
     answers: input.answers ?? {},
     qr_code: `pending:${slug}:${input.email}`,
   });
@@ -384,7 +366,7 @@ export async function submitPublicForm(formId: string, input: z.infer<typeof for
   }
   const { error } = await admin.from("form_responses").insert({
     form_id: formId,
-    guest_email: input.email,
+    guest_email: input.respondentEmail,
     answers: input.answers,
   });
   if (error) return { ok: false as const, error: error.message, status: 400 };
@@ -412,23 +394,12 @@ export async function createJoinLead(input: z.infer<typeof joinSchema>) {
   if (!admin) return { ok: false as const, error: "Database connection unavailable" };
   const { error } = await admin.from("college_leads").insert({
     college: input.college,
-    contact_name: input.name,
+    contact_name: input.fullName,
     email: input.email,
-    role: input.role ?? "student",
+    role: "student",
     message: input.message,
     source: "join",
   });
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
-}
-
-export async function revalidateWeb(tags: string[]) {
-  const url = process.env.WEB_REVALIDATE_URL;
-  const secret = process.env.WEB_REVALIDATE_SECRET;
-  if (!url || !secret) return;
-  await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tags, secret }),
-  }).catch(() => undefined);
 }

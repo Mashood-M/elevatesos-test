@@ -81,6 +81,9 @@ export function hasPermission(
   if (permission === "attendance.view") {
     return canViewAttendance(roleKey);
   }
+  if (permission === "report.approve") {
+    return isFacultyRole(roleKey) || isSuperAdmin(roleKey);
+  }
   // If the active role is HQ founder or super admin, grant full control
   if (isSuperAdmin(roleKey)) {
     return true;
@@ -104,6 +107,8 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
         (rp) => rp.roleId === role.id && rp.permissionId === p.id,
       )?.allowed ?? false;
     if (isSuperAdmin(roleKey)) {
+      allowed = true;
+    } else if (p.key === "report.approve" && (isFacultyRole(roleKey) || isSuperAdmin(roleKey))) {
       allowed = true;
     } else if (p.key === "attendance.verify" && canVerifyAttendance(roleKey)) {
       allowed = true;
@@ -137,6 +142,45 @@ export function isSuperAdmin(roleKey: RoleKey) {
 
 export function isCampusLead(roleKey: RoleKey) {
   return roleKey === "campus_lead";
+}
+
+export const EXECUTIVE_ROLES: RoleKey[] = [
+  "campus_lead",
+  "chairman",
+  "vice_chairman",
+  "secretary",
+  "joint_secretary",
+  "elevates_coordinator",
+  "technical_lead",
+  "technical_team",
+  "media_lead",
+  "media_team",
+  "innovation_lead",
+  "innovation_team",
+  "class_representative",
+];
+
+export function isExecutiveRole(roleKey: RoleKey): boolean {
+  return EXECUTIVE_ROLES.includes(roleKey);
+}
+
+export function isFacultyRole(roleKey: RoleKey): boolean {
+  return roleKey === "faculty_coordinator";
+}
+
+export const ROLE_PRIORITY: RoleKey[] = [
+  "alumni",
+  "student",
+  "faculty_coordinator",
+  "class_representative",
+  "campus_lead",
+  "hq_admin",
+  "founder",
+];
+
+export function roleRank(key: RoleKey): number {
+  const idx = ROLE_PRIORITY.indexOf(key);
+  return idx === -1 ? 0 : idx;
 }
 
 export function activityLabel(score: number) {

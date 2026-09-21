@@ -2,6 +2,7 @@
 
 import { use, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DocumentEditor } from "@/components/domain/document-editor";
 import type { SaveState } from "@/components/domain/document-editor";
 import { useCurrentUser, useStore } from "@/context/store-context";
@@ -17,7 +18,8 @@ export default function ChapterReportDocumentPage({
   params: Promise<{ slug: string; reportId: string }>;
 }) {
   const { slug, reportId } = use(params);
-  const { store, updateReportDocument, submitReportDraft } = useStore();
+  const router = useRouter();
+  const { store, updateReportDocument, submitReportDraft, reviewReport } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
   const report = store.reports.find((r) => r.id === reportId);
@@ -29,6 +31,8 @@ export default function ChapterReportDocumentPage({
   const canSubmit = hasPermission(store, session.roleKey, "report.submit");
   const canDownload = hasPermission(store, session.roleKey, "report.download");
   const isFaculty = isFacultyRole(session.roleKey);
+  const canApprove =
+    hasPermission(store, session.roleKey, "report.approve") || isFaculty;
   const isHq = isHqRole(session.roleKey);
 
   const isVolunteerForEvent = report?.eventId
@@ -134,7 +138,30 @@ export default function ChapterReportDocumentPage({
           (currentReport.status === "draft" ||
             currentReport.status === "changes_requested"),
       )}
-      showApprove={false}
+      submitLabel={
+        currentReport.status === "changes_requested"
+          ? "Resubmit to Faculty"
+          : "Submit to Faculty"
+      }
+      showApprove={Boolean(canApprove && currentReport.status === "submitted")}
+      onApprove={() => {
+        const ok = reviewReport(
+          currentReport.id,
+          "approve",
+          "Approved by Faculty Coordinator.",
+          session.userId,
+        );
+        if (ok) router.push(`/chapter/${slug}/reports`);
+      }}
+      onRequestCorrection={(comment) => {
+        const ok = reviewReport(
+          currentReport.id,
+          "correction",
+          comment || "Changes requested by Faculty Coordinator.",
+          session.userId,
+        );
+        if (ok) router.push(`/chapter/${slug}/reports`);
+      }}
       meta={{
         status: currentReport.status,
         type: currentReport.type,

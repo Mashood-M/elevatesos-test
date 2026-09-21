@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/datetime";
+import { escapeHtml } from "@/lib/utils";
 import { extractEventReportAnalytics } from "@/lib/reports/feedback-analytics";
 import type { ElevatesStore, EventItem, ReportImage } from "@/types";
 
@@ -104,12 +105,4 @@ export function emptyManualReportHtml(title: string) {
 <h2>Next steps</h2>
 <p></p>
 `.trim();
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

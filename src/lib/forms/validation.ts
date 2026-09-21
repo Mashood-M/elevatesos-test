@@ -2,7 +2,7 @@ import type { FormQuestion, FormValidationRule } from "@/types";
 
 export type AnswerValue = string | string[] | number | boolean;
 
-function asString(v: AnswerValue | undefined): string {
+export function asString(v: AnswerValue | undefined): string {
   if (v === undefined || v === null) return "";
   if (Array.isArray(v)) return v.join(", ");
   return String(v);

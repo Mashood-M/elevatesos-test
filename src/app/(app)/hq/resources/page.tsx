@@ -12,7 +12,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { hasPermission } from "@/lib/permissions";
 import { DEFAULT_RESOURCE_CATEGORIES, resourceCategoryLabel } from "@/lib/resources/categories";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime, readFileAsDataUrl } from "@/lib/utils";
 import type { Resource } from "@/types";
 
 const TONES = ["cyan", "magenta", "green", "orange"] as const;
@@ -37,15 +37,6 @@ function emptyDraft(defaultCategory = "sop"): Draft {
     description: "",
     url: "",
   };
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
 }
 
 export default function HqResourcesPage() {

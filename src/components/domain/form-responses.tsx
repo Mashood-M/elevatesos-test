@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { answerableQuestions } from "@/lib/forms/helpers";
+import { downloadCsv } from "@/lib/utils";
 import type { ElevatesStore, FormDefinition, FormQuestion } from "@/types";
 
 function formatAnswer(
@@ -90,15 +91,10 @@ export function FormResponses({
       ];
       lines.push(cells.join(","));
     }
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/csv;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${form.title.replace(/\s+/g, "-").toLowerCase()}-responses.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(
+      lines.join("\n"),
+      `${form.title.replace(/\s+/g, "-").toLowerCase()}-responses.csv`,
+    );
   }
 
   if (!rows.length) {

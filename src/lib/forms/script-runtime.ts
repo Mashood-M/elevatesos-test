@@ -5,6 +5,7 @@ import type {
   FormLogicWhen,
   FormQuestion,
 } from "@/types";
+import { asString as answerAsString } from "@/lib/forms/validation";
 
 export type ScriptAnswerValue = string | string[] | number | boolean;
 
@@ -29,11 +30,6 @@ export type FormLogicHost = {
   setError: (message: string) => void;
 };
 
-function answerAsString(v: ScriptAnswerValue | undefined): string {
-  if (v === undefined || v === null) return "";
-  if (Array.isArray(v)) return v.join(", ");
-  return String(v);
-}
 
 function evalIf(
   cond: FormLogicIf,

@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { CertificateTemplate } from "@/types";
+import { downloadBlob } from "@/lib/utils";
 
 function escapeXml(unsafe: string): string {
   return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -183,19 +184,7 @@ function unescapeXml(text: string): string {
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
 }
 
-/**
- * Triggers a browser download of a given blob.
- */
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export { downloadBlob } from "@/lib/utils";
 
 /**
  * Parses an uploaded .pptx file and reconstructs a CertificateTemplate.

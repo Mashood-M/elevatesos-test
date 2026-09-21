@@ -1,10 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import type { User } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 interface GetUserResult {
-  user: any | null;
+  user: User | null;
   isNetworkError: boolean;
   isAuthError: boolean;
 }
@@ -16,11 +17,9 @@ interface GetUserResult {
  */
 async function getUserWithRetryAndTimeout(
   supabase: ReturnType<typeof createServerClient>,
-  timeoutMs = 3500,
-  retries = 1
+  timeoutMs = 2500,
+  retries = 1,
 ): Promise<GetUserResult> {
-  let lastErr: any = null;
-
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const userPromise = supabase.auth.getUser();
@@ -35,7 +34,7 @@ async function getUserWithRetryAndTimeout(
 
       if (error) {
         const errMsg = error.message?.toLowerCase() || "";
-        const errStatus = (error as any).status;
+        const errStatus = (error as { status?: number }).status;
         const isNetwork =
           errMsg.includes("fetch") ||
           errMsg.includes("network") ||
@@ -43,7 +42,7 @@ async function getUserWithRetryAndTimeout(
           errMsg.includes("econnrefused") ||
           errMsg.includes("enotfound") ||
           errStatus === 0 ||
-          errStatus >= 500;
+          (typeof errStatus === "number" && errStatus >= 500);
 
         if (isNetwork) {
           if (attempt < retries) {
@@ -58,9 +57,9 @@ async function getUserWithRetryAndTimeout(
       }
 
       return { user: data?.user ?? null, isNetworkError: false, isAuthError: false };
-    } catch (err: any) {
-      lastErr = err;
-      const errMsg = err?.message?.toLowerCase() || "";
+    } catch (err: unknown) {
+      const errorObj = err as { message?: string; name?: string };
+      const errMsg = errorObj?.message?.toLowerCase() || "";
       const isNetwork =
         errMsg.includes("network_timeout") ||
         errMsg.includes("fetch") ||
@@ -68,7 +67,7 @@ async function getUserWithRetryAndTimeout(
         errMsg.includes("timeout") ||
         errMsg.includes("econnrefused") ||
         errMsg.includes("enotfound") ||
-        err?.name === "AbortError";
+        errorObj?.name === "AbortError";
 
       if (isNetwork && attempt < retries) {
         await new Promise((r) => setTimeout(r, 400));
@@ -93,7 +92,7 @@ export async function middleware(request: NextRequest) {
   if (!configured) {
     if (process.env.NODE_ENV === "production") {
       console.error(
-        "[CRITICAL SECURITY WARNING] Route protection is disabled in production because Supabase credentials are missing or are placeholder values!"
+        "[CRITICAL SECURITY WARNING] Route protection is disabled in production because Supabase credentials are missing or are placeholder values!",
       );
     }
     return NextResponse.next();
@@ -136,45 +135,18 @@ export async function middleware(request: NextRequest) {
     path.startsWith("/workflows") ||
     path.startsWith("/v2") ||
     path.startsWith("/design-system") ||
+    path.startsWith("/profile") ||
     path.startsWith("/eos");
 
-  // Fast check local session from cookies first
-  let user: any = null;
-  let isNetworkError = false;
-
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (sessionData?.session?.user) {
-      user = sessionData.session.user;
-    }
-  } catch (_) {}
-
-  // If local session didn't return a user, verify with getUser (with 1.5s timeout, 0 retries for speed)
-  if (!user) {
-    const res = await getUserWithRetryAndTimeout(supabase, 1500, 0);
-    user = res.user;
-    isNetworkError = res.isNetworkError;
+  if (!isProtectedApp) {
+    return supabaseResponse;
   }
 
-  // Check if auth session cookies exist on the incoming request
-  const hasAuthCookie = request.cookies.getAll().some(
-    (c) =>
-      c.name.startsWith("sb-") ||
-      c.name.includes("auth-token") ||
-      c.name.includes("supabase")
-  );
+  // Validate the user with supabase.auth.getUser() instead of trusting cookie existence
+  const { user } = await getUserWithRetryAndTimeout(supabase, 2500, 1);
 
-  // Unauthenticated user accessing protected route
-  if (isProtectedApp && !user) {
-    // If the incoming request has auth cookies, allow it through so that the client-side
-    // Supabase browser client can perform token refresh and store hydration.
-    if (hasAuthCookie) {
-      supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
-      supabaseResponse.headers.set("Pragma", "no-cache");
-      return supabaseResponse;
-    }
-
-    // No auth cookies present at all → redirect to /login
+  // Unauthenticated user accessing protected route → redirect to /login
+  if (!user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
@@ -182,10 +154,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Prevent back-button caching of protected app pages after sign out
-  if (isProtectedApp) {
-    supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
-    supabaseResponse.headers.set("Pragma", "no-cache");
-  }
+  supabaseResponse.headers.set("Cache-Control", "no-store, max-age=0, must-revalidate");
+  supabaseResponse.headers.set("Pragma", "no-cache");
 
   return supabaseResponse;
 }

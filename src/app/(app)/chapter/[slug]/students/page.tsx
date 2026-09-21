@@ -388,7 +388,6 @@ export default function ChapterStudentsPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          actingUserId: store.session.userId,
           chapterId: targetChapter.id,
           csvContent: bulkText,
         }),
@@ -400,7 +399,7 @@ export default function ChapterStudentsPage({
           results: data.results,
         });
 
-        data.results.forEach((r: any) => {
+        data.results.forEach((r: { status: string; name: string; email: string }) => {
           if (r.status === "success") {
             createUser({
               fullName: r.name,
@@ -413,8 +412,8 @@ export default function ChapterStudentsPage({
       } else {
         alert(`Bulk import error: ${data.error}`);
       }
-    } catch (err: any) {
-      alert(`Bulk import exception: ${err.message}`);
+    } catch (err: unknown) {
+      alert(`Bulk import exception: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsBulkLoading(false);
     }

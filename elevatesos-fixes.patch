@@ -1,0 +1,1309 @@
+diff --git a/src/app/(app)/hq/website/peer-labs/page.tsx b/src/app/(app)/hq/website/peer-labs/page.tsx
+index 0e2936c..b54614b 100644
+--- a/src/app/(app)/hq/website/peer-labs/page.tsx
++++ b/src/app/(app)/hq/website/peer-labs/page.tsx
+@@ -1,7 +1,7 @@
+ "use client";
+ 
+-import { useEffect, useState } from "react";
+-import { useStore } from "@/context/store-context";
++import { useCallback, useEffect, useState } from "react";
++import { showToast, useStore } from "@/context/store-context";
+ import {
+   BookOpen,
+   Calendar,
+@@ -31,6 +31,8 @@ export interface LessonPhase {
+   time: string;
+   location: string;
+   eventSlug: string;
++  /** Optional link to a real event (events.id) so registrations/attendance work */
++  eventId: string | null;
+ }
+ 
+ export interface Facilitator {
+@@ -50,7 +52,8 @@ export interface PeerLabSeriesItem {
+   title: string;
+   subtitle: string;
+   description: string;
+-  campusName: string;
++  /** Host campus: chapters.id, or null for a network-wide lab */
++  chapterId: string | null;
+   status: "Completed" | "Active" | "Upcoming";
+   joinedCount: number;
+   featured: boolean;
+@@ -64,37 +67,59 @@ const DEFAULT_PEER_LABS: PeerLabSeriesItem[] = [];
+ export default function PeerLabsCMSPage() {
+   const { store } = useStore();
+   const [labs, setLabs] = useState<PeerLabSeriesItem[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [saving, setSaving] = useState(false);
+   const [search, setSearch] = useState("");
+   const [editingLab, setEditingLab] = useState<PeerLabSeriesItem | null>(null);
+   const [isNew, setIsNew] = useState(false);
+ 
+-  useEffect(() => {
+-    if (store.peerLabs && store.peerLabs.length > 0) {
+-      const dynamicLabs: PeerLabSeriesItem[] = store.peerLabs.map((l) => ({
+-        id: l.id,
+-        slug: l.slug || l.id,
+-        title: l.title,
+-        subtitle: l.subtitle || "",
+-        description: l.description || "",
+-        campusName: store.chapters.find((c) => c.id === l.chapterId)?.college || store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
+-        status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as any,
+-        joinedCount: l.enrolledCount || 0,
+-        featured: true,
+-        facilitators: l.facilitators ? l.facilitators.map((f: any) => ({ name: f.name || f, role: f.role || "Facilitator" })) : [],
+-        resources: [],
+-        lessons: l.phases ? l.phases.map((p: any, idx: number) => ({
+-          id: p.id || `phase-${idx}`,
+-          slug: p.slug || `phase-${idx}`,
+-          title: p.title || `Phase ${idx + 1}`,
+-          date: p.date || "TBA",
+-          time: p.time || "10:00 AM",
+-          location: p.location || "Campus Computer Lab",
+-          eventSlug: "",
+-        })) : [],
+-      }));
+-      setLabs(dynamicLabs);
++  const campusLabel = (chapterId: string | null) => {
++    if (!chapterId) return "Network-wide (all campuses)";
++    const c = store.chapters.find((x) => x.id === chapterId);
++    return c?.college || c?.name || "Unknown campus";
++  };
++
++  const loadLabs = useCallback(async () => {
++    try {
++      const res = await fetch("/api/mutations?type=peer_labs", { cache: "no-store" });
++      const json = await res.json();
++      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to load peer labs");
++      setLabs(
++        (json.peerLabs as any[]).map((l) => ({
++          id: l.id,
++          slug: l.slug,
++          title: l.title,
++          subtitle: l.subtitle || "",
++          description: l.description || "",
++          chapterId: l.chapterId ?? null,
++          status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as PeerLabSeriesItem["status"],
++          joinedCount: l.enrolledCount || 0,
++          featured: Boolean(l.featured),
++          facilitators: (l.facilitators || []).map((f: any) => ({ name: f.name, role: f.role || "Facilitator" })),
++          resources: l.resources || [],
++          lessons: (l.phases || []).map((p: any) => ({
++            id: p.id,
++            slug: p.slug || "",
++            title: p.title,
++            date: p.date || "TBA",
++            time: p.time || "",
++            location: p.location || "",
++            eventSlug: "",
++            eventId: p.eventId ?? null,
++          })),
++        })),
++      );
++    } catch (err) {
++      console.error("Failed to load peer labs:", err);
++      showToast(err instanceof Error ? err.message : "Failed to load peer labs");
++    } finally {
++      setLoading(false);
+     }
+-  }, [store.peerLabs, store.chapters]);
++  }, []);
++
++  useEffect(() => {
++    void loadLabs();
++  }, [loadLabs]);
+ 
+   const filtered = labs.filter(
+     (l) =>
+@@ -108,7 +133,7 @@ export default function PeerLabsCMSPage() {
+     title: "",
+     subtitle: "",
+     description: "",
+-    campusName: store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
++    chapterId: null,
+     status: "Upcoming",
+     joinedCount: 0,
+     featured: false,
+@@ -123,6 +148,7 @@ export default function PeerLabsCMSPage() {
+         time: "10:00 AM",
+         location: "Campus Computer Lab",
+         eventSlug: "",
++        eventId: null,
+       },
+     ],
+   });
+@@ -162,6 +188,10 @@ export default function PeerLabsCMSPage() {
+       </div>
+ 
+       {/* Peer Labs List */}
++      {loading && <p className="text-xs text-text-dim">Loading peer labs…</p>}
++      {!loading && filtered.length === 0 && (
++        <p className="text-xs text-text-dim">No peer labs yet. Create the first track with “New Peer Lab Track”.</p>
++      )}
+       <div className="space-y-4">
+         {filtered.map((lab) => (
+           <div
+@@ -185,7 +215,7 @@ export default function PeerLabsCMSPage() {
+                 </h3>
+                 <p className="text-sm font-semibold text-[var(--accent)]">{lab.subtitle}</p>
+                 <p className="text-xs text-text-dim leading-relaxed">{lab.description}</p>
+-                <p className="text-xs font-mono text-text-dim">📍 {lab.campusName}</p>
++                <p className="text-xs font-mono text-text-dim">📍 {campusLabel(lab.chapterId)}</p>
+ 
+                 {/* Facilitators */}
+                 <div className="flex flex-wrap gap-2 pt-2">
+@@ -238,17 +268,19 @@ export default function PeerLabsCMSPage() {
+                   size="sm"
+                   className="text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                   onClick={async () => {
+-                    if (confirm(`Delete Peer Lab Track "${lab.title}"?`)) {
++                    if (!confirm(`Delete Peer Lab Track "${lab.title}"?`)) return;
++                    try {
++                      const res = await fetch("/api/mutations", {
++                        method: "POST",
++                        headers: { "Content-Type": "application/json" },
++                        body: JSON.stringify({ type: "delete_peer_lab", data: { id: lab.id, slug: lab.slug } }),
++                      });
++                      const json = await res.json();
++                      if (!res.ok || !json.ok) throw new Error(json.error || "Delete failed");
+                       setLabs((prev) => prev.filter((l) => l.id !== lab.id));
+-                      try {
+-                        await fetch("/api/mutations", {
+-                          method: "POST",
+-                          headers: { "Content-Type": "application/json" },
+-                          body: JSON.stringify({ type: "delete_cluster", data: { id: lab.id, slug: lab.slug } }),
+-                        });
+-                      } catch (e) {
+-                        console.error("Failed to delete peer lab cluster:", e);
+-                      }
++                      showToast("Peer lab deleted", "success");
++                    } catch (err) {
++                      showToast(err instanceof Error ? err.message : "Delete failed");
+                     }
+                   }}
+                 >
+@@ -358,26 +390,26 @@ export default function PeerLabsCMSPage() {
+               <div className="grid grid-cols-2 gap-3">
+                 <div>
+                   <label className="font-semibold text-text-dim block mb-1">Campus Host</label>
+-                  <Input
+-                    value={editingLab.campusName}
++                  <select
++                    className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
++                    value={editingLab.chapterId ?? ""}
+                     onChange={(e) =>
+-                      setEditingLab({ ...editingLab, campusName: e.target.value })
++                      setEditingLab({ ...editingLab, chapterId: e.target.value || null })
+                     }
+-                  />
++                  >
++                    <option value="">Network-wide (all campuses)</option>
++                    {store.chapters.map((c) => (
++                      <option key={c.id} value={c.id}>
++                        {c.college || c.name}
++                      </option>
++                    ))}
++                  </select>
+                 </div>
+                 <div>
+-                  <label className="font-semibold text-text-dim block mb-1">Enrolled Count</label>
+-                  <input
+-                    type="number"
+-                    className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+-                    value={editingLab.joinedCount}
+-                    onChange={(e) =>
+-                      setEditingLab({
+-                        ...editingLab,
+-                        joinedCount: parseInt(e.target.value) || 0,
+-                      })
+-                    }
+-                  />
++                  <label className="font-semibold text-text-dim block mb-1">Enrolled</label>
++                  <div className="h-9 flex items-center rounded-[var(--radius-md)] border border-border bg-bg-page px-3 text-xs text-text-dim">
++                    {editingLab.joinedCount} (counted automatically from enrollments)
++                  </div>
+                 </div>
+               </div>
+ 
+@@ -403,6 +435,7 @@ export default function PeerLabsCMSPage() {
+                             time: "10:00 AM",
+                             location: "Campus Computer Lab",
+                             eventSlug: "",
++                            eventId: null,
+                           },
+                         ],
+                       })
+@@ -478,6 +511,60 @@ export default function PeerLabsCMSPage() {
+                   ))}
+                 </div>
+               </div>
++
++              {/* Facilitators Editor */}
++              <div className="pt-3 border-t border-border space-y-3">
++                <div className="flex items-center justify-between">
++                  <label className="font-bold text-text uppercase tracking-wider block">
++                    Facilitators
++                  </label>
++                  <Button
++                    size="sm"
++                    variant="secondary"
++                    onClick={() =>
++                      setEditingLab({
++                        ...editingLab,
++                        facilitators: [...editingLab.facilitators, { name: "", role: "Facilitator" }],
++                      })
++                    }
++                  >
++                    <Plus size={12} /> Add Facilitator
++                  </Button>
++                </div>
++                {editingLab.facilitators.map((f, idx) => (
++                  <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2">
++                    <input
++                      className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
++                      placeholder="Name"
++                      value={f.name}
++                      onChange={(e) => {
++                        const next = editingLab.facilitators.map((x, j) => (j === idx ? { ...x, name: e.target.value } : x));
++                        setEditingLab({ ...editingLab, facilitators: next });
++                      }}
++                    />
++                    <input
++                      className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
++                      placeholder="Role (e.g. Lead Mentor)"
++                      value={f.role}
++                      onChange={(e) => {
++                        const next = editingLab.facilitators.map((x, j) => (j === idx ? { ...x, role: e.target.value } : x));
++                        setEditingLab({ ...editingLab, facilitators: next });
++                      }}
++                    />
++                    <button
++                      onClick={() =>
++                        setEditingLab({
++                          ...editingLab,
++                          facilitators: editingLab.facilitators.filter((_, j) => j !== idx),
++                        })
++                      }
++                      className="text-text-dim hover:text-red-500 p-1"
++                    >
++                      <Trash2 size={13} />
++                    </button>
++                  </div>
++                ))}
++              </div>
+             </div>
+ 
+             <div className="flex justify-end gap-3 pt-3 border-t border-border">
+@@ -487,36 +574,46 @@ export default function PeerLabsCMSPage() {
+               <Button
+                 variant="orange"
+                 size="sm"
++                disabled={saving}
+                 onClick={async () => {
+-                  const cleanSlug = finalizeSlug(
+-                    editingLab.slug || editingLab.title || "peer-lab",
+-                  );
+-                  const saved = { ...editingLab, slug: cleanSlug };
+-                  if (isNew) setLabs((prev) => [...prev, saved]);
+-                  else
+-                    setLabs((prev) =>
+-                      prev.map((l) => (l.id === saved.id ? saved : l)),
+-                    );
+-                  setEditingLab(null);
+-
++                  if (!editingLab.title.trim()) {
++                    showToast("Give the peer lab a title first");
++                    return;
++                  }
++                  const cleanSlug = finalizeSlug(editingLab.slug || editingLab.title || "peer-lab");
++                  const lab = { ...editingLab, slug: cleanSlug };
++                  setSaving(true);
+                   try {
+-                    await fetch("/api/mutations", {
++                    const res = await fetch("/api/mutations", {
+                       method: "POST",
+                       headers: { "Content-Type": "application/json" },
+                       body: JSON.stringify({
+-                        type: "cluster",
++                        type: "peer_lab",
+                         data: {
+-                          id: saved.id,
+-                          title: saved.title,
+-                          slug: saved.slug,
+-                          subtitle: saved.subtitle,
+-                          description: saved.description,
+-                          accessMode: "open",
++                          id: isNew ? undefined : lab.id,
++                          slug: lab.slug,
++                          title: lab.title,
++                          subtitle: lab.subtitle,
++                          description: lab.description,
++                          chapterId: lab.chapterId,
++                          status: lab.status.toLowerCase(),
++                          featured: lab.featured,
++                          resources: lab.resources.filter((r) => r.title || r.url),
++                          facilitators: lab.facilitators,
++                          phases: lab.lessons,
++                          actorId: store.session.userId,
+                         },
+                       }),
+                     });
++                    const json = await res.json();
++                    if (!res.ok || !json.ok) throw new Error(json.error || "Save failed");
++                    setEditingLab(null);
++                    showToast("Peer lab saved", "success");
++                    await loadLabs();
+                   } catch (err) {
+-                    console.error("Failed to persist peer lab cluster:", err);
++                    showToast(err instanceof Error ? err.message : "Save failed");
++                  } finally {
++                    setSaving(false);
+                   }
+                 }}
+               >
+diff --git a/src/app/api/mutations/route.ts b/src/app/api/mutations/route.ts
+index 6e93d2d..2d1bfc7 100644
+--- a/src/app/api/mutations/route.ts
++++ b/src/app/api/mutations/route.ts
+@@ -9,6 +9,49 @@ import { getChapterElevatesId } from "@/lib/chapters";
+ // Default Root Organization UUID seeded in database migration 001/002
+ const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+ 
++type AdminClient = NonNullable<ReturnType<typeof createServiceClient>>;
++
++const PEER_LAB_STATUSES = ["draft", "upcoming", "active", "completed", "archived"];
++
++function normalizePeerLabStatus(v: unknown): string {
++  const s = String(v ?? "").trim().toLowerCase();
++  return PEER_LAB_STATUSES.includes(s) ? s : "upcoming";
++}
++
++/**
++ * Mirror a uuid[] column (clusters.member_ids / projects.team_ids) into its
++ * join table. supabase-js never throws on DB errors, so we must inspect
++ * `error` ourselves - the old try/catch silently hid every failure.
++ * Returns an error message, or null on success.
++ */
++async function syncMemberTable(
++  admin: AdminClient,
++  table: "cluster_members" | "project_members",
++  fk: "cluster_id" | "project_id",
++  parentId: string,
++  userIds: string[],
++): Promise<string | null> {
++  const base = admin.from(table).delete().eq(fk, parentId);
++  const { error: delErr } = userIds.length
++    ? await base.not("user_id", "in", `(${userIds.join(",")})`)
++    : await base;
++  if (delErr) {
++    console.error(`${table} cleanup failed:`, delErr);
++    return delErr.message;
++  }
++  if (userIds.length === 0) return null;
++
++  const { error } = await admin.from(table).upsert(
++    userIds.map((uid) => ({ [fk]: parentId, user_id: uid })),
++    { onConflict: `${fk},user_id`, ignoreDuplicates: true },
++  );
++  if (error) {
++    console.error(`${table} sync failed:`, error);
++    return error.message;
++  }
++  return null;
++}
++
+ export async function GET(req: Request) {
+   try {
+     const admin = createServiceClient();
+@@ -17,6 +60,67 @@ export async function GET(req: Request) {
+     }
+     const { searchParams } = new URL(req.url);
+     const type = searchParams.get("type");
++    if (type === "peer_labs") {
++      const { data: labs, error: labsErr } = await admin
++        .from("peer_labs")
++        .select("*")
++        .order("created_at", { ascending: false });
++      if (labsErr) {
++        return NextResponse.json({ ok: false, error: labsErr.message }, { status: 500 });
++      }
++      const ids = (labs ?? []).map((l: any) => l.id);
++      let phases: any[] = [];
++      let facilitators: any[] = [];
++      if (ids.length > 0) {
++        const [ph, fa] = await Promise.all([
++          admin.from("peer_lab_phases").select("*").in("peer_lab_id", ids).order("sort_order"),
++          admin.from("peer_lab_facilitators").select("*").in("peer_lab_id", ids).order("sort_order"),
++        ]);
++        if (ph.error || fa.error) {
++          return NextResponse.json(
++            { ok: false, error: (ph.error || fa.error)!.message },
++            { status: 500 },
++          );
++        }
++        phases = ph.data ?? [];
++        facilitators = fa.data ?? [];
++      }
++      return NextResponse.json({
++        ok: true,
++        peerLabs: (labs ?? []).map((l: any) => ({
++          id: l.id,
++          slug: l.slug,
++          title: l.title,
++          subtitle: l.subtitle ?? "",
++          track: l.track ?? "",
++          description: l.description ?? "",
++          chapterId: l.chapter_id ?? null,
++          clusterId: l.cluster_id ?? null,
++          status: l.status ?? "upcoming",
++          applicationsOpen: l.applications_open ?? true,
++          featured: l.featured ?? false,
++          bannerUrl: l.banner_url ?? null,
++          maxParticipants: l.max_participants ?? null,
++          enrolledCount: l.enrolled_count ?? 0,
++          resources: Array.isArray(l.resources) ? l.resources : [],
++          facilitators: facilitators
++            .filter((f) => f.peer_lab_id === l.id)
++            .map((f) => ({ id: f.id, userId: f.user_id, name: f.name, role: f.role })),
++          phases: phases
++            .filter((p) => p.peer_lab_id === l.id)
++            .map((p) => ({
++              id: p.id,
++              slug: p.slug ?? "",
++              title: p.title,
++              date: p.date_label ?? "TBA",
++              time: p.time_label ?? "",
++              location: p.location ?? "",
++              eventId: p.event_id ?? null,
++            })),
++        })),
++      });
++    }
++
+     if (type === "invite_tokens") {
+       const { data: rawTokens, error } = await admin
+         .from("invite_tokens")
+@@ -621,23 +725,11 @@ export async function POST(req: Request) {
+         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+       }
+ 
+-      try {
+-        const teamIds = Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [];
+-        await admin.from("project_members").delete().eq("project_id", projId);
+-        if (teamIds.length > 0) {
+-          await admin.from("project_members").insert(
+-            teamIds.map((uid: string) => ({
+-              project_id: projId,
+-              user_id: uid,
+-            }))
+-          );
+-        }
+-      } catch (pmErr) {
+-        console.warn("project_members sync notice:", pmErr);
+-      }
++      const teamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [];
++      const memberSyncError = await syncMemberTable(admin, "project_members", "project_id", projId, teamIds);
+ 
+       await revalidateWeb(["projects", `project:${slug}`]);
+-      return NextResponse.json({ ok: true, id: projId });
++      return NextResponse.json({ ok: true, id: projId, ...(memberSyncError ? { warning: `project saved, but member sync failed: ${memberSyncError}` } : {}) });
+     }
+ 
+     if (type === "delete_project") {
+@@ -650,6 +742,114 @@ export async function POST(req: Request) {
+       return NextResponse.json({ ok: true });
+     }
+ 
++    // 2b. PEER LAB MUTATIONS (own tables: peer_labs, peer_lab_phases, peer_lab_facilitators)
++    if (type === "peer_lab") {
++      const l = data ?? {};
++      const title = String(l.title ?? "").trim();
++      if (!title) {
++        return NextResponse.json({ ok: false, error: "Title is required" }, { status: 400 });
++      }
++      const slug = slugify(String(l.slug || title));
++      if (!slug) {
++        return NextResponse.json({ ok: false, error: "Could not build a slug from the title" }, { status: 400 });
++      }
++      const labId = isUuid(l.id) ? l.id : genUuid();
++
++      const { data: existing } = await admin.from("peer_labs").select("id").eq("id", labId).maybeSingle();
++
++      const row: Record<string, unknown> = {
++        id: labId,
++        slug,
++        title,
++        subtitle: l.subtitle || null,
++        track: l.track || null,
++        description: l.description || null,
++        chapter_id: isUuid(l.chapterId) ? l.chapterId : null,
++        cluster_id: isUuid(l.clusterId) ? l.clusterId : null,
++        status: normalizePeerLabStatus(l.status),
++        applications_open: l.applicationsOpen ?? true,
++        featured: l.featured ?? false,
++        banner_url: l.bannerUrl || null,
++        max_participants: Number.isFinite(l.maxParticipants) ? l.maxParticipants : null,
++        resources: Array.isArray(l.resources) ? l.resources : [],
++      };
++      if (!existing && isUuid(l.actorId)) row.created_by = l.actorId;
++
++      const { error: labErr } = await admin.from("peer_labs").upsert(row);
++      if (labErr) {
++        console.error("Mutation error (peer_lab):", labErr);
++        const msg = labErr.code === "23505" ? "A peer lab with this slug already exists" : labErr.message;
++        return NextResponse.json({ ok: false, error: msg }, { status: 400 });
++      }
++
++      const phases = (Array.isArray(l.phases) ? l.phases : []).filter((p: any) => String(p?.title ?? "").trim());
++      const facilitators = (Array.isArray(l.facilitators) ? l.facilitators : []).filter((f: any) =>
++        String(f?.name ?? "").trim(),
++      );
++
++      const [delPh, delFa] = await Promise.all([
++        admin.from("peer_lab_phases").delete().eq("peer_lab_id", labId),
++        admin.from("peer_lab_facilitators").delete().eq("peer_lab_id", labId),
++      ]);
++      if (delPh.error || delFa.error) {
++        return NextResponse.json(
++          { ok: false, error: `Peer lab saved, but its phases/facilitators could not be updated: ${(delPh.error || delFa.error)!.message}` },
++          { status: 500 },
++        );
++      }
++
++      if (phases.length > 0) {
++        const { error: phErr } = await admin.from("peer_lab_phases").insert(
++          phases.map((p: any, i: number) => ({
++            peer_lab_id: labId,
++            sort_order: i,
++            slug: slugify(String(p.slug || p.title || `phase-${i + 1}`)) || `phase-${i + 1}`,
++            title: String(p.title).trim(),
++            date_label: p.date || null,
++            time_label: p.time || null,
++            location: p.location || null,
++            event_id: isUuid(p.eventId) ? p.eventId : null,
++          })),
++        );
++        if (phErr) {
++          console.error("Mutation error (peer_lab phases):", phErr);
++          return NextResponse.json({ ok: false, error: `Phases failed: ${phErr.message}` }, { status: 500 });
++        }
++      }
++
++      if (facilitators.length > 0) {
++        const { error: faErr } = await admin.from("peer_lab_facilitators").insert(
++          facilitators.map((f: any, i: number) => ({
++            peer_lab_id: labId,
++            sort_order: i,
++            user_id: isUuid(f.userId) ? f.userId : null,
++            name: String(f.name).trim(),
++            role: String(f.role || "Facilitator").trim(),
++          })),
++        );
++        if (faErr) {
++          console.error("Mutation error (peer_lab facilitators):", faErr);
++          return NextResponse.json({ ok: false, error: `Facilitators failed: ${faErr.message}` }, { status: 500 });
++        }
++      }
++
++      await revalidateWeb(["peer-labs", `peer-lab:${slug}`]);
++      return NextResponse.json({ ok: true, id: labId, slug });
++    }
++
++    if (type === "delete_peer_lab") {
++      const { id, slug } = data ?? {};
++      if (!isUuid(id) && !slug) {
++        return NextResponse.json({ ok: false, error: "id or slug is required" }, { status: 400 });
++      }
++      const { error } = await admin.from("peer_labs").delete().match(isUuid(id) ? { id } : { slug });
++      if (error) {
++        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
++      }
++      await revalidateWeb(["peer-labs", `peer-lab:${slug ?? id}`]);
++      return NextResponse.json({ ok: true });
++    }
++
+     // 3. CLUSTER MUTATIONS
+     if (type === "cluster") {
+       const c = data;
+@@ -675,22 +875,10 @@ export async function POST(req: Request) {
+         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+       }
+ 
+-      try {
+-        await admin.from("cluster_members").delete().eq("cluster_id", clusterId);
+-        if (memberIds.length > 0) {
+-          await admin.from("cluster_members").insert(
+-            memberIds.map((uid: string) => ({
+-              cluster_id: clusterId,
+-              user_id: uid,
+-            }))
+-          );
+-        }
+-      } catch (cmErr) {
+-        console.warn("cluster_members sync notice:", cmErr);
+-      }
++      const memberSyncError = await syncMemberTable(admin, "cluster_members", "cluster_id", clusterId, memberIds);
+ 
+       await revalidateWeb(["peer-labs", `cluster:${slug}`]);
+-      return NextResponse.json({ ok: true, id: clusterId });
++      return NextResponse.json({ ok: true, id: clusterId, ...(memberSyncError ? { warning: `cluster saved, but member sync failed: ${memberSyncError}` } : {}) });
+     }
+ 
+     if (type === "delete_cluster") {
+diff --git a/src/app/api/public/v1/peer-labs/[slug]/enroll/route.ts b/src/app/api/public/v1/peer-labs/[slug]/enroll/route.ts
+new file mode 100644
+index 0000000..ee83d08
+--- /dev/null
++++ b/src/app/api/public/v1/peer-labs/[slug]/enroll/route.ts
+@@ -0,0 +1,88 @@
++import { createServiceClient } from "@/lib/supabase/service";
++import {
++  corsOptions,
++  jsonError,
++  jsonOk,
++  rateLimit,
++  requireClientToken,
++} from "@/lib/api/public";
++import { registerSchema } from "@/lib/api/schemas";
++import { verifyTurnstile } from "@/lib/public/http";
++
++export function OPTIONS() {
++  return corsOptions();
++}
++
++/** Public website sign-up for a peer lab -> peer_lab_enrollments (status: pending). */
++export async function POST(
++  req: Request,
++  { params }: { params: Promise<{ slug: string }> },
++) {
++  const unauthorized = requireClientToken(req);
++  if (unauthorized) return unauthorized;
++
++  const { slug } = await params;
++  if (!rateLimit(req, `peer-lab-enroll:${slug}`, 5, 10 * 60 * 1000)) {
++    return jsonError("Too many requests", 429);
++  }
++
++  const admin = createServiceClient();
++  if (!admin) return jsonError("Service unavailable", 503);
++
++  let body: unknown;
++  try {
++    body = await req.json();
++  } catch {
++    return jsonError("Invalid JSON");
++  }
++
++  const parsed = registerSchema.safeParse(body);
++  if (!parsed.success) {
++    return jsonError(parsed.error.issues[0]?.message ?? "Invalid payload");
++  }
++  if (!(await verifyTurnstile(parsed.data.turnstileToken))) {
++    return jsonError("Captcha verification failed", 403);
++  }
++
++  const { data: lab } = await admin
++    .from("peer_labs")
++    .select("id, status, applications_open, max_participants, enrolled_count")
++    .eq("slug", slug)
++    .in("status", ["upcoming", "active"])
++    .maybeSingle();
++
++  if (!lab) return jsonError("Peer lab not found", 404);
++  if (!lab.applications_open) return jsonError("Applications are closed", 409);
++  if (lab.max_participants && (lab.enrolled_count ?? 0) >= lab.max_participants) {
++    return jsonError("This peer lab is full", 409);
++  }
++
++  const { data: enrollment, error } = await admin
++    .from("peer_lab_enrollments")
++    .insert({
++      peer_lab_id: lab.id,
++      user_id: null,
++      full_name: parsed.data.fullName,
++      email: parsed.data.email.toLowerCase(),
++      phone: parsed.data.phone ?? null,
++      college: parsed.data.college ?? null,
++      answers: parsed.data.answers ?? {},
++      status: "pending",
++    })
++    .select("id, status")
++    .single();
++
++  if (error) {
++    if (error.code === "23505") return jsonError("You have already applied to this peer lab", 409);
++    return jsonError(error.message, 500);
++  }
++
++  return jsonOk(
++    {
++      enrollmentId: enrollment.id,
++      status: enrollment.status,
++      message: "Application received - pending review",
++    },
++    { status: 201 },
++  );
++}
+diff --git a/src/app/api/public/v1/peer-labs/[slug]/route.ts b/src/app/api/public/v1/peer-labs/[slug]/route.ts
+index 9180d41..ea2c387 100644
+--- a/src/app/api/public/v1/peer-labs/[slug]/route.ts
++++ b/src/app/api/public/v1/peer-labs/[slug]/route.ts
+@@ -1,5 +1,6 @@
+-import { createServiceClient } from "@/lib/supabase/service";
+ import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
++import { resolveMediaUrl } from "@/lib/data/media";
++import { loadPublicPeerLabs } from "@/lib/public/catalog";
+ 
+ export function OPTIONS() {
+   return corsOptions();
+@@ -10,32 +11,12 @@ export async function GET(
+   { params }: { params: Promise<{ slug: string }> },
+ ) {
+   const { slug } = await params;
+-  const admin = createServiceClient();
+-  if (!admin) {
++  const { ok, error, labs } = await loadPublicPeerLabs(slug);
++  if (!ok) {
++    console.error("Peer Lab API database query error:", error);
+     return jsonError("Database connection unavailable", 503);
+   }
+-
+-  const { data, error } = await admin
+-    .from("peer_labs")
+-    .select("*")
+-    .eq("slug", slug)
+-    .maybeSingle();
+-
+-  if (error || !data) {
+-    return jsonError("Peer lab not found", 404);
+-  }
+-
+-
+-  return jsonOk({
+-    id: data.id,
+-    slug: data.slug,
+-    title: data.title,
+-    track: data.track,
+-    description: data.description,
+-    syllabus: data.syllabus ?? [],
+-    status: data.status,
+-    applicationsOpen: data.applications_open,
+-    bannerUrl: data.banner_url,
+-    enrolledCount: data.enrolled_count,
+-  });
++  const lab = labs[0];
++  if (!lab) return jsonError("Peer lab not found", 404);
++  return jsonOk({ ...lab, bannerUrl: resolveMediaUrl(lab.bannerUrl) });
+ }
+diff --git a/src/app/api/public/v1/peer-labs/route.ts b/src/app/api/public/v1/peer-labs/route.ts
+index d6ad613..9a83d8e 100644
+--- a/src/app/api/public/v1/peer-labs/route.ts
++++ b/src/app/api/public/v1/peer-labs/route.ts
+@@ -1,6 +1,6 @@
+-import { createServiceClient } from "@/lib/supabase/service";
+ import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
+ import { resolveMediaUrl } from "@/lib/data/media";
++import { loadPublicPeerLabs } from "@/lib/public/catalog";
+ 
+ export function OPTIONS() {
+   return corsOptions();
+@@ -8,35 +8,13 @@ export function OPTIONS() {
+ 
+ export async function GET() {
+   try {
+-    const admin = createServiceClient();
+-    if (!admin) {
+-      return jsonError("Database connection unavailable", 503);
+-    }
+-
+-    const { data, error } = await admin
+-      .from("peer_labs")
+-      .select("*")
+-      .in("status", ["upcoming", "active", "completed"])
+-      .order("title");
+-
+-    if (error) {
++    const { ok, error, labs } = await loadPublicPeerLabs();
++    if (!ok) {
+       console.error("Peer Labs API database query error:", error);
+       return jsonError("Database error while fetching peer labs", 500);
+     }
+-
+     return jsonOk({
+-      peerLabs: (data ?? []).map((p) => ({
+-        id: p.id,
+-        slug: p.slug,
+-        title: p.title,
+-        track: p.track,
+-        description: p.description,
+-        syllabus: p.syllabus ?? [],
+-        status: p.status,
+-        applicationsOpen: p.applications_open,
+-        bannerUrl: resolveMediaUrl(p.banner_url),
+-        enrolledCount: p.enrolled_count,
+-      })),
++      peerLabs: labs.map((l) => ({ ...l, bannerUrl: resolveMediaUrl(l.bannerUrl) })),
+     });
+   } catch (err) {
+     console.error("Peer Labs API error:", err);
+diff --git a/src/lib/public/catalog.ts b/src/lib/public/catalog.ts
+index 87f8a37..542eb10 100644
+--- a/src/lib/public/catalog.ts
++++ b/src/lib/public/catalog.ts
+@@ -194,24 +194,90 @@ export async function getPublicProject(slug: string) {
+   return projects.find((p) => p.slug === slug) ?? null;
+ }
+ 
+-export async function listPublicPeerLabs() {
++const PUBLIC_PEER_LAB_STATUSES = ["upcoming", "active", "completed"];
++
++/**
++ * Published peer labs with their phases, facilitators, host chapter and
++ * enrolment count, all read from the dedicated peer_lab_* tables.
++ */
++export async function loadPublicPeerLabs(slug?: string) {
+   const admin = createServiceClient();
+-  if (!admin) return [];
+-  const { data, error } = await admin.from("peer_labs").select("*");
+-  if (error || !data) return [];
+-  return data.map((p) => ({
+-    slug: p.slug,
+-    title: p.title,
+-    track: p.track,
+-    syllabus: p.syllabus,
+-    status: p.status,
+-    applicationsOpen: p.applications_open,
+-  }));
++  if (!admin) return { ok: false as const, error: "Database connection unavailable", labs: [] };
++
++  let query = admin
++    .from("peer_labs")
++    .select("*")
++    .in("status", PUBLIC_PEER_LAB_STATUSES)
++    .order("title");
++  if (slug) query = query.eq("slug", slug);
++
++  const { data, error } = await query;
++  if (error) return { ok: false as const, error: error.message, labs: [] };
++  const rows = data ?? [];
++  if (rows.length === 0) return { ok: true as const, error: null, labs: [] };
++
++  const ids = rows.map((r) => r.id as string);
++  const chapterIds = [...new Set(rows.map((r) => r.chapter_id).filter(Boolean))] as string[];
++
++  const [ph, fa, ch] = await Promise.all([
++    admin.from("peer_lab_phases").select("*").in("peer_lab_id", ids).order("sort_order"),
++    admin.from("peer_lab_facilitators").select("*").in("peer_lab_id", ids).order("sort_order"),
++    chapterIds.length
++      ? admin.from("chapters").select("id, name, slug, college").in("id", chapterIds)
++      : Promise.resolve({ data: [], error: null }),
++  ]);
++  const childError = ph.error || fa.error || ch.error;
++  if (childError) return { ok: false as const, error: childError.message, labs: [] };
++
++  const labs = rows.map((p) => {
++    const chapter = (ch.data ?? []).find((c: any) => c.id === p.chapter_id);
++    const phases = (ph.data ?? []).filter((x: any) => x.peer_lab_id === p.id);
++    return {
++      id: p.id as string,
++      slug: p.slug as string,
++      title: p.title as string,
++      subtitle: (p.subtitle ?? null) as string | null,
++      track: (p.track ?? null) as string | null,
++      description: (p.description ?? null) as string | null,
++      status: p.status as string,
++      applicationsOpen: Boolean(p.applications_open),
++      featured: Boolean(p.featured),
++      bannerUrl: (p.banner_url ?? null) as string | null,
++      enrolledCount: (p.enrolled_count ?? 0) as number,
++      maxParticipants: (p.max_participants ?? null) as number | null,
++      resources: Array.isArray(p.resources) ? p.resources : [],
++      chapter: chapter
++        ? { id: chapter.id, name: chapter.name, slug: chapter.slug, college: chapter.college }
++        : null,
++      facilitators: (fa.data ?? [])
++        .filter((f: any) => f.peer_lab_id === p.id)
++        .map((f: any) => ({ name: f.name, role: f.role })),
++      phases: phases.map((x: any) => ({
++        slug: x.slug,
++        title: x.title,
++        date: x.date_label,
++        time: x.time_label,
++        location: x.location,
++        eventId: x.event_id,
++      })),
++      // Kept for older website builds that read `syllabus`
++      syllabus: phases.length
++        ? phases.map((x: any) => x.title)
++        : Array.isArray(p.syllabus) ? p.syllabus : [],
++    };
++  });
++
++  return { ok: true as const, error: null, labs };
++}
++
++export async function listPublicPeerLabs() {
++  const { labs } = await loadPublicPeerLabs();
++  return labs;
+ }
+ 
+ export async function getPublicPeerLab(slug: string) {
+-  const labs = await listPublicPeerLabs();
+-  return labs.find((l) => l.slug === slug) ?? null;
++  const { labs } = await loadPublicPeerLabs(slug);
++  return labs[0] ?? null;
+ }
+ 
+ export async function listPublicTeam() {
+diff --git a/supabase/migrations/039_fix_missing_tables_and_peer_labs.sql b/supabase/migrations/039_fix_missing_tables_and_peer_labs.sql
+new file mode 100644
+index 0000000..99ec4bc
+--- /dev/null
++++ b/supabase/migrations/039_fix_missing_tables_and_peer_labs.sql
+@@ -0,0 +1,344 @@
++-- ============================================================================
++-- Migration 039: fix tables the code expects + dedicated Peer Labs schema
++--
++-- Safe to re-run (fully idempotent). Run AFTER 037_email_verification_support.sql.
++--
++--   1. cluster_members / project_members  -> normalise + backfill from arrays
++--   2. cluster_tasks / task_submissions    -> tables the cluster weekly-task UI reads
++--   3. Peer Labs                           -> own tables (phases, facilitators, enrollments)
++--   4. users <-> profiles                  -> stop drift when a profile is deleted
++-- ============================================================================
++
++CREATE EXTENSION IF NOT EXISTS pgcrypto;
++
++CREATE OR REPLACE FUNCTION public.set_row_updated_at()
++RETURNS TRIGGER LANGUAGE plpgsql AS $$
++BEGIN
++  NEW.updated_at = now();
++  RETURN NEW;
++END;
++$$;
++
++-- ============================================================================
++-- 1. cluster_members / project_members
++--    These tables exist in your database but not in any earlier migration, so
++--    their exact columns are unknown. Create if missing, add the columns the
++--    API writes, and relax any extra NOT NULL column that would make inserts
++--    fail (the API ignored those errors, which is why the tables stayed empty).
++-- ============================================================================
++CREATE TABLE IF NOT EXISTS public.cluster_members (
++  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  cluster_id UUID NOT NULL REFERENCES public.clusters(id) ON DELETE CASCADE,
++  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
++  role       TEXT NOT NULL DEFAULT 'member',
++  joined_at  TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++CREATE TABLE IF NOT EXISTS public.project_members (
++  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
++  user_id    UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
++  role       TEXT NOT NULL DEFAULT 'member',
++  joined_at  TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++
++ALTER TABLE public.cluster_members
++  ADD COLUMN IF NOT EXISTS cluster_id UUID,
++  ADD COLUMN IF NOT EXISTS user_id    UUID,
++  ADD COLUMN IF NOT EXISTS role       TEXT DEFAULT 'member',
++  ADD COLUMN IF NOT EXISTS joined_at  TIMESTAMPTZ DEFAULT now();
++
++ALTER TABLE public.project_members
++  ADD COLUMN IF NOT EXISTS project_id UUID,
++  ADD COLUMN IF NOT EXISTS user_id    UUID,
++  ADD COLUMN IF NOT EXISTS role       TEXT DEFAULT 'member',
++  ADD COLUMN IF NOT EXISTS joined_at  TIMESTAMPTZ DEFAULT now();
++
++DO $$
++DECLARE
++  t TEXT;
++  r RECORD;
++BEGIN
++  FOREACH t IN ARRAY ARRAY['cluster_members', 'project_members'] LOOP
++    IF to_regclass('public.' || t) IS NULL THEN
++      CONTINUE;
++    END IF;
++
++    -- uuid id column without a default would reject inserts that omit id
++    IF EXISTS (
++      SELECT 1 FROM information_schema.columns
++      WHERE table_schema = 'public' AND table_name = t AND column_name = 'id'
++        AND data_type = 'uuid' AND column_default IS NULL
++    ) THEN
++      EXECUTE format('ALTER TABLE public.%I ALTER COLUMN id SET DEFAULT gen_random_uuid()', t);
++    END IF;
++
++    -- any other NOT NULL column without a default would also reject the insert
++    FOR r IN
++      SELECT column_name FROM information_schema.columns
++      WHERE table_schema = 'public' AND table_name = t
++        AND is_nullable = 'NO' AND column_default IS NULL
++        AND column_name NOT IN ('id', 'cluster_id', 'project_id', 'user_id')
++    LOOP
++      BEGIN
++        EXECUTE format('ALTER TABLE public.%I ALTER COLUMN %I DROP NOT NULL', t, r.column_name);
++      EXCEPTION WHEN OTHERS THEN
++        NULL;
++      END;
++    END LOOP;
++  END LOOP;
++END $$;
++
++DELETE FROM public.cluster_members a USING public.cluster_members b
++ WHERE a.ctid < b.ctid AND a.cluster_id = b.cluster_id AND a.user_id = b.user_id;
++DELETE FROM public.project_members a USING public.project_members b
++ WHERE a.ctid < b.ctid AND a.project_id = b.project_id AND a.user_id = b.user_id;
++
++CREATE UNIQUE INDEX IF NOT EXISTS uq_cluster_members_cluster_user
++  ON public.cluster_members (cluster_id, user_id);
++CREATE UNIQUE INDEX IF NOT EXISTS uq_project_members_project_user
++  ON public.project_members (project_id, user_id);
++CREATE INDEX IF NOT EXISTS idx_cluster_members_user ON public.cluster_members (user_id);
++CREATE INDEX IF NOT EXISTS idx_project_members_user ON public.project_members (user_id);
++
++-- Backfill from the arrays already stored on clusters / projects
++INSERT INTO public.cluster_members (cluster_id, user_id)
++SELECT c.id, m.uid
++FROM public.clusters c
++CROSS JOIN LATERAL unnest(COALESCE(c.member_ids, '{}'::uuid[])) AS m(uid)
++WHERE EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = m.uid)
++ON CONFLICT DO NOTHING;
++
++INSERT INTO public.project_members (project_id, user_id)
++SELECT pr.id, m.uid
++FROM public.projects pr
++CROSS JOIN LATERAL unnest(COALESCE(pr.team_ids, '{}'::uuid[])) AS m(uid)
++WHERE EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = m.uid)
++ON CONFLICT DO NOTHING;
++
++ALTER TABLE public.cluster_members ENABLE ROW LEVEL SECURITY;
++DROP POLICY IF EXISTS "cluster_members_read" ON public.cluster_members;
++CREATE POLICY "cluster_members_read" ON public.cluster_members
++  FOR SELECT TO authenticated USING (true);
++
++ALTER TABLE public.project_members ENABLE ROW LEVEL SECURITY;
++DROP POLICY IF EXISTS "project_members_read" ON public.project_members;
++CREATE POLICY "project_members_read" ON public.project_members
++  FOR SELECT TO authenticated USING (true);
++
++-- ============================================================================
++-- 2. Cluster weekly tasks (the cluster page + Discord bot read these)
++-- ============================================================================
++CREATE TABLE IF NOT EXISTS public.cluster_tasks (
++  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  cluster_id      UUID NOT NULL REFERENCES public.clusters(id) ON DELETE CASCADE,
++  title           TEXT NOT NULL,
++  description     TEXT,
++  due_date        TIMESTAMPTZ,
++  status          TEXT NOT NULL DEFAULT 'active'
++                  CHECK (status IN ('active', 'closed', 'archived')),
++  forum_thread_id TEXT,
++  created_by      UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
++  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++CREATE INDEX IF NOT EXISTS idx_cluster_tasks_cluster_status
++  ON public.cluster_tasks (cluster_id, status);
++
++CREATE TABLE IF NOT EXISTS public.task_submissions (
++  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  task_id            UUID NOT NULL REFERENCES public.cluster_tasks(id) ON DELETE CASCADE,
++  os_user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
++  discord_message_id TEXT,
++  status             TEXT NOT NULL DEFAULT 'pending'
++                     CHECK (status IN ('pending', 'completed', 'rejected')),
++  marked_by          UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
++  completed_at       TIMESTAMPTZ,
++  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
++  UNIQUE (task_id, os_user_id)
++);
++CREATE INDEX IF NOT EXISTS idx_task_submissions_task ON public.task_submissions (task_id, status);
++
++DROP TRIGGER IF EXISTS trg_cluster_tasks_updated ON public.cluster_tasks;
++CREATE TRIGGER trg_cluster_tasks_updated
++  BEFORE UPDATE ON public.cluster_tasks
++  FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
++
++ALTER TABLE public.cluster_tasks ENABLE ROW LEVEL SECURITY;
++DROP POLICY IF EXISTS "cluster_tasks_read" ON public.cluster_tasks;
++CREATE POLICY "cluster_tasks_read" ON public.cluster_tasks
++  FOR SELECT TO authenticated USING (true);
++
++ALTER TABLE public.task_submissions ENABLE ROW LEVEL SECURITY;
++DROP POLICY IF EXISTS "task_submissions_read" ON public.task_submissions;
++CREATE POLICY "task_submissions_read" ON public.task_submissions
++  FOR SELECT TO authenticated USING (true);
++-- Writes: service role only (Discord bot / OS API). No write policy on purpose.
++
++-- ============================================================================
++-- 3. PEER LABS — a first-class entity with its own tables
++--
++--   peer_labs                 the lab itself
++--     chapter_id  -> chapters       host campus (NULL = network-wide)
++--     cluster_id  -> clusters       optional linked interest cluster
++--     created_by  -> profiles
++--   peer_lab_phases           curriculum sessions
++--     event_id    -> events         optional: a phase can BE a real event, so
++--                                   registrations / attendance / certificates work
++--   peer_lab_facilitators     who teaches
++--     user_id     -> profiles       optional: external facilitators only need a name
++--   peer_lab_enrollments      who joined (OS members or website applicants)
++--     user_id     -> profiles       NULL for public-website applicants
++-- ============================================================================
++ALTER TABLE public.peer_labs
++  ADD COLUMN IF NOT EXISTS cluster_id       UUID REFERENCES public.clusters(id) ON DELETE SET NULL,
++  ADD COLUMN IF NOT EXISTS created_by       UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
++  ADD COLUMN IF NOT EXISTS max_participants INT,
++  ADD COLUMN IF NOT EXISTS updated_at       TIMESTAMPTZ DEFAULT now();
++
++ALTER TABLE public.peer_labs DROP CONSTRAINT IF EXISTS peer_labs_status_check;
++ALTER TABLE public.peer_labs
++  ADD CONSTRAINT peer_labs_status_check
++  CHECK (status IN ('draft', 'upcoming', 'active', 'completed', 'archived'));
++
++CREATE INDEX IF NOT EXISTS idx_peer_labs_chapter ON public.peer_labs (chapter_id);
++CREATE INDEX IF NOT EXISTS idx_peer_labs_status  ON public.peer_labs (status);
++
++DROP TRIGGER IF EXISTS trg_peer_labs_updated ON public.peer_labs;
++CREATE TRIGGER trg_peer_labs_updated
++  BEFORE UPDATE ON public.peer_labs
++  FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
++
++CREATE TABLE IF NOT EXISTS public.peer_lab_phases (
++  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  peer_lab_id UUID NOT NULL REFERENCES public.peer_labs(id) ON DELETE CASCADE,
++  sort_order  INT NOT NULL DEFAULT 0,
++  slug        TEXT,
++  title       TEXT NOT NULL,
++  date_label  TEXT,
++  time_label  TEXT,
++  location    TEXT,
++  event_id    UUID REFERENCES public.events(id) ON DELETE SET NULL,
++  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
++);
++CREATE INDEX IF NOT EXISTS idx_peer_lab_phases_lab ON public.peer_lab_phases (peer_lab_id, sort_order);
++
++CREATE TABLE IF NOT EXISTS public.peer_lab_facilitators (
++  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  peer_lab_id UUID NOT NULL REFERENCES public.peer_labs(id) ON DELETE CASCADE,
++  user_id     UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
++  name        TEXT NOT NULL,
++  role        TEXT NOT NULL DEFAULT 'Facilitator',
++  sort_order  INT NOT NULL DEFAULT 0
++);
++CREATE INDEX IF NOT EXISTS idx_peer_lab_facilitators_lab ON public.peer_lab_facilitators (peer_lab_id, sort_order);
++
++CREATE TABLE IF NOT EXISTS public.peer_lab_enrollments (
++  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
++  peer_lab_id UUID NOT NULL REFERENCES public.peer_labs(id) ON DELETE CASCADE,
++  user_id     UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
++  full_name   TEXT,
++  email       TEXT,
++  phone       TEXT,
++  college     TEXT,
++  answers     JSONB NOT NULL DEFAULT '{}'::jsonb,
++  status      TEXT NOT NULL DEFAULT 'pending'
++              CHECK (status IN ('pending', 'approved', 'rejected', 'withdrawn', 'completed')),
++  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
++  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
++  CHECK (user_id IS NOT NULL OR email IS NOT NULL)
++);
++CREATE UNIQUE INDEX IF NOT EXISTS uq_peer_lab_enroll_user
++  ON public.peer_lab_enrollments (peer_lab_id, user_id) WHERE user_id IS NOT NULL;
++CREATE UNIQUE INDEX IF NOT EXISTS uq_peer_lab_enroll_email
++  ON public.peer_lab_enrollments (peer_lab_id, lower(email)) WHERE email IS NOT NULL;
++
++DROP TRIGGER IF EXISTS trg_peer_lab_enroll_updated ON public.peer_lab_enrollments;
++CREATE TRIGGER trg_peer_lab_enroll_updated
++  BEFORE UPDATE ON public.peer_lab_enrollments
++  FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
++
++-- peer_labs.enrolled_count is now derived, never typed in by hand
++CREATE OR REPLACE FUNCTION public.recount_peer_lab(p_lab UUID)
++RETURNS VOID LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
++  UPDATE public.peer_labs
++     SET enrolled_count = (
++       SELECT count(*) FROM public.peer_lab_enrollments e
++        WHERE e.peer_lab_id = p_lab AND e.status IN ('pending', 'approved', 'completed')
++     )
++   WHERE id = p_lab;
++$$;
++
++CREATE OR REPLACE FUNCTION public.peer_lab_enrollment_changed()
++RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
++BEGIN
++  IF TG_OP IN ('UPDATE', 'DELETE') THEN
++    PERFORM public.recount_peer_lab(OLD.peer_lab_id);
++  END IF;
++  IF TG_OP IN ('INSERT', 'UPDATE') THEN
++    PERFORM public.recount_peer_lab(NEW.peer_lab_id);
++  END IF;
++  RETURN NULL;
++END;
++$$;
++
++DROP TRIGGER IF EXISTS trg_peer_lab_enrollment_count ON public.peer_lab_enrollments;
++CREATE TRIGGER trg_peer_lab_enrollment_count
++  AFTER INSERT OR UPDATE OR DELETE ON public.peer_lab_enrollments
++  FOR EACH ROW EXECUTE FUNCTION public.peer_lab_enrollment_changed();
++
++-- RLS: public can read published labs; every write goes through the API (service role)
++ALTER TABLE public.peer_labs             ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.peer_lab_phases       ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.peer_lab_facilitators ENABLE ROW LEVEL SECURITY;
++ALTER TABLE public.peer_lab_enrollments  ENABLE ROW LEVEL SECURITY;
++
++DROP POLICY IF EXISTS "Public Read Peer Labs" ON public.peer_labs;
++DROP POLICY IF EXISTS "Manage Peer Labs"      ON public.peer_labs;
++DROP POLICY IF EXISTS "peer_labs_public_read" ON public.peer_labs;
++CREATE POLICY "peer_labs_public_read" ON public.peer_labs
++  FOR SELECT TO anon, authenticated
++  USING (status IN ('upcoming', 'active', 'completed'));
++
++DROP POLICY IF EXISTS "peer_lab_phases_public_read" ON public.peer_lab_phases;
++CREATE POLICY "peer_lab_phases_public_read" ON public.peer_lab_phases
++  FOR SELECT TO anon, authenticated
++  USING (EXISTS (
++    SELECT 1 FROM public.peer_labs l
++     WHERE l.id = peer_lab_id AND l.status IN ('upcoming', 'active', 'completed')
++  ));
++
++DROP POLICY IF EXISTS "peer_lab_facilitators_public_read" ON public.peer_lab_facilitators;
++CREATE POLICY "peer_lab_facilitators_public_read" ON public.peer_lab_facilitators
++  FOR SELECT TO anon, authenticated
++  USING (EXISTS (
++    SELECT 1 FROM public.peer_labs l
++     WHERE l.id = peer_lab_id AND l.status IN ('upcoming', 'active', 'completed')
++  ));
++
++DROP POLICY IF EXISTS "peer_lab_enrollments_own_read" ON public.peer_lab_enrollments;
++CREATE POLICY "peer_lab_enrollments_own_read" ON public.peer_lab_enrollments
++  FOR SELECT TO authenticated USING (user_id = auth.uid());
++
++-- ============================================================================
++-- 4. users <-> profiles drift (users had 25 rows vs 21 profiles)
++--    The insert/update sync exists; deletes were never mirrored.
++-- ============================================================================
++CREATE OR REPLACE FUNCTION public.remove_deleted_profile_from_users()
++RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
++BEGIN
++  BEGIN
++    DELETE FROM public.users WHERE id = OLD.id;
++  EXCEPTION WHEN OTHERS THEN
++    NULL;
++  END;
++  RETURN OLD;
++END;
++$$;
++
++DROP TRIGGER IF EXISTS trg_profiles_delete_users ON public.profiles;
++CREATE TRIGGER trg_profiles_delete_users
++  AFTER DELETE ON public.profiles
++  FOR EACH ROW EXECUTE FUNCTION public.remove_deleted_profile_from_users();
++
++NOTIFY pgrst, 'reload schema';

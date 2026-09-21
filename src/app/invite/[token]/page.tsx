@@ -319,7 +319,7 @@ export default function InviteSignUpPage({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               type: "auto_confirm_signup",
-              data: { userId: authUser.id },
+              data: { userId: authUser.id, email: cleanEmail },
             }),
           });
           const retry = await supabase.auth.signInWithPassword({
@@ -327,7 +327,7 @@ export default function InviteSignUpPage({
             password,
           });
           signInError = retry.error;
-        } catch (e) {}
+        } catch {}
       }
 
       // Purge any stale chapter keys left behind in localStorage from other users

@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireUser } from "@/lib/api/require-user";
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json(
@@ -12,7 +16,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { actingUserId, targetUser } = body;
+    const { targetUser } = body;
 
     if (!targetUser || !targetUser.email || !targetUser.roleKey || !targetUser.chapterId) {
       return NextResponse.json(
@@ -21,34 +25,27 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Resolve acting user role & chapter
-    let actingRoles: any[] = [];
-    if (actingUserId) {
-      const { data: roles } = await admin
-        .from("user_roles")
-        .select("role_key, chapter_id")
-        .eq("user_id", actingUserId);
-      actingRoles = roles || [];
-    }
-
-    const isHq = actingRoles.some((r) =>
-      ["founder", "hq_admin"].includes(r.role_key),
-    );
-    const actingChapterIds = actingRoles.map((r) => r.chapter_id);
+    // 1. Resolve caller role & chapter permissions
+    const isHq = auth.isHq;
     const isActingChapterAdmin =
       isHq ||
-      actingRoles.some(
-        (r) =>
-          r.chapter_id === targetUser.chapterId &&
-          ["campus_lead", "chairman"].includes(r.role_key),
-      );
+      (auth.chapterId === targetUser.chapterId &&
+        ["campus_lead", "chairman"].includes(auth.roleKey));
     const isActingClassRep =
       isActingChapterAdmin ||
-      actingRoles.some(
-        (r) =>
-          r.chapter_id === targetUser.chapterId &&
-          r.role_key === "class_representative",
+      (auth.chapterId === targetUser.chapterId &&
+        auth.roleKey === "class_representative");
+
+    // Non-HQ users can only provision for their own chapter
+    if (!isHq && targetUser.chapterId !== auth.chapterId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Permission denied: Cannot provision users for another chapter.",
+        },
+        { status: 403 },
       );
+    }
 
     // 2. Hierarchy Enforcement
     const requestedRole = targetUser.roleKey;
@@ -85,7 +82,34 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3. Upsert Profile
+    if (
+      !["campus_lead", "class_representative", "student"].includes(requestedRole) &&
+      !isActingChapterAdmin &&
+      !isHq
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Permission denied: Only Campus Leads or HQ can assign executive/staff roles.",
+        },
+        { status: 403 },
+      );
+    }
+
+    // 3. Resolve role ID from DB
+    const { data: roleData, error: roleError } = await admin
+      .from("roles")
+      .select("id, key")
+      .eq("key", requestedRole)
+      .maybeSingle();
+
+    if (roleError || !roleData) {
+      return NextResponse.json(
+        { ok: false, error: `Invalid role specified: ${requestedRole}` },
+        { status: 400 },
+      );
+    }
+
     const skillsArr = Array.isArray(targetUser.skills)
       ? targetUser.skills
       : (targetUser.skills || "")
@@ -100,45 +124,60 @@ export async function POST(req: Request) {
           .map((i: string) => i.trim())
           .filter(Boolean);
 
-    // Check if profile exists by email
-    const { data: existingProfile } = await admin
+    // 4. Provision in Supabase Auth if needed
+    let finalUserId: string | null = null;
+
+    const { data: existingProfiles } = await admin
       .from("profiles")
       .select("id")
       .eq("email", targetUser.email.trim().toLowerCase())
       .maybeSingle();
 
-    let userId = existingProfile?.id;
-    if (!userId) {
-      const authUserPayload: any = {
+    if (!existingProfiles) {
+      const authUserPayload: {
+        email: string;
+        password?: string;
+        email_confirm: boolean;
+        user_metadata: { full_name: string };
+        id?: string;
+      } = {
         email: targetUser.email.trim().toLowerCase(),
+        password: "ChangeMe123!",
         email_confirm: true,
         user_metadata: {
           full_name: targetUser.fullName || targetUser.name || "Student User",
         },
       };
+
       if (targetUser.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetUser.id)) {
         authUserPayload.id = targetUser.id;
       }
-      const { data: authCreated, error: authErr } = await admin.auth.admin.createUser(authUserPayload);
-      if (authCreated?.user) {
-        userId = authCreated.user.id;
-      } else if (authErr) {
-        // If auth user already exists, retrieve id
-        const { data: listData } = await admin.auth.admin.listUsers();
-        const found = listData?.users?.find(
-          (u) => u.email?.toLowerCase() === targetUser.email.trim().toLowerCase(),
-        );
-        if (found) {
-          userId = found.id;
-        } else {
-          console.error("Auth createUser error in provisioning:", authErr.message);
-          return NextResponse.json({ ok: false, error: authErr.message }, { status: 400 });
+
+      const { data: authCreatedUser, error: authCreateError } =
+        await admin.auth.admin.createUser(authUserPayload);
+
+      if (authCreateError) {
+        if (authCreateError.message?.toLowerCase().includes("already registered")) {
+          const { data: listData } = await admin.auth.admin.listUsers();
+          const matched = (listData?.users || []).find(
+            (u) => u.email?.toLowerCase() === targetUser.email.trim().toLowerCase(),
+          );
+          if (matched) finalUserId = matched.id;
         }
+      } else if (authCreatedUser?.user) {
+        finalUserId = authCreatedUser.user.id;
       }
+    } else {
+      finalUserId = existingProfiles.id;
     }
 
-    const { error: profileError } = await admin.from("profiles").upsert({
-      id: userId,
+    if (!finalUserId) {
+      finalUserId = targetUser.id || genRandomUuid();
+    }
+
+    // 5. Upsert profile row
+    const profilePayload = {
+      id: finalUserId,
       email: targetUser.email.trim().toLowerCase(),
       full_name: targetUser.fullName || targetUser.name || "Student User",
       phone: targetUser.phone || null,
@@ -148,68 +187,108 @@ export async function POST(req: Request) {
       chapter_id: targetUser.chapterId,
       skills: skillsArr,
       interests: interestsArr,
+      avatar_url: targetUser.avatarUrl || null,
       status: "active",
-    });
+      updated_at: new Date().toISOString(),
+    };
 
-    if (profileError) {
+    const { error: profileUpsertError } = await admin
+      .from("profiles")
+      .upsert(profilePayload, { onConflict: "id" });
+
+    if (profileUpsertError) {
+      console.error("Profile upsert error:", profileUpsertError);
       return NextResponse.json(
-        { ok: false, error: profileError.message },
+        { ok: false, error: profileUpsertError.message },
         { status: 400 },
       );
     }
 
-    // 4. Resolve role_id from roles table
-    const { data: roleRow } = await admin
-      .from("roles")
-      .select("id")
-      .eq("key", requestedRole)
-      .maybeSingle();
-
-    let roleId = roleRow?.id ?? null;
-    if (!roleId && requestedRole === "campus_lead") {
-      const { data: chairmanRole } = await admin.from("roles").select("id").eq("key", "chairman").maybeSingle();
-      roleId = chairmanRole?.id ?? null;
-    }
-
-    // 5. Delete existing non-leadership user_roles for user, then insert new role
+    // 6. Assign User Role
     await admin
       .from("user_roles")
       .delete()
-      .eq("user_id", userId)
-      .is("leadership_term_id", null);
+      .eq("user_id", finalUserId)
+      .eq("chapter_id", targetUser.chapterId);
 
-    const { error: roleError } = await admin.from("user_roles").insert({
-      user_id: userId,
+    const { error: roleAssignError } = await admin.from("user_roles").insert({
+      user_id: finalUserId,
+      role_id: roleData.id,
       role_key: requestedRole,
-      role_id: roleId,
       chapter_id: targetUser.chapterId,
-      organization_id: "00000000-0000-0000-0000-000000000001",
-      is_permanent: true,
     });
 
-    if (roleError) {
-      console.error("user_roles insert error in provisioning user:", roleError.message);
-      return NextResponse.json({ ok: false, error: roleError.message }, { status: 400 });
+    let warning: string | undefined;
+    if (roleAssignError) {
+      console.error("Role assign error:", roleAssignError);
+      warning = `User profile created, but role assignment failed: ${roleAssignError.message}`;
     }
+
+    // 7. Auto-link Class Cohort if Class Rep
+    if (requestedRole === "class_representative" && targetUser.department && targetUser.year && targetUser.section) {
+      try {
+        const { data: cohort, error: cohortSelectErr } = await admin
+          .from("class_cohorts")
+          .select("id")
+          .eq("chapter_id", targetUser.chapterId)
+          .eq("department", targetUser.department)
+          .eq("year", targetUser.year)
+          .eq("section", targetUser.section)
+          .maybeSingle();
+
+        if (cohortSelectErr) {
+          console.warn("Auto cohort select error:", cohortSelectErr);
+        } else if (cohort) {
+          const { error: cohortUpdateErr } = await admin
+            .from("class_cohorts")
+            .update({ representative_id: finalUserId })
+            .eq("id", cohort.id);
+          if (cohortUpdateErr) {
+            console.warn("Auto cohort update error:", cohortUpdateErr);
+          }
+        } else {
+          const { error: cohortInsertErr } = await admin.from("class_cohorts").insert({
+            chapter_id: targetUser.chapterId,
+            department: targetUser.department,
+            year: targetUser.year,
+            section: targetUser.section,
+            representative_id: finalUserId,
+          });
+          if (cohortInsertErr) {
+            console.warn("Auto cohort insert error:", cohortInsertErr);
+          }
+        }
+      } catch (cohortErr: unknown) {
+        console.warn("Auto cohort link exception:", cohortErr);
+      }
+    }
+
+    const finalElevatesId = targetUser.elevatesId || null;
 
     return NextResponse.json({
       ok: true,
+      ...(warning ? { warning } : {}),
       user: {
-        id: userId,
+        id: finalUserId,
         email: targetUser.email,
-        fullName: targetUser.fullName,
-        roleKey: requestedRole,
+        name: targetUser.fullName || targetUser.name,
+        role: requestedRole,
         chapterId: targetUser.chapterId,
+        elevatesId: finalElevatesId,
       },
     });
-  } catch (err: any) {
-    console.error("Provisioning user error:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Provisioning user exception:", err);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 
 export async function DELETE(req: Request) {
   try {
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json(
@@ -220,14 +299,14 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     let id = searchParams.get("id");
-    let actingUserId = searchParams.get("actingUserId");
 
     if (!id) {
       try {
         const body = await req.json();
         id = body.id || body.userId || body.targetUserId;
-        if (!actingUserId) actingUserId = body.actingUserId;
-      } catch (_) {}
+      } catch {
+        // Body reading is optional fallback
+      }
     }
 
     if (!id) {
@@ -237,42 +316,29 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // 1. Authorization check if actingUserId is provided
-    if (actingUserId && actingUserId !== id) {
-      const { data: roles } = await admin
-        .from("user_roles")
-        .select("role_key, chapter_id")
-        .eq("user_id", actingUserId);
+    // 1. Authorization check
+    const isHq = auth.isHq;
 
-      const actingRoles = roles || [];
-      const isHq = actingRoles.some((r) =>
-        ["founder", "hq_admin"].includes(r.role_key),
-      );
+    if (!isHq) {
+      const { data: targetProf } = await admin
+        .from("profiles")
+        .select("chapter_id")
+        .eq("id", id)
+        .maybeSingle();
 
-      if (!isHq) {
-        const { data: targetProf } = await admin
-          .from("profiles")
-          .select("chapter_id")
-          .eq("id", id)
-          .maybeSingle();
+      const isChapterAdmin =
+        targetProf?.chapter_id &&
+        targetProf.chapter_id === auth.chapterId &&
+        ["campus_lead", "chairman"].includes(auth.roleKey);
 
-        const isChapterAdmin =
-          targetProf?.chapter_id &&
-          actingRoles.some(
-            (r) =>
-              r.chapter_id === targetProf.chapter_id &&
-              ["campus_lead", "chairman"].includes(r.role_key),
-          );
-
-        if (!isChapterAdmin) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error: "Permission denied: Only HQ Admins or Chapter Leads can delete users.",
-            },
-            { status: 403 },
-          );
-        }
+      if (!isChapterAdmin) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Permission denied: Only HQ Admins or Chapter Leads can delete users.",
+          },
+          { status: 403 },
+        );
       }
     }
 
@@ -333,15 +399,16 @@ export async function DELETE(req: Request) {
     // 5. Delete Supabase Auth user if exists
     try {
       await admin.auth.admin.deleteUser(id);
-    } catch (authErr: any) {
-      // Ignore if user was not an auth.users record (e.g. provisioned only in profiles)
-      console.warn("Auth delete user notice (may not be in auth.users):", authErr?.message || authErr);
+    } catch (authErr: unknown) {
+      const authMessage = authErr instanceof Error ? authErr.message : String(authErr);
+      console.warn("Auth delete user notice (may not be in auth.users):", authMessage);
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("Delete user exception:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 

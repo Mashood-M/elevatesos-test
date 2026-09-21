@@ -8,14 +8,14 @@ Elevates OS is the operating system and multi-tenant management platform for stu
 
 Elevates OS operates in two distinct operational paradigms:
 
-1. **Demo Mode (Default / In-Memory)**:
-   - Powered by [`src/context/store-context.tsx`](file:///home/mashoodm/elevates/os/Elevates-os/src/context/store-context.tsx) and backed by browser `sessionStorage` via [`src/lib/demo/persist.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/demo/persist.ts).
-   - Allows instant development and evaluation without requiring live Supabase credentials.
-   - Fully interactive: supports creating chapters, scheduling events, taking QR attendance, submitting rich reports, and switching between 20+ user personas via the top-bar role switcher.
-2. **Production / Supabase Mode**:
-   - Backed by Supabase Postgres with strict Row-Level Security (RLS), Supabase SSR authentication, and real-time database sync (`supabase/migrations/`).
+1. **Production / Supabase Mode (Primary Runtime)**:
+   - Backed by Supabase Postgres with strict Row-Level Security (RLS) across migrations `001` through `040`.
+   - SSR authentication with server-side session verification via [`src/lib/api/require-user.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/api/require-user.ts) and edge protection in [`src/middleware.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/middleware.ts).
+   - All mutation endpoints under `/api/mutations` and `/api/provisioning/*` require authenticated user sessions with server-resolved roles; client-supplied `actingUserId` is never trusted.
    - Server client helpers located in [`src/lib/supabase/`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/supabase/).
-   - Managed via edge route protection in [`src/middleware.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/middleware.ts).
+2. **Demo Mode (In-Memory Test Fallback Only)**:
+   - Demo mode is fully disabled in production (`isDemoMode()` strictly evaluates to `false`).
+   - Serves as an isolated, in-memory client test harness powered by [`src/context/store-context.tsx`](file:///home/mashoodm/elevates/os/Elevates-os/src/context/store-context.tsx) and browser `sessionStorage` via [`src/lib/demo/persist.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/demo/persist.ts).
 3. **Public API Contract**:
    - Serves public endpoints under `/api/public/v1/*` to synchronize public chapters, events, peer labs, team members, and stats to external frontends like the marketing website (`elevates.live`).
 
@@ -168,13 +168,26 @@ Organized strictly by design layer and domain responsibility:
 ---
 
 ### `supabase/` — Database Migrations & Security Models
-Contains over 30 SQL migrations representing the Postgres relational database schema:
+Contains migrations `001` through `040` representing the Postgres relational database schema:
 - **`001_initial_schema.sql`**: Foundational tables (`profiles`, `chapters`, `events`, `registrations`, `attendance`, `reports`, `tasks`, etc.).
+- **`002_seed_users.sql`**: Baseline organization and extensions (`pgcrypto`); test seed accounts with hardcoded passwords have been completely purged.
 - **`004_role_based_system_and_rls.sql` & `005_rls_tenant_scope.sql`**: Strict Row-Level Security ensuring chapter leads and students cannot read or write data belonging to other chapters.
 - **`014_sequential_elevates_id.sql` & `015_sequential_chapter_elevates_id.sql`**: Generates human-readable serial identifiers (e.g., `ELV-EKC-0042`).
 - **`024_forms_and_event_forms_complete.sql`**: Schema for dynamic forms, custom question types, and responses.
 - **`027_leadership_terms_and_assignments_rls.sql`**: Term-based tenures and historical records for chapter executives.
+- **`037_email_verification_support.sql`**: OTP email verification state, timestamps, and rate limiting columns.
+- **`038_discord_bot_restructure_sync_and_otp_fix.sql`**: Discord bot sync queue and verification structures.
+- **`039_fix_missing_tables_and_peer_labs.sql`**: Dedicated Peer Labs tables (`peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`), student referrals, chapter standards, and discord integrations.
+- **`040_lock_down_rls.sql`**: Hardens Row-Level Security across all Discord tables, leadership/volunteer write paths (`service_role` only), integrations, and anonymous access to profiles.
 - **`FULL_DATABASE_SETUP.sql`**: Consolidated script for bootstrapping a fresh Supabase database in a single run.
+
+#### Migration Execution Order for Existing Databases
+When applying new migrations to an existing database, execute them in this exact sequence:
+1. `supabase/migrations/037_email_verification_support.sql`
+2. `supabase/migrations/039_fix_missing_tables_and_peer_labs.sql`
+3. `supabase/migrations/040_lock_down_rls.sql`
+
+*(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 
 ---
 
@@ -206,8 +219,8 @@ Chapter completes event/quarter
 
 ## 5. Development Conventions & Guidelines for AI Agents
 
-1. **Maintain Dual-Mode Compatibility**:
-   - When introducing new mutations or models, update both [`src/context/store-context.tsx`](file:///home/mashoodm/elevates/os/Elevates-os/src/context/store-context.tsx) (for demo mode) and corresponding Supabase queries/migrations (for production).
+1. **Supabase-First Architecture & Test Fallback**:
+   - Production strictly requires Supabase (`isDemoMode()` evaluates to `false`). All mutations in `/api/mutations` and `/api/provisioning/*` require verified user sessions via `requireUser()` and reject unauthenticated or client-spoofed `actingUserId` requests. Demo mode is an in-memory test fallback only.
 2. **Strict Tenant & Role Scoping**:
    - Always verify role and chapter boundaries using helpers from [`src/lib/access.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/access.ts) and [`src/lib/permissions/index.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/permissions/index.ts). Never allow non-HQ roles to query cross-chapter records.
 3. **Design System & Visual Constraints** (see [`DESIGN.md`](file:///home/mashoodm/elevates/os/Elevates-os/DESIGN.md)):

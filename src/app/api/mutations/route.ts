@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { slugify } from "@/lib/public/http";
@@ -5,23 +6,205 @@ import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { embedLocationInNotes } from "@/lib/slug";
 import { getChapterElevatesId } from "@/lib/chapters";
+import { requireUser } from "@/lib/api/require-user";
+import {
+  canCreateEvent,
+  canManageClasses,
+  canVerifyAttendance,
+  isCampusLead,
+} from "@/lib/permissions";
+import { isExecutiveRole, isFacultyRole } from "@/lib/access";
 
 // Default Root Organization UUID seeded in database migration 001/002
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
 
+type AdminClient = NonNullable<ReturnType<typeof createServiceClient>>;
+
+const PEER_LAB_STATUSES = ["draft", "upcoming", "active", "completed", "archived"];
+
+function normalizePeerLabStatus(v: unknown): string {
+  const s = String(v ?? "").trim().toLowerCase();
+  return PEER_LAB_STATUSES.includes(s) ? s : "upcoming";
+}
+
+const autoConfirmAttempts = new Map<string, { count: number; resetAt: number }>();
+function isAutoConfirmRateLimited(key: string): boolean {
+  const now = Date.now();
+  const entry = autoConfirmAttempts.get(key);
+  if (!entry || now > entry.resetAt) {
+    autoConfirmAttempts.set(key, { count: 1, resetAt: now + 60_000 });
+    return false;
+  }
+  if (entry.count >= 5) {
+    return true;
+  }
+  entry.count++;
+  return false;
+}
+
+/**
+ * Mirror a uuid[] column (clusters.member_ids / projects.team_ids) into its
+ * join table. supabase-js never throws on DB errors, so we must inspect
+ * `error` ourselves - the old try/catch silently hid every failure.
+ * Returns an error message, or null on success.
+ */
+async function syncMemberTable(
+  admin: AdminClient,
+  table: "cluster_members" | "project_members",
+  fk: "cluster_id" | "project_id",
+  parentId: string,
+  userIds: string[],
+): Promise<string | null> {
+  const base = admin.from(table).delete().eq(fk, parentId);
+  const { error: delErr } = userIds.length
+    ? await base.not("user_id", "in", `(${userIds.join(",")})`)
+    : await base;
+  if (delErr) {
+    console.error(`${table} cleanup failed:`, delErr);
+    return delErr.message;
+  }
+  if (userIds.length === 0) return null;
+
+  const { error } = await admin.from(table).upsert(
+    userIds.map((uid) => ({ [fk]: parentId, user_id: uid })),
+    { onConflict: `${fk},user_id`, ignoreDuplicates: true },
+  );
+  if (error) {
+    console.error(`${table} sync failed:`, error);
+    return error.message;
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json({ ok: false, error: "Supabase service client not configured" }, { status: 500 });
     }
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
+    if (type === "peer_labs") {
+      if (!auth.isHq) {
+        return NextResponse.json(
+          { ok: false, error: "Permission denied: Only HQ can access full peer labs CMS data" },
+          { status: 403 },
+        );
+      }
+      const { data: labs, error: labsErr } = await admin
+        .from("peer_labs")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (labsErr) {
+        return NextResponse.json({ ok: false, error: labsErr.message }, { status: 500 });
+      }
+
+      interface PeerLabRow {
+        id: string;
+        slug: string;
+        title: string;
+        subtitle?: string | null;
+        track?: string | null;
+        description?: string | null;
+        chapter_id?: string | null;
+        cluster_id?: string | null;
+        status?: string;
+        applications_open?: boolean;
+        featured?: boolean;
+        banner_url?: string | null;
+        max_participants?: number | null;
+        enrolled_count?: number;
+        resources?: unknown[];
+      }
+      interface PhaseItem {
+        peer_lab_id: string;
+        id: string;
+        slug?: string | null;
+        title: string;
+        date_label?: string | null;
+        time_label?: string | null;
+        location?: string | null;
+        event_id?: string | null;
+      }
+      interface FacilitatorItem {
+        peer_lab_id: string;
+        id: string;
+        user_id?: string | null;
+        name: string;
+        role: string;
+      }
+
+      const labRows = (labs ?? []) as unknown as PeerLabRow[];
+      const ids = labRows.map((l) => l.id);
+      let phases: PhaseItem[] = [];
+      let facilitators: FacilitatorItem[] = [];
+      if (ids.length > 0) {
+        const [ph, fa] = await Promise.all([
+          admin.from("peer_lab_phases").select("*").in("peer_lab_id", ids).order("sort_order"),
+          admin.from("peer_lab_facilitators").select("*").in("peer_lab_id", ids).order("sort_order"),
+        ]);
+        if (ph.error || fa.error) {
+          return NextResponse.json(
+            { ok: false, error: (ph.error || fa.error)!.message },
+            { status: 500 },
+          );
+        }
+        phases = (ph.data ?? []) as unknown as PhaseItem[];
+        facilitators = (fa.data ?? []) as unknown as FacilitatorItem[];
+      }
+      return NextResponse.json({
+        ok: true,
+        peerLabs: labRows.map((l) => ({
+          id: l.id,
+          slug: l.slug,
+          title: l.title,
+          subtitle: l.subtitle ?? "",
+          track: l.track ?? "",
+          description: l.description ?? "",
+          chapterId: l.chapter_id ?? null,
+          clusterId: l.cluster_id ?? null,
+          status: l.status ?? "upcoming",
+          applicationsOpen: l.applications_open ?? true,
+          featured: l.featured ?? false,
+          bannerUrl: l.banner_url ?? null,
+          maxParticipants: l.max_participants ?? null,
+          enrolledCount: l.enrolled_count ?? 0,
+          resources: Array.isArray(l.resources) ? l.resources : [],
+          facilitators: facilitators
+            .filter((f) => f.peer_lab_id === l.id)
+            .map((f) => ({ id: f.id, userId: f.user_id, name: f.name, role: f.role })),
+          phases: phases
+            .filter((p) => p.peer_lab_id === l.id)
+            .map((p) => ({
+              id: p.id,
+              slug: p.slug ?? "",
+              title: p.title,
+              date: p.date_label ?? "TBA",
+              time: p.time_label ?? "",
+              location: p.location ?? "",
+              eventId: p.event_id ?? null,
+            })),
+        })),
+      });
+    }
+
     if (type === "invite_tokens") {
-      const { data: rawTokens, error } = await admin
+      let query = admin
         .from("invite_tokens")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (!auth.isHq) {
+        if (!auth.chapterId) {
+          return NextResponse.json({ ok: false, error: "Chapter affiliation required" }, { status: 403 });
+        }
+        query = query.eq("chapter_id", auth.chapterId);
+      }
+
+      const { data: rawTokens, error } = await query;
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       }
@@ -220,15 +403,96 @@ export async function POST(req: Request) {
 
     // 0. EMAIL VERIFICATION & AUTH MUTATIONS
     if (type === "auto_confirm_signup") {
-      const { userId } = data || {};
-      if (userId && isUuid(userId)) {
-        try {
-          await admin.auth.admin.updateUserById(userId, { email_confirm: true });
-        } catch (err) {
-          console.warn("auto_confirm_signup warning:", err);
-        }
+      const { userId, email } = data || {};
+      const cleanEmail = String(email || "").trim().toLowerCase();
+
+      if (!userId || !isUuid(userId) || !cleanEmail) {
+        return NextResponse.json(
+          { ok: false, error: "userId (UUID) and email are required" },
+          { status: 400 },
+        );
+      }
+
+      const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+      const rateLimitKey = `${clientIp}:${cleanEmail}`;
+      if (isAutoConfirmRateLimited(rateLimitKey)) {
+        return NextResponse.json(
+          { ok: false, error: "Too many auto-confirm attempts. Please try again later." },
+          { status: 429 },
+        );
+      }
+
+      const { data: authUserData, error: getUserErr } = await admin.auth.admin.getUserById(userId);
+      if (getUserErr || !authUserData?.user) {
+        return NextResponse.json({ ok: false, error: "User not found" }, { status: 404 });
+      }
+
+      const user = authUserData.user;
+      if (user.email?.trim().toLowerCase() !== cleanEmail) {
+        return NextResponse.json({ ok: false, error: "Email mismatch" }, { status: 403 });
+      }
+
+      if (user.email_confirmed_at) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const createdAtMs = new Date(user.created_at).getTime();
+      const tenMinutesAgoMs = Date.now() - 10 * 60 * 1000;
+      if (createdAtMs < tenMinutesAgoMs) {
+        return NextResponse.json(
+          { ok: false, error: "Account creation window expired. Please request a verification link." },
+          { status: 403 },
+        );
+      }
+
+      try {
+        await admin.auth.admin.updateUserById(userId, { email_confirm: true });
+      } catch (err) {
+        console.warn("auto_confirm_signup warning:", err);
       }
       return NextResponse.json({ ok: true });
+    }
+
+    // ALL other mutations require a verified authenticated session
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
+    // Central HQ-only gate
+    const HQ_ONLY_MUTATIONS = new Set([
+      "chapter",
+      "delete_chapter",
+      "user_roles",
+      "organization",
+      "org_settings_patch",
+      "website_section",
+      "peer_lab",
+      "delete_peer_lab",
+      "leadership_term",
+      "system_ui_state",
+      "discord_integration",
+      "guideline",
+      "delete_guideline",
+    ]);
+
+    if (HQ_ONLY_MUTATIONS.has(type)) {
+      if (!auth.isHq) {
+        return NextResponse.json(
+          { ok: false, error: `Permission denied: ${type} requires an HQ role.` },
+          { status: 403 },
+        );
+      }
+    }
+
+    // Helper: enforce that caller cannot mutate another chapter's resources
+    function checkChapterScope(targetChapterId?: string | null): NextResponse | null {
+      if (auth.isHq) return null;
+      if (!targetChapterId || !auth.chapterId || targetChapterId !== auth.chapterId) {
+        return NextResponse.json(
+          { ok: false, error: "Permission denied: cross-chapter mutation not permitted" },
+          { status: 403 },
+        );
+      }
+      return null;
     }
 
     if (type === "send_email_verification") {
@@ -274,6 +538,10 @@ export async function POST(req: Request) {
         }
       }
 
+      if (!sent && errorMsg) {
+        console.warn("[resend_email_verification] Attempt returned:", errorMsg);
+      }
+
       // Generate a 6-digit verification code and save it in email_verification_codes table
       const otpCode = String(Math.floor(100000 + Math.random() * 900000));
       try {
@@ -306,29 +574,28 @@ export async function POST(req: Request) {
       }
 
       let verified = false;
+      const nowIso = new Date().toISOString();
 
-      // Check email_verification_codes table
       try {
-        const { data: codeRow } = await admin
+        const { data: codeRows } = await admin
           .from("email_verification_codes")
-          .select("*")
+          .select("id, code, expires_at, status")
           .eq("email", cleanEmail)
           .eq("code", cleanCode)
           .eq("status", "pending")
-          .gt("expires_at", new Date().toISOString())
+          .gt("expires_at", nowIso)
           .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
 
-        if (codeRow) {
+        if (codeRows && codeRows.length > 0) {
           verified = true;
           await admin
             .from("email_verification_codes")
-            .update({ status: "verified", verified_at: new Date().toISOString() })
-            .eq("id", codeRow.id);
+            .update({ status: "used" })
+            .eq("id", codeRows[0].id);
         }
-      } catch (e) {
-        console.warn("email_verification_codes query fallback:", e);
+      } catch (dbErr) {
+        console.warn("Could not check email_verification_codes:", dbErr);
       }
 
       // Also try verifyOtp in Supabase auth
@@ -340,7 +607,7 @@ export async function POST(req: Request) {
             type: "signup",
           });
           if (!otpError && otpData?.user) verified = true;
-        } catch (err) {
+        } catch {
           // ignore
         }
       }
@@ -352,19 +619,25 @@ export async function POST(req: Request) {
 
       if (verified) {
         const now = new Date().toISOString();
-        await admin
+        const { error: profVerifErr } = await admin
           .from("profiles")
           .update({ email_verified: true, email_confirmed_at: now })
           .eq("email", cleanEmail);
+        if (profVerifErr) {
+          console.warn("verify_email_code profile update notice:", profVerifErr);
+        }
 
         if (userId && isUuid(userId)) {
-          await admin
+          const { error: profIdErr } = await admin
             .from("profiles")
             .update({ email_verified: true, email_confirmed_at: now })
             .eq("id", userId);
+          if (profIdErr) {
+            console.warn("verify_email_code profile by userId notice:", profIdErr);
+          }
           try {
             await admin.auth.admin.updateUserById(userId, { email_confirm: true });
-          } catch (e) {}
+          } catch {}
         }
 
         return NextResponse.json({ ok: true, message: "Email verified successfully!" });
@@ -379,19 +652,25 @@ export async function POST(req: Request) {
       const now = new Date().toISOString();
 
       if (cleanEmail) {
-        await admin
+        const { error: markErr } = await admin
           .from("profiles")
           .update({ email_verified: true, email_confirmed_at: now })
           .eq("email", cleanEmail);
+        if (markErr) {
+          console.warn("mark_email_verified notice:", markErr);
+        }
       }
       if (userId && isUuid(userId)) {
-        await admin
+        const { error: markIdErr } = await admin
           .from("profiles")
           .update({ email_verified: true, email_confirmed_at: now })
           .eq("id", userId);
+        if (markIdErr) {
+          console.warn("mark_email_verified by userId notice:", markIdErr);
+        }
         try {
           await admin.auth.admin.updateUserById(userId, { email_confirm: true });
-        } catch (e) {}
+        } catch {}
       }
       return NextResponse.json({ ok: true, message: "Email verified successfully!" });
     }
@@ -399,12 +678,21 @@ export async function POST(req: Request) {
     // 1. EVENT MUTATIONS
     if (type === "event") {
       const event = data;
+      if (!canCreateEvent(auth.roleKey) && !auth.isHq) {
+        return NextResponse.json(
+          { ok: false, error: "Permission denied: event creation requires event.create permission" },
+          { status: 403 },
+        );
+      }
       if (!isUuid(event.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(event.chapterId);
+      if (chapErr) return chapErr;
+
       const organizerId = isUuid(event.organizerId)
         ? event.organizerId
-        : "11111111-1111-1111-1111-111111111111";
+        : auth.userId;
 
       const slug = event.slug ?? slugify(event.title || "event");
       let eventId = isUuid(event.id) ? event.id : (event._dbId && isUuid(event._dbId) ? event._dbId : null);
@@ -465,10 +753,13 @@ export async function POST(req: Request) {
           : (Array.isArray(event.organizer) ? event.organizer : []),
       };
 
-      if (event.platform !== undefined) eventPayload.platform = event.platform;
-      if (event.caseStudy !== undefined) eventPayload.case_study = event.caseStudy;
-      if (event.attendanceSessions !== undefined) eventPayload.attendance_sessions = event.attendanceSessions;
-      if (event.volunteerStudentIds !== undefined) eventPayload.volunteer_student_ids = event.volunteerStudentIds;
+      if (event.progressStage) eventPayload.progress_stage = event.progressStage;
+      if (isUuid(event.nextEventId)) eventPayload.next_event_id = event.nextEventId;
+      if (isUuid(event.parentEventId)) eventPayload.parent_event_id = event.parentEventId;
+      if (Array.isArray(event.attendanceSessions)) eventPayload.attendance_sessions = event.attendanceSessions;
+      if (Array.isArray(event.volunteerStudentIds)) eventPayload.volunteer_student_ids = event.volunteerStudentIds.filter(isUuid);
+      if (event.platform) eventPayload.platform = event.platform;
+      if (event.caseStudy) eventPayload.case_study = event.caseStudy;
 
       let { error } = await admin.from("events").upsert(eventPayload);
 
@@ -486,35 +777,48 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
-      if (eventPayload.status === "registration_open" && eventId) {
+      // Cascade update status to any linked forms
+      if (event.status) {
         try {
-          await admin
-            .from("forms")
-            .update({ status: "open", updated_at: new Date().toISOString() })
-            .eq("event_id", eventId);
+          let formStatus: string | null = null;
+          if (event.status === "registration_open") formStatus = "open";
+          else if (event.status === "registration_closed" || event.status === "cancelled" || event.status === "completed") {
+            formStatus = "closed";
+          }
+          if (formStatus) {
+            await admin
+              .from("forms")
+              .update({ status: formStatus, updated_at: new Date().toISOString() })
+              .eq("event_id", eventId);
+          }
         } catch (cascadeErr) {
           console.warn("Cascade update to forms status notice:", cascadeErr);
         }
       }
-
 
       await revalidateWeb(["events", `event:${slug}`, `chapter:${event.chapterId}`]);
       return NextResponse.json({ ok: true, id: eventId });
     }
 
     if (type === "delete_event") {
+      if (!canCreateEvent(auth.roleKey) && !auth.isHq) {
+        return NextResponse.json(
+          { ok: false, error: "Permission denied: event deletion requires event.create permission" },
+          { status: 403 },
+        );
+      }
       const { id, slug, title, chapterId } = data;
       let targetId = isUuid(id) ? id : null;
       if (!targetId && slug) {
-        const { data: row } = await admin.from("events").select("id").eq("slug", slug).maybeSingle();
+        const { data: row } = await admin.from("events").select("id, chapter_id").eq("slug", slug).maybeSingle();
         if (row?.id) targetId = row.id;
       }
       if (!targetId && id) {
-        const { data: row } = await admin.from("events").select("id").eq("slug", id).maybeSingle();
+        const { data: row } = await admin.from("events").select("id, chapter_id").eq("slug", id).maybeSingle();
         if (row?.id) targetId = row.id;
       }
       if (!targetId && title) {
-        let query = admin.from("events").select("id").ilike("title", title);
+        let query = admin.from("events").select("id, chapter_id").ilike("title", title);
         if (chapterId && isUuid(chapterId)) {
           query = query.eq("chapter_id", chapterId);
         }
@@ -523,67 +827,67 @@ export async function POST(req: Request) {
       }
 
       if (targetId) {
+        const { data: ev } = await admin.from("events").select("chapter_id").eq("id", targetId).maybeSingle();
+        if (ev) {
+          const chapErr = checkChapterScope(ev.chapter_id);
+          if (chapErr) return chapErr;
+        }
+
         // 1. Break self-referencing next_event_id and parent_event_id
-        await admin.from("events").update({ next_event_id: null }).eq("next_event_id", targetId);
-        await admin.from("events").update({ parent_event_id: null }).eq("parent_event_id", targetId);
+        const { error: nextErr } = await admin.from("events").update({ next_event_id: null }).eq("next_event_id", targetId);
+        if (nextErr) console.warn("delete_event: next_event_id update notice:", nextErr);
+        const { error: parentErr } = await admin.from("events").update({ parent_event_id: null }).eq("parent_event_id", targetId);
+        if (parentErr) console.warn("delete_event: parent_event_id update notice:", parentErr);
 
         // 2. Delete attendance records first (they have foreign keys to event_registrations)
-        await admin.from("attendance_records").delete().eq("event_id", targetId);
+        const { error: attRecErr } = await admin.from("attendance_records").delete().eq("event_id", targetId);
+        if (attRecErr) console.warn("delete_event: attendance_records delete notice:", attRecErr);
         try { await admin.from("attendance").delete().eq("event_id", targetId); } catch {}
 
         // 3. Delete event registrations
-        await admin.from("event_registrations").delete().eq("event_id", targetId);
+        const { error: regErr } = await admin.from("event_registrations").delete().eq("event_id", targetId);
+        if (regErr) console.warn("delete_event: event_registrations delete notice:", regErr);
 
         // 4. Delete certificates
-        await admin.from("certificates").delete().eq("event_id", targetId);
+        const { error: certErr } = await admin.from("certificates").delete().eq("event_id", targetId);
+        if (certErr) console.warn("delete_event: certificates delete notice:", certErr);
 
         // 5. Delete form responses for event and for forms attached to this event
-        await admin.from("form_responses").delete().eq("event_id", targetId);
+        const { error: respErr } = await admin.from("form_responses").delete().eq("event_id", targetId);
+        if (respErr) console.warn("delete_event: form_responses delete notice:", respErr);
         const { data: eventForms } = await admin.from("forms").select("id").eq("event_id", targetId);
         if (eventForms && eventForms.length > 0) {
           const formIds = eventForms.map((f: { id: string }) => f.id);
-          await admin.from("form_responses").delete().in("form_id", formIds);
+          const { error: formRespErr } = await admin.from("form_responses").delete().in("form_id", formIds);
+          if (formRespErr) console.warn("delete_event: form_responses in formIds delete notice:", formRespErr);
         }
 
-        // 6. Delete event form fields if table exists
-        try { await admin.from("event_form_fields").delete().eq("event_id", targetId); } catch {}
+        // 6. Delete forms attached to this event
+        const { error: formsErr } = await admin.from("forms").delete().eq("event_id", targetId);
+        if (formsErr) console.warn("delete_event: forms delete notice:", formsErr);
 
-        // 7. Delete forms
-        await admin.from("forms").delete().eq("event_id", targetId);
+        // 7. Delete event reminders
+        const { error: remErr } = await admin.from("event_reminders").delete().eq("event_id", targetId);
+        if (remErr) console.warn("delete_event: event_reminders delete notice:", remErr);
 
         // 8. Delete event permissions
-        await admin.from("event_permissions").delete().eq("event_id", targetId);
+        const { error: permErr } = await admin.from("event_permissions").delete().eq("event_id", targetId);
+        if (permErr) console.warn("delete_event: event_permissions delete notice:", permErr);
 
-        // 9. Unlink tasks and reports
-        await admin.from("tasks").update({ event_id: null }).eq("event_id", targetId);
-        await admin.from("reports").update({ event_id: null }).eq("event_id", targetId);
-      }
-
-      // Finally delete the event row itself
-      let deleteQuery = admin.from("events").delete();
-      if (targetId) {
-        deleteQuery = deleteQuery.eq("id", targetId);
-      } else if (slug) {
-        deleteQuery = deleteQuery.eq("slug", slug);
-      } else if (id) {
-        deleteQuery = deleteQuery.eq("slug", id);
-      } else if (title && chapterId && isUuid(chapterId)) {
-        deleteQuery = deleteQuery.match({ chapter_id: chapterId, title });
-      }
-
-      const { error } = await deleteQuery;
-
-      if (error) {
-        console.error("Mutation error (delete_event):", error);
-        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
-      }
-
-      // Cleanup any duplicate entries matching slug or title in chapter
-      if (slug) {
-        try { await admin.from("events").delete().eq("slug", slug); } catch {}
-      }
-      if (title && chapterId && isUuid(chapterId)) {
-        try { await admin.from("events").delete().match({ chapter_id: chapterId, title }); } catch {}
+        // 9. Finally delete the event itself
+        const { error } = await admin.from("events").delete().eq("id", targetId);
+        if (error) {
+          console.error("Mutation error (delete_event):", error);
+          return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+        }
+      } else if (chapterId && title) {
+        const chapErr = checkChapterScope(chapterId);
+        if (chapErr) return chapErr;
+        const { error: delTitleErr } = await admin.from("events").delete().match({ chapter_id: chapterId, title });
+        if (delTitleErr) {
+          console.error("Mutation error (delete_event by title):", delTitleErr);
+          return NextResponse.json({ ok: false, error: delTitleErr.message }, { status: 400 });
+        }
       }
 
       await revalidateWeb(["events", `event:${slug || id}`]);
@@ -596,6 +900,9 @@ export async function POST(req: Request) {
       if (!isUuid(p.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(p.chapterId);
+      if (chapErr) return chapErr;
+
       const slug = p.slug ?? slugify(p.title || "project");
       const projId = isUuid(p.id) ? p.id : genUuid();
       const { error } = await admin.from("projects").upsert({
@@ -621,32 +928,139 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
-      try {
-        const teamIds = Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [];
-        await admin.from("project_members").delete().eq("project_id", projId);
-        if (teamIds.length > 0) {
-          await admin.from("project_members").insert(
-            teamIds.map((uid: string) => ({
-              project_id: projId,
-              user_id: uid,
-            }))
-          );
-        }
-      } catch (pmErr) {
-        console.warn("project_members sync notice:", pmErr);
-      }
+      const teamIds: string[] = Array.isArray(p.teamIds) ? p.teamIds.filter(isUuid) : [];
+      const memberSyncError = await syncMemberTable(admin, "project_members", "project_id", projId, teamIds);
 
       await revalidateWeb(["projects", `project:${slug}`]);
-      return NextResponse.json({ ok: true, id: projId });
+      return NextResponse.json({ ok: true, id: projId, ...(memberSyncError ? { warning: `project saved, but member sync failed: ${memberSyncError}` } : {}) });
     }
 
     if (type === "delete_project") {
       const { id, slug } = data;
-      const { error } = await admin.from("projects").delete().match(isUuid(id) ? { id } : { slug: slug || id });
+      const { data: pr } = await admin
+        .from("projects")
+        .select("id, chapter_id, slug")
+        .match(isUuid(id) ? { id } : { slug: slug || id })
+        .maybeSingle();
+
+      if (pr) {
+        const chapErr = checkChapterScope(pr.chapter_id);
+        if (chapErr) return chapErr;
+        const { error } = await admin.from("projects").delete().eq("id", pr.id);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+        }
+        await revalidateWeb(["projects", `project:${pr.slug || slug}`]);
+        return NextResponse.json({ ok: true });
+      }
+      return NextResponse.json({ ok: false, error: "Project not found" }, { status: 404 });
+    }
+
+    // 2b. PEER LAB MUTATIONS (own tables: peer_labs, peer_lab_phases, peer_lab_facilitators)
+    if (type === "peer_lab") {
+      const l = data ?? {};
+      const title = String(l.title ?? "").trim();
+      if (!title) {
+        return NextResponse.json({ ok: false, error: "Title is required" }, { status: 400 });
+      }
+      const slug = slugify(String(l.slug || title));
+      if (!slug) {
+        return NextResponse.json({ ok: false, error: "Could not build a slug from the title" }, { status: 400 });
+      }
+      const labId = isUuid(l.id) ? l.id : genUuid();
+
+      const { data: existing } = await admin.from("peer_labs").select("id").eq("id", labId).maybeSingle();
+
+      const row: Record<string, unknown> = {
+        id: labId,
+        slug,
+        title,
+        subtitle: l.subtitle || null,
+        track: l.track || null,
+        description: l.description || null,
+        chapter_id: isUuid(l.chapterId) ? l.chapterId : null,
+        cluster_id: isUuid(l.clusterId) ? l.clusterId : null,
+        status: normalizePeerLabStatus(l.status),
+        applications_open: l.applicationsOpen ?? true,
+        featured: l.featured ?? false,
+        banner_url: l.bannerUrl || null,
+        max_participants: Number.isFinite(l.maxParticipants) ? l.maxParticipants : null,
+        resources: Array.isArray(l.resources) ? l.resources : [],
+      };
+      if (!existing) row.created_by = auth.userId;
+
+      const { error: labErr } = await admin.from("peer_labs").upsert(row);
+      if (labErr) {
+        console.error("Mutation error (peer_lab):", labErr);
+        const msg = labErr.code === "23505" ? "A peer lab with this slug already exists" : labErr.message;
+        return NextResponse.json({ ok: false, error: msg }, { status: 400 });
+      }
+
+      const phases = (Array.isArray(l.phases) ? l.phases : []).filter((p: Record<string, unknown>) => String(p?.title ?? "").trim());
+      const facilitators = (Array.isArray(l.facilitators) ? l.facilitators : []).filter((f: Record<string, unknown>) =>
+        String(f?.name ?? "").trim(),
+      );
+
+      const [delPh, delFa] = await Promise.all([
+        admin.from("peer_lab_phases").delete().eq("peer_lab_id", labId),
+        admin.from("peer_lab_facilitators").delete().eq("peer_lab_id", labId),
+      ]);
+      if (delPh.error || delFa.error) {
+        return NextResponse.json(
+          { ok: false, error: `Peer lab saved, but its phases/facilitators could not be updated: ${(delPh.error || delFa.error)!.message}` },
+          { status: 500 },
+        );
+      }
+
+      if (phases.length > 0) {
+        const { error: phErr } = await admin.from("peer_lab_phases").insert(
+          phases.map((p: Record<string, unknown>, i: number) => ({
+            peer_lab_id: labId,
+            sort_order: i,
+            slug: slugify(String(p.slug || p.title || `phase-${i + 1}`)) || `phase-${i + 1}`,
+            title: String(p.title).trim(),
+            date_label: p.date || null,
+            time_label: p.time || null,
+            location: p.location || null,
+            event_id: typeof p.eventId === "string" && isUuid(p.eventId) ? p.eventId : null,
+          })),
+        );
+        if (phErr) {
+          console.error("Mutation error (peer_lab phases):", phErr);
+          return NextResponse.json({ ok: false, error: `Phases failed: ${phErr.message}` }, { status: 500 });
+        }
+      }
+
+      if (facilitators.length > 0) {
+        const { error: faErr } = await admin.from("peer_lab_facilitators").insert(
+          facilitators.map((f: Record<string, unknown>, i: number) => ({
+            peer_lab_id: labId,
+            sort_order: i,
+            user_id: typeof f.userId === "string" && isUuid(f.userId) ? f.userId : null,
+            name: String(f.name).trim(),
+            role: String(f.role || "Facilitator").trim(),
+          })),
+        );
+        if (faErr) {
+          console.error("Mutation error (peer_lab facilitators):", faErr);
+          return NextResponse.json({ ok: false, error: `Facilitators failed: ${faErr.message}` }, { status: 500 });
+        }
+      }
+
+      await revalidateWeb(["peer-labs", `peer-lab:${slug}`]);
+      return NextResponse.json({ ok: true, id: labId, slug });
+    }
+
+    if (type === "delete_peer_lab") {
+      const { id, slug } = data ?? {};
+      if (!isUuid(id) && !slug) {
+        return NextResponse.json({ ok: false, error: "id or slug is required" }, { status: 400 });
+      }
+      const { error } = await admin.from("peer_labs").delete().match(isUuid(id) ? { id } : { slug });
       if (error) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
-      await revalidateWeb(["projects", `project:${slug}`]);
+      await revalidateWeb(["peer-labs", `peer-lab:${slug ?? id}`]);
       return NextResponse.json({ ok: true });
     }
 
@@ -656,6 +1070,12 @@ export async function POST(req: Request) {
       if (!isUuid(c.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(c.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: only campus leads or executives can manage clusters" }, { status: 403 });
+      }
+
       const slug = c.slug ?? slugify(c.title || c.name || "cluster");
       const clusterId = isUuid(c.id) ? c.id : genUuid();
       const memberIds: string[] = Array.isArray(c.memberIds) ? c.memberIds.filter(isUuid) : [];
@@ -675,32 +1095,51 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
-      try {
-        await admin.from("cluster_members").delete().eq("cluster_id", clusterId);
-        if (memberIds.length > 0) {
-          await admin.from("cluster_members").insert(
-            memberIds.map((uid: string) => ({
-              cluster_id: clusterId,
-              user_id: uid,
-            }))
-          );
-        }
-      } catch (cmErr) {
-        console.warn("cluster_members sync notice:", cmErr);
-      }
+      const memberSyncError = await syncMemberTable(admin, "cluster_members", "cluster_id", clusterId, memberIds);
 
       await revalidateWeb(["peer-labs", `cluster:${slug}`]);
-      return NextResponse.json({ ok: true, id: clusterId });
+      return NextResponse.json({ ok: true, id: clusterId, ...(memberSyncError ? { warning: `cluster saved, but member sync failed: ${memberSyncError}` } : {}) });
     }
 
     if (type === "delete_cluster") {
-      const { id, slug } = data;
-      const { error } = await admin.from("clusters").delete().match(isUuid(id) ? { id } : { slug: slug || id });
-      if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+      const { id, slug, chapterId: bodyChapterId } = data || {};
+      if (isUuid(id)) {
+        const { data: clusterRow } = await admin
+          .from("clusters")
+          .select("chapter_id, slug")
+          .eq("id", id)
+          .maybeSingle();
+        if (!clusterRow) {
+          return NextResponse.json({ ok: false, error: "Cluster not found" }, { status: 404 });
+        }
+        const chapErr = checkChapterScope(clusterRow.chapter_id);
+        if (chapErr) return chapErr;
+        const { error } = await admin.from("clusters").delete().eq("id", id);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+        }
+        await revalidateWeb(["peer-labs", `cluster:${clusterRow.slug || slug || id}`]);
+        return NextResponse.json({ ok: true });
+      } else if (slug && (bodyChapterId || auth.chapterId)) {
+        const targetChapId = bodyChapterId || auth.chapterId;
+        const chapErr = checkChapterScope(targetChapId);
+        if (chapErr) return chapErr;
+        const { error } = await admin
+          .from("clusters")
+          .delete()
+          .eq("slug", slug)
+          .eq("chapter_id", targetChapId);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+        }
+        await revalidateWeb(["peer-labs", `cluster:${slug}`]);
+        return NextResponse.json({ ok: true });
+      } else {
+        return NextResponse.json(
+          { ok: false, error: "Cluster id, or slug + chapterId is required to delete a cluster" },
+          { status: 400 },
+        );
       }
-      await revalidateWeb(["peer-labs", `cluster:${slug}`]);
-      return NextResponse.json({ ok: true });
     }
 
     if (type === "organization") {
@@ -888,8 +1327,11 @@ export async function POST(req: Request) {
     if (type === "registration") {
       const reg = data;
       let regId = isUuid(reg.id) ? reg.id : genUuid();
-      let validUserId = null;
-      if (isUuid(reg.userId)) {
+      
+      // Determine validUserId:
+      // Regular users can only register themselves. Campus lead/executive/HQ can register on behalf of a user.
+      let validUserId = auth.userId;
+      if ((auth.isHq || isCampusLead(auth.roleKey) || isExecutiveRole(auth.roleKey)) && isUuid(reg.userId)) {
         const { data: prof } = await admin.from("profiles").select("id").eq("id", reg.userId).maybeSingle();
         if (prof) validUserId = prof.id;
       }
@@ -907,30 +1349,30 @@ export async function POST(req: Request) {
         }
       }
 
-      // Security check: If registration status is being approved manually, only Campus Lead or Super Admin can approve
-      if (reg.status === "approved" && isUuid(reg.approvedBy)) {
-        const { data: approverRoles } = await admin
-          .from("user_roles")
-          .select("role_key")
-          .eq("user_id", reg.approvedBy);
+      // Check event chapter scope
+      let eventChapterId: string | null = null;
+      if (isUuid(reg.eventId)) {
+        const { data: evRow } = await admin.from("events").select("chapter_id").eq("id", reg.eventId).maybeSingle();
+        eventChapterId = evRow?.chapter_id || null;
+      }
 
-        const isAuthorized = approverRoles?.some((r: any) =>
-          r.role_key === "campus_lead" ||
-          r.role_key === "chairman" ||
-          r.role_key === "founder" ||
-          r.role_key === "hq_admin"
-        );
-
+      // Security check: If registration status is being approved manually, only Campus Lead, Chairman, or HQ Admin can approve
+      let approvedBy: string | null = null;
+      if (reg.status === "approved") {
+        const isAuthorized = auth.isHq || isCampusLead(auth.roleKey) || auth.roleKey === "chairman";
         if (!isAuthorized) {
           return NextResponse.json(
             {
               ok: false,
               error:
-                "Access restricted: Only the Campus Lead is authorized to approve student event registrations from the waiting list.",
+                "Access restricted: Only the Campus Lead or Chairman is authorized to approve student event registrations from the waiting list.",
             },
             { status: 403 },
           );
         }
+        const chapErr = checkChapterScope(eventChapterId);
+        if (chapErr) return chapErr;
+        approvedBy = auth.userId;
       }
 
       const { error } = await admin.from("event_registrations").upsert({
@@ -943,8 +1385,8 @@ export async function POST(req: Request) {
         representative_id: isUuid(reg.representativeId) ? reg.representativeId : null,
         answers: reg.answers || {},
         qr_code: reg.qrCode || "",
-        reviewed_by: isUuid(reg.reviewedBy) ? reg.reviewedBy : null,
-        approved_by: isUuid(reg.approvedBy) ? reg.approvedBy : null,
+        reviewed_by: approvedBy ? auth.userId : (isUuid(reg.reviewedBy) ? reg.reviewedBy : null),
+        approved_by: approvedBy,
       });
 
       if (error) {
@@ -956,8 +1398,21 @@ export async function POST(req: Request) {
 
     if (type === "delete_registration") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("event_registrations").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid registration id is required" }, { status: 400 });
+      }
+      const { data: regRow } = await admin.from("event_registrations").select("user_id, event_id").eq("id", id).maybeSingle();
+      if (!regRow) {
+        return NextResponse.json({ ok: true });
+      }
+      const canDelete = auth.isHq || isCampusLead(auth.roleKey) || isExecutiveRole(auth.roleKey) || regRow.user_id === auth.userId;
+      if (!canDelete) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete registration" }, { status: 403 });
+      }
+      const { error: delRegError } = await admin.from("event_registrations").delete().eq("id", id);
+      if (delRegError) {
+        console.error("Mutation error (delete_registration):", delRegError);
+        return NextResponse.json({ ok: false, error: delRegError.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -965,70 +1420,22 @@ export async function POST(req: Request) {
     // 6. ATTENDANCE MUTATIONS
     if (type === "attendance") {
       const att = data;
-      const attId = isUuid(att.id) ? att.id : genUuid();
-      let validUserId = null;
-      if (isUuid(att.userId)) {
-        const { data: prof } = await admin.from("profiles").select("id").eq("id", att.userId).maybeSingle();
-        if (prof) validUserId = prof.id;
+      if (!auth.isHq && !canVerifyAttendance(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: attendance verification permission required" }, { status: 403 });
       }
 
-      // If checked_in_by is a class representative, verify that the attendee belongs to their class cohort in Supabase
-      if (isUuid(att.checkedInBy) && validUserId) {
-        const { data: repRole } = await admin
-          .from("user_roles")
-          .select("role_key")
-          .eq("user_id", att.checkedInBy)
-          .eq("role_key", "class_representative")
-          .maybeSingle();
-
-        if (repRole) {
-          // Find the class cohorts assigned to this representative
-          const { data: cohorts } = await admin
-            .from("class_cohorts")
-            .select("department, academic_year, division")
-            .or(`representative_id.eq.${att.checkedInBy},rep_ids.cs.{${att.checkedInBy}}`);
-
-          // Fetch attendee profile
-          const { data: attendeeProfile } = await admin
-            .from("profiles")
-            .select("department, year, section")
-            .eq("id", validUserId)
-            .maybeSingle();
-
-          if (cohorts && cohorts.length > 0 && attendeeProfile) {
-            const matchesClass = cohorts.some((c: any) => {
-              const deptMatch =
-                (c.department || "").trim().toLowerCase() ===
-                (attendeeProfile.department || "").trim().toLowerCase();
-              const yearMatch =
-                (c.academic_year || "").trim().toLowerCase() ===
-                (attendeeProfile.year || "").trim().toLowerCase();
-              return deptMatch && yearMatch;
-            });
-
-            if (!matchesClass) {
-              return NextResponse.json(
-                {
-                  ok: false,
-                  error:
-                    "Access restricted: Class Representatives can only record attendance for students in their assigned class cohort.",
-                },
-                { status: 403 },
-              );
-            }
-          }
-        }
-      }
-
-      // Validate attendance window against Supabase event status and scheduled times
+      // Check event and chapter scope
       if (isUuid(att.eventId)) {
         const { data: ev } = await admin
           .from("events")
-          .select("id, status, starts_at, ends_at")
+          .select("id, chapter_id, status, starts_at, ends_at")
           .eq("id", att.eventId)
           .maybeSingle();
 
         if (ev) {
+          const chapErr = checkChapterScope(ev.chapter_id);
+          if (chapErr) return chapErr;
+
           const nowMs = Date.now();
           const startsAtMs = new Date(ev.starts_at).getTime();
           const endsAtMs = ev.ends_at ? new Date(ev.ends_at).getTime() : startsAtMs + 2 * 60 * 60 * 1000;
@@ -1059,6 +1466,52 @@ export async function POST(req: Request) {
         }
       }
 
+      const attId = isUuid(att.id) ? att.id : genUuid();
+      let validUserId = null;
+      if (isUuid(att.userId)) {
+        const { data: prof } = await admin.from("profiles").select("id").eq("id", att.userId).maybeSingle();
+        if (prof) validUserId = prof.id;
+      }
+
+      // If checked_in_by is a class representative, verify that the attendee belongs to their class cohort in Supabase
+      if (auth.roleKey === "class_representative" && validUserId) {
+        // Find the class cohorts assigned to this representative using auth.userId
+        const { data: cohorts } = await admin
+          .from("class_cohorts")
+          .select("department, academic_year, division")
+          .or(`representative_id.eq.${auth.userId},rep_ids.cs.{${auth.userId}}`);
+
+        // Fetch attendee profile
+        const { data: attendeeProfile } = await admin
+          .from("profiles")
+          .select("department, year, section")
+          .eq("id", validUserId)
+          .maybeSingle();
+
+        if (cohorts && cohorts.length > 0 && attendeeProfile) {
+          const matchesClass = cohorts.some((c: any) => {
+            const deptMatch =
+              (c.department || "").trim().toLowerCase() ===
+              (attendeeProfile.department || "").trim().toLowerCase();
+            const yearMatch =
+              (c.academic_year || "").trim().toLowerCase() ===
+              (attendeeProfile.year || "").trim().toLowerCase();
+            return deptMatch && yearMatch;
+          });
+
+          if (!matchesClass) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  "Access restricted: Class Representatives can only record attendance for students in their assigned class cohort.",
+              },
+              { status: 403 },
+            );
+          }
+        }
+      }
+
       const rec = {
         id: attId,
         event_id: isUuid(att.eventId) ? att.eventId : null,
@@ -1067,44 +1520,61 @@ export async function POST(req: Request) {
         status: att.status ?? "present",
         method: att.method ?? "qr",
         checked_in_at: att.checkedInAt ?? new Date().toISOString(),
-        checked_in_by: isUuid(att.checkedInBy) ? att.checkedInBy : null,
+        checked_in_by: auth.userId,
       };
 
-      await Promise.allSettled([
-        admin.from("attendance").upsert(rec),
-        admin.from("attendance_records").upsert({
-          ...rec,
-          session_id: att.sessionId || att.session || "single",
-          session_name: att.sessionName || "Event Check-In",
-        }),
-      ]);
+      const { error: recErr } = await admin.from("attendance_records").upsert({
+        ...rec,
+        session_id: att.sessionId || att.session || "single",
+        session_name: att.sessionName || "Event Check-In",
+      });
+
+      // Best-effort write to legacy attendance table if present
+      try { await admin.from("attendance").upsert(rec); } catch {}
+
+      if (recErr) {
+        console.error("Mutation error (attendance):", recErr);
+        return NextResponse.json({ ok: false, error: recErr.message }, { status: 400 });
+      }
 
       return NextResponse.json({ ok: true, id: attId });
     }
 
     if (type === "delete_attendance") {
       const { id } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: only executives or campus leads can delete attendance records" }, { status: 403 });
+      }
       if (isUuid(id)) {
-        await Promise.allSettled([
-          admin.from("attendance_records").delete().eq("id", id),
-          admin.from("attendance").delete().eq("id", id),
-        ]);
+        const { error: delErr } = await admin.from("attendance_records").delete().eq("id", id);
+        // Best-effort delete on legacy attendance table
+        try { await admin.from("attendance").delete().eq("id", id); } catch {}
+        if (delErr) {
+          console.error("Mutation error (delete_attendance):", delErr);
+          return NextResponse.json({ ok: false, error: delErr.message }, { status: 500 });
+        }
       }
       return NextResponse.json({ ok: true });
     }
 
     if (type === "bulk_attendance") {
       const { records } = data;
+      if (!auth.isHq && !canVerifyAttendance(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: attendance verification permission required" }, { status: 403 });
+      }
       if (Array.isArray(records) && records.length > 0) {
         const sampleEventId = records.find((r: any) => isUuid(r.eventId))?.eventId;
         if (sampleEventId) {
           const { data: ev } = await admin
             .from("events")
-            .select("id, status, starts_at, ends_at")
+            .select("id, chapter_id, status, starts_at, ends_at")
             .eq("id", sampleEventId)
             .maybeSingle();
 
           if (ev) {
+            const chapErr = checkChapterScope(ev.chapter_id);
+            if (chapErr) return chapErr;
+
             const nowMs = Date.now();
             const startsAtMs = new Date(ev.starts_at).getTime();
             const endsAtMs = ev.ends_at ? new Date(ev.ends_at).getTime() : startsAtMs + 2 * 60 * 60 * 1000;
@@ -1138,10 +1608,14 @@ export async function POST(req: Request) {
             status: att.status ?? "present",
             method: att.method ?? "bulk",
             checked_in_at: att.checkedInAt ?? new Date().toISOString(),
-            checked_in_by: isUuid(att.checkedInBy) ? att.checkedInBy : null,
+            checked_in_by: auth.userId,
           };
         }));
-        await admin.from("attendance_records").upsert(rows);
+        const { error: bulkErr } = await admin.from("attendance_records").upsert(rows);
+        if (bulkErr) {
+          console.error("Mutation error (bulk_attendance):", bulkErr);
+          return NextResponse.json({ ok: false, error: bulkErr.message }, { status: 400 });
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1149,6 +1623,17 @@ export async function POST(req: Request) {
     // 7. CERTIFICATE MUTATIONS
     if (type === "certificate") {
       const cert = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: certificate issuance requires executive or campus lead role" }, { status: 403 });
+      }
+      if (isUuid(cert.eventId)) {
+        const { data: ev } = await admin.from("events").select("chapter_id").eq("id", cert.eventId).maybeSingle();
+        if (ev) {
+          const chapErr = checkChapterScope(ev.chapter_id);
+          if (chapErr) return chapErr;
+        }
+      }
+
       const certId = isUuid(cert.id) ? cert.id : genUuid();
       let validUserId = null;
       if (isUuid(cert.userId)) {
@@ -1156,30 +1641,8 @@ export async function POST(req: Request) {
         if (prof) validUserId = prof.id;
       }
       if (!validUserId) {
-        // Certificates table requires non-null user_id referencing profiles(id)
         console.warn("Certificate user_id does not reference an existing profile, skipping DB sync:", cert.userId);
         return NextResponse.json({ ok: true, id: certId, skipped: true });
-      }
-
-      // Disallow Class Representatives from issuing certificates
-      if (isUuid(cert.issuedBy)) {
-        const { data: repRole } = await admin
-          .from("user_roles")
-          .select("role_key")
-          .eq("user_id", cert.issuedBy)
-          .eq("role_key", "class_representative")
-          .maybeSingle();
-
-        if (repRole) {
-          return NextResponse.json(
-            {
-              ok: false,
-              error:
-                "Access restricted: Class Representatives are not authorized to issue certificates.",
-            },
-            { status: 403 },
-          );
-        }
       }
 
       const { error } = await admin.from("certificates").upsert({
@@ -1203,6 +1666,9 @@ export async function POST(req: Request) {
 
     if (type === "revoke_certificate") {
       const { id, isRevoked } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: revoking certificates requires executive or campus lead role" }, { status: 403 });
+      }
       const { error } = await admin
         .from("certificates")
         .update({ is_revoked: isRevoked !== undefined ? Boolean(isRevoked) : true })
@@ -1221,6 +1687,12 @@ export async function POST(req: Request) {
       if (!isUuid(form.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(form.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: form management requires executive or campus lead role" }, { status: 403 });
+      }
+
       const eventId = isUuid(form.eventId)
         ? form.eventId
         : (form.eventId?.startsWith("evt-") && isUuid(form.eventId.slice(4))
@@ -1287,8 +1759,21 @@ export async function POST(req: Request) {
 
     if (type === "delete_form") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("forms").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid form id is required" }, { status: 400 });
+      }
+      const { data: formRow } = await admin.from("forms").select("chapter_id").eq("id", id).maybeSingle();
+      if (formRow) {
+        const chapErr = checkChapterScope(formRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: deleting forms requires executive or campus lead role" }, { status: 403 });
+      }
+      const { error: delFormErr } = await admin.from("forms").delete().eq("id", id);
+      if (delFormErr) {
+        console.error("Mutation error (delete_form):", delFormErr);
+        return NextResponse.json({ ok: false, error: delFormErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1304,11 +1789,19 @@ export async function POST(req: Request) {
       if (!eventId) {
         return NextResponse.json({ ok: false, error: "Valid eventId is required" }, { status: 400 });
       }
+      const { data: ev } = await admin.from("events").select("chapter_id").eq("id", eventId).maybeSingle();
+      if (ev) {
+        const chapErr = checkChapterScope(ev.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: reminder management requires executive role" }, { status: 403 });
+      }
       const reminderId = isUuid(rem.id) ? rem.id : genUuid();
       const payload: Record<string, any> = {
         id: reminderId,
         event_id: eventId,
-        chapter_id: isUuid(rem.chapterId) ? rem.chapterId : null,
+        chapter_id: isUuid(rem.chapterId) ? rem.chapterId : (ev?.chapter_id || null),
         title: rem.title || "Event Reminder",
         message: rem.message || "",
         trigger_type: rem.triggerType || "24h_before",
@@ -1317,7 +1810,7 @@ export async function POST(req: Request) {
         status: rem.status || "scheduled",
         sent_at: rem.sentAt || null,
         recipient_count: rem.recipientCount ?? 0,
-        created_by: isUuid(rem.createdBy) ? rem.createdBy : null,
+        created_by: auth.userId,
         updated_at: new Date().toISOString(),
       };
 
@@ -1339,8 +1832,15 @@ export async function POST(req: Request) {
 
     if (type === "delete_event_reminder") {
       const { id, eventId } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: deleting reminder requires executive role" }, { status: 403 });
+      }
       if (isUuid(id)) {
-        await admin.from("event_reminders").delete().eq("id", id);
+        const { error: delRemErr } = await admin.from("event_reminders").delete().eq("id", id);
+        if (delRemErr) {
+          console.error("Mutation error (delete_event_reminder):", delRemErr);
+          return NextResponse.json({ ok: false, error: delRemErr.message }, { status: 500 });
+        }
         if (eventId && isUuid(eventId)) {
           try {
             const { data: allRems } = await admin.from("event_reminders").select("*").eq("event_id", eventId);
@@ -1372,16 +1872,24 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Event ID not found for reminder" }, { status: 400 });
       }
 
-      const { data: regRows } = await admin
-        .from("event_registrations")
-        .select("user_id")
-        .eq("event_id", targetEventId);
-
       const { data: eventRow } = await admin
         .from("events")
         .select("title, chapter_id, chapters(slug)")
         .eq("id", targetEventId)
         .maybeSingle();
+
+      if (eventRow) {
+        const chapErr = checkChapterScope(eventRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: sending reminders requires executive role" }, { status: 403 });
+      }
+
+      const { data: regRows } = await admin
+        .from("event_registrations")
+        .select("user_id")
+        .eq("event_id", targetEventId);
 
       const userIds = Array.from(new Set((regRows || []).map((r: any) => r.user_id).filter(Boolean)));
       const title = reminder?.title || `Reminder: ${eventRow?.title || "Upcoming Event"}`;
@@ -1389,6 +1897,7 @@ export async function POST(req: Request) {
       const chapterSlug = (eventRow as any)?.chapters?.slug || "hq";
       const href = `/chapter/${chapterSlug}/events/${targetEventId}`;
 
+      // Best-effort in-app notifications
       if (userIds.length > 0) {
         const notifInserts = userIds.map((uid) => ({
           id: genUuid(),
@@ -1399,27 +1908,40 @@ export async function POST(req: Request) {
           href,
           created_at: new Date().toISOString(),
         }));
-        await admin.from("notifications").insert(notifInserts);
+        const { error: notifErr } = await admin.from("notifications").insert(notifInserts);
+        if (notifErr) {
+          console.warn("send_event_reminder notifications notice:", notifErr);
+        }
       }
 
       const now = new Date().toISOString();
       if (isUuid(reminderId)) {
-        await admin.from("event_reminders").update({
+        const { error: remUpdErr } = await admin.from("event_reminders").update({
           status: "sent",
           sent_at: now,
           recipient_count: userIds.length,
           updated_at: now,
         }).eq("id", reminderId);
+
+        if (remUpdErr) {
+          console.error("Mutation error (send_event_reminder):", remUpdErr);
+          return NextResponse.json({ ok: false, error: remUpdErr.message }, { status: 500 });
+        }
       }
 
-      await admin.from("activity_logs").insert({
-        id: genUuid(),
-        actor_id: "11111111-1111-1111-1111-111111111111",
-        action: "event_reminders_sent",
-        entity: "event",
-        entity_id: targetEventId,
-        created_at: now,
-      });
+      // Best-effort audit activity log
+      try {
+        await admin.from("activity_logs").insert({
+          id: genUuid(),
+          actor_id: auth.userId,
+          action: "event_reminders_sent",
+          entity: "event",
+          entity_id: targetEventId,
+          created_at: now,
+        });
+      } catch (logErr: unknown) {
+        console.warn("send_event_reminder activity_logs notice:", logErr);
+      }
 
       return NextResponse.json({
         ok: true,
@@ -1432,11 +1954,8 @@ export async function POST(req: Request) {
     if (type === "form_response") {
       const resp = data;
       const respId = isUuid(resp.id) ? resp.id : genUuid();
-      let validUserId = null;
-      if (isUuid(resp.userId)) {
-        const { data: prof } = await admin.from("profiles").select("id").eq("id", resp.userId).maybeSingle();
-        if (prof) validUserId = prof.id;
-      }
+      const validUserId = auth.userId;
+
       const { error } = await admin.from("form_responses").upsert({
         id: respId,
         form_id: isUuid(resp.formId) ? resp.formId : null,
@@ -1455,8 +1974,20 @@ export async function POST(req: Request) {
 
     if (type === "delete_form_response") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("form_responses").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid response id is required" }, { status: 400 });
+      }
+      const { data: respRow } = await admin.from("form_responses").select("user_id, form_id").eq("id", id).maybeSingle();
+      if (respRow) {
+        const canDelete = auth.isHq || respRow.user_id === auth.userId || isCampusLead(auth.roleKey) || isExecutiveRole(auth.roleKey);
+        if (!canDelete) {
+          return NextResponse.json({ ok: false, error: "Permission denied to delete form response" }, { status: 403 });
+        }
+      }
+      const { error: delRespErr } = await admin.from("form_responses").delete().eq("id", id);
+      if (delRespErr) {
+        console.error("Mutation error (delete_form_response):", delRespErr);
+        return NextResponse.json({ ok: false, error: delRespErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1467,7 +1998,22 @@ export async function POST(req: Request) {
       if (!isUuid(rep.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(rep.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey) && !isFacultyRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: report management requires executive, lead, or faculty role" }, { status: 403 });
+      }
+
       const reportId = isUuid(rep.id) ? rep.id : genUuid();
+      const isApproving = rep.status === "approved" || rep.status === "verified";
+      let approvedBy = null;
+      if (isApproving) {
+        if (!auth.isHq && !isFacultyRole(auth.roleKey) && !isCampusLead(auth.roleKey)) {
+          return NextResponse.json({ ok: false, error: "Permission denied: approving reports requires faculty coordinator or campus lead role" }, { status: 403 });
+        }
+        approvedBy = auth.userId;
+      }
+
       const { error } = await admin.from("reports").upsert({
         id: reportId,
         chapter_id: rep.chapterId,
@@ -1480,10 +2026,10 @@ export async function POST(req: Request) {
         images: rep.images ?? [],
         source: rep.source ?? "manual",
         status: rep.status ?? "draft",
-        submitted_by: isUuid(rep.submittedBy) ? rep.submittedBy : null,
-        submitted_at: rep.submittedAt,
+        submitted_by: isUuid(rep.submittedBy) && (auth.isHq || isCampusLead(auth.roleKey)) ? rep.submittedBy : auth.userId,
+        submitted_at: rep.submittedAt ?? new Date().toISOString(),
         hq_comment: rep.hqComment,
-        approved_by: isUuid(rep.approvedBy) ? rep.approvedBy : null,
+        approved_by: approvedBy ?? (isUuid(rep.approvedBy) && auth.isHq ? rep.approvedBy : null),
         updated_at: new Date().toISOString(),
       });
 
@@ -1496,8 +2042,22 @@ export async function POST(req: Request) {
 
     if (type === "delete_report") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("reports").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid report id is required" }, { status: 400 });
+      }
+      const { data: repRow } = await admin.from("reports").select("chapter_id, submitted_by").eq("id", id).maybeSingle();
+      if (repRow) {
+        const chapErr = checkChapterScope(repRow.chapter_id);
+        if (chapErr) return chapErr;
+        const canDelete = auth.isHq || isCampusLead(auth.roleKey) || (isExecutiveRole(auth.roleKey) && repRow.submitted_by === auth.userId);
+        if (!canDelete) {
+          return NextResponse.json({ ok: false, error: "Permission denied to delete report" }, { status: 403 });
+        }
+      }
+      const { error: delRepErr } = await admin.from("reports").delete().eq("id", id);
+      if (delRepErr) {
+        console.error("Mutation error (delete_report):", delRepErr);
+        return NextResponse.json({ ok: false, error: delRepErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1507,6 +2067,11 @@ export async function POST(req: Request) {
       const task = data;
       if (!isUuid(task.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(task.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: task management requires executive or campus lead role" }, { status: 403 });
       }
       const taskId = isUuid(task.id) ? task.id : genUuid();
       const { error } = await admin.from("tasks").upsert({
@@ -1529,8 +2094,21 @@ export async function POST(req: Request) {
 
     if (type === "delete_task") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("tasks").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid task id is required" }, { status: 400 });
+      }
+      const { data: taskRow } = await admin.from("tasks").select("chapter_id").eq("id", id).maybeSingle();
+      if (taskRow) {
+        const chapErr = checkChapterScope(taskRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete task" }, { status: 403 });
+      }
+      const { error: delTaskErr } = await admin.from("tasks").delete().eq("id", id);
+      if (delTaskErr) {
+        console.error("Mutation error (delete_task):", delTaskErr);
+        return NextResponse.json({ ok: false, error: delTaskErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1550,7 +2128,7 @@ export async function POST(req: Request) {
         body: g.body,
         status: g.status ?? "published",
         related_href: g.relatedHref,
-        updated_by: isUuid(g.updatedBy) ? g.updatedBy : null,
+        updated_by: auth.userId,
         updated_at: new Date().toISOString(),
       });
 
@@ -1564,7 +2142,11 @@ export async function POST(req: Request) {
     if (type === "delete_guideline") {
       const { id } = data;
       if (isUuid(id)) {
-        await admin.from("guidelines").delete().eq("id", id);
+        const { error: delGuideErr } = await admin.from("guidelines").delete().eq("id", id);
+        if (delGuideErr) {
+          console.error("Mutation error (delete_guideline):", delGuideErr);
+          return NextResponse.json({ ok: false, error: delGuideErr.message }, { status: 500 });
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1572,6 +2154,9 @@ export async function POST(req: Request) {
     // 13. RESOURCE MUTATIONS
     if (type === "resource") {
       const res = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: managing resources requires executive or campus lead role" }, { status: 403 });
+      }
       const resourceId = isUuid(res.id) ? res.id : genUuid();
       const { error } = await admin.from("resources").upsert({
         id: resourceId,
@@ -1579,7 +2164,7 @@ export async function POST(req: Request) {
         title: res.title,
         category: res.category ?? "General",
         description: res.description,
-        uploaded_by: isUuid(res.uploadedBy) ? res.uploadedBy : null,
+        uploaded_by: auth.userId,
         url: res.url,
       });
 
@@ -1592,8 +2177,15 @@ export async function POST(req: Request) {
 
     if (type === "delete_resource") {
       const { id } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete resource" }, { status: 403 });
+      }
       if (isUuid(id)) {
-        await admin.from("resources").delete().eq("id", id);
+        const { error: delResErr } = await admin.from("resources").delete().eq("id", id);
+        if (delResErr) {
+          console.error("Mutation error (delete_resource):", delResErr);
+          return NextResponse.json({ ok: false, error: delResErr.message }, { status: 500 });
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1603,6 +2195,11 @@ export async function POST(req: Request) {
       const dept = data;
       if (!isUuid(dept.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(dept.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: managing departments requires class.manage permission" }, { status: 403 });
       }
       const deptId = isUuid(dept.id) ? dept.id : genUuid();
       const { error } = await admin.from("departments").upsert({
@@ -1620,8 +2217,21 @@ export async function POST(req: Request) {
 
     if (type === "delete_department") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("departments").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid department id is required" }, { status: 400 });
+      }
+      const { data: deptRow } = await admin.from("departments").select("chapter_id").eq("id", id).maybeSingle();
+      if (deptRow) {
+        const chapErr = checkChapterScope(deptRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete department" }, { status: 403 });
+      }
+      const { error: delDeptErr } = await admin.from("departments").delete().eq("id", id);
+      if (delDeptErr) {
+        console.error("Mutation error (delete_department):", delDeptErr);
+        return NextResponse.json({ ok: false, error: delDeptErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1631,6 +2241,11 @@ export async function POST(req: Request) {
       const cohort = data;
       if (!isUuid(cohort.chapterId)) {
         return NextResponse.json({ ok: false, error: "chapterId is required and must be a valid UUID" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(cohort.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: managing class cohorts requires class.manage permission" }, { status: 403 });
       }
       const cohortId = isUuid(cohort.id) ? cohort.id : genUuid();
       const validRepIds: string[] = Array.isArray(cohort.repIds)
@@ -1654,8 +2269,21 @@ export async function POST(req: Request) {
 
     if (type === "delete_class_cohort") {
       const { id } = data;
-      if (isUuid(id)) {
-        await admin.from("class_cohorts").delete().eq("id", id);
+      if (!isUuid(id)) {
+        return NextResponse.json({ ok: false, error: "Valid class cohort id is required" }, { status: 400 });
+      }
+      const { data: cohortRow } = await admin.from("class_cohorts").select("chapter_id").eq("id", id).maybeSingle();
+      if (cohortRow) {
+        const chapErr = checkChapterScope(cohortRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete class cohort" }, { status: 403 });
+      }
+      const { error: delCohortErr } = await admin.from("class_cohorts").delete().eq("id", id);
+      if (delCohortErr) {
+        console.error("Mutation error (delete_class_cohort):", delCohortErr);
+        return NextResponse.json({ ok: false, error: delCohortErr.message }, { status: 500 });
       }
       return NextResponse.json({ ok: true });
     }
@@ -1687,6 +2315,9 @@ export async function POST(req: Request) {
 
     if (type === "leadership_assignment") {
       const la = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && auth.roleKey !== "chairman") {
+        return NextResponse.json({ ok: false, error: "Permission denied: leadership assignment requires campus lead or chairman role" }, { status: 403 });
+      }
       const laId = isUuid(la.id) ? la.id : genUuid();
       let termId = isUuid(la.termId) ? la.termId : null;
 
@@ -1699,6 +2330,11 @@ export async function POST(req: Request) {
           .eq("id", la.userId)
           .maybeSingle();
         chapterId = prof?.chapter_id ?? null;
+      }
+
+      if (chapterId) {
+        const chapErr = checkChapterScope(chapterId);
+        if (chapErr) return chapErr;
       }
 
       if (!termId && chapterId) {
@@ -1716,7 +2352,7 @@ export async function POST(req: Request) {
       // If chapter still doesn't have an active term row in DB, auto-create one
       if (!termId && chapterId) {
         termId = genUuid();
-        await admin.from("leadership_terms").insert({
+        const { error: termInsertErr } = await admin.from("leadership_terms").insert({
           id: termId,
           chapter_id: chapterId,
           academic_year: "2025-26",
@@ -1726,10 +2362,13 @@ export async function POST(req: Request) {
           status: "active",
           handover_notes: "Auto-initialized chapter volunteer & leadership team",
         });
+        if (termInsertErr) {
+          console.error("Mutation error (leadership_term auto-create):", termInsertErr);
+          return NextResponse.json({ ok: false, error: termInsertErr.message }, { status: 400 });
+        }
       }
 
       if (!termId) {
-        // Ultimate fallback to canonical active term if available
         const { data: anyTerm } = await admin
           .from("leadership_terms")
           .select("id")
@@ -1752,7 +2391,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
-      // Automatically sync user_roles in Supabase
+      // Automatically sync user_roles in Supabase (secondary write: return warning if fails)
+      let userRoleSyncError: string | null = null;
       if (la.userId && isUuid(la.userId) && la.roleKey) {
         try {
           const { data: roleRow } = await admin
@@ -1777,14 +2417,18 @@ export async function POST(req: Request) {
             .eq("role_key", la.roleKey);
 
           if (existingUrList && existingUrList.length > 0) {
-            await admin.from("user_roles").update({
+            const { error: urUpdateErr } = await admin.from("user_roles").update({
               chapter_id: chapterId,
               leadership_term_id: termId,
               role_id: roleRow?.id ?? null,
               is_permanent: true,
             }).eq("id", existingUrList[0].id);
+            if (urUpdateErr) {
+              userRoleSyncError = urUpdateErr.message;
+              console.warn("user_roles update notice for assignment:", urUpdateErr);
+            }
           } else {
-            await admin.from("user_roles").insert({
+            const { error: urInsertErr } = await admin.from("user_roles").insert({
               user_id: la.userId,
               role_key: la.roleKey,
               role_id: roleRow?.id ?? null,
@@ -1792,17 +2436,30 @@ export async function POST(req: Request) {
               leadership_term_id: termId,
               is_permanent: true,
             });
+            if (urInsertErr) {
+              userRoleSyncError = urInsertErr.message;
+              console.warn("user_roles insert notice for assignment:", urInsertErr);
+            }
           }
-        } catch (urErr) {
+        } catch (urErr: unknown) {
+          const msg = urErr instanceof Error ? urErr.message : String(urErr);
+          userRoleSyncError = msg;
           console.warn("Could not sync user_roles for assignment:", urErr);
         }
       }
 
-      return NextResponse.json({ ok: true, id: laId });
+      return NextResponse.json({
+        ok: true,
+        id: laId,
+        ...(userRoleSyncError ? { warning: `Leadership assignment created, but role sync failed: ${userRoleSyncError}` } : {}),
+      });
     }
 
     if (type === "delete_leadership_assignment") {
       const { id, userId, roleKey } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && auth.roleKey !== "chairman") {
+        return NextResponse.json({ ok: false, error: "Permission denied: deleting leadership assignment requires campus lead or chairman role" }, { status: 403 });
+      }
       const targetRoleKey = roleKey || "volunteer";
 
       if (isUuid(id)) {
@@ -1812,28 +2469,43 @@ export async function POST(req: Request) {
           .eq("id", id)
           .maybeSingle();
 
-        await admin.from("leadership_assignments").delete().eq("id", id);
+        const { error: delLaErr } = await admin.from("leadership_assignments").delete().eq("id", id);
+        if (delLaErr) {
+          console.error("Mutation error (delete_leadership_assignment):", delLaErr);
+          return NextResponse.json({ ok: false, error: delLaErr.message }, { status: 500 });
+        }
 
         if (assignment?.user_id && assignment?.role_key) {
-          await admin
+          const { error: delUrErr } = await admin
             .from("user_roles")
             .delete()
             .eq("user_id", assignment.user_id)
             .eq("role_key", assignment.role_key);
+          if (delUrErr) {
+            console.warn("delete_leadership_assignment user_roles delete notice:", delUrErr);
+          }
         }
       } else if (userId && isUuid(userId)) {
-        await admin.from("leadership_assignments").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
-        await admin.from("user_roles").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
+        const { error: delLaErr } = await admin.from("leadership_assignments").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
+        if (delLaErr) {
+          console.error("Mutation error (delete_leadership_assignment):", delLaErr);
+          return NextResponse.json({ ok: false, error: delLaErr.message }, { status: 500 });
+        }
+        const { error: delUrErr } = await admin.from("user_roles").delete().eq("user_id", userId).eq("role_key", targetRoleKey);
+        if (delUrErr) {
+          console.warn("delete_leadership_assignment user_roles delete notice:", delUrErr);
+        }
       }
       return NextResponse.json({ ok: true });
     }
 
-    // 17. ACTIVITY LOG MUTATIONS
+    // 17. ACTIVITY LOG MUTATIONS (Best-effort operational audit trail)
     if (type === "activity_log") {
       const logItem = data;
       const logId = isUuid(logItem.id) ? logItem.id : genUuid();
-      const actorId = isUuid(logItem.actorId) ? logItem.actorId : (isUuid(logItem.userId) ? logItem.userId : null);
-      await admin.from("activity_logs").insert({
+      const actorId = auth.userId;
+      // Best-effort telemetry: failures do not block user action
+      const { error: logErr } = await admin.from("activity_logs").insert({
         id: logId,
         actor_id: actorId,
         action: logItem.action,
@@ -1842,30 +2514,43 @@ export async function POST(req: Request) {
         meta: typeof logItem.meta === "object" ? JSON.stringify(logItem.meta) : logItem.meta,
         created_at: logItem.createdAt ?? new Date().toISOString(),
       });
+      if (logErr) {
+        console.warn("Best-effort activity_log insert notice:", logErr);
+      }
       return NextResponse.json({ ok: true, id: logId });
     }
 
-    // 18. NOTIFICATION MUTATIONS
+    // 18. NOTIFICATION MUTATIONS (Best-effort in-app message dispatch)
     if (type === "notification") {
       const notif = data;
       const notifId = isUuid(notif.id) ? notif.id : genUuid();
-      if (isUuid(notif.userId)) {
-        await admin.from("notifications").upsert({
-          id: notifId,
-          user_id: notif.userId,
-          title: notif.title,
-          body: notif.body,
-          read: Boolean(notif.read),
-          href: notif.href,
-        });
+      const targetUserId = isUuid(notif.userId) ? notif.userId : auth.userId;
+      if (targetUserId !== auth.userId && !auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: cannot send notification to other users" }, { status: 403 });
+      }
+      // Best-effort in-app notification: non-fatal if delivery fails
+      const { error: notifErr } = await admin.from("notifications").upsert({
+        id: notifId,
+        user_id: targetUserId,
+        title: notif.title,
+        body: notif.body,
+        read: Boolean(notif.read),
+        href: notif.href,
+      });
+      if (notifErr) {
+        console.warn("Best-effort notification upsert notice:", notifErr);
       }
       return NextResponse.json({ ok: true, id: notifId });
     }
 
     if (type === "mark_notification_read") {
       const { id } = data;
+      // Best-effort notification state update
       if (isUuid(id)) {
-        await admin.from("notifications").update({ read: true }).eq("id", id);
+        const { error: readErr } = await admin.from("notifications").update({ read: true }).eq("id", id).eq("user_id", auth.userId);
+        if (readErr) {
+          console.warn("Best-effort mark_notification_read notice:", readErr);
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1874,6 +2559,13 @@ export async function POST(req: Request) {
     if (type === "announcement") {
       const ann = data;
       const annId = isUuid(ann.id) ? ann.id : genUuid();
+      if (ann.chapterId) {
+        const chapErr = checkChapterScope(ann.chapterId);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: announcements require executive or campus lead role" }, { status: 403 });
+      }
       const { error } = await admin.from("announcements").upsert({
         id: annId,
         audience: ann.audience ?? "global",
@@ -1881,7 +2573,7 @@ export async function POST(req: Request) {
         cluster_id: isUuid(ann.clusterId) ? ann.clusterId : null,
         title: ann.title,
         body: ann.body,
-        author_id: isUuid(ann.authorId) ? ann.authorId : null,
+        author_id: auth.userId,
       });
 
       if (error) {
@@ -1894,6 +2586,16 @@ export async function POST(req: Request) {
     // 20. EVENT PERMISSION MUTATIONS
     if (type === "event_permission") {
       const ep = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: granting event permissions requires executive or campus lead role" }, { status: 403 });
+      }
+      if (isUuid(ep.eventId)) {
+        const { data: ev } = await admin.from("events").select("chapter_id").eq("id", ep.eventId).maybeSingle();
+        if (ev) {
+          const chapErr = checkChapterScope(ev.chapter_id);
+          if (chapErr) return chapErr;
+        }
+      }
       const epId = isUuid(ep.id) ? ep.id : genUuid();
       const { error } = await admin.from("event_permissions").upsert({
         id: epId,
@@ -1901,7 +2603,7 @@ export async function POST(req: Request) {
         user_id: isUuid(ep.userId) ? ep.userId : null,
         permission_type: ep.permissionType,
         is_temporary: Boolean(ep.isTemporary),
-        granted_by: isUuid(ep.grantedBy) ? ep.grantedBy : null,
+        granted_by: auth.userId,
         granted_at: ep.grantedAt ?? new Date().toISOString(),
         expires_at: ep.expiresAt,
       });
@@ -1915,8 +2617,15 @@ export async function POST(req: Request) {
 
     if (type === "delete_event_permission") {
       const { id } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: deleting event permissions requires executive or campus lead role" }, { status: 403 });
+      }
       if (isUuid(id)) {
-        await admin.from("event_permissions").delete().eq("id", id);
+        const { error: delEpErr } = await admin.from("event_permissions").delete().eq("id", id);
+        if (delEpErr) {
+          console.error("Mutation error (delete_event_permission):", delEpErr);
+          return NextResponse.json({ ok: false, error: delEpErr.message }, { status: 500 });
+        }
       }
       return NextResponse.json({ ok: true });
     }
@@ -1935,12 +2644,18 @@ export async function POST(req: Request) {
           targetId = profByEmail.id;
         }
       }
+      if (!targetId) targetId = auth.userId;
+
+      // Only HQ can edit other users' profiles
+      if (!auth.isHq && targetId !== auth.userId) {
+        return NextResponse.json({ ok: false, error: "Permission denied: you can only update your own profile" }, { status: 403 });
+      }
 
       if (targetId) {
         // Collect defined fields for safe partial updating
         const updatePayload: Record<string, any> = {};
         if (p.fullName !== undefined) updatePayload.full_name = p.fullName;
-        if (p.email !== undefined) updatePayload.email = p.email;
+        if (p.email !== undefined && auth.isHq) updatePayload.email = p.email;
         if (p.avatarUrl !== undefined) updatePayload.avatar_url = p.avatarUrl;
         if (p.phone !== undefined) updatePayload.phone = p.phone;
         if (p.department !== undefined) updatePayload.department = p.department;
@@ -1950,8 +2665,8 @@ export async function POST(req: Request) {
           if (p.year === undefined) updatePayload.year = p.academicYear;
         }
         if (p.section !== undefined) updatePayload.section = p.section;
-        if (p.chapterId !== undefined) updatePayload.chapter_id = isUuid(p.chapterId) ? p.chapterId : null;
-        if (p.status !== undefined) updatePayload.status = p.status;
+        if (p.chapterId !== undefined && auth.isHq) updatePayload.chapter_id = isUuid(p.chapterId) ? p.chapterId : null;
+        if (p.status !== undefined && auth.isHq) updatePayload.status = p.status;
         if (p.isPublic !== undefined) updatePayload.is_public = Boolean(p.isPublic);
         if (p.bio !== undefined) updatePayload.bio = p.bio;
         if (p.skills !== undefined) updatePayload.skills = p.skills;
@@ -1999,14 +2714,14 @@ export async function POST(req: Request) {
           }
         }
 
-        // Sync status with Supabase Auth ban if status changed
-        if (p.status === "disabled") {
+        // Sync status with Supabase Auth ban if status changed (HQ only)
+        if (auth.isHq && p.status === "disabled") {
           try {
             await admin.auth.admin.updateUserById(targetId, { ban_duration: "876000h" });
           } catch (banErr) {
             console.warn("Auth ban notice (non-fatal):", banErr);
           }
-        } else if (p.status === "active") {
+        } else if (auth.isHq && p.status === "active") {
           try {
             await admin.auth.admin.updateUserById(targetId, { ban_duration: "none" });
           } catch (unbanErr) {
@@ -2015,23 +2730,25 @@ export async function POST(req: Request) {
         }
 
         // Also record user disable/enable state in system_ui_states
-        try {
-          await admin.from("system_ui_states").upsert(
-            {
-              key: `user_status_${targetId}`,
-              section: "users",
-              component_id: targetId,
-              state_type: "toggle",
-              is_enabled: p.status === "active",
-              is_visible: true,
-              label: p.status,
-              metadata: { status: p.status, email: p.email },
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "key" },
-          );
-        } catch (uiErr) {
-          console.warn("Could not record user system_ui_state:", uiErr);
+        if (auth.isHq && p.status) {
+          try {
+            await admin.from("system_ui_states").upsert(
+              {
+                key: `user_status_${targetId}`,
+                section: "users",
+                component_id: targetId,
+                state_type: "toggle",
+                is_enabled: p.status === "active",
+                is_visible: true,
+                label: p.status,
+                metadata: { status: p.status, email: p.email },
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "key" },
+            );
+          } catch (uiErr) {
+            console.warn("Could not record user system_ui_state:", uiErr);
+          }
         }
       }
       return NextResponse.json({ ok: true });
@@ -2102,20 +2819,29 @@ export async function POST(req: Request) {
       }
 
       // 3. Keep profiles.chapter_id synchronized if chapter assigned
+      let profileSyncError: string | null = null;
       if (primaryChapterId) {
-        await admin
+        const { error: profErr } = await admin
           .from("profiles")
           .update({ chapter_id: primaryChapterId })
           .eq("id", userId);
+        if (profErr) {
+          console.warn("user_roles profiles chapter_id sync notice:", profErr);
+          profileSyncError = profErr.message;
+        }
       }
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({
+        ok: true,
+        ...(profileSyncError ? { warning: `Roles updated, but profile chapter sync failed: ${profileSyncError}` } : {}),
+      });
     }
 
     // 22. CHAPTER INVITE CODE MUTATIONS
     if (type === "chapter_invite_join") {
-      const { code, codeId, userId, chapterId, department, year } = data;
+      const { code, codeId, chapterId, department, year } = data;
       const cleanCode = (code || "").trim().toUpperCase();
+      const targetUserId = auth.userId;
 
       // 1. Locate invite token by id or token string
       let tokenRow: any = null;
@@ -2174,68 +2900,56 @@ export async function POST(req: Request) {
         }
       }
 
-      // 2. Synchronize user profile if valid user UUID
-      let validProfileId: string | null = null;
-      if (isUuid(userId)) {
-        const profileUpdates: Record<string, any> = {
-          status: "active",
-        };
-        if (isUuid(chapterId)) {
-          profileUpdates.chapter_id = chapterId;
-        }
-        if (department && typeof department === "string") {
-          profileUpdates.department = department.trim();
-        }
-        if (year && typeof year === "string") {
-          profileUpdates.year = year.trim();
-        }
+      // 2. Synchronize user profile for target authenticated user
+      let validProfileId: string | null = targetUserId;
+      const profileUpdates: Record<string, any> = {
+        status: "active",
+      };
+      if (isUuid(chapterId)) {
+        profileUpdates.chapter_id = chapterId;
+      }
+      if (department && typeof department === "string") {
+        profileUpdates.department = department.trim();
+      }
+      if (year && typeof year === "string") {
+        profileUpdates.year = year.trim();
+      }
 
-        const { data: updatedProfile } = await admin
-          .from("profiles")
-          .update(profileUpdates)
-          .eq("id", userId)
+      const { data: updatedProfile } = await admin
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", targetUserId)
+        .select("id")
+        .maybeSingle();
+
+      if (updatedProfile?.id) {
+        validProfileId = updatedProfile.id;
+      }
+
+      // Ensure user has the student role for this chapter
+      if (isUuid(chapterId)) {
+        const { data: existingRole } = await admin
+          .from("user_roles")
           .select("id")
+          .eq("user_id", targetUserId)
+          .eq("chapter_id", chapterId)
           .maybeSingle();
 
-        if (updatedProfile?.id) {
-          validProfileId = updatedProfile.id;
-        } else {
-          // Check if profile exists at all
-          const { data: existingProf } = await admin
-            .from("profiles")
+        if (!existingRole) {
+          const { data: studentRole } = await admin
+            .from("roles")
             .select("id")
-            .eq("id", userId)
-            .maybeSingle();
-          if (existingProf?.id) {
-            validProfileId = existingProf.id;
-          }
-        }
-
-        // Ensure user has the student role for this chapter
-        if (isUuid(chapterId)) {
-          const { data: existingRole } = await admin
-            .from("user_roles")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("chapter_id", chapterId)
+            .eq("key", "student")
             .maybeSingle();
 
-          if (!existingRole) {
-            const { data: studentRole } = await admin
-              .from("roles")
-              .select("id")
-              .eq("key", "student")
-              .maybeSingle();
-
-            await admin.from("user_roles").insert({
-              user_id: userId,
-              role_key: "student",
-              role_id: studentRole?.id || null,
-              chapter_id: chapterId,
-              organization_id: DEFAULT_ORG_ID,
-              is_permanent: true,
-            });
-          }
+          await admin.from("user_roles").insert({
+            user_id: targetUserId,
+            role_key: "student",
+            role_id: studentRole?.id || null,
+            chapter_id: chapterId,
+            organization_id: DEFAULT_ORG_ID,
+            is_permanent: true,
+          });
         }
       }
 
@@ -2253,7 +2967,7 @@ export async function POST(req: Request) {
       const baseCount = Math.max(Number(tokenRow?.uses_count ?? 0), Number(priorLogCount ?? 0));
       const nextUses = baseCount + 1;
 
-      // Try atomic RPC function first (if user ran the SQL helper in Supabase)
+      // Try atomic RPC function first
       let rpcSucceeded = false;
       try {
         const { error: rpcErr } = await admin.rpc("increment_invite_token_usage", {
@@ -2267,7 +2981,7 @@ export async function POST(req: Request) {
         rpcSucceeded = false;
       }
 
-      // Fallback: direct table update if RPC is not present or failed
+      // Fallback: direct table update
       if (!rpcSucceeded) {
         const updatePayload: Record<string, any> = {
           used_at: new Date().toISOString(),
@@ -2284,19 +2998,22 @@ export async function POST(req: Request) {
           updRes = await admin.from("invite_tokens").update(updatePayload).ilike("token", cleanCode);
         }
 
-        // If uses_count column does not exist yet in table schema, retry without uses_count
         if (updRes?.error && updRes.error.message?.includes("uses_count")) {
           delete updatePayload.uses_count;
           if (effectiveTokenId) {
-            await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveTokenId);
+            updRes = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveTokenId);
           } else if (cleanCode) {
-            await admin.from("invite_tokens").update(updatePayload).ilike("token", cleanCode);
+            updRes = await admin.from("invite_tokens").update(updatePayload).ilike("token", cleanCode);
           }
+        }
+
+        if (updRes?.error) {
+          console.error("Mutation error (chapter_invite_join token update):", updRes.error);
+          return NextResponse.json({ ok: false, error: updRes.error.message }, { status: 400 });
         }
       }
 
-      // 4. Record usage in activity_logs for permanent, multi-user join count tracking
-      // NOTE: Do NOT pass chapter_id as column because activity_logs schema only has [id, actor_id, action, entity, entity_id, meta, created_at]
+      // 4. Record usage in activity_logs
       await admin.from("activity_logs").insert({
         actor_id: validProfileId,
         action: "chapter_invite_used",
@@ -2305,7 +3022,7 @@ export async function POST(req: Request) {
         meta: JSON.stringify({
           chapterId,
           code: cleanCode || tokenRow?.token,
-          userId,
+          userId: targetUserId,
           department,
           year,
           joinedAt: new Date().toISOString(),
@@ -2325,7 +3042,7 @@ export async function POST(req: Request) {
             joined_at: new Date().toISOString(),
           });
         } catch {
-          // Gracefully ignore if table does not exist or duplicate record
+          // Gracefully ignore
         }
       }
 
@@ -2333,22 +3050,9 @@ export async function POST(req: Request) {
     }
 
     if (type === "student_referral_token") {
-      const { id, code, createdBy, expiresAt } = data;
+      const { id, code, expiresAt } = data;
       const cleanCode = (code || "").trim();
-
-      let creatorId: string | null = null;
-      if (isUuid(createdBy)) {
-        const { data: userExists } = await admin
-          .from("profiles")
-          .select("id")
-          .eq("id", createdBy)
-          .maybeSingle();
-        if (userExists) creatorId = createdBy;
-      }
-      if (!creatorId) {
-        const { data: anyProf } = await admin.from("profiles").select("id").limit(1).maybeSingle();
-        if (anyProf) creatorId = anyProf.id;
-      }
+      const creatorId = auth.userId;
 
       const insertPayload: Record<string, any> = {
         token: cleanCode,
@@ -2356,10 +3060,8 @@ export async function POST(req: Request) {
         expires_at: expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         is_active: true,
         uses_count: 0,
+        created_by: creatorId,
       };
-      if (creatorId) {
-        insertPayload.created_by = creatorId;
-      }
       if (isUuid(id)) {
         insertPayload.id = id;
       }
@@ -2390,8 +3092,8 @@ export async function POST(req: Request) {
     }
 
     if (type === "record_referral_use" || type === "referral_invite_join") {
-      const { tokenId, token, userId, newUserId, referrerId, studentName, studentEmail } = data || {};
-      const targetUserId = userId || newUserId;
+      const { tokenId, token, referrerId, studentName, studentEmail } = data || {};
+      const targetUserId = auth.userId;
       const cleanToken = (token || "").trim();
 
       // 1. Fetch the token row
@@ -2451,29 +3153,28 @@ export async function POST(req: Request) {
 
       // 3. Update token: increment uses_count, set used_at and latest used_by, keep is_active = true!
       if (effectiveId && isUuid(effectiveId)) {
-        try {
-          const updatePayload: Record<string, any> = {
-            uses_count: nextUses,
-            used_at: new Date().toISOString(),
-            is_active: true,
-          };
-          if (targetUserId && isUuid(targetUserId)) {
-            updatePayload.used_by = targetUserId;
-          }
-          const { error: updErr } = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
-          if (updErr && updErr.message?.includes("uses_count")) {
-            delete updatePayload.uses_count;
-            await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
-          }
-        } catch (uErr) {
-          console.warn("Notice: invite_tokens update in record_referral_use:", uErr);
+        const updatePayload: Record<string, any> = {
+          uses_count: nextUses,
+          used_at: new Date().toISOString(),
+          is_active: true,
+          used_by: targetUserId,
+        };
+        let { error: updErr } = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
+        if (updErr && updErr.message?.includes("uses_count")) {
+          delete updatePayload.uses_count;
+          const retry = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
+          updErr = retry.error;
+        }
+        if (updErr) {
+          console.error("Mutation error (record_referral_use):", updErr);
+          return NextResponse.json({ ok: false, error: updErr.message }, { status: 400 });
         }
       }
 
       // 4. Record permanent log entry in activity_logs
       try {
         await admin.from("activity_logs").insert({
-          actor_id: targetUserId && isUuid(targetUserId) ? targetUserId : null,
+          actor_id: targetUserId,
           action: "referral_invite_used",
           entity: "referral_invite",
           entity_id: effectiveToken || effectiveId || "UNKNOWN",
@@ -2496,22 +3197,12 @@ export async function POST(req: Request) {
     }
 
     if (type === "chapter_invite_code") {
-      const { id, chapterId, code, createdBy, expiresAt, isReferral } = data;
+      const { id, chapterId, code, expiresAt, isReferral } = data;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: creating invite codes requires executive or campus lead role" }, { status: 403 });
+      }
       const cleanCode = (code || "").trim().toUpperCase();
-
-      let creatorId: string | null = null;
-      if (isUuid(createdBy)) {
-        const { data: userExists } = await admin
-          .from("profiles")
-          .select("id")
-          .eq("id", createdBy)
-          .maybeSingle();
-        if (userExists) creatorId = createdBy;
-      }
-      if (!creatorId) {
-        const { data: anyProf } = await admin.from("profiles").select("id").limit(1).maybeSingle();
-        if (anyProf) creatorId = anyProf.id;
-      }
+      const creatorId = auth.userId;
 
       let validChapterId: string | null = null;
       if (isUuid(chapterId)) {
@@ -2530,7 +3221,6 @@ export async function POST(req: Request) {
           .maybeSingle();
         if (chapBySlug) validChapterId = chapBySlug.id;
       }
-      // Only default to firstChap if it's genuinely a chapter invite code, NOT a personal student referral
       if (!validChapterId && !cleanCode.startsWith("REF-") && !isReferral && chapterId !== null) {
         const { data: firstChap } = await admin
           .from("chapters")
@@ -2540,16 +3230,19 @@ export async function POST(req: Request) {
         if (firstChap) validChapterId = firstChap.id;
       }
 
+      if (validChapterId) {
+        const chapErr = checkChapterScope(validChapterId);
+        if (chapErr) return chapErr;
+      }
+
       const insertPayload: Record<string, any> = {
         token: cleanCode,
         chapter_id: validChapterId,
         expires_at: expiresAt || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         is_active: true,
         uses_count: 0,
+        created_by: creatorId,
       };
-      if (creatorId) {
-        insertPayload.created_by = creatorId;
-      }
       if (isUuid(id)) {
         insertPayload.id = id;
       }
@@ -2580,6 +3273,9 @@ export async function POST(req: Request) {
     }
 
     if (type === "revoke_chapter_invite_code" || type === "revoke_invite_token") {
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: revoking invite codes requires executive or campus lead role" }, { status: 403 });
+      }
       const { id, code, token } = data || {};
       const targets = [id, code, token].filter(Boolean) as string[];
 
@@ -2587,28 +3283,32 @@ export async function POST(req: Request) {
         const clean = String(target).trim();
         if (!clean) continue;
 
-        // Try security definer RPC function from migration 019 if available
         try {
           await admin.rpc("revoke_invite_code", { target_val: clean });
         } catch {
           // Fallback to direct table updates
         }
 
-        // 1. If clean is a UUID, update primary key id
+        let revokeError: any = null;
         if (isUuid(clean)) {
-          await admin.from("invite_tokens").update({ is_active: false }).eq("id", clean);
+          const { error: e1 } = await admin.from("invite_tokens").update({ is_active: false }).eq("id", clean);
+          if (e1) revokeError = e1;
         }
 
-        // 2. Deactivate by token case-insensitively using ilike (handles hyphens cleanly)
-        await admin.from("invite_tokens").update({ is_active: false }).ilike("token", clean);
+        const { error: e2 } = await admin.from("invite_tokens").update({ is_active: false }).ilike("token", clean);
+        if (e2) revokeError = e2;
 
-        // 3. Match exact uppercase and lowercase variants
-        await admin
+        const { error: e3 } = await admin
           .from("invite_tokens")
           .update({ is_active: false })
           .in("token", [clean, clean.toUpperCase(), clean.toLowerCase()]);
+        if (e3) revokeError = e3;
 
-        // 4. Record revocation in system_ui_states for instantaneous cross-tab/cross-client lookup
+        if (revokeError) {
+          console.error("Mutation error (revoke_chapter_invite_code):", revokeError);
+          return NextResponse.json({ ok: false, error: revokeError.message }, { status: 400 });
+        }
+
         try {
           await admin.from("system_ui_states").upsert(
             {
@@ -2649,7 +3349,7 @@ export async function POST(req: Request) {
         metadata: st.metadata || {},
         scope: st.scope || "global",
         scope_id: st.scopeId || null,
-        updated_by: isUuid(st.updatedBy) ? st.updatedBy : null,
+        updated_by: auth.userId,
         updated_at: new Date().toISOString(),
       }, { onConflict: "key" });
 
@@ -2711,7 +3411,7 @@ export async function POST(req: Request) {
         secondary_button_enabled: ws.secondaryButtonEnabled !== undefined ? Boolean(ws.secondaryButtonEnabled) : true,
         is_published: ws.isPublished !== undefined ? Boolean(ws.isPublished) : true,
         sort_order: ws.sortOrder ?? 0,
-        updated_by: isUuid(ws.updatedBy) ? ws.updatedBy : null,
+        updated_by: auth.userId,
         updated_at: new Date().toISOString(),
       }, { onConflict: "slug" });
 
@@ -2728,6 +3428,11 @@ export async function POST(req: Request) {
       const { chapterId, standardId, done, note } = data;
       if (!isUuid(chapterId) || !standardId) {
         return NextResponse.json({ ok: false, error: "chapterId and standardId are required" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey) && !isFacultyRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: chapter standards require executive, lead, or faculty role" }, { status: 403 });
       }
 
       // Try upserting with modern columns
@@ -2766,14 +3471,17 @@ export async function POST(req: Request) {
     if (type === "leadership_application") {
       const app = data;
       const appId = isUuid(app.id) ? app.id : genUuid();
-      if (!isUuid(app.termId) || !isUuid(app.chapterId) || !isUuid(app.userId)) {
-        return NextResponse.json({ ok: false, error: "termId, chapterId, and userId must be valid UUIDs" }, { status: 400 });
+      if (!isUuid(app.termId) || !isUuid(app.chapterId)) {
+        return NextResponse.json({ ok: false, error: "termId and chapterId must be valid UUIDs" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(app.chapterId);
+      if (chapErr) return chapErr;
+
       const { error } = await admin.from("leadership_applications").upsert({
         id: appId,
         term_id: app.termId,
         chapter_id: app.chapterId,
-        user_id: app.userId,
+        user_id: auth.userId,
         role_key: app.roleKey,
         title: app.title,
         status: app.status ?? "applied",
@@ -2788,9 +3496,17 @@ export async function POST(req: Request) {
     }
 
     if (type === "leadership_application_status") {
-      const { id, status, actorId } = data;
+      const { id, status } = data;
       if (!isUuid(id)) {
         return NextResponse.json({ ok: false, error: "Valid application id is required" }, { status: 400 });
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && auth.roleKey !== "chairman") {
+        return NextResponse.json({ ok: false, error: "Permission denied: reviewing applications requires campus lead or chairman role" }, { status: 403 });
+      }
+      const { data: appRow } = await admin.from("leadership_applications").select("chapter_id").eq("id", id).maybeSingle();
+      if (appRow) {
+        const chapErr = checkChapterScope(appRow.chapter_id);
+        if (chapErr) return chapErr;
       }
       const { error } = await admin.from("leadership_applications").update({
         status,
@@ -2800,15 +3516,13 @@ export async function POST(req: Request) {
         console.error("Mutation error (leadership_application_status):", error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
-      if (actorId) {
-        await admin.from("activity_logs").insert({
-          actor_id: isUuid(actorId) ? actorId : null,
-          action: `leadership_application_${status}`,
-          entity: "leadership_application",
-          entity_id: id,
-          meta: JSON.stringify({ status, reviewedAt: new Date().toISOString() }),
-        });
-      }
+      await admin.from("activity_logs").insert({
+        actor_id: auth.userId,
+        action: `leadership_application_${status}`,
+        entity: "leadership_application",
+        entity_id: id,
+        meta: JSON.stringify({ status, reviewedAt: new Date().toISOString() }),
+      });
       return NextResponse.json({ ok: true });
     }
 
@@ -2818,6 +3532,11 @@ export async function POST(req: Request) {
       const id = isUuid(g.id) ? g.id : genUuid();
       if (!isUuid(g.chapterId)) {
         return NextResponse.json({ ok: false, error: "Valid chapterId UUID is required" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(g.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: managing volunteer groups requires executive or campus lead role" }, { status: 403 });
       }
       const { error } = await admin.from("volunteer_groups").upsert({
         id,
@@ -2832,7 +3551,7 @@ export async function POST(req: Request) {
         powers: g.powers,
         member_ids: Array.isArray(g.memberIds) ? g.memberIds.filter(isUuid) : [],
         custom_member_powers: g.customMemberPowers || {},
-        created_by: isUuid(g.createdBy) ? g.createdBy : null,
+        created_by: auth.userId,
         updated_at: new Date().toISOString(),
       });
       if (error) {
@@ -2844,6 +3563,15 @@ export async function POST(req: Request) {
 
     if (type === "delete_volunteer_group") {
       const { id } = data;
+      if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Valid id required" }, { status: 400 });
+      const { data: groupRow } = await admin.from("volunteer_groups").select("chapter_id").eq("id", id).maybeSingle();
+      if (groupRow) {
+        const chapErr = checkChapterScope(groupRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete volunteer group" }, { status: 403 });
+      }
       const { error } = await admin.from("volunteer_groups").delete().eq("id", id);
       if (error) {
         console.error("Mutation error (delete_volunteer_group):", error);
@@ -2856,6 +3584,11 @@ export async function POST(req: Request) {
       const { groupId, userId, chapterId, customPowers } = data;
       if (!isUuid(groupId) || !isUuid(userId) || !isUuid(chapterId)) {
         return NextResponse.json({ ok: false, error: "Valid UUIDs are required for group, user, and chapter" }, { status: 400 });
+      }
+      const chapErr = checkChapterScope(chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: managing volunteer members requires executive or campus lead role" }, { status: 403 });
       }
       const { error } = await admin.from("volunteer_group_members").upsert(
         {
@@ -2875,6 +3608,17 @@ export async function POST(req: Request) {
 
     if (type === "remove_volunteer_group_member") {
       const { groupId, userId } = data;
+      if (!isUuid(groupId) || !isUuid(userId)) {
+        return NextResponse.json({ ok: false, error: "Valid UUIDs are required" }, { status: 400 });
+      }
+      const { data: groupRow } = await admin.from("volunteer_groups").select("chapter_id").eq("id", groupId).maybeSingle();
+      if (groupRow) {
+        const chapErr = checkChapterScope(groupRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to remove volunteer group member" }, { status: 403 });
+      }
       const { error } = await admin
         .from("volunteer_group_members")
         .delete()
@@ -2893,6 +3637,11 @@ export async function POST(req: Request) {
       if (!isUuid(a.chapterId) || !isUuid(a.userId) || !isUuid(a.eventId)) {
         return NextResponse.json({ ok: false, error: "Valid UUIDs required for chapterId, userId, and eventId" }, { status: 400 });
       }
+      const chapErr = checkChapterScope(a.chapterId);
+      if (chapErr) return chapErr;
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied: volunteer assignments require executive or campus lead role" }, { status: 403 });
+      }
       const { error } = await admin.from("volunteer_assignments").upsert({
         id,
         chapter_id: a.chapterId,
@@ -2904,7 +3653,7 @@ export async function POST(req: Request) {
         valid_from: a.validFrom || null,
         valid_to: a.validTo || null,
         status: a.status || "active",
-        created_by: isUuid(a.createdBy) ? a.createdBy : null,
+        created_by: auth.userId,
         updated_at: new Date().toISOString(),
       });
       if (error) {
@@ -2916,6 +3665,15 @@ export async function POST(req: Request) {
 
     if (type === "delete_volunteer_assignment") {
       const { id } = data;
+      if (!isUuid(id)) return NextResponse.json({ ok: false, error: "Valid id required" }, { status: 400 });
+      const { data: aRow } = await admin.from("volunteer_assignments").select("chapter_id").eq("id", id).maybeSingle();
+      if (aRow) {
+        const chapErr = checkChapterScope(aRow.chapter_id);
+        if (chapErr) return chapErr;
+      }
+      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
+        return NextResponse.json({ ok: false, error: "Permission denied to delete volunteer assignment" }, { status: 403 });
+      }
       const { error } = await admin.from("volunteer_assignments").delete().eq("id", id);
       if (error) {
         console.error("Mutation error (delete_volunteer_assignment):", error);
@@ -2925,8 +3683,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: false, error: `Unknown mutation type: ${type}` }, { status: 400 });
-  } catch (err: any) {
-    console.error("Mutation handler exception:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Mutation handler exception:", message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -3505,7 +3505,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           },
         });
-        fetch(`/api/provisioning/chapter?id=${id}&actingUserId=${store.session.userId}`, {
+        fetch(`/api/provisioning/chapter?id=${id}`, {
           method: "DELETE",
         }).catch((err) => console.warn("Remote delete chapter error:", err));
       },
@@ -3905,7 +3905,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                actingUserId: store.session.userId,
                 targetUser: {
                   fullName: prof.fullName,
                   email: prof.email,
@@ -3925,7 +3924,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           profiles: s.profiles.filter((p) => !profileIds.includes(p.id)),
         }));
         for (const pid of profileIds) {
-          fetch(`/api/provisioning/user?id=${encodeURIComponent(pid)}&actingUserId=${encodeURIComponent(store.session.userId)}`, {
+          fetch(`/api/provisioning/user?id=${encodeURIComponent(pid)}`, {
             method: "DELETE",
           }).catch((err) => console.warn("Remote reject join request error:", err));
         }
@@ -4709,7 +4708,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            actingUserId: store.session.userId,
             targetUser: {
               id,
               fullName,
@@ -4829,7 +4827,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
 
-        fetch(`/api/provisioning/user?id=${encodeURIComponent(id)}&actingUserId=${encodeURIComponent(store.session.userId)}`, {
+        fetch(`/api/provisioning/user?id=${encodeURIComponent(id)}`, {
           method: "DELETE",
         }).catch((err) => console.warn("Remote delete user error:", err));
 

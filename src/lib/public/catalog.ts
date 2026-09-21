@@ -194,24 +194,115 @@ export async function getPublicProject(slug: string) {
   return projects.find((p) => p.slug === slug) ?? null;
 }
 
-export async function listPublicPeerLabs() {
+const PUBLIC_PEER_LAB_STATUSES = ["upcoming", "active", "completed"];
+
+/**
+ * Published peer labs with their phases, facilitators, host chapter and
+ * enrolment count, all read from the dedicated peer_lab_* tables.
+ */
+export async function loadPublicPeerLabs(slug?: string) {
   const admin = createServiceClient();
-  if (!admin) return [];
-  const { data, error } = await admin.from("peer_labs").select("*");
-  if (error || !data) return [];
-  return data.map((p) => ({
-    slug: p.slug,
-    title: p.title,
-    track: p.track,
-    syllabus: p.syllabus,
-    status: p.status,
-    applicationsOpen: p.applications_open,
-  }));
+  if (!admin) return { ok: false as const, error: "Database connection unavailable", labs: [] };
+
+  let query = admin
+    .from("peer_labs")
+    .select("*")
+    .in("status", PUBLIC_PEER_LAB_STATUSES)
+    .order("title");
+  if (slug) query = query.eq("slug", slug);
+
+  const { data, error } = await query;
+  if (error) return { ok: false as const, error: error.message, labs: [] };
+  const rows = data ?? [];
+  if (rows.length === 0) return { ok: true as const, error: null, labs: [] };
+
+  const ids = rows.map((r) => r.id as string);
+  const chapterIds = [...new Set(rows.map((r) => r.chapter_id).filter(Boolean))] as string[];
+
+  const [ph, fa, ch] = await Promise.all([
+    admin.from("peer_lab_phases").select("*").in("peer_lab_id", ids).order("sort_order"),
+    admin.from("peer_lab_facilitators").select("*").in("peer_lab_id", ids).order("sort_order"),
+    chapterIds.length
+      ? admin.from("chapters").select("id, name, slug, college").in("id", chapterIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const childError = ph.error || fa.error || ch.error;
+  if (childError) return { ok: false as const, error: childError.message, labs: [] };
+
+  interface ChapterRow {
+    id: string;
+    name: string;
+    slug: string;
+    college: string;
+  }
+  interface PhaseRow {
+    peer_lab_id: string;
+    slug?: string;
+    title: string;
+    date_label?: string;
+    time_label?: string;
+    location?: string;
+    event_id?: string | null;
+  }
+  interface FacilitatorRow {
+    peer_lab_id: string;
+    name: string;
+    role: string;
+  }
+
+  const chapterData = (ch.data ?? []) as unknown as ChapterRow[];
+  const phaseData = (ph.data ?? []) as unknown as PhaseRow[];
+  const facilitatorData = (fa.data ?? []) as unknown as FacilitatorRow[];
+
+  const labs = rows.map((p) => {
+    const chapter = chapterData.find((c) => c.id === p.chapter_id);
+    const phases = phaseData.filter((x) => x.peer_lab_id === p.id);
+    return {
+      id: p.id as string,
+      slug: p.slug as string,
+      title: p.title as string,
+      subtitle: (p.subtitle ?? null) as string | null,
+      track: (p.track ?? null) as string | null,
+      description: (p.description ?? null) as string | null,
+      status: p.status as string,
+      applicationsOpen: Boolean(p.applications_open),
+      featured: Boolean(p.featured),
+      bannerUrl: (p.banner_url ?? null) as string | null,
+      enrolledCount: (p.enrolled_count ?? 0) as number,
+      maxParticipants: (p.max_participants ?? null) as number | null,
+      resources: Array.isArray(p.resources) ? p.resources : [],
+      chapter: chapter
+        ? { id: chapter.id, name: chapter.name, slug: chapter.slug, college: chapter.college }
+        : null,
+      facilitators: facilitatorData
+        .filter((f) => f.peer_lab_id === p.id)
+        .map((f) => ({ name: f.name, role: f.role })),
+      phases: phases.map((x) => ({
+        slug: x.slug,
+        title: x.title,
+        date: x.date_label,
+        time: x.time_label,
+        location: x.location,
+        eventId: x.event_id,
+      })),
+      // Kept for older website builds that read `syllabus`
+      syllabus: phases.length
+        ? phases.map((x) => x.title)
+        : Array.isArray(p.syllabus) ? p.syllabus : [],
+    };
+  });
+
+  return { ok: true as const, error: null, labs };
+}
+
+export async function listPublicPeerLabs() {
+  const { labs } = await loadPublicPeerLabs();
+  return labs;
 }
 
 export async function getPublicPeerLab(slug: string) {
-  const labs = await listPublicPeerLabs();
-  return labs.find((l) => l.slug === slug) ?? null;
+  const { labs } = await loadPublicPeerLabs(slug);
+  return labs[0] ?? null;
 }
 
 export async function listPublicTeam() {

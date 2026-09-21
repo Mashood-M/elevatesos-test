@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireUser } from "@/lib/api/require-user";
 
 export interface BulkRowResult {
   row: number;
   name: string;
   email: string;
-  status: "success" | "error";
+  status: "success" | "error" | "warning";
   message: string;
 }
 
 export async function POST(req: Request) {
   try {
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json(
@@ -20,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { actingUserId, chapterId, csvContent } = body;
+    const { chapterId, csvContent } = body;
 
     if (!chapterId || !csvContent) {
       return NextResponse.json(
@@ -29,38 +33,27 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check permissions
-    if (actingUserId) {
-      const { data: roles } = await admin
-        .from("user_roles")
-        .select("role_key, chapter_id")
-        .eq("user_id", actingUserId);
+    // Check permissions using the session user
+    const isHq = auth.isHq;
+    const isChapterExec =
+      auth.chapterId === chapterId &&
+      [
+        "campus_lead",
+        "chairman",
+        "vice_chairman",
+        "secretary",
+        "class_representative",
+      ].includes(auth.roleKey);
 
-      const isHq = (roles || []).some((r) =>
-        ["founder", "hq_admin"].includes(r.role_key),
+    if (!isHq && !isChapterExec) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Permission denied: Only Chairman, Campus Lead, Class Rep, or HQ can bulk import students.",
+        },
+        { status: 403 },
       );
-      const isChapterExec = (roles || []).some(
-        (r) =>
-          r.chapter_id === chapterId &&
-          [
-            "campus_lead",
-            "chairman",
-            "vice_chairman",
-            "secretary",
-            "class_representative",
-          ].includes(r.role_key),
-      );
-
-      if (!isHq && !isChapterExec) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "Permission denied: Only Chairman, Campus Lead, Class Rep, or HQ can bulk import students.",
-          },
-          { status: 403 },
-        );
-      }
     }
 
     // Parse CSV
@@ -185,15 +178,22 @@ export async function POST(req: Request) {
 
       if (roleErr) {
         console.warn("Bulk user_role notice:", roleErr.message);
+        results.push({
+          row: rowNum,
+          name,
+          email,
+          status: "warning",
+          message: `Registered profile, but role assignment warning: ${roleErr.message}`,
+        });
+      } else {
+        results.push({
+          row: rowNum,
+          name,
+          email,
+          status: "success",
+          message: "Successfully registered and assigned to chapter",
+        });
       }
-
-      results.push({
-        row: rowNum,
-        name,
-        email,
-        status: "success",
-        message: "Successfully registered and assigned to chapter",
-      });
       succeeded++;
     }
 
@@ -206,9 +206,10 @@ export async function POST(req: Request) {
       },
       results,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("Bulk upload handler exception:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
 

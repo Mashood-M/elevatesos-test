@@ -1,8 +1,22 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { requireUser, isUserHq } from "@/lib/api/require-user";
 
 export async function DELETE(req: Request) {
   try {
+    const auth = await requireUser();
+    if (!auth.ok) return auth.response;
+
+    if (!isUserHq(auth)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Permission denied: Only HQ / HQ Admin can delete a chapter.",
+        },
+        { status: 403 },
+      );
+    }
+
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json(
@@ -13,35 +27,12 @@ export async function DELETE(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
-    const actingUserId = searchParams.get("actingUserId");
 
     if (!id) {
       return NextResponse.json(
         { ok: false, error: "Missing chapter ID" },
         { status: 400 },
       );
-    }
-
-    // Verify acting user is HQ
-    if (actingUserId) {
-      const { data: roles } = await admin
-        .from("user_roles")
-        .select("role_key")
-        .eq("user_id", actingUserId);
-
-      const isHq = (roles || []).some((r) =>
-        ["founder", "hq_admin"].includes(r.role_key),
-      );
-
-      if (!isHq) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Permission denied: Only HQ / HQ Admin can delete a chapter.",
-          },
-          { status: 403 },
-        );
-      }
     }
 
     // Delete chapter record
@@ -55,8 +46,9 @@ export async function DELETE(req: Request) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error("Delete chapter error:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

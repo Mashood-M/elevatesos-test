@@ -1,20 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useStore } from "@/context/store-context";
+import { useCallback, useEffect, useState } from "react";
+import { showToast, useStore } from "@/context/store-context";
 import {
-  BookOpen,
-  Calendar,
-  CheckCircle,
   Edit,
-  ExternalLink,
-  Layers,
-  MapPin,
   Plus,
   Search,
-  Sparkles,
   Trash2,
-  Users,
   X,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -22,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
+import { genUuid } from "@/lib/uuid";
 
 export interface LessonPhase {
   id: string;
@@ -31,6 +24,8 @@ export interface LessonPhase {
   time: string;
   location: string;
   eventSlug: string;
+  /** Optional link to a real event (events.id) so registrations/attendance work */
+  eventId: string | null;
 }
 
 export interface Facilitator {
@@ -50,7 +45,8 @@ export interface PeerLabSeriesItem {
   title: string;
   subtitle: string;
   description: string;
-  campusName: string;
+  /** Host campus: chapters.id, or null for a network-wide lab */
+  chapterId: string | null;
   status: "Completed" | "Active" | "Upcoming";
   joinedCount: number;
   featured: boolean;
@@ -59,42 +55,91 @@ export interface PeerLabSeriesItem {
   lessons: LessonPhase[];
 }
 
-const DEFAULT_PEER_LABS: PeerLabSeriesItem[] = [];
-
 export default function PeerLabsCMSPage() {
   const { store } = useStore();
   const [labs, setLabs] = useState<PeerLabSeriesItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [editingLab, setEditingLab] = useState<PeerLabSeriesItem | null>(null);
   const [isNew, setIsNew] = useState(false);
 
-  useEffect(() => {
-    if (store.peerLabs && store.peerLabs.length > 0) {
-      const dynamicLabs: PeerLabSeriesItem[] = store.peerLabs.map((l) => ({
-        id: l.id,
-        slug: l.slug || l.id,
-        title: l.title,
-        subtitle: l.subtitle || "",
-        description: l.description || "",
-        campusName: store.chapters.find((c) => c.id === l.chapterId)?.college || store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
-        status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as any,
-        joinedCount: l.enrolledCount || 0,
-        featured: true,
-        facilitators: l.facilitators ? l.facilitators.map((f: any) => ({ name: f.name || f, role: f.role || "Facilitator" })) : [],
-        resources: [],
-        lessons: l.phases ? l.phases.map((p: any, idx: number) => ({
-          id: p.id || `phase-${idx}`,
-          slug: p.slug || `phase-${idx}`,
-          title: p.title || `Phase ${idx + 1}`,
-          date: p.date || "TBA",
-          time: p.time || "10:00 AM",
-          location: p.location || "Campus Computer Lab",
-          eventSlug: "",
-        })) : [],
-      }));
-      setLabs(dynamicLabs);
+  const campusLabel = (chapterId: string | null) => {
+    if (!chapterId) return "Network-wide (all campuses)";
+    const c = store.chapters.find((x) => x.id === chapterId);
+    return c?.college || c?.name || "Unknown campus";
+  };
+
+  const loadLabs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mutations?type=peer_labs", { cache: "no-store" });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Failed to load peer labs");
+      interface LabResponsePhase {
+        id?: string;
+        slug?: string;
+        title: string;
+        date?: string;
+        time?: string;
+        location?: string;
+        eventId?: string | null;
+      }
+      interface LabResponseFacilitator {
+        name: string;
+        role?: string;
+      }
+      interface LabResponseItem {
+        id: string;
+        slug: string;
+        title: string;
+        subtitle?: string | null;
+        description?: string | null;
+        chapterId?: string | null;
+        status?: string;
+        enrolledCount?: number;
+        featured?: boolean;
+        facilitators?: LabResponseFacilitator[];
+        resources?: PeerLabSeriesItem["resources"];
+        phases?: LabResponsePhase[];
+      }
+
+      setLabs(
+        ((json.peerLabs as LabResponseItem[]) || []).map((l) => ({
+          id: l.id,
+          slug: l.slug,
+          title: l.title,
+          subtitle: l.subtitle || "",
+          description: l.description || "",
+          chapterId: l.chapterId ?? null,
+          status: (l.status === "active" ? "Active" : l.status === "completed" ? "Completed" : "Upcoming") as PeerLabSeriesItem["status"],
+          joinedCount: l.enrolledCount || 0,
+          featured: Boolean(l.featured),
+          facilitators: (l.facilitators || []).map((f) => ({ name: f.name, role: f.role || "Facilitator" })),
+          resources: l.resources || [],
+          lessons: (l.phases || []).map((p) => ({
+            id: p.id || genUuid(),
+            slug: p.slug || "",
+            title: p.title,
+            date: p.date || "TBA",
+            time: p.time || "",
+            location: p.location || "",
+            eventSlug: "",
+            eventId: p.eventId ?? null,
+          })),
+        })),
+      );
+    } catch (err) {
+      console.error("Failed to load peer labs:", err);
+      showToast(err instanceof Error ? err.message : "Failed to load peer labs");
+    } finally {
+      setLoading(false);
     }
-  }, [store.peerLabs, store.chapters]);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadLabs();
+  }, [loadLabs]);
 
   const filtered = labs.filter(
     (l) =>
@@ -108,7 +153,7 @@ export default function PeerLabsCMSPage() {
     title: "",
     subtitle: "",
     description: "",
-    campusName: store.chapters[0]?.college || store.chapters[0]?.name || "Campus Chapter",
+    chapterId: null,
     status: "Upcoming",
     joinedCount: 0,
     featured: false,
@@ -123,6 +168,7 @@ export default function PeerLabsCMSPage() {
         time: "10:00 AM",
         location: "Campus Computer Lab",
         eventSlug: "",
+        eventId: null,
       },
     ],
   });
@@ -162,6 +208,10 @@ export default function PeerLabsCMSPage() {
       </div>
 
       {/* Peer Labs List */}
+      {loading && <p className="text-xs text-text-dim">Loading peer labs…</p>}
+      {!loading && filtered.length === 0 && (
+        <p className="text-xs text-text-dim">No peer labs yet. Create the first track with “New Peer Lab Track”.</p>
+      )}
       <div className="space-y-4">
         {filtered.map((lab) => (
           <div
@@ -185,7 +235,7 @@ export default function PeerLabsCMSPage() {
                 </h3>
                 <p className="text-sm font-semibold text-[var(--accent)]">{lab.subtitle}</p>
                 <p className="text-xs text-text-dim leading-relaxed">{lab.description}</p>
-                <p className="text-xs font-mono text-text-dim">📍 {lab.campusName}</p>
+                <p className="text-xs font-mono text-text-dim">📍 {campusLabel(lab.chapterId)}</p>
 
                 {/* Facilitators */}
                 <div className="flex flex-wrap gap-2 pt-2">
@@ -238,17 +288,19 @@ export default function PeerLabsCMSPage() {
                   size="sm"
                   className="text-[var(--danger)] hover:bg-[var(--danger)]/10"
                   onClick={async () => {
-                    if (confirm(`Delete Peer Lab Track "${lab.title}"?`)) {
+                    if (!confirm(`Delete Peer Lab Track "${lab.title}"?`)) return;
+                    try {
+                      const res = await fetch("/api/mutations", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ type: "delete_peer_lab", data: { id: lab.id, slug: lab.slug } }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok || !json.ok) throw new Error(json.error || "Delete failed");
                       setLabs((prev) => prev.filter((l) => l.id !== lab.id));
-                      try {
-                        await fetch("/api/mutations", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ type: "delete_cluster", data: { id: lab.id, slug: lab.slug } }),
-                        });
-                      } catch (e) {
-                        console.error("Failed to delete peer lab cluster:", e);
-                      }
+                      showToast("Peer lab deleted", "success");
+                    } catch (err) {
+                      showToast(err instanceof Error ? err.message : "Delete failed");
                     }
                   }}
                 >
@@ -358,26 +410,26 @@ export default function PeerLabsCMSPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-semibold text-text-dim block mb-1">Campus Host</label>
-                  <Input
-                    value={editingLab.campusName}
+                  <select
+                    className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
+                    value={editingLab.chapterId ?? ""}
                     onChange={(e) =>
-                      setEditingLab({ ...editingLab, campusName: e.target.value })
+                      setEditingLab({ ...editingLab, chapterId: e.target.value || null })
                     }
-                  />
+                  >
+                    <option value="">Network-wide (all campuses)</option>
+                    {store.chapters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.college || c.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
-                  <label className="font-semibold text-text-dim block mb-1">Enrolled Count</label>
-                  <input
-                    type="number"
-                    className="h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text"
-                    value={editingLab.joinedCount}
-                    onChange={(e) =>
-                      setEditingLab({
-                        ...editingLab,
-                        joinedCount: parseInt(e.target.value) || 0,
-                      })
-                    }
-                  />
+                  <label className="font-semibold text-text-dim block mb-1">Enrolled</label>
+                  <div className="h-9 flex items-center rounded-[var(--radius-md)] border border-border bg-bg-page px-3 text-xs text-text-dim">
+                    {editingLab.joinedCount} (counted automatically from enrollments)
+                  </div>
                 </div>
               </div>
 
@@ -403,6 +455,7 @@ export default function PeerLabsCMSPage() {
                             time: "10:00 AM",
                             location: "Campus Computer Lab",
                             eventSlug: "",
+                            eventId: null,
                           },
                         ],
                       })
@@ -478,6 +531,60 @@ export default function PeerLabsCMSPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Facilitators Editor */}
+              <div className="pt-3 border-t border-border space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-text uppercase tracking-wider block">
+                    Facilitators
+                  </label>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      setEditingLab({
+                        ...editingLab,
+                        facilitators: [...editingLab.facilitators, { name: "", role: "Facilitator" }],
+                      })
+                    }
+                  >
+                    <Plus size={12} /> Add Facilitator
+                  </Button>
+                </div>
+                {editingLab.facilitators.map((f, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <input
+                      className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
+                      placeholder="Name"
+                      value={f.name}
+                      onChange={(e) => {
+                        const next = editingLab.facilitators.map((x, j) => (j === idx ? { ...x, name: e.target.value } : x));
+                        setEditingLab({ ...editingLab, facilitators: next });
+                      }}
+                    />
+                    <input
+                      className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
+                      placeholder="Role (e.g. Lead Mentor)"
+                      value={f.role}
+                      onChange={(e) => {
+                        const next = editingLab.facilitators.map((x, j) => (j === idx ? { ...x, role: e.target.value } : x));
+                        setEditingLab({ ...editingLab, facilitators: next });
+                      }}
+                    />
+                    <button
+                      onClick={() =>
+                        setEditingLab({
+                          ...editingLab,
+                          facilitators: editingLab.facilitators.filter((_, j) => j !== idx),
+                        })
+                      }
+                      className="text-text-dim hover:text-red-500 p-1"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex justify-end gap-3 pt-3 border-t border-border">
@@ -487,36 +594,46 @@ export default function PeerLabsCMSPage() {
               <Button
                 variant="orange"
                 size="sm"
+                disabled={saving}
                 onClick={async () => {
-                  const cleanSlug = finalizeSlug(
-                    editingLab.slug || editingLab.title || "peer-lab",
-                  );
-                  const saved = { ...editingLab, slug: cleanSlug };
-                  if (isNew) setLabs((prev) => [...prev, saved]);
-                  else
-                    setLabs((prev) =>
-                      prev.map((l) => (l.id === saved.id ? saved : l)),
-                    );
-                  setEditingLab(null);
-
+                  if (!editingLab.title.trim()) {
+                    showToast("Give the peer lab a title first");
+                    return;
+                  }
+                  const cleanSlug = finalizeSlug(editingLab.slug || editingLab.title || "peer-lab");
+                  const lab = { ...editingLab, slug: cleanSlug };
+                  setSaving(true);
                   try {
-                    await fetch("/api/mutations", {
+                    const res = await fetch("/api/mutations", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
-                        type: "cluster",
+                        type: "peer_lab",
                         data: {
-                          id: saved.id,
-                          title: saved.title,
-                          slug: saved.slug,
-                          subtitle: saved.subtitle,
-                          description: saved.description,
-                          accessMode: "open",
+                          id: isNew ? undefined : lab.id,
+                          slug: lab.slug,
+                          title: lab.title,
+                          subtitle: lab.subtitle,
+                          description: lab.description,
+                          chapterId: lab.chapterId,
+                          status: lab.status.toLowerCase(),
+                          featured: lab.featured,
+                          resources: lab.resources.filter((r) => r.title || r.url),
+                          facilitators: lab.facilitators,
+                          phases: lab.lessons,
+                          actorId: store.session.userId,
                         },
                       }),
                     });
+                    const json = await res.json();
+                    if (!res.ok || !json.ok) throw new Error(json.error || "Save failed");
+                    setEditingLab(null);
+                    showToast("Peer lab saved", "success");
+                    await loadLabs();
                   } catch (err) {
-                    console.error("Failed to persist peer lab cluster:", err);
+                    showToast(err instanceof Error ? err.message : "Save failed");
+                  } finally {
+                    setSaving(false);
                   }
                 }}
               >

@@ -80,6 +80,7 @@ export function isFacultyRole(roleKey: RoleKey) {
 
 export function homeForRole(roleKey: RoleKey, chapterSlug = "") {
   if (isHqRole(roleKey)) return "/hq";
+  if (isFacultyRole(roleKey)) return "/faculty";
   const slug = chapterSlug || "";
   return slug ? `/chapter/${slug}` : "/chapter";
 }

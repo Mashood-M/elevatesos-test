@@ -870,7 +870,15 @@ function applyReportReview(
   actorId: string,
 ): boolean {
   const existing = store.reports.find((r) => r.id === reportId);
-  if (!existing || existing.status !== "submitted") return false;
+  if (
+    !existing ||
+    !(
+      existing.status === "submitted" ||
+      existing.status === "draft" ||
+      existing.status === "changes_requested"
+    )
+  )
+    return false;
   const status: ReportStatus =
     decision === "approve"
       ? "approved"

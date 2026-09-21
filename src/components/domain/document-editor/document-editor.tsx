@@ -301,6 +301,20 @@ export function DocumentEditor({
           onToolQueryChange={setToolQuery}
           onOpenComments={openComments}
         />
+        {meta.status === "rejected" ? (
+          <div className="flex shrink-0 items-start gap-2.5 border-b border-red-200 bg-red-50/90 px-4 py-2.5 text-[12px] text-red-900">
+            <span className="font-bold text-red-700 shrink-0">Report Rejected:</span>
+            <span>
+              <strong className="font-semibold text-red-800">Why rejected: </strong>
+              {meta.hqComment || "This report was rejected by the reviewer."}
+            </span>
+          </div>
+        ) : meta.status === "changes_requested" ? (
+          <div className="flex shrink-0 items-start gap-2.5 border-b border-amber-200 bg-amber-50/90 px-4 py-2.5 text-[12px] text-amber-900">
+            <span className="font-bold text-amber-700 shrink-0">Corrections Requested:</span>
+            <span>{meta.hqComment || "Please revise the document and resubmit for approval."}</span>
+          </div>
+        ) : null}
         <Ribbon
           editor={editor}
           editable={editable}

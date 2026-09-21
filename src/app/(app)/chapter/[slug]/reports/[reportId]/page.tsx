@@ -120,7 +120,26 @@ export default function ChapterReportDocumentPage({
     });
   }
 
-  if ((isFaculty || canReview) && currentReport.status === "submitted") {
+  if (isFaculty && currentReport.status === "draft") {
+    return (
+      <div className="mx-auto mt-12 max-w-lg rounded-[var(--radius)] border border-border bg-bg-panel p-8 text-center shadow-[var(--shadow)]">
+        <h2 className="text-[17px] font-bold text-text">Report Not Submitted Yet</h2>
+        <p className="mt-2 text-[13px] leading-relaxed text-text-dim">
+          “{currentReport.title}” is currently a draft work-in-progress. It has not been submitted by the Campus Lead for faculty review.
+        </p>
+        <div className="mt-6">
+          <Link
+            href={`/chapter/${slug}/reports`}
+            className="inline-flex h-9 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 text-[13px] font-semibold text-white hover:opacity-90"
+          >
+            Back to Submitted Reports
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (isFaculty || (canReview && (currentReport.status === "submitted" || !editable))) {
     return (
       <HqReportViewer
         report={currentReport}

@@ -73,6 +73,7 @@ export default function ChapterReportsPage({
   const [attendanceNote, setAttendanceNote] = useState("");
   const [images, setImages] = useState<ReportImage[]>([]);
   const [wizardError, setWizardError] = useState("");
+  const [facultyFilter, setFacultyFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
 
   const canSubmit = hasPermission(store, session.roleKey, "report.submit");
   const canDownload = hasPermission(store, session.roleKey, "report.download");
@@ -95,10 +96,34 @@ export default function ChapterReportsPage({
   const isAppointedVolunteer = appointedEventIds.size > 0;
   const canCreateReport = canSubmit || isAppointedVolunteer;
 
+  const pendingCount = useMemo(() => {
+    if (!chapter) return 0;
+    return store.reports.filter(
+      (r) => r.chapterId === chapter.id && r.status === "submitted",
+    ).length;
+  }, [store.reports, chapter?.id]);
+
+  const approvedCount = useMemo(() => {
+    if (!chapter) return 0;
+    return store.reports.filter(
+      (r) => r.chapterId === chapter.id && r.status === "approved",
+    ).length;
+  }, [store.reports, chapter?.id]);
+
   const reports = useMemo(() => {
     if (!chapter) return [];
     let list = store.reports.filter((r) => r.chapterId === chapter.id);
-    if (isStudent && !isExecOrHq && !isFaculty) {
+    if (isFaculty) {
+      // Faculty only sees reports submitted by Campus Lead (never drafts)
+      list = list.filter((r) => r.status !== "draft");
+      if (facultyFilter === "pending") {
+        list = list.filter((r) => r.status === "submitted");
+      } else if (facultyFilter === "approved") {
+        list = list.filter((r) => r.status === "approved");
+      } else if (facultyFilter === "rejected") {
+        list = list.filter((r) => r.status === "rejected");
+      }
+    } else if (isStudent && !isExecOrHq) {
       list = list.filter(
         (r) =>
           r.submittedBy === session.userId ||
@@ -117,6 +142,7 @@ export default function ChapterReportsPage({
     store.reports,
     chapter?.id,
     isFaculty,
+    facultyFilter,
     isStudent,
     isExecOrHq,
     session.userId,
@@ -313,11 +339,43 @@ export default function ChapterReportsPage({
         title="report.library"
         meta={`${reports.length} report${reports.length === 1 ? "" : "s"}`}
       >
+        {isFaculty ? (
+          <div className="mb-3 flex flex-wrap items-center gap-1.5 border-b border-border pb-3">
+            <Button
+              variant={facultyFilter === "all" ? "primary" : "ghost"}
+              className="h-7 text-[12px]"
+              onClick={() => setFacultyFilter("all")}
+            >
+              All Submissions
+            </Button>
+            <Button
+              variant={facultyFilter === "pending" ? "primary" : "ghost"}
+              className="h-7 text-[12px]"
+              onClick={() => setFacultyFilter("pending")}
+            >
+              Pending Review {pendingCount > 0 ? `(${pendingCount})` : ""}
+            </Button>
+            <Button
+              variant={facultyFilter === "approved" ? "primary" : "ghost"}
+              className="h-7 text-[12px]"
+              onClick={() => setFacultyFilter("approved")}
+            >
+              Approved {approvedCount > 0 ? `(${approvedCount})` : ""}
+            </Button>
+            <Button
+              variant={facultyFilter === "rejected" ? "primary" : "ghost"}
+              className="h-7 text-[12px]"
+              onClick={() => setFacultyFilter("rejected")}
+            >
+              Rejected
+            </Button>
+          </div>
+        ) : null}
         {!reports.length ? (
           <div className="py-8 text-center">
             <p className="text-[13px] text-text-dim">
               {isFaculty
-                ? "No reports submitted yet for review."
+                ? "No submitted reports found for this filter. Reports appear here once submitted by the Campus Lead."
                 : "No reports yet. Click 'New report' to select an event and generate an activity report."}
             </p>
             {canCreateReport && !isFaculty ? (
@@ -343,8 +401,9 @@ export default function ChapterReportsPage({
                 report.eventId && appointedEventIds.has(report.eventId),
               );
               const canSubmitThisReport =
-                (canSubmit && (report.submittedBy === session.userId || isExecOrHq)) ||
-                isVolunteerForThisEvent;
+                !isFaculty &&
+                ((canSubmit && (report.submittedBy === session.userId || isExecOrHq)) ||
+                  isVolunteerForThisEvent);
 
               return (
                 <li
@@ -379,7 +438,12 @@ export default function ChapterReportsPage({
                         ? ` · ${formatDateTime(report.updatedAt ?? report.submittedAt!)}`
                         : ""}
                     </p>
-                    {report.hqComment ? (
+                    {report.status === "rejected" ? (
+                      <div className="mt-1.5 rounded-[var(--radius-sm)] border border-red-200 bg-red-50/85 px-2.5 py-1.5 text-[12px] text-red-800">
+                        <span className="font-semibold text-red-700">Why rejected: </span>
+                        {report.hqComment || "No reason recorded."}
+                      </div>
+                    ) : report.hqComment ? (
                       <p className="mt-1 text-[12px] text-[var(--secondary)]">
                         Reviewer note: {report.hqComment}
                       </p>
@@ -387,8 +451,12 @@ export default function ChapterReportsPage({
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <Link href={`/chapter/${slug}/reports/${report.id}`}>
-                      <Button variant={isFaculty && report.status === "submitted" ? "primary" : "ghost"}>
-                        {isFaculty && report.status === "submitted" ? "Review" : "Open"}
+                      <Button variant={isFaculty ? "primary" : "ghost"}>
+                        {isFaculty
+                          ? report.status === "submitted"
+                            ? "Review & Decide"
+                            : "Review"
+                          : "Open"}
                       </Button>
                     </Link>
                     {(canDownload || report.status === "approved") &&
@@ -404,7 +472,8 @@ export default function ChapterReportsPage({
                         {isFaculty ? "Download for college" : "Download .docx"}
                       </Button>
                     ) : null}
-                    {canSubmitThisReport &&
+                    {!isFaculty &&
+                    canSubmitThisReport &&
                     (report.status === "draft" ||
                       report.status === "changes_requested") ? (
                       <Button

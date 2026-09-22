@@ -1651,7 +1651,7 @@ export function setupRealtimeSync(options: {
 
   // 3. Tab Visibility & Focus Revalidation
   let lastRevalidatedAt = Date.now();
-  const MIN_REVALIDATE_INTERVAL = 3500; // Throttle to once every 3.5s
+  const MIN_REVALIDATE_INTERVAL = 30000; // Throttle focus/visibility revalidation to once every 30s
 
   function handleFocusOrVisibility() {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -1667,16 +1667,16 @@ export function setupRealtimeSync(options: {
   window.addEventListener("focus", handleFocusOrVisibility);
   document.addEventListener("visibilitychange", handleFocusOrVisibility);
 
-  // 4. Periodic background polling fallback (every 12 seconds when tab is active)
+  // 4. Periodic background polling fallback (every 60 seconds when tab is active)
   const pollTimer = setInterval(() => {
     if (typeof document !== "undefined" && document.visibilityState === "visible") {
       const now = Date.now();
-      if (now - lastRevalidatedAt >= 10000) {
+      if (now - lastRevalidatedAt >= 50000) {
         lastRevalidatedAt = now;
         void options.onRevalidate();
       }
     }
-  }, 12000);
+  }, 60000);
 
   // Cleanup handler
   return () => {

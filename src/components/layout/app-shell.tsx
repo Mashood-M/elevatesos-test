@@ -155,6 +155,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.removeItem("elevates_locked_chapter_id");
       localStorage.removeItem("elevates_demo_store");
       localStorage.removeItem("elevates_last_active_timestamp");
+      localStorage.removeItem("elevates_store_cache_v2");
+      sessionStorage.removeItem("elevates_store_cache_v2");
 
       // Clean all localStorage keys starting with sb-
       Object.keys(localStorage).forEach((k) => {

@@ -1187,77 +1187,127 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }
 
-  const [store, setStore] = useState<ElevatesStore>(() =>
-    sanitizeStore({
-      organization: {
-        id: "org-elevates",
-        name: "Elevates",
-        slug: "elevates",
-        tagline: "Campus Operating System",
-        brandKit: {
-          logoUrl: "/logo.svg",
-          colors: {
-            accent: "#6366f1",
-            charcoal: "#1e293b",
-            sage: "#10b981",
-            indigo: "#4f46e5",
-          },
+  const defaultEmptyStore: ElevatesStore = {
+    organization: {
+      id: "org-elevates",
+      name: "Elevates",
+      slug: "elevates",
+      tagline: "Campus Operating System",
+      brandKit: {
+        logoUrl: "/logo.svg",
+        colors: {
+          accent: "#6366f1",
+          charcoal: "#1e293b",
+          sage: "#10b981",
+          indigo: "#4f46e5",
         },
       },
-      chapters: [],
-      profiles: [],
-      departments: [],
-      classCohorts: [],
-      roles: [],
-      permissions: [],
-      rolePermissions: [],
-      userRoles: [],
-      eventPermissions: [],
-      leadershipTerms: [],
-      leadershipAssignments: [],
-      events: [],
-      eventCategories: DEFAULT_EVENT_CATEGORIES,
-      standardDepartments: [],
-      guidelineCategories: [],
-      academicYears: [],
-      academicDivisions: [],
-      executiveSubTeams: [],
-      founders: [],
-      advisors: [],
-      formTemplates: [],
-      doctrine: {},
-      developerScopes: [],
-      eventForms: [],
-      forms: [],
-      formResponses: [],
-      registrations: [],
-      attendance: [],
-      certificates: [],
-      clusters: [],
-      clusterInvites: [],
-      projects: [],
-      leadershipApplications: [],
-      chapterStandardChecks: [],
-      resourceCategories: [],
-      resources: [],
-      guidelines: [],
-      tasks: [],
-      reports: [],
-      announcements: [],
-      notifications: [],
-      outboundMessages: [],
-      activityLogs: [],
-      inviteTokens: [],
-      eventReminders: [],
-      volunteerGroups: [],
-      volunteerAssignments: [],
-      session: {
-        userId: "",
-        roleKey: "student",
-      },
-    }),
-  );
-  const [hydrated, setHydrated] = useState(false);
+    },
+    chapters: [],
+    profiles: [],
+    departments: [],
+    classCohorts: [],
+    roles: [],
+    permissions: [],
+    rolePermissions: [],
+    userRoles: [],
+    eventPermissions: [],
+    leadershipTerms: [],
+    leadershipAssignments: [],
+    events: [],
+    eventCategories: DEFAULT_EVENT_CATEGORIES,
+    standardDepartments: [],
+    guidelineCategories: [],
+    academicYears: [],
+    academicDivisions: [],
+    executiveSubTeams: [],
+    founders: [],
+    advisors: [],
+    formTemplates: [],
+    doctrine: {},
+    developerScopes: [],
+    eventForms: [],
+    forms: [],
+    formResponses: [],
+    registrations: [],
+    attendance: [],
+    certificates: [],
+    clusters: [],
+    clusterInvites: [],
+    projects: [],
+    leadershipApplications: [],
+    chapterStandardChecks: [],
+    resourceCategories: [],
+    resources: [],
+    guidelines: [],
+    tasks: [],
+    reports: [],
+    announcements: [],
+    notifications: [],
+    outboundMessages: [],
+    activityLogs: [],
+    inviteTokens: [],
+    eventReminders: [],
+    volunteerGroups: [],
+    volunteerAssignments: [],
+    session: {
+      userId: "",
+      roleKey: "student",
+    },
+  };
+
+  const STORE_CACHE_KEY = "elevates_store_cache_v2";
+
+  function getCachedStore(): ElevatesStore | null {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = sessionStorage.getItem(STORE_CACHE_KEY) || localStorage.getItem(STORE_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && Array.isArray(parsed.chapters) && parsed.chapters.length > 0) {
+        return sanitizeStore(parsed);
+      }
+    } catch (err) {
+      console.warn("[Elevates Store] Could not read cached store:", err);
+    }
+    return null;
+  }
+
+  let saveCacheTimeout: ReturnType<typeof setTimeout> | null = null;
+  function saveStoreToCache(storeToCache: ElevatesStore) {
+    if (typeof window === "undefined") return;
+    if (saveCacheTimeout) clearTimeout(saveCacheTimeout);
+    saveCacheTimeout = setTimeout(() => {
+      try {
+        const serialized = JSON.stringify(storeToCache);
+        sessionStorage.setItem(STORE_CACHE_KEY, serialized);
+        localStorage.setItem(STORE_CACHE_KEY, serialized);
+      } catch {
+        try {
+          sessionStorage.setItem(STORE_CACHE_KEY, JSON.stringify(storeToCache));
+        } catch {}
+      }
+    }, 120);
+  }
+
+  const [store, setStore] = useState<ElevatesStore>(() => {
+    const cached = getCachedStore();
+    if (cached) return cached;
+    return sanitizeStore(defaultEmptyStore);
+  });
+  const [hydrated, setHydrated] = useState(() => {
+    if (typeof window !== "undefined") {
+      return Boolean(getCachedStore());
+    }
+    return false;
+  });
+
+  // Keep persistent storage cache synchronized whenever store updates
+  useEffect(() => {
+    if (store && store.chapters && store.chapters.length > 0) {
+      saveStoreToCache(store);
+    }
+  }, [store]);
 
   const sessionRef = useRef(store.session);
   sessionRef.current = store.session;
@@ -1267,11 +1317,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const result = await loadStoreFromSupabase();
       if (result?.store) {
         setStore((prev) => {
-          return sanitizeStore(
+          const merged = sanitizeStore(
             mergeStoreData(prev, result.store, (newRole) => {
               showToast(`Role updated! You now have ${newRole} access.`, "info");
             })
           );
+          if (
+            merged.chapters.length === prev.chapters.length &&
+            merged.events.length === prev.events.length &&
+            merged.profiles.length === prev.profiles.length &&
+            merged.userRoles.length === prev.userRoles.length &&
+            merged.tasks.length === prev.tasks.length &&
+            merged.session.userId === prev.session.userId &&
+            merged.session.roleKey === prev.session.roleKey &&
+            merged.session.chapterId === prev.session.chapterId
+          ) {
+            return prev;
+          }
+          return merged;
         });
       }
     } catch (err) {
@@ -1283,8 +1346,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     async function hydrate() {
       const result = await loadStoreFromSupabase();
-      if (!cancelled) {
-        setStore(sanitizeStore(result.store));
+      if (!cancelled && result?.store) {
+        setStore((prev) => {
+          const fresh = sanitizeStore(result.store);
+          if (prev.chapters.length > 0) {
+            return sanitizeStore(
+              mergeStoreData(prev, fresh, (newRole) => {
+                showToast(`Role updated! You now have ${newRole} access.`, "info");
+              })
+            );
+          }
+          return fresh;
+        });
         setHydrated(true);
       }
     }

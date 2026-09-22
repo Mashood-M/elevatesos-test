@@ -109,8 +109,31 @@ export interface StoreLoadResult {
   _dataSource: StoreDataSource;
 }
 
+let inflightLoadPromise: Promise<StoreLoadResult> | null = null;
+let lastLoadCompletedAt = 0;
+let lastLoadResult: StoreLoadResult | null = null;
+
 /** Load org + chapters + events + projects + forms + public profiles from Supabase. */
-export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
+export async function loadStoreFromSupabase(force = false): Promise<StoreLoadResult> {
+  const now = Date.now();
+  if (!force && lastLoadResult && now - lastLoadCompletedAt < 1500) {
+    return lastLoadResult;
+  }
+  if (inflightLoadPromise) {
+    return inflightLoadPromise;
+  }
+  inflightLoadPromise = executeLoadStoreFromSupabase().finally(() => {
+    inflightLoadPromise = null;
+  });
+  const result = await inflightLoadPromise;
+  if (result._dataSource === "database") {
+    lastLoadCompletedAt = Date.now();
+    lastLoadResult = result;
+  }
+  return result;
+}
+
+async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
   const supabase = createClient();
   if (!supabase) {
     console.warn("⚠️ FALLBACK DATA SERVED — Store Hydration — Supabase client unavailable, returning empty store");
@@ -192,15 +215,12 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
       supabase.from("volunteer_assignments").select("*"),
       Promise.race([
         supabase.auth.getSession().catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
       ]),
-      Promise.race([
-        supabase.auth.getUser().catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 10000)),
-      ]),
+      Promise.resolve(null),
     ]);
 
-    const authUser = sessionRes?.data?.session?.user ?? (userRes as any)?.data?.user ?? null;
+    const authUser = sessionRes?.data?.session?.user ?? null;
 
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow

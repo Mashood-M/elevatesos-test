@@ -22,6 +22,23 @@ export type MonthlyEngagement = {
   registrations: number;
 };
 
+const chapterScoreCache = new WeakMap<ElevatesStore, Map<string, number>>();
+const attendanceCountCache = new WeakMap<ElevatesStore, Map<string, number>>();
+
+function getValidAttendanceCount(store: ElevatesStore, eventId: string): number {
+  let cache = attendanceCountCache.get(store);
+  if (!cache) {
+    cache = new Map<string, number>();
+    for (const a of store.attendance) {
+      if (["present", "volunteer", "speaker"].includes(a.status)) {
+        cache.set(a.eventId, (cache.get(a.eventId) ?? 0) + 1);
+      }
+    }
+    attendanceCountCache.set(store, cache);
+  }
+  return cache.get(eventId) ?? 0;
+}
+
 /**
  * Calculates Chapter Activity Score dynamically following a 3-step algorithm:
  * Step 1: Calculate attendance percentage for each valid individual event: (Attendees / Seats) * 100
@@ -33,11 +50,25 @@ export function calculateChapterActivityScore(
   store: ElevatesStore,
   chapterId: string,
 ): number {
+  let cache = chapterScoreCache.get(store);
+  if (!cache) {
+    cache = new Map<string, number>();
+    chapterScoreCache.set(store, cache);
+  }
+  const cachedScore = cache.get(chapterId);
+  if (cachedScore !== undefined) return cachedScore;
+
   const chapter = store.chapters.find((c) => c.id === chapterId);
-  if (!chapter) return 0;
+  if (!chapter) {
+    cache.set(chapterId, 0);
+    return 0;
+  }
 
   const chapterEvents = store.events.filter((e) => e.chapterId === chapterId);
-  if (chapterEvents.length === 0) return 0;
+  if (chapterEvents.length === 0) {
+    cache.set(chapterId, 0);
+    return 0;
+  }
 
   // Group events by YYYY-MM
   const eventsByMonth = new Map<string, typeof chapterEvents>();
@@ -60,13 +91,8 @@ export function calculateChapterActivityScore(
       // Step 1: Skip if zero total seats or unconfigured capacity
       if (seats <= 0) continue;
 
-      const atts = store.attendance.filter(
-        (a) =>
-          a.eventId === ev.id &&
-          ["present", "volunteer", "speaker"].includes(a.status),
-      );
-
-      const eventAttendancePercentage = (atts.length / seats) * 100;
+      const validAttendees = getValidAttendanceCount(store, ev.id);
+      const eventAttendancePercentage = (validAttendees / seats) * 100;
       eventPercentagesSum += eventAttendancePercentage;
       validEventCount++;
     }
@@ -79,10 +105,14 @@ export function calculateChapterActivityScore(
     }
   });
 
-  if (monthsCount === 0) return 0;
+  if (monthsCount === 0) {
+    cache.set(chapterId, 0);
+    return 0;
+  }
 
-  const finalScore = totalMonthlyScoreSum / monthsCount;
-  return Math.min(100, Math.max(0, Math.round(finalScore)));
+  const finalScore = Math.min(100, Math.max(0, Math.round(totalMonthlyScoreSum / monthsCount)));
+  cache.set(chapterId, finalScore);
+  return finalScore;
 }
 
 /** Helper function to calculate monthly activity score trends */

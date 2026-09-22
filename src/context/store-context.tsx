@@ -4872,6 +4872,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return true;
       },
       deleteUser: (id) => {
+        const isFounder =
+          store.session.roleKey === "founder" ||
+          store.userRoles.some(
+            (ur) => ur.userId === store.session.userId && ur.roleKey === "founder"
+          );
+
+        if (!isFounder) {
+          console.warn("Permission denied: Only the Founder can delete users.");
+          return false;
+        }
+
+        if (id === store.session.userId) {
+          console.warn("Cannot delete currently authenticated founder account.");
+          return false;
+        }
+
         const p = store.profiles.find((p) => p.id === id);
         if (!p) return false;
 

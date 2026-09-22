@@ -51,7 +51,7 @@ import {
   studentHasClassSet,
 } from "@/lib/forms/helpers";
 import { withDerivedProgression } from "@/lib/eos/progression";
-import { executiveScore, hasPermission, isHqRole } from "@/lib/permissions";
+import { executiveScore, hasPermission, isHqRole, isFounder } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { formatDateTime, initials } from "@/lib/utils";
 import { cn } from "@/lib/utils";
@@ -521,7 +521,7 @@ export default function ProfilePage({
                 <span>Edit Profile</span>
               </Button>
             )}
-            {isHqRole(session.roleKey) && (
+            {isFounder(session.roleKey) && profile.id !== session.userId && (
               <Button
                 variant="danger"
                 onClick={() => setDeleteConfirmOpen(true)}
@@ -1704,12 +1704,12 @@ export default function ProfilePage({
         actionLabel="Disconnect Account"
       />
 
-      {/* Delete User Modal (HQ admin only) */}
+      {/* Delete User Modal (Founder only) */}
       <TypeConfirmModal
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={async () => {
-          if (!profile) return;
+          if (!profile || !isFounder(session.roleKey) || profile.id === session.userId) return;
           await deleteUser(profile.id);
           router.push("/hq/users");
         }}

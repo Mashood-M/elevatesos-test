@@ -316,30 +316,26 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // 1. Authorization check
-    const isHq = auth.isHq;
+    // 1. Authorization check: Only Founder can delete users
+    const isFounder =
+      auth.roleKey === "founder" ||
+      (Array.isArray(auth.assignedKeys) && auth.assignedKeys.includes("founder"));
 
-    if (!isHq) {
-      const { data: targetProf } = await admin
-        .from("profiles")
-        .select("chapter_id")
-        .eq("id", id)
-        .maybeSingle();
+    if (!isFounder) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Permission denied: Only the Founder can delete users.",
+        },
+        { status: 403 },
+      );
+    }
 
-      const isChapterAdmin =
-        targetProf?.chapter_id &&
-        targetProf.chapter_id === auth.chapterId &&
-        ["campus_lead", "chairman"].includes(auth.roleKey);
-
-      if (!isChapterAdmin) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Permission denied: Only HQ Admins or Chapter Leads can delete users.",
-          },
-          { status: 403 },
-        );
-      }
+    if (id === auth.userId) {
+      return NextResponse.json(
+        { ok: false, error: "Cannot delete your own founder account." },
+        { status: 400 },
+      );
     }
 
     // 2. Clear / Nullify foreign key references that might restrict deletion

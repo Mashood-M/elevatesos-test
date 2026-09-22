@@ -135,6 +135,15 @@ export function isHqRole(roleKey: RoleKey) {
   return roleKey === "founder" || roleKey === "hq_admin" || roleKey === "hq_mentor" || roleKey === "industry_mentor";
 }
 
+export function isFounder(roleKey: RoleKey) {
+  return roleKey === "founder";
+}
+
+/** Only Founder can permanently delete users */
+export function canDeleteUser(roleKey: RoleKey): boolean {
+  return roleKey === "founder";
+}
+
 /** Founder + HQ Admin — org-wide user management */
 export function isSuperAdmin(roleKey: RoleKey) {
   return roleKey === "founder" || roleKey === "hq_admin";

@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
-import { isSuperAdmin } from "@/lib/permissions";
+import { isSuperAdmin, isFounder } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { CheckSquare, Square, ShieldCheck, Mail, ArrowUpDown, ChevronDown, Check } from "lucide-react";
 import { persistSystemUiState } from "@/lib/data/mutations";
@@ -861,7 +861,7 @@ export default function HqUsersPage() {
               <Button type="submit" variant="primary">
                 Save user
               </Button>
-              {isSuperAdmin(session.roleKey) && editProfile && (
+              {isFounder(session.roleKey) && editProfile && editProfile.id !== session.userId && (
                 <Button
                   type="button"
                   variant="danger"
@@ -1096,7 +1096,7 @@ export default function HqUsersPage() {
                   <Button variant="ghost" size="sm" onClick={() => startEdit(profile)}>
                     Edit
                   </Button>
-                  {isSuperAdmin(session.roleKey) && (
+                  {isFounder(session.roleKey) && profile.id !== session.userId && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1365,7 +1365,7 @@ export default function HqUsersPage() {
         confirmWord="DELETE"
         actionLabel="Delete User"
         onConfirm={() => {
-          if (deleteTarget) {
+          if (deleteTarget && isFounder(session.roleKey) && deleteTarget.id !== session.userId) {
             deleteUser(deleteTarget.id);
             if (editingId === deleteTarget.id) {
               setEditingId(null);

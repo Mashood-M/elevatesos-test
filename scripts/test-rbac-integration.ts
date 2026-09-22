@@ -1,5 +1,5 @@
 import { canAccessPath, homeForRole, resolveChapter } from "../src/lib/access";
-import { isHqRole, isSuperAdmin, isCampusLead } from "../src/lib/permissions";
+import { isHqRole, isSuperAdmin, isCampusLead, isFounder, canDeleteUser } from "../src/lib/permissions";
 import { roleKeyLabel, ASSIGNABLE_LEADERSHIP_ROLES } from "../src/lib/leadership";
 import type { ElevatesStore, RoleKey } from "../src/types";
 
@@ -28,6 +28,12 @@ async function runTests() {
   assert(!isHqRole("campus_lead"), "campus_lead is NOT recognized as HQ role");
   assert(!isHqRole("student"), "student is NOT recognized as HQ role");
   assert(isCampusLead("campus_lead"), "campus_lead is recognized by isCampusLead");
+  assert(isFounder("founder"), "founder is recognized by isFounder");
+  assert(!isFounder("hq_admin"), "hq_admin is NOT recognized as founder");
+  assert(canDeleteUser("founder"), "founder CAN delete users");
+  assert(!canDeleteUser("hq_admin"), "hq_admin CANNOT delete users");
+  assert(!canDeleteUser("campus_lead"), "campus_lead CANNOT delete users");
+  assert(!canDeleteUser("student"), "student CANNOT delete users");
   assert(ASSIGNABLE_LEADERSHIP_ROLES.includes("campus_lead"), "campus_lead is assignable leadership role");
   assert(roleKeyLabel("campus_lead") !== "campus_lead", "campus_lead has proper label");
 

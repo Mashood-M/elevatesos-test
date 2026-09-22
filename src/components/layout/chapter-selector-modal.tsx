@@ -218,7 +218,7 @@ export function ChapterSelectorModal({
 
                   <div className="flex items-center gap-2">
                     {session.chapterId === testChapter.id && (
-                      <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-bold text-emerald-500">
+                      <span className="flex items-center gap-1 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] font-bold text-[var(--accent)]">
                         <CheckCircle2 size={12} />
                         Active
                       </span>
@@ -235,11 +235,11 @@ export function ChapterSelectorModal({
                     {testChapter.city || "HQ Sandbox"}
                   </span>
                   <span className="flex items-center gap-1.5 font-medium">
-                    <Users size={12} className="text-indigo-500" />
+                    <Users size={12} className="text-text-mute" />
                     {testChapter.memberCount} test members
                   </span>
                   <span className="flex items-center gap-1.5 font-medium">
-                    <Calendar size={12} className="text-purple-500" />
+                    <Calendar size={12} className="text-text-mute" />
                     {testChapter.eventCount} sample events
                   </span>
                   <span className="ml-auto font-semibold text-amber-700 group-hover:translate-x-0.5 transition-transform">
@@ -308,7 +308,7 @@ export function ChapterSelectorModal({
                           </p>
                         </div>
                         {isActive && (
-                          <span className="flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
+                          <span className="flex shrink-0 items-center gap-1 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-bold text-[var(--accent)]">
                             <CheckCircle2 size={11} />
                             Active
                           </span>

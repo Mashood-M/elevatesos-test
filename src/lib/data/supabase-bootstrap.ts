@@ -141,86 +141,131 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
   }
 
   try {
+    const sessionRes = await Promise.race([
+      supabase.auth.getSession().catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
+
+    const authUser = sessionRes?.data?.session?.user ?? null;
+    const isAuthenticated = Boolean(authUser);
+
     const [
       { data: orgs },
       { data: chapterRows },
       { data: eventRows },
       { data: projectRows },
       { data: formRows },
-      { data: profileRows },
-      { data: reportRows },
-      { data: certRows },
-      { data: regRows },
-      { data: attRows },
+      { data: clusterRows },
+      { data: deptRows },
+      { data: cohortRows },
+      { data: guidelineRows },
+      { data: resourceRows },
+      { data: announcementRows },
+      { data: reminderRows },
       { data: roleRows },
       { data: permRows },
       { data: rpRows },
-      { data: urRows },
-      { data: ltRows },
-      { data: laRows },
-      { data: clusterRows },
-      { data: epRows },
-      { data: inviteRows },
-      { data: deptRows },
-      { data: guidelineRows },
-      { data: resourceRows },
-      { data: taskRows },
-      { data: announcementRows },
-      { data: notifRows },
-      { data: activityRows },
-      { data: cohortRows },
-      { data: formRespRows },
-      { data: laAppRows },
-      { data: standardCheckRows },
-      { data: reminderRows },
-      { data: vgRows },
-      { data: vgmRows },
-      { data: vaRows },
-      sessionRes,
-      userRes,
     ] = await Promise.all([
       supabase.from("organizations").select("*").limit(1),
       supabase.from("chapters").select("*").order("name"),
       supabase.from("events").select("*"),
       supabase.from("projects").select("*"),
       supabase.from("forms").select("*"),
-      supabase.from("profiles").select("*"),
-      supabase.from("reports").select("*"),
-      supabase.from("certificates").select("*"),
-      supabase.from("event_registrations").select("*"),
-      supabase.from("attendance").select("*"),
+      supabase.from("clusters").select("*"),
+      supabase.from("departments").select("*"),
+      supabase.from("class_cohorts").select("*"),
+      supabase.from("guidelines").select("*"),
+      supabase.from("resources").select("*"),
+      supabase.from("announcements").select("*"),
+      supabase.from("event_reminders").select("*"),
       supabase.from("roles").select("*"),
       supabase.from("permissions").select("*"),
       supabase.from("role_permissions").select("*"),
-      supabase.from("user_roles").select("*"),
-      supabase.from("leadership_terms").select("*"),
-      supabase.from("leadership_assignments").select("*"),
-      supabase.from("clusters").select("*"),
-      supabase.from("event_permissions").select("*"),
-      supabase.from("invite_tokens").select("*").order("created_at", { ascending: false }),
-      supabase.from("departments").select("*"),
-      supabase.from("guidelines").select("*"),
-      supabase.from("resources").select("*"),
-      supabase.from("tasks").select("*"),
-      supabase.from("announcements").select("*"),
-      supabase.from("notifications").select("*").order("created_at", { ascending: false }),
-      supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
-      supabase.from("class_cohorts").select("*"),
-      supabase.from("form_responses").select("*"),
-      supabase.from("leadership_applications").select("*"),
-      supabase.from("chapter_standard_checks").select("*"),
-      supabase.from("event_reminders").select("*"),
-      supabase.from("volunteer_groups").select("*"),
-      supabase.from("volunteer_group_members").select("*"),
-      supabase.from("volunteer_assignments").select("*"),
-      Promise.race([
-        supabase.auth.getSession().catch(() => null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]),
-      Promise.resolve(null),
     ]);
 
-    const authUser = sessionRes?.data?.session?.user ?? null;
+    let profileRows: any[] | null = null;
+    let reportRows: any[] | null = null;
+    let certRows: any[] | null = null;
+    let regRows: any[] | null = null;
+    let attRows: any[] | null = null;
+    let urRows: any[] | null = null;
+    let ltRows: any[] | null = null;
+    let laRows: any[] | null = null;
+    let epRows: any[] | null = null;
+    let inviteRows: any[] | null = null;
+    let taskRows: any[] | null = null;
+    let notifRows: any[] | null = null;
+    let activityRows: any[] | null = null;
+    let formRespRows: any[] | null = null;
+    let laAppRows: any[] | null = null;
+    let standardCheckRows: any[] | null = null;
+    let vgRows: any[] | null = null;
+    let vgmRows: any[] | null = null;
+    let vaRows: any[] | null = null;
+
+    if (isAuthenticated) {
+      const [
+        pRes,
+        repRes,
+        certRes,
+        regRes,
+        attRes,
+        urRes,
+        ltRes,
+        laRes,
+        epRes,
+        invRes,
+        taskRes,
+        notifRes,
+        actRes,
+        frRes,
+        laAppRes,
+        scRes,
+        vgRes,
+        vgmRes,
+        vaRes,
+      ] = await Promise.all([
+        supabase.from("profiles").select("*"),
+        supabase.from("reports").select("*"),
+        supabase.from("certificates").select("*"),
+        supabase.from("event_registrations").select("*"),
+        supabase.from("attendance").select("*"),
+        supabase.from("user_roles").select("*"),
+        supabase.from("leadership_terms").select("*"),
+        supabase.from("leadership_assignments").select("*"),
+        supabase.from("event_permissions").select("*"),
+        supabase.from("invite_tokens").select("*").order("created_at", { ascending: false }),
+        supabase.from("tasks").select("*"),
+        supabase.from("notifications").select("*").order("created_at", { ascending: false }),
+        supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(100),
+        supabase.from("form_responses").select("*"),
+        supabase.from("leadership_applications").select("*"),
+        supabase.from("chapter_standard_checks").select("*"),
+        supabase.from("volunteer_groups").select("*"),
+        supabase.from("volunteer_group_members").select("*"),
+        supabase.from("volunteer_assignments").select("*"),
+      ]);
+
+      profileRows = pRes.data;
+      reportRows = repRes.data;
+      certRows = certRes.data;
+      regRows = regRes.data;
+      attRows = attRes.data;
+      urRows = urRes.data;
+      ltRows = ltRes.data;
+      laRows = laRes.data;
+      epRows = epRes.data;
+      inviteRows = invRes.data;
+      taskRows = taskRes.data;
+      notifRows = notifRes.data;
+      activityRows = actRes.data;
+      formRespRows = frRes.data;
+      laAppRows = laAppRes.data;
+      standardCheckRows = scRes.data;
+      vgRows = vgRes.data;
+      vgmRows = vgmRes.data;
+      vaRows = vaRes.data;
+    }
 
     const orgRow = orgs?.[0];
     const organization: Organization = orgRow
@@ -621,7 +666,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let ltRowsFinal = ltRows ?? [];
     let laRowsFinal = laRows ?? [];
 
-    if ((ltRowsFinal.length === 0 || laRowsFinal.length === 0) && typeof window !== "undefined") {
+    if (isAuthenticated && (ltRowsFinal.length === 0 || laRowsFinal.length === 0) && typeof window !== "undefined") {
       try {
         const leadRes = await fetch("/api/mutations?type=leadership_data");
         if (leadRes.ok) {
@@ -667,7 +712,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let vgmRowsFinal = vgmRows ?? [];
     let vaRowsFinal = vaRows ?? [];
 
-    if (vgRowsFinal.length === 0 && vaRowsFinal.length === 0 && typeof window !== "undefined") {
+    if (isAuthenticated && vgRowsFinal.length === 0 && vaRowsFinal.length === 0 && typeof window !== "undefined") {
       try {
         const volRes = await fetch("/api/mutations?type=volunteer_data");
         if (volRes.ok) {
@@ -933,7 +978,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         }, assignedKeys[0] || "student");
 
         let activeRoleKey = topRoleKey;
-        let activeChapterId = userRoleEntries[0]?.chapterId ?? userRoleEntries[0]?.chapter_id ?? matchedProfile.chapterId;
+        let activeChapterId = userRoleEntries[0]?.chapterId ?? (userRoleEntries[0] as any)?.chapter_id ?? matchedProfile.chapterId;
 
         if (typeof window !== "undefined") {
           const rawSavedRole = localStorage.getItem("elevates_active_role_key");
@@ -1026,7 +1071,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     }
 
     let finalInviteRows = inviteRows;
-    if ((!finalInviteRows || finalInviteRows.length === 0) && typeof window !== "undefined") {
+    if (isAuthenticated && (!finalInviteRows || finalInviteRows.length === 0) && typeof window !== "undefined") {
       try {
         const fallbackRes = await fetch("/api/mutations?type=invite_tokens");
         const fallbackJson = await fallbackRes.json();

@@ -397,7 +397,7 @@ export function RoleSwitcher() {
                     Chapter
                   </span>
                   {isConfirmed && (
-                    <span className="text-[8px] font-semibold text-emerald-500">
+                    <span className="text-[8px] font-semibold text-[var(--accent)]">
                       Confirmed
                     </span>
                   )}
@@ -461,7 +461,7 @@ export function RoleSwitcher() {
                         className={cn(
                           "flex h-5 w-5 items-center justify-center rounded-[5px] transition",
                           isConfirmed
-                            ? "bg-emerald-500/15 text-emerald-600 hover:bg-red-500/15 hover:text-red-500"
+                            ? "bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--danger)]/15 hover:text-[var(--danger)]"
                             : "bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90",
                         )}
                         aria-label={isConfirmed ? "Deselect chapter" : "Confirm chapter"}

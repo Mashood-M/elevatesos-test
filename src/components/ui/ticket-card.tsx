@@ -10,12 +10,12 @@ const statusTone: Record<
   "cyan" | "magenta" | "green" | "orange" | "mute"
 > = {
   completed: "mute",
-  ongoing: "green",
-  registration_open: "green",
+  ongoing: "orange",
+  registration_open: "orange",
   pending_approval: "orange",
-  approved: "cyan",
+  approved: "mute",
   draft: "mute",
-  registration_closed: "magenta",
+  registration_closed: "mute",
   cancelled: "mute",
 };
 
@@ -50,7 +50,7 @@ export function TicketCard({
     event.visibility === "open_to_all" ||
     event.visibility === "public" ||
     event.visibility === "all_chapters" ? (
-      <Badge tone="cyan">Open to All</Badge>
+      <Badge tone="mute">Open to All</Badge>
     ) : (
       <Badge tone="mute">Campus Exclusive</Badge>
     );
@@ -87,10 +87,10 @@ export function TicketCard({
               </span>
               <div className="flex items-center gap-1 shrink-0">
                 {ongoing ? (
-                  <Badge tone="green" className="py-0 px-1.5 text-[9px] font-bold flex items-center gap-1">
+                  <Badge tone="orange" className="py-0 px-1.5 text-[9px] font-bold flex items-center gap-1">
                     <span className="relative flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[var(--accent)]" />
                     </span>
                     Live
                   </Badge>
@@ -159,10 +159,10 @@ export function TicketCard({
             <Badge tone="mute" className="text-[10px]">🎁 Resources</Badge>
           ) : null}
           {ongoing ? (
-            <Badge tone="green" className="flex items-center gap-1 font-bold shadow-sm">
+            <Badge tone="orange" className="flex items-center gap-1 font-bold shadow-sm">
               <span className="relative flex h-2 w-2 mr-0.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--accent)]" />
               </span>
               Ongoing
             </Badge>

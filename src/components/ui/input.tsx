@@ -30,7 +30,7 @@ const field =
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
-    return <input ref={ref} className={cn(field, className)} {...props} />;
+    return <input ref={ref} suppressHydrationWarning className={cn(field, className)} {...props} />;
   }
 );
 
@@ -41,6 +41,7 @@ export function TextArea({
   const hasCustomMinH = className && /\bmin-h-/.test(className);
   return (
     <textarea
+      suppressHydrationWarning
       className={cn(
         field,
         "h-auto rounded-[var(--radius-sm)] py-3",
@@ -58,7 +59,7 @@ export function Select({
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select className={cn(field, "pr-8 cursor-pointer truncate", className)} {...props}>
+    <select suppressHydrationWarning className={cn(field, "pr-8 cursor-pointer truncate", className)} {...props}>
       {children}
     </select>
   );

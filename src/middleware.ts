@@ -142,11 +142,23 @@ export async function middleware(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Validate the user with supabase.auth.getUser() instead of trusting cookie existence
-  const { user } = await getUserWithRetryAndTimeout(supabase, 2500, 1);
+  // Validate the user with supabase.auth.getUser() instead of trusting cookie existence alone
+  const { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 4000, 1);
 
   // Unauthenticated user accessing protected route → redirect to /login
   if (!user) {
+    if (isNetworkError) {
+      // If a transient network/timeout error occurred, check if session cookies exist.
+      // If auth cookies are present, do NOT kick the user out on network hiccup or local dev compilation pause!
+      const allCookies = request.cookies.getAll();
+      const hasAuthCookie = allCookies.some(
+        (c) => c.name.includes("-auth-token") || c.name.startsWith("sb-")
+      );
+      if (hasAuthCookie) {
+        return supabaseResponse;
+      }
+    }
+
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";

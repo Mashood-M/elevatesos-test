@@ -9,6 +9,7 @@ import { roleKeyLabel } from "@/lib/leadership";
 import { isHqRole } from "@/lib/permissions";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { genUuid } from "@/lib/uuid";
+import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 import type {
   ActivityLog,
   Announcement,
@@ -38,6 +39,8 @@ import type {
   RoleKey,
   Task,
   UserRole,
+  VolunteerAssignment,
+  VolunteerGroup,
 } from "@/types";
 
 export const ROLE_PRIORITY: RoleKey[] = [
@@ -537,6 +540,44 @@ export function transformActivityLogRow(al: Record<string, any>): ActivityLog {
   };
 }
 
+export function transformVolunteerGroupRow(vg: Record<string, any>): VolunteerGroup {
+  return {
+    id: vg.id,
+    chapterId: vg.chapterId ?? vg.chapter_id,
+    name: vg.name,
+    description: vg.description ?? undefined,
+    groupType: vg.groupType ?? vg.group_type ?? "listed",
+    isPreset: Boolean(vg.isPreset ?? vg.is_preset),
+    eventId: vg.eventId ?? vg.event_id ?? undefined,
+    validFrom: vg.validFrom ?? vg.valid_from ?? undefined,
+    validTo: vg.validTo ?? vg.valid_to ?? undefined,
+    powers: vg.powers ?? DEFAULT_VOLUNTEER_POWERS,
+    memberIds: Array.isArray(vg.memberIds ?? vg.member_ids) ? (vg.memberIds ?? vg.member_ids) : [],
+    customMemberPowers: vg.customMemberPowers ?? vg.custom_member_powers ?? undefined,
+    createdBy: vg.createdBy ?? vg.created_by ?? undefined,
+    createdAt: vg.createdAt ?? vg.created_at ?? undefined,
+    updatedAt: vg.updatedAt ?? vg.updated_at ?? undefined,
+  };
+}
+
+export function transformVolunteerAssignmentRow(va: Record<string, any>): VolunteerAssignment {
+  return {
+    id: va.id,
+    chapterId: va.chapterId ?? va.chapter_id,
+    userId: va.userId ?? va.user_id,
+    eventId: va.eventId ?? va.event_id ?? undefined,
+    groupId: va.groupId ?? va.group_id ?? undefined,
+    tag: va.tag || "Volunteer",
+    powers: va.powers ?? DEFAULT_VOLUNTEER_POWERS,
+    validFrom: va.validFrom ?? va.valid_from ?? undefined,
+    validTo: va.validTo ?? va.valid_to ?? undefined,
+    status: va.status || "active",
+    createdBy: va.createdBy ?? va.created_by ?? undefined,
+    createdAt: va.createdAt ?? va.created_at ?? undefined,
+    updatedAt: va.updatedAt ?? va.updated_at ?? undefined,
+  };
+}
+
 // ── SESSION RECALCULATION & DYNAMIC ROLE PROMOTION ────────────────────────────
 
 export function recalculateUserSession(
@@ -773,9 +814,13 @@ export function applyRealtimeChangeToStore(
         };
       }
       const item = transformEventRow(newRow);
-      const exists = store.events.some((e) => e.id === item.id || (item.slug && e.slug === item.slug));
+      const isMatch = (e: EventItem) =>
+        e.id === item.id ||
+        (item.slug && e.slug === item.slug) ||
+        (e.chapterId === item.chapterId && e.title?.trim().toLowerCase() === item.title?.trim().toLowerCase());
+      const exists = store.events.some(isMatch);
       const next = exists
-        ? store.events.map((e) => (e.id === item.id || (item.slug && e.slug === item.slug) ? item : e))
+        ? store.events.map((e) => (isMatch(e) ? item : e))
         : [item, ...store.events];
       return {
         ...store,
@@ -996,15 +1041,18 @@ export function applyRealtimeChangeToStore(
       if (eventType === "DELETE") {
         return {
           ...store,
-          tasks: store.tasks.filter((t) => t.id !== targetId),
+          tasks: store.tasks.filter((t) => t.id !== targetId && !(oldRow?.title && t.chapterId === oldRow.chapter_id && t.title.toLowerCase() === oldRow.title.toLowerCase())),
         };
       }
       const item = transformTaskRow(newRow);
-      const exists = store.tasks.some((t) => t.id === item.id);
+      const isMatch = (t: Task) =>
+        t.id === item.id ||
+        (t.chapterId === item.chapterId && t.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+      const exists = store.tasks.some(isMatch);
       return {
         ...store,
         tasks: exists
-          ? store.tasks.map((t) => (t.id === item.id ? item : t))
+          ? store.tasks.map((t) => (isMatch(t) ? item : t))
           : [item, ...store.tasks],
       };
     }
@@ -1133,15 +1181,20 @@ export function applyRealtimeChangeToStore(
       if (eventType === "DELETE") {
         return {
           ...store,
-          departments: store.departments.filter((d) => d.id !== targetId),
+          departments: store.departments.filter(
+            (d) => d.id !== targetId && !(oldRow?.name && d.chapterId === oldRow.chapter_id && d.name.toLowerCase() === oldRow.name.toLowerCase())
+          ),
         };
       }
       const item = transformDepartmentRow(newRow);
-      const exists = store.departments.some((d) => d.id === item.id);
+      const isMatch = (d: Department) =>
+        d.id === item.id ||
+        (d.chapterId === item.chapterId && d.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+      const exists = store.departments.some(isMatch);
       return {
         ...store,
         departments: exists
-          ? store.departments.map((d) => (d.id === item.id ? item : d))
+          ? store.departments.map((d) => (isMatch(d) ? item : d))
           : [...store.departments, item],
       };
     }
@@ -1150,15 +1203,23 @@ export function applyRealtimeChangeToStore(
       if (eventType === "DELETE") {
         return {
           ...store,
-          classCohorts: store.classCohorts.filter((cc) => cc.id !== targetId),
+          classCohorts: store.classCohorts.filter(
+            (cc) => cc.id !== targetId && !(oldRow?.department && cc.chapterId === oldRow.chapter_id && cc.department.toLowerCase() === oldRow.department.toLowerCase() && cc.year === oldRow.year)
+          ),
         };
       }
       const item = transformClassCohortRow(newRow);
-      const exists = store.classCohorts.some((cc) => cc.id === item.id);
+      const isMatch = (cc: ClassCohort) =>
+        cc.id === item.id ||
+        (cc.chapterId === item.chapterId &&
+          cc.department.trim().toLowerCase() === item.department.trim().toLowerCase() &&
+          cc.year === item.year &&
+          (cc.section || "") === (item.section || ""));
+      const exists = store.classCohorts.some(isMatch);
       return {
         ...store,
         classCohorts: exists
-          ? store.classCohorts.map((cc) => (cc.id === item.id ? item : cc))
+          ? store.classCohorts.map((cc) => (isMatch(cc) ? item : cc))
           : [...store.classCohorts, item],
       };
     }
@@ -1167,15 +1228,20 @@ export function applyRealtimeChangeToStore(
       if (eventType === "DELETE") {
         return {
           ...store,
-          forms: store.forms.filter((f) => f.id !== targetId),
+          forms: store.forms.filter(
+            (f) => f.id !== targetId && !(oldRow?.title && f.chapterId === oldRow.chapter_id && f.title.toLowerCase() === oldRow.title.toLowerCase())
+          ),
         };
       }
       const item = transformFormRow(newRow);
-      const exists = store.forms.some((f) => f.id === item.id);
+      const isMatch = (f: FormDefinition) =>
+        f.id === item.id ||
+        (f.chapterId === item.chapterId && f.title.trim().toLowerCase() === item.title.trim().toLowerCase());
+      const exists = store.forms.some(isMatch);
       return {
         ...store,
         forms: exists
-          ? store.forms.map((f) => (f.id === item.id ? item : f))
+          ? store.forms.map((f) => (isMatch(f) ? item : f))
           : [item, ...store.forms],
       };
     }
@@ -1407,6 +1473,48 @@ export function applyRealtimeChangeToStore(
       };
     }
 
+    case "volunteer_groups": {
+      if (eventType === "DELETE") {
+        return {
+          ...store,
+          volunteerGroups: (store.volunteerGroups ?? []).filter((vg) => vg.id !== targetId),
+        };
+      }
+      const item = transformVolunteerGroupRow(newRow);
+      const isMatch = (vg: VolunteerGroup) =>
+        vg.id === item.id ||
+        (vg.chapterId === item.chapterId && vg.name.trim().toLowerCase() === item.name.trim().toLowerCase());
+      const list = store.volunteerGroups ?? [];
+      const exists = list.some(isMatch);
+      return {
+        ...store,
+        volunteerGroups: exists
+          ? list.map((vg) => (isMatch(vg) ? item : vg))
+          : [...list, item],
+      };
+    }
+
+    case "volunteer_assignments": {
+      if (eventType === "DELETE") {
+        return {
+          ...store,
+          volunteerAssignments: (store.volunteerAssignments ?? []).filter((va) => va.id !== targetId),
+        };
+      }
+      const item = transformVolunteerAssignmentRow(newRow);
+      const isMatch = (va: VolunteerAssignment) =>
+        va.id === item.id ||
+        (va.chapterId === item.chapterId && va.userId === item.userId && (va.eventId === item.eventId || (!va.eventId && !item.eventId)));
+      const list = store.volunteerAssignments ?? [];
+      const exists = list.some(isMatch);
+      return {
+        ...store,
+        volunteerAssignments: exists
+          ? list.map((va) => (isMatch(va) ? item : va))
+          : [...list, item],
+      };
+    }
+
     default:
       return store;
   }
@@ -1435,12 +1543,61 @@ export function mergeStoreData(
     nextSession = freshStore.session;
   }
 
-  // Guard against collections being wiped out by partial or failed revalidations
+  // Preserve any local optimistic/in-flight entities that are not yet committed or reflected in freshStore
+  function mergeEntities<T extends { id: string }>(
+    currentList: T[] | undefined,
+    freshList: T[] | undefined,
+    isEquiv?: (a: T, b: T) => boolean
+  ): T[] {
+    const cur = currentList ?? [];
+    const fresh = freshList ?? [];
+    if (fresh.length === 0) return cur;
+    if (cur.length === 0) return fresh;
+
+    const merged = [...fresh];
+    for (const item of cur) {
+      const isTemp = typeof item.id === "string" && (
+        item.id.startsWith("dept-") ||
+        item.id.startsWith("cohort-") ||
+        item.id.startsWith("task-") ||
+        item.id.startsWith("evt-") ||
+        item.id.startsWith("form-") ||
+        item.id.startsWith("rep-") ||
+        item.id.startsWith("ur-") ||
+        item.id.startsWith("att-") ||
+        item.id.startsWith("reg-") ||
+        item.id.startsWith("cert-") ||
+        item.id.startsWith("proj-") ||
+        item.id.startsWith("clust-") ||
+        item.id.startsWith("ann-") ||
+        item.id.startsWith("vg-") ||
+        item.id.startsWith("va-")
+      );
+      const exists = merged.some((f) => f.id === item.id || (isEquiv && isEquiv(f, item)));
+      if (!exists && isTemp) {
+        merged.push(item);
+      }
+    }
+    return merged;
+  }
+
   const chapters = freshStore.chapters?.length ? freshStore.chapters : currentStore.chapters;
-  const events = freshStore.events?.length ? freshStore.events : currentStore.events;
+  const events = mergeEntities(currentStore.events, freshStore.events, (a, b) => a.chapterId === b.chapterId && (Boolean(a.slug && a.slug === b.slug) || a.title?.toLowerCase() === b.title?.toLowerCase()));
   const profiles = freshStore.profiles?.length ? freshStore.profiles : currentStore.profiles;
-  const userRoles = freshStore.userRoles?.length ? freshStore.userRoles : currentStore.userRoles;
+  const userRoles = mergeEntities(currentStore.userRoles, freshStore.userRoles, (a, b) => a.userId === b.userId && a.roleKey === b.roleKey && (a.chapterId === b.chapterId || !a.chapterId || !b.chapterId));
   const roles = freshStore.roles?.length ? freshStore.roles : currentStore.roles;
+  const departments = mergeEntities(currentStore.departments, freshStore.departments, (a, b) => a.chapterId === b.chapterId && a.name?.trim().toLowerCase() === b.name?.trim().toLowerCase());
+  const classCohorts = mergeEntities(currentStore.classCohorts, freshStore.classCohorts, (a, b) => a.chapterId === b.chapterId && a.department?.toLowerCase() === b.department?.toLowerCase() && a.year === b.year && a.section === b.section);
+  const tasks = mergeEntities(currentStore.tasks, freshStore.tasks, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
+  const reports = mergeEntities(currentStore.reports, freshStore.reports, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
+  const forms = mergeEntities(currentStore.forms, freshStore.forms, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
+  const registrations = mergeEntities(currentStore.registrations, freshStore.registrations, (a, b) => a.eventId === b.eventId && a.userId === b.userId);
+  const attendance = mergeEntities(currentStore.attendance, freshStore.attendance, (a, b) => a.eventId === b.eventId && a.userId === b.userId && (a.sessionId === b.sessionId || !a.sessionId));
+  const projects = mergeEntities(currentStore.projects, freshStore.projects, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
+  const clusters = mergeEntities(currentStore.clusters, freshStore.clusters, (a, b) => a.chapterId === b.chapterId && (Boolean(a.slug && a.slug === b.slug) || a.name?.trim().toLowerCase() === b.name?.trim().toLowerCase()));
+  const announcements = mergeEntities(currentStore.announcements, freshStore.announcements, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
+  const volunteerGroups = mergeEntities(currentStore.volunteerGroups, freshStore.volunteerGroups, (a, b) => a.chapterId === b.chapterId && a.name?.trim().toLowerCase() === b.name?.trim().toLowerCase());
+  const volunteerAssignments = mergeEntities(currentStore.volunteerAssignments, freshStore.volunteerAssignments, (a, b) => a.chapterId === b.chapterId && a.userId === b.userId && (a.eventId === b.eventId || !a.eventId));
 
   return {
     ...freshStore,
@@ -1449,6 +1606,18 @@ export function mergeStoreData(
     profiles,
     userRoles,
     roles,
+    departments,
+    classCohorts,
+    tasks,
+    reports,
+    forms,
+    registrations,
+    attendance,
+    projects,
+    clusters,
+    announcements,
+    volunteerGroups,
+    volunteerAssignments,
     session: nextSession,
     // Keep outbound messages if they exist locally
     outboundMessages: currentStore.outboundMessages?.length
@@ -1485,6 +1654,8 @@ const MONITORED_TABLES = [
   "event_permissions",
   "chapter_standard_checks",
   "activity_logs",
+  "volunteer_groups",
+  "volunteer_assignments",
 ];
 
 export function setupRealtimeSync(options: {
@@ -1499,7 +1670,7 @@ export function setupRealtimeSync(options: {
   function isDuplicate(key: string): boolean {
     if (recentEvents.has(key)) return true;
     recentEvents.add(key);
-    setTimeout(() => recentEvents.delete(key), 1200);
+    setTimeout(() => recentEvents.delete(key), 600);
     return false;
   }
 
@@ -1510,8 +1681,14 @@ export function setupRealtimeSync(options: {
     oldRow: any,
     fromBroadcast = false
   ) {
-    const rowId = newRow?.id || oldRow?.id || "";
-    const dedupKey = `${table}:${eventType}:${rowId}:${newRow?.updated_at || ""}`;
+    const rowId =
+      newRow?.id ||
+      oldRow?.id ||
+      (Array.isArray(newRow) ? newRow.map((r: any) => r.id || r.userId || r.user_id).join(",") : "") ||
+      (Array.isArray(newRow?.profileIds) ? newRow.profileIds.join(",") : "");
+    const dedupKey = rowId
+      ? `${table}:${eventType}:${rowId}:${newRow?.updated_at || ""}`
+      : `${table}:${eventType}:${Date.now()}:${Math.random()}`;
     if (isDuplicate(dedupKey)) return;
 
     options.onStoreChange((prevStore) => {
@@ -1601,24 +1778,7 @@ export function setupRealtimeSync(options: {
     try {
       channel = supabase.channel("elevates-realtime-global");
 
-      // Subscribe to public schema wildcard
-      channel.on(
-        "postgres_changes",
-        { event: "*", schema: "public" },
-        (payload: any) => {
-          if (payload && payload.table) {
-            handleIncomingChange(
-              payload.table,
-              payload.eventType,
-              payload.new,
-              payload.old,
-              false
-            );
-          }
-        }
-      );
-
-      // Subscribe explicitly to each table as well for maximum server compatibility
+      // Subscribe explicitly to each table in MONITORED_TABLES
       MONITORED_TABLES.forEach((table) => {
         channel.on(
           "postgres_changes",

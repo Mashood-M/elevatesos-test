@@ -33,6 +33,7 @@ export function Button({
 
   return (
     <button
+      suppressHydrationWarning
       className={cn(
         "inline-flex items-center justify-center gap-2 rounded-full font-semibold tracking-[-0.01em] disabled:pointer-events-none disabled:opacity-40",
         sizeStyles[size],

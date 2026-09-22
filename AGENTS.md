@@ -15,7 +15,7 @@ Elevates OS operates in two distinct operational paradigms:
    - Server client helpers located in [`src/lib/supabase/`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/supabase/).
 2. **Demo Mode (In-Memory Test Fallback Only)**:
    - Demo mode is fully disabled in production (`isDemoMode()` strictly evaluates to `false`).
-   - Serves as an isolated, in-memory client test harness powered by [`src/context/store-context.tsx`](file:///home/mashoodm/elevates/os/Elevates-os/src/context/store-context.tsx) and browser `sessionStorage` via [`src/lib/demo/persist.ts`](file:///home/mashoodm/elevates/os/Elevates-os/src/lib/demo/persist.ts).
+   - Serves as an isolated, in-memory client test harness powered by [`src/context/store-context.tsx`](file:///home/mashoodm/elevates/os/Elevates-os/src/context/store-context.tsx).
 3. **Public API Contract**:
    - Serves public endpoints under `/api/public/v1/*` to synchronize public chapters, events, peer labs, team members, and stats to external frontends like the marketing website (`elevates.live`).
 

@@ -164,22 +164,7 @@ export default function ChapterDashboardPage({
         }
       />
 
-      {isStudent && !session.chapterId && (
-        <div className="mb-6 rounded-[14px] border border-[var(--accent)]/40 bg-bg-panel p-4 shadow-[var(--shadow-sm)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-text">
-                Independent Student Account
-              </p>
-              <p className="text-xs text-text-dim mt-0.5 leading-relaxed">
-                You are currently an independent student. You can participate in all <strong>Open to All</strong> events across chapters.
-                Ask your Campus Lead or Class Representative to add you to your college chapter anytime!
-              </p>
-            </div>
-            <Badge tone="orange">Independent</Badge>
-          </div>
-        </div>
-      )}
+      
 
       {showOps ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     ? "HQ network"
     : chapter
       ? `${chapter.slug.toUpperCase()} chapter`
-      : "Elevates OS";
+      : null;
 
   /**
    * Highest-priority role the user actually holds across all their Supabase
@@ -93,7 +93,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    */
   const highestRoleLabel = useMemo(() => {
     const ROLE_PRIORITY = [
-      "student",
       "faculty_coordinator",
       "class_representative",
       "campus_lead",
@@ -103,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     type PR = typeof ROLE_PRIORITY[number];
 
     const uid = session.authUserId ?? session.userId;
-    if (!uid) return roleKeyLabel(session.roleKey);
+    if (!uid) return null;
 
     const allKeys: string[] = store.userRoles
       .filter((ur: any) => ur.userId === uid)
@@ -111,15 +110,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (ur.roleKey) return ur.roleKey as string;
         return store.roles.find((r: any) => r.id === ur.roleId)?.key ?? null;
       })
-      .filter((k): k is string => k !== null && k !== "volunteer");
+      .filter((k): k is string => k !== null && k !== "volunteer" && k !== "student");
 
-    // Also include the session's authRoleKey if not already present
-    if (session.authRoleKey && session.authRoleKey !== "volunteer" && !allKeys.includes(session.authRoleKey)) {
+    // Also include the session's authRoleKey if not already present and not student
+    if (
+      session.authRoleKey &&
+      session.authRoleKey !== "volunteer" &&
+      session.authRoleKey !== "student" &&
+      !allKeys.includes(session.authRoleKey)
+    ) {
       allKeys.push(session.authRoleKey);
     }
 
-    const defaultRole = session.roleKey === "volunteer" ? "student" : session.roleKey;
-    if (allKeys.length === 0) return roleKeyLabel(defaultRole);
+    if (allKeys.length === 0) return null;
 
     const best = allKeys.reduce<PR | null>((top, cur) => {
       const curRank = ROLE_PRIORITY.indexOf(cur as PR);
@@ -128,7 +131,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return curRank > ROLE_PRIORITY.indexOf(top) ? (cur as PR) : top;
     }, null);
 
-    return best ? roleKeyLabel(best) : roleKeyLabel(defaultRole);
+    return best ? roleKeyLabel(best) : null;
   }, [session, store.userRoles, store.roles]);
 
   async function handleLogout() {
@@ -198,9 +201,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="block font-[family-name:var(--font-display)] text-[16px] font-extrabold tracking-[-0.03em]">
                 Elevates
               </span>
-              <span className="block truncate text-[11px] text-text-mute">
-                {contextLabel}
-              </span>
+              {contextLabel ? (
+                <span className="block truncate text-[11px] text-text-mute">
+                  {contextLabel}
+                </span>
+              ) : null}
             </span>
           </Link>
           <button
@@ -273,7 +278,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="truncate text-[13px] font-semibold">
                   {profile?.fullName}
                 </p>
-                <p className="truncate text-[11px] text-text-mute">{highestRoleLabel}</p>
+                {highestRoleLabel ? (
+                  <p className="truncate text-[11px] font-semibold text-[var(--accent)]">
+                    {highestRoleLabel}
+                  </p>
+                ) : (
+                  <p className="truncate text-[11px] text-text-mute">
+                    {chapter ? `${chapter.slug.toUpperCase()} chapter` : "Member"}
+                  </p>
+                )}
                 {profile?.elevatesId && (
                   <p className="mt-0.5 inline-flex items-center gap-1 rounded-[6px] bg-[var(--accent)]/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--accent)]">
                     {profile.elevatesId}
@@ -320,11 +333,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="hidden min-w-0 sm:flex sm:items-center sm:gap-2">
                 <div>
                   <p className="truncate text-[13px] font-semibold text-text">
-                    {role?.name ?? "Workspace"}
+                    {highestRoleLabel ?? (chapter ? `${chapter.slug.toUpperCase()} chapter` : "Workspace")}
                   </p>
-                  <p className="truncate text-[11px] text-text-mute">
-                    {contextLabel}
-                  </p>
+                  {contextLabel && highestRoleLabel ? (
+                    <p className="truncate text-[11px] text-text-mute">
+                      {contextLabel}
+                    </p>
+                  ) : null}
                 </div>
                 {chapter && isHqRole(session.roleKey) && (
                   <button

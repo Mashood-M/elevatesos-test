@@ -452,7 +452,7 @@ export default function ProfilePage({
       const r = store.roles.find((role) => role.id === ur.roleId || role.key === ur.roleKey);
       return r ? { role: r, createdAt: ur.createdAt } : null;
     })
-    .filter((item): item is RoleWithTimestamp => item !== null && item.role.key !== "volunteer");
+    .filter((item): item is RoleWithTimestamp => item !== null && item.role.key !== "volunteer" && item.role.key !== "student");
 
   const certs = store.certificates.filter((c) => c.userId === profileUserId || c.userId === cleanId);
   const eventsAttended = store.attendance.filter((a) => a.userId === profileUserId || a.userId === cleanId);

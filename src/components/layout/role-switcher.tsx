@@ -267,6 +267,17 @@ export function RoleSwitcher() {
     }
   }
 
+  // Check if the user has any appointed/assigned role beyond base student
+  const hasAppointedRole = useMemo(() => {
+    if (isHqUser) return true;
+    return actualRoleKeys.some((k) => k !== "student" && k !== "volunteer");
+  }, [isHqUser, actualRoleKeys]);
+
+  // If the user has no appointed role and is not HQ, do not render RoleSwitcher
+  if (!isHqUser && (!hasAppointedRole || availableRoles.length <= 1)) {
+    return null;
+  }
+
   return (
     <div className="relative w-full" ref={dropdownRef}>
       {/* Trigger button */}

@@ -428,28 +428,6 @@ export default function OpenEventsPage() {
         )}
       </TerminalPanel>
 
-      {/* Join Chapter Notice Card */}
-      {!session.chapterId ? (
-        <div className="mt-8 rounded-[14px] border border-border bg-bg-panel p-5 shadow-[var(--shadow-sm)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-text">
-                Want access to college-exclusive events?
-              </p>
-              <p className="mt-0.5 text-xs text-text-dim">
-                Enter your campus invite code to join your college chapter, unlock private workshops, and collaborate with your local team.
-              </p>
-            </div>
-            <Button
-              variant="orange"
-              className="text-xs"
-              onClick={() => setIsJoinModalOpen(true)}
-            >
-              Enter College Code <ArrowRight size={14} className="ml-1" />
-            </Button>
-          </div>
-        </div>
-      ) : null}
 
       <EventRegistrationDialog
         open={Boolean(selectedEventForReg)}

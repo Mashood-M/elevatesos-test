@@ -51,8 +51,8 @@ export default function AnnouncementsPage() {
       noChapter
         ? a.audience === "global"
         : a.audience === "global" ||
-          (chapter && a.chapterId === chapter.id &&
-            ["chapter", "cluster", "executive", "student"].includes(a.audience)),
+        (chapter && a.chapterId === chapter.id &&
+          ["chapter", "cluster", "executive", "student"].includes(a.audience)),
     )
     .sort(
       (a, b) =>
@@ -95,27 +95,6 @@ export default function AnnouncementsPage() {
           ) : null
         }
       />
-
-      {/* Join-chapter banner for unchaptered students */}
-      {noChapter && (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius)] border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-3">
-          <div>
-            <p className="text-[13px] font-semibold text-text">
-              Join chapter to see
-            </p>
-            <p className="text-[12px] text-text-dim mt-0.5">
-              Showing HQ network announcements. Join a college chapter to view your campus notices, cluster alerts, and team updates.
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            className="shrink-0 h-8 px-4 text-[12px]"
-            onClick={() => setIsJoinModalOpen(true)}
-          >
-            🔑 Join chapter
-          </Button>
-        </div>
-      )}
 
       {open ? (
         <TerminalPanel title="Publish" className="mb-4">

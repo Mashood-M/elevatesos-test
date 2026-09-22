@@ -395,7 +395,7 @@ CREATE TABLE IF NOT EXISTS public.discord_links (
     discord_user_id TEXT NOT NULL,
     discord_username TEXT,
     os_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    guild_id TEXT NOT NULL REFERENCES public.guild_config(guild_id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending', 'linked', 'unlinked')),
     linked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     unlinked_at TIMESTAMPTZ,

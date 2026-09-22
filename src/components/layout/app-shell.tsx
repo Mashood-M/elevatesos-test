@@ -81,7 +81,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const contextLabel = isHqRole(session.roleKey)
     ? "HQ network"
     : chapter
-      ? `${chapter.slug.toUpperCase()} chapter`
+      ? chapter.name
       : null;
 
   /**
@@ -197,15 +197,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent)] font-[family-name:var(--font-display)] text-[15px] font-extrabold text-white shadow-[var(--shadow-sm)]">
               E
             </span>
-            <span className="min-w-0">
-              <span className="block font-[family-name:var(--font-display)] text-[16px] font-extrabold tracking-[-0.03em]">
-                Elevates
-              </span>
-              {contextLabel ? (
-                <span className="block truncate text-[11px] text-text-mute">
-                  {contextLabel}
-                </span>
-              ) : null}
+            <span className="block font-[family-name:var(--font-display)] text-[16px] font-extrabold tracking-[-0.03em]">
+              Elevates
             </span>
           </Link>
           <button
@@ -284,7 +277,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   </p>
                 ) : (
                   <p className="truncate text-[11px] text-text-mute">
-                    {chapter ? `${chapter.slug.toUpperCase()} chapter` : "Member"}
+                    {chapter ? chapter.name : "Member"}
                   </p>
                 )}
                 {profile?.elevatesId && (
@@ -333,7 +326,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="hidden min-w-0 sm:flex sm:items-center sm:gap-2">
                 <div>
                   <p className="truncate text-[13px] font-semibold text-text">
-                    {highestRoleLabel ?? (chapter ? `${chapter.slug.toUpperCase()} chapter` : "Workspace")}
+                    {highestRoleLabel ?? (chapter ? chapter.name : "Workspace")}
                   </p>
                   {contextLabel && highestRoleLabel ? (
                     <p className="truncate text-[11px] text-text-mute">

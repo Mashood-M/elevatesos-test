@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -97,10 +97,12 @@ export default function ChapterSettingsPage({
   const clusters = store.clusters.filter((c) => c.chapterId === ch.id);
 
   const currentCampusLeadId = useMemo(() => {
-    if (ch.campusLeadId) return ch.campusLeadId;
+    if (ch.campusLeadId !== undefined) {
+      return ch.campusLeadId || undefined;
+    }
     const cs = ch.customSettings;
-    if (cs?.campusLeadId || cs?.campus_lead_id) {
-      return (cs.campusLeadId || cs.campus_lead_id) as string;
+    if (cs?.campusLeadId !== undefined || cs?.campus_lead_id !== undefined) {
+      return (cs.campusLeadId || cs.campus_lead_id || undefined) as string | undefined;
     }
     if (activeTerm) {
       const leadAssignment = store.leadershipAssignments.find(
@@ -136,6 +138,7 @@ export default function ChapterSettingsPage({
         p.id === ch.facultyId,
     );
   }, [store.profiles, ch.id, currentCampusLeadId, ch.facultyId]);
+
 
   const chapterLogs = useMemo(() => {
     const memberSet = new Set(members.map((m) => m.id));
@@ -174,11 +177,22 @@ export default function ChapterSettingsPage({
   );
 
   const [formData, setFormData] = useState(initialFormData);
+
+  const campusLeadCandidates = useMemo(() => {
+    return chapterMemberCandidates.filter((p) => {
+      if (p.role === "faculty_coordinator") return false;
+      if (formData.facultyId && p.id === formData.facultyId) return false;
+      const hasFacultyRole = (store.userRoles ?? []).some(
+        (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator",
+      );
+      return !hasFacultyRole;
+    });
+  }, [chapterMemberCandidates, formData.facultyId, store.userRoles]);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Synchronize form buffer when chapter updates in store while not editing
-  useMemo(() => {
+  useEffect(() => {
     if (!isEditing) {
       setFormData(initialFormData);
     }
@@ -209,6 +223,25 @@ export default function ChapterSettingsPage({
       setFlash("URL slug cannot be empty.");
       window.setTimeout(() => setFlash(""), 2200);
       return;
+    }
+
+    if (formData.campusLeadId && formData.facultyId && formData.campusLeadId === formData.facultyId) {
+      setFlash("The same user cannot be both Campus Lead and Faculty Coordinator.");
+      window.setTimeout(() => setFlash(""), 2500);
+      return;
+    }
+
+    if (formData.campusLeadId) {
+      const isFaculty =
+        store.profiles.find((p) => p.id === formData.campusLeadId)?.role === "faculty_coordinator" ||
+        (store.userRoles ?? []).some(
+          (ur) => ur.userId === formData.campusLeadId && ur.roleKey === "faculty_coordinator",
+        );
+      if (isFaculty) {
+        setFlash("Faculty members cannot be assigned as Campus Lead.");
+        window.setTimeout(() => setFlash(""), 2500);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -666,7 +699,7 @@ export default function ChapterSettingsPage({
                   selectedUserId={formData.campusLeadId}
                   disabled={!isEditing || !canManage}
                   chapterId={ch.id}
-                  profiles={chapterMemberCandidates}
+                  profiles={campusLeadCandidates}
                   placeholder="Unassigned — Search Campus Lead"
                   helperText="Primary student officer responsible for campus operations."
                   onSelect={(userId) => {

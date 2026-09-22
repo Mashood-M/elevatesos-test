@@ -1531,10 +1531,24 @@ export async function POST(req: Request) {
         ...(chapter.facultyId !== undefined
           ? { faculty_id: isUuid(chapter.facultyId) ? chapter.facultyId : null }
           : {}),
-        ...(chapter.campusLeadId !== undefined && isUuid(chapter.campusLeadId)
-          ? { campus_lead_id: chapter.campusLeadId }
+        ...(chapter.campusLeadId !== undefined
+          ? { campus_lead_id: isUuid(chapter.campusLeadId) ? chapter.campusLeadId : null }
           : {}),
       };
+
+      if (chapter.campusLeadId && isUuid(chapter.campusLeadId)) {
+        const { data: leadProf } = await admin
+          .from("profiles")
+          .select("role")
+          .eq("id", chapter.campusLeadId)
+          .maybeSingle();
+        if (leadProf?.role === "faculty_coordinator") {
+          return NextResponse.json(
+            { ok: false, error: "Faculty members cannot be assigned as Campus Lead." },
+            { status: 400 },
+          );
+        }
+      }
 
       const geoData: Record<string, any> = {};
       if (chapter.coordinates) geoData.coordinates = chapter.coordinates;
@@ -1553,11 +1567,32 @@ export async function POST(req: Request) {
         state: chapter.state,
       });
 
-      // Attempt 1: Try with dedicated columns and notes
+      const customSettingsPayload = {
+        ...(chapter.customSettings || {}),
+        ...(chapter.shortCode
+          ? { short_code: chapter.shortCode.trim().toUpperCase(), shortCode: chapter.shortCode.trim().toUpperCase() }
+          : {}),
+        ...(chapter.campusLeadId !== undefined
+          ? {
+              campus_lead_id: isUuid(chapter.campusLeadId) ? chapter.campusLeadId : null,
+              campusLeadId: isUuid(chapter.campusLeadId) ? chapter.campusLeadId : null,
+            }
+          : {}),
+        ...(chapter.facultyId !== undefined
+          ? {
+              faculty_id: isUuid(chapter.facultyId) ? chapter.facultyId : null,
+              facultyId: isUuid(chapter.facultyId) ? chapter.facultyId : null,
+            }
+          : {}),
+        ...geoData,
+      };
+
+      // Attempt 1: Try with dedicated columns, custom_settings and notes
       let { error } = await admin.from("chapters").upsert({
         ...basePayload,
         ...geoData,
         notes: notesWithGeo,
+        custom_settings: customSettingsPayload,
       });
 
       // Fallback if dedicated columns are not in remote schema cache yet
@@ -1568,16 +1603,7 @@ export async function POST(req: Request) {
         const res2 = await admin.from("chapters").upsert({
           ...payloadWithoutShort,
           notes: notesWithGeo,
-          custom_settings: {
-            ...(chapter.customSettings || {}),
-            ...(chapter.shortCode
-              ? { short_code: chapter.shortCode.trim().toUpperCase(), shortCode: chapter.shortCode.trim().toUpperCase() }
-              : {}),
-            ...(chapter.campusLeadId
-              ? { campus_lead_id: chapter.campusLeadId, campusLeadId: chapter.campusLeadId }
-              : {}),
-            ...geoData,
-          },
+          custom_settings: customSettingsPayload,
         });
         error = res2.error;
 
@@ -1601,6 +1627,116 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
 
+      // Synchronize campus_lead in user_roles and profiles
+      if (chapter.campusLeadId !== undefined) {
+        if (isUuid(chapter.campusLeadId)) {
+          const leadId = chapter.campusLeadId;
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "campus_lead")
+            .neq("user_id", leadId);
+
+          const { data: leadRole } = await admin
+            .from("roles")
+            .select("id")
+            .eq("key", "campus_lead")
+            .maybeSingle();
+
+          const { data: existingLeadRole } = await admin
+            .from("user_roles")
+            .select("id")
+            .eq("user_id", leadId)
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "campus_lead")
+            .maybeSingle();
+
+          if (!existingLeadRole) {
+            await admin.from("user_roles").insert({
+              id: genUuid(),
+              user_id: leadId,
+              chapter_id: chapterId,
+              role_key: "campus_lead",
+              role_id: leadRole?.id || "role-campus_lead",
+              organization_id: basePayload.organization_id,
+              is_permanent: true,
+            });
+          }
+
+          await admin
+            .from("profiles")
+            .update({ chapter_id: chapterId })
+            .eq("id", leadId);
+        } else {
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "campus_lead");
+        }
+      }
+
+      // Synchronize faculty_coordinator in user_roles and profiles
+      if (chapter.facultyId !== undefined) {
+        if (isUuid(chapter.facultyId)) {
+          const facId = chapter.facultyId;
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "faculty_coordinator")
+            .neq("user_id", facId);
+
+          // Mutual exclusivity: delete all other roles for this user
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("user_id", facId)
+            .neq("role_key", "faculty_coordinator");
+
+          await admin.from("chapters").update({ campus_lead_id: null }).eq("campus_lead_id", facId);
+          await admin.from("class_cohorts").update({ representative_id: null }).eq("representative_id", facId);
+
+          const { data: facRole } = await admin
+            .from("roles")
+            .select("id")
+            .eq("key", "faculty_coordinator")
+            .maybeSingle();
+
+          const { data: existingFacRole } = await admin
+            .from("user_roles")
+            .select("id")
+            .eq("user_id", facId)
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "faculty_coordinator")
+            .maybeSingle();
+
+          if (!existingFacRole) {
+            await admin.from("user_roles").insert({
+              id: genUuid(),
+              user_id: facId,
+              chapter_id: chapterId,
+              role_key: "faculty_coordinator",
+              role_id: facRole?.id || "role-faculty_coordinator",
+              organization_id: basePayload.organization_id,
+              is_permanent: true,
+            });
+          }
+
+          await admin
+            .from("profiles")
+            .update({ role: "faculty_coordinator", chapter_id: chapterId })
+            .eq("id", facId);
+        } else {
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("chapter_id", chapterId)
+            .eq("role_key", "faculty_coordinator");
+        }
+      }
+
       // Persist UI button & toggle state to system_ui_states
       try {
         await admin.from("system_ui_states").upsert(
@@ -1622,7 +1758,16 @@ export async function POST(req: Request) {
       }
 
       await revalidateWeb(["chapters", `chapter:${chapter.slug}`]);
-      return NextResponse.json({ ok: true, id: chapterId, elevatesId: chapterElevatesId });
+      return NextResponse.json({
+        ok: true,
+        id: chapterId,
+        elevatesId: chapterElevatesId,
+        data: {
+          ...chapter,
+          id: chapterId,
+          elevatesId: chapterElevatesId,
+        },
+      });
     }
 
     if (type === "delete_chapter") {
@@ -2605,6 +2750,20 @@ export async function POST(req: Request) {
       const validRepIds: string[] = Array.isArray(cohort.repIds)
         ? cohort.repIds.filter(isUuid)
         : (isUuid(cohort.representativeId) ? [cohort.representativeId] : []);
+
+      if (validRepIds.length > 0) {
+        const { data: facultyReps } = await admin
+          .from("profiles")
+          .select("id")
+          .in("id", validRepIds)
+          .eq("role", "faculty_coordinator");
+        if (facultyReps && facultyReps.length > 0) {
+          return NextResponse.json(
+            { ok: false, error: "Faculty members cannot be assigned as class representatives." },
+            { status: 400 },
+          );
+        }
+      }
       const { error } = await admin.from("class_cohorts").upsert({
         id: cohortId,
         chapter_id: cohort.chapterId,
@@ -2730,6 +2889,20 @@ export async function POST(req: Request) {
           .limit(1)
           .maybeSingle();
         termId = anyTerm?.id ?? null;
+      }
+
+      if (la.userId && isUuid(la.userId) && ["campus_lead", "class_representative", "chairman"].includes(la.roleKey)) {
+        const { data: targetProf } = await admin
+          .from("profiles")
+          .select("role")
+          .eq("id", la.userId)
+          .maybeSingle();
+        if (targetProf?.role === "faculty_coordinator") {
+          return NextResponse.json(
+            { ok: false, error: "Faculty members cannot be assigned as Campus Lead or Class Representative." },
+            { status: 400 },
+          );
+        }
       }
 
       const { error } = await admin.from("leadership_assignments").upsert({
@@ -3123,21 +3296,64 @@ export async function POST(req: Request) {
         }
       }
 
-      // 2. Delete existing non-leadership user_roles for this user
-      const { error: delError } = await admin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", userId)
-        .is("leadership_term_id", null);
+      const hasFaculty = assignments.some((a: any) => a.roleKey === "faculty_coordinator");
+      const hasRestrictedRoles = assignments.some((a: any) =>
+        ["campus_lead", "class_representative", "chairman"].includes(a.roleKey),
+      );
+      if (hasFaculty && hasRestrictedRoles) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Campus Lead and Class Representative roles cannot be assigned to Faculty members.",
+          },
+          { status: 400 },
+        );
+      }
+      let effectiveAssignments = assignments;
 
-      if (delError) {
-        console.error("Error deleting old user_roles:", delError);
-        return NextResponse.json({ ok: false, error: delError.message }, { status: 400 });
+      if (hasFaculty) {
+        // Faculty role only remains: delete ALL existing user_roles for this user
+        effectiveAssignments = assignments.filter((a: any) => a.roleKey === "faculty_coordinator");
+        const { error: delError } = await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", userId);
+
+        if (delError) {
+          console.error("Error deleting old user_roles for faculty:", delError);
+          return NextResponse.json({ ok: false, error: delError.message }, { status: 400 });
+        }
+
+        // Clean up any chapter campus_lead or class cohort rep references
+        await admin.from("chapters").update({ campus_lead_id: null }).eq("campus_lead_id", userId);
+        await admin.from("class_cohorts").update({ representative_id: null }).eq("representative_id", userId);
+      } else {
+        // Delete existing non-leadership user_roles for this user
+        const { error: delError } = await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", userId)
+          .is("leadership_term_id", null);
+
+        if (delError) {
+          console.error("Error deleting old user_roles:", delError);
+          return NextResponse.json({ ok: false, error: delError.message }, { status: 400 });
+        }
+
+        // Student role is default for all non-faculty accounts: ensure student is included
+        if (!effectiveAssignments.some((a: any) => a.roleKey === "student")) {
+          const { data: prof } = await admin.from("profiles").select("chapter_id").eq("id", userId).maybeSingle();
+          const primaryChap = effectiveAssignments.find((a: any) => a.chapterId)?.chapterId || prof?.chapter_id || null;
+          effectiveAssignments = [
+            ...effectiveAssignments,
+            { roleKey: "student", chapterId: primaryChap },
+          ];
+        }
       }
 
       let primaryChapterId: string | null = null;
 
-      const rows = assignments.map((a: any) => {
+      const rows = effectiveAssignments.map((a: any) => {
         const chapId = isUuid(a.chapterId) ? a.chapterId : null;
         if (chapId && !primaryChapterId) {
           primaryChapterId = chapId;
@@ -3151,6 +3367,7 @@ export async function POST(req: Request) {
         }
 
         return {
+          id: genUuid(),
           user_id: userId,
           role_key: a.roleKey,
           role_id: roleId,
@@ -3172,21 +3389,37 @@ export async function POST(req: Request) {
         }
       }
 
-      // 3. Keep profiles.chapter_id synchronized if chapter assigned
-      let profileSyncError: string | null = null;
+      // 3. Keep profiles.chapter_id and role synchronized
+      const profileUpdates: Record<string, any> = {};
       if (primaryChapterId) {
-        const { error: profErr } = await admin
-          .from("profiles")
-          .update({ chapter_id: primaryChapterId })
-          .eq("id", userId);
-        if (profErr) {
-          console.warn("user_roles profiles chapter_id sync notice:", profErr);
-          profileSyncError = profErr.message;
-        }
+        profileUpdates.chapter_id = primaryChapterId;
+      }
+      profileUpdates.role = hasFaculty ? "faculty_coordinator" : (effectiveAssignments.find((a: any) => a.roleKey !== "student")?.roleKey || "student");
+
+      let profileSyncError: string | null = null;
+      const { error: profErr } = await admin
+        .from("profiles")
+        .update(profileUpdates)
+        .eq("id", userId);
+      if (profErr) {
+        console.warn("user_roles profiles chapter_id sync notice:", profErr);
+        profileSyncError = profErr.message;
       }
 
       return NextResponse.json({
         ok: true,
+        data: {
+          userId,
+          assignments: rows.map((r) => ({
+            id: r.id,
+            userId: r.user_id,
+            user_id: r.user_id,
+            roleKey: r.role_key,
+            roleId: r.role_id,
+            chapterId: r.chapter_id,
+            organizationId: r.organization_id,
+          })),
+        },
         ...(profileSyncError ? { warning: `Roles updated, but profile chapter sync failed: ${profileSyncError}` } : {}),
       });
     }

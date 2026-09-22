@@ -34,12 +34,25 @@ export type MutationResult<T = any> = {
 
 function broadcastMutation(type: string, data: any, resultData?: any) {
   if (typeof window === "undefined") return;
-  const payload =
-    resultData && typeof resultData === "object" && Object.keys(resultData).length > 0
+  const resolvedResult =
+    resultData?.data && typeof resultData.data === "object" && Object.keys(resultData.data).length > 0
+      ? resultData.data
+      : resultData && typeof resultData === "object" && !("ok" in resultData)
       ? resultData
-      : data;
+      : {};
+
+  const payload = Array.isArray(data)
+    ? data
+    : {
+        ...(typeof data === "object" && data !== null ? data : {}),
+        ...resolvedResult,
+        ...(resultData?.id ? { id: resultData.id } : {}),
+      };
 
   switch (type) {
+    case "organization":
+      broadcastChange("organizations", "UPDATE", payload);
+      break;
     case "event":
       broadcastChange("events", "UPDATE", payload);
       break;
@@ -94,9 +107,19 @@ function broadcastMutation(type: string, data: any, resultData?: any) {
     case "profile":
       broadcastChange("profiles", "UPDATE", payload);
       break;
-    case "user_roles":
-      broadcastChange("user_roles", "UPDATE", data?.assignments || payload);
+    case "user_roles": {
+      const assignments = Array.isArray(data?.assignments)
+        ? data.assignments.map((a: any) => ({
+            ...a,
+            userId: data.userId || a.userId || a.user_id,
+            user_id: data.userId || a.user_id || a.userId,
+          }))
+        : Array.isArray(payload)
+        ? payload
+        : [payload];
+      broadcastChange("user_roles", "UPDATE", assignments);
       break;
+    }
     case "department":
       broadcastChange("departments", "UPDATE", payload);
       break;
@@ -209,7 +232,7 @@ export async function sendMutation<T = any>(type: string, data: any): Promise<Mu
         return { ok: false, error: errorMsg };
       }
       const returnData = json.data || json;
-      broadcastMutation(type, data, returnData);
+      broadcastMutation(type, data, json);
       return { ok: true, data: returnData };
     }
   } catch (err: any) {

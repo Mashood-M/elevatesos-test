@@ -137,15 +137,29 @@ export default function ChapterClassesPage({
   const chapterPeople = useMemo(() => {
     if (!chapter) return [];
     return store.profiles
-      .filter((p) => p.chapterId === chapter.id)
+      .filter((p) => {
+        if (p.chapterId !== chapter.id) return false;
+        if (p.role === "faculty_coordinator") return false;
+        const hasFacultyRole = (store.userRoles ?? []).some(
+          (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator",
+        );
+        return !hasFacultyRole;
+      })
       .slice()
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  }, [store.profiles, chapter]);
+  }, [store.profiles, store.userRoles, chapter]);
 
   const chapterStudents = useMemo(() => {
     if (!chapter) return [];
     return store.profiles
-      .filter((p) => p.chapterId === chapter.id)
+      .filter((p) => {
+        if (p.chapterId !== chapter.id) return false;
+        if (p.role === "faculty_coordinator") return false;
+        const hasFacultyRole = (store.userRoles ?? []).some(
+          (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator",
+        );
+        return !hasFacultyRole;
+      })
       .map((p) => {
         const cohort = (store.classCohorts ?? []).find(
           (c) =>
@@ -255,6 +269,16 @@ export default function ChapterClassesPage({
     const student = store.profiles.find((p) => p.id === assignModalStudentId);
     if (!student) {
       setAssignModalError("Selected student profile not found.");
+      return;
+    }
+
+    const isFaculty =
+      student.role === "faculty_coordinator" ||
+      (store.userRoles ?? []).some(
+        (ur) => ur.userId === assignModalStudentId && ur.roleKey === "faculty_coordinator",
+      );
+    if (isFaculty) {
+      setAssignModalError("Faculty members cannot be assigned as Class Representatives.");
       return;
     }
 
@@ -394,6 +418,17 @@ export default function ChapterClassesPage({
     const repIds = draftToRepIds(draft);
     if (repIds.length < 1) {
       setError("Assign at least one representative.");
+      return;
+    }
+    const anyFaculty = repIds.some((rId) => {
+      const p = store.profiles.find((pr) => pr.id === rId);
+      if (p?.role === "faculty_coordinator") return true;
+      return (store.userRoles ?? []).some(
+        (ur) => ur.userId === rId && ur.roleKey === "faculty_coordinator",
+      );
+    });
+    if (anyFaculty) {
+      setError("Faculty members cannot be assigned as Class Representatives.");
       return;
     }
     const payload = {

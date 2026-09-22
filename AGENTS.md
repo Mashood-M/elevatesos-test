@@ -192,6 +192,7 @@ When applying new migrations to an existing database, execute them in this exact
 4. `supabase/migrations/041_peer_lab_lessons_and_resources.sql`
 5. `supabase/migrations/042_fix_sequential_elevates_id.sql`
 6. `supabase/migrations/043_fix_discord_links_guild_fk.sql`
+7. `supabase/migrations/044_default_student_and_faculty_mutual_exclusion.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

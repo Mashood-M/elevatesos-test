@@ -261,6 +261,18 @@ export async function requireUser(): Promise<RequireUserResult> {
     }
   }
 
+  // Enforce faculty coordinator / student exclusivity:
+  // If faculty is assigned, student role is removed automatically and only faculty remains.
+  // Non-faculty accounts default to student.
+  if (assignedKeys.includes("faculty_coordinator")) {
+    const sIdx = assignedKeys.indexOf("student");
+    if (sIdx !== -1) {
+      assignedKeys.splice(sIdx, 1);
+    }
+  } else if (!assignedKeys.includes("student")) {
+    assignedKeys.push("student");
+  }
+
   // Determine highest priority role key
   const topRoleKey = assignedKeys.reduce<RoleKey>((best, cur) => {
     const curIdx = ROLE_PRIORITY.indexOf(cur);

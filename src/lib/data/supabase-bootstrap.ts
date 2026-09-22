@@ -339,10 +339,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           eventCount: Number(c.event_count ?? 0),
           projectCount: Number(c.project_count ?? 0),
           foundedAt: c.founded_at ?? new Date().toISOString(),
-          createdAt: c.created_at ?? undefined,
-          facultyId: c.faculty_id ?? undefined,
-          campusLeadId: c.campus_lead_id ?? cs.campus_lead_id ?? cs.campusLeadId ?? undefined,
-          notes,
+          facultyId:
+            c.faculty_id !== undefined
+              ? (c.faculty_id || undefined)
+              : (cs.faculty_id ?? cs.facultyId ?? undefined),
+          campusLeadId:
+            c.campus_lead_id !== undefined
+              ? (c.campus_lead_id || undefined)
+              : (cs.campus_lead_id ?? cs.campusLeadId ?? undefined),
           published: Boolean(c.published),
           logoUrl: c.logo_url ?? undefined,
           district,
@@ -579,8 +583,15 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
         createdAt: ur.created_at ?? undefined,
       })) ?? [];
 
+    const facultyUserIds = new Set(
+      userRolesRaw
+        .filter((ur: Record<string, any>) => ur.roleKey === "faculty_coordinator")
+        .map((ur: Record<string, any>) => ur.userId)
+    );
+
     const seenUserRoles = new Set<string>();
     const userRoles = userRolesRaw.filter((ur: Record<string, any>) => {
+      if (facultyUserIds.has(ur.userId) && ur.roleKey === "student") return false;
       const key = `${ur.userId}-${ur.roleKey || ur.roleId}-${ur.chapterId || "global"}`;
       if (seenUserRoles.has(key)) return false;
       seenUserRoles.add(key);
@@ -885,6 +896,14 @@ export async function loadStoreFromSupabase(): Promise<StoreLoadResult> {
           else if (e.includes("faculty") || pId.includes("faculty")) assignedKeys.push("faculty_coordinator");
           else if (e.includes("cr") || pId.includes("cr")) assignedKeys.push("class_representative");
           else assignedKeys.push("student");
+        }
+
+        // Enforce faculty coordinator / student mutual exclusivity & student default
+        if (assignedKeys.includes("faculty_coordinator")) {
+          const sIdx = assignedKeys.indexOf("student");
+          if (sIdx !== -1) assignedKeys.splice(sIdx, 1);
+        } else if (!assignedKeys.includes("student")) {
+          assignedKeys.push("student");
         }
 
         const topRoleKey = assignedKeys.reduce<RoleKey>((best, cur) => {

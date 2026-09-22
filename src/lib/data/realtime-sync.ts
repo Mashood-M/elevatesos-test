@@ -8,6 +8,7 @@ import { extractLocationFromNotes } from "@/lib/slug";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isHqRole } from "@/lib/permissions";
 import { generateElevatesId } from "@/lib/forms/helpers";
+import { genUuid } from "@/lib/uuid";
 import type {
   ActivityLog,
   Announcement,
@@ -174,7 +175,7 @@ export function transformProfileRow(p: Record<string, any>): Profile {
 
 export function transformUserRoleRow(ur: Record<string, any>): UserRole {
   return {
-    id: ur.id,
+    id: ur.id || genUuid(),
     userId: ur.userId ?? ur.user_id,
     roleId: ur.roleId ?? ur.role_id,
     roleKey: ur.roleKey ?? ur.role_key ?? undefined,
@@ -303,8 +304,18 @@ export function transformChapterRow(c: Record<string, any>): Chapter {
     projectCount: Number(c.projectCount ?? c.project_count ?? 0),
     foundedAt: c.foundedAt ?? c.founded_at ?? new Date().toISOString(),
     createdAt: c.createdAt ?? c.created_at ?? undefined,
-    facultyId: c.facultyId ?? c.faculty_id ?? undefined,
-    campusLeadId: c.campusLeadId ?? c.campus_lead_id ?? cs.campus_lead_id ?? cs.campusLeadId ?? undefined,
+    facultyId:
+      c.facultyId !== undefined
+        ? (c.facultyId || undefined)
+        : c.faculty_id !== undefined
+        ? (c.faculty_id || undefined)
+        : (cs.faculty_id ?? cs.facultyId ?? undefined),
+    campusLeadId:
+      c.campusLeadId !== undefined
+        ? (c.campusLeadId || undefined)
+        : c.campus_lead_id !== undefined
+        ? (c.campus_lead_id || undefined)
+        : (cs.campus_lead_id ?? cs.campusLeadId ?? undefined),
     notes,
     published: c.published != null ? Boolean(c.published) : Boolean(c.published),
     logoUrl: c.logoUrl ?? c.logo_url ?? undefined,
@@ -567,6 +578,14 @@ export function recalculateUserSession(
     else if (e.includes("faculty") || pId.includes("faculty")) assignedKeys.push("faculty_coordinator");
     else if (e.includes("cr") || pId.includes("cr")) assignedKeys.push("class_representative");
     else assignedKeys.push("student");
+  }
+
+  // Enforce faculty coordinator / student mutual exclusivity & student default
+  if (assignedKeys.includes("faculty_coordinator")) {
+    const sIdx = assignedKeys.indexOf("student");
+    if (sIdx !== -1) assignedKeys.splice(sIdx, 1);
+  } else if (!assignedKeys.includes("student")) {
+    assignedKeys.push("student");
   }
 
   const topRoleKey = assignedKeys.reduce<RoleKey>((best, cur) => {
@@ -854,10 +873,13 @@ export function applyRealtimeChangeToStore(
         if (items.length > 0) {
           const firstUserId = items[0]?.userId;
           if (Array.isArray(newRow) && firstUserId) {
+            const hasFaculty = items.some((it) => it.roleKey === "faculty_coordinator");
             const others = store.userRoles.filter((ur) => ur.userId !== firstUserId);
-            const leadershipLinked = store.userRoles.filter(
-              (ur) => ur.userId === firstUserId && Boolean(ur.leadershipTermId)
-            );
+            const leadershipLinked = hasFaculty
+              ? []
+              : store.userRoles.filter(
+                  (ur) => ur.userId === firstUserId && Boolean(ur.leadershipTermId)
+                );
             updatedUserRoles = [...others, ...items, ...leadershipLinked];
           } else {
             let cur = [...store.userRoles];
@@ -1056,6 +1078,20 @@ export function applyRealtimeChangeToStore(
       };
     }
 
+    case "organizations": {
+      if (eventType === "DELETE") return store;
+      return {
+        ...store,
+        organization: {
+          ...store.organization,
+          ...(newRow?.name ? { name: newRow.name } : {}),
+          ...(newRow?.slug ? { slug: newRow.slug } : {}),
+          ...(newRow?.tagline ? { tagline: newRow.tagline } : {}),
+          ...(newRow?.brandKit || newRow?.brand_kit ? { brandKit: newRow.brandKit || newRow.brand_kit } : {}),
+        },
+      };
+    }
+
     case "chapters": {
       if (eventType === "DELETE") {
         return {
@@ -1068,7 +1104,27 @@ export function applyRealtimeChangeToStore(
       return {
         ...store,
         chapters: ensureTestChapter(
-          exists ? store.chapters.map((c) => (c.id === item.id ? item : c)) : [...store.chapters, item]
+          exists
+            ? store.chapters.map((c) => {
+                if (c.id !== item.id) return c;
+                const merged: Chapter = { ...c };
+                for (const [k, v] of Object.entries(item)) {
+                  if (v !== undefined) {
+                    (merged as any)[k] = v;
+                  }
+                }
+                if ("campusLeadId" in newRow || "campus_lead_id" in newRow) {
+                  merged.campusLeadId = item.campusLeadId;
+                }
+                if ("facultyId" in newRow || "faculty_id" in newRow) {
+                  merged.facultyId = item.facultyId;
+                }
+                if ("notes" in newRow) {
+                  merged.notes = item.notes;
+                }
+                return merged;
+              })
+            : [...store.chapters, item]
         ),
       };
     }
@@ -1369,9 +1425,9 @@ export function mergeStoreData(
   if (currentUid) {
     nextSession = recalculateUserSession(
       currentStore.session,
-      freshStore.userRoles,
-      freshStore.roles,
-      freshStore.profiles,
+      freshStore.userRoles?.length ? freshStore.userRoles : currentStore.userRoles,
+      freshStore.roles?.length ? freshStore.roles : currentStore.roles,
+      freshStore.profiles?.length ? freshStore.profiles : currentStore.profiles,
       currentUid,
       { onPromoted: onRoleElevated }
     );
@@ -1379,8 +1435,20 @@ export function mergeStoreData(
     nextSession = freshStore.session;
   }
 
+  // Guard against collections being wiped out by partial or failed revalidations
+  const chapters = freshStore.chapters?.length ? freshStore.chapters : currentStore.chapters;
+  const events = freshStore.events?.length ? freshStore.events : currentStore.events;
+  const profiles = freshStore.profiles?.length ? freshStore.profiles : currentStore.profiles;
+  const userRoles = freshStore.userRoles?.length ? freshStore.userRoles : currentStore.userRoles;
+  const roles = freshStore.roles?.length ? freshStore.roles : currentStore.roles;
+
   return {
     ...freshStore,
+    chapters,
+    events,
+    profiles,
+    userRoles,
+    roles,
     session: nextSession,
     // Keep outbound messages if they exist locally
     outboundMessages: currentStore.outboundMessages?.length

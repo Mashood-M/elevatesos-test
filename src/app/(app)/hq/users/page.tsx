@@ -39,7 +39,7 @@ const ROLE_ORDER: RoleKey[] = [
   "alumni",
 ];
 
-// The 7 canonical roles with their powers description
+// The assignable roles with their powers description (Student is the default role for all accounts, not manually assigned or removed)
 const SIX_ROLES: {
   key: RoleKey;
   label: string;
@@ -50,13 +50,13 @@ const SIX_ROLES: {
     key: "founder",
     label: "HQ",
     scope: "hq",
-    powers: "Super admin · Full org access · Assign all roles (HQ / HQ Admin / Campus Lead / Faculty / Student)",
+    powers: "Super admin · Full org access · Assign elevated leadership & faculty roles",
   },
   {
     key: "hq_admin",
     label: "HQ Admin",
     scope: "hq",
-    powers: "Assigned by HQ · Manage chapters · Can assign Campus Lead & Faculty only · Cannot assign HQ or Student",
+    powers: "Assigned by HQ · Manage chapters · Can assign Campus Lead & Faculty only",
   },
   {
     key: "campus_lead",
@@ -74,13 +74,7 @@ const SIX_ROLES: {
     key: "faculty_coordinator",
     label: "Faculty",
     scope: "chapter",
-    powers: "Assigned by HQ Admin · Faculty monitor view · No role-assign power",
-  },
-  {
-    key: "student",
-    label: "Student",
-    scope: "chapter",
-    powers: "Assigned by Campus Lead · Events, clusters, projects, announcements · No role-assign power",
+    powers: "Assigned by HQ / HQ Admin · Faculty overseer · Replaces Student role automatically",
   },
   {
     key: "alumni",
@@ -92,7 +86,7 @@ const SIX_ROLES: {
 
 /** Which roles the current admin can assign based on their own role */
 function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
-  // HQ (founder) — can give all 6 roles
+  // HQ (founder) — can give all elevated roles
   if (currentRoleKey === "founder") {
     return SIX_ROLES.map((r) => r.key);
   }
@@ -200,14 +194,34 @@ export default function HqUsersPage() {
     return store.profiles
       .map((p) => {
         const urs = store.userRoles.filter((ur) => ur.userId === p.id);
+        const hasFaculty = urs.some(
+          (ur) => ur.roleKey === "faculty_coordinator" || store.roles.find((r) => r.id === ur.roleId)?.key === "faculty_coordinator",
+        );
         const seenKeys = new Set<string>();
-        const roles = urs
+        const rawRoles = urs
           .map((ur) => store.roles.find((r) => r.id === ur.roleId || r.key === ur.roleKey))
           .filter((r): r is NonNullable<typeof r> => {
-            if (!r || seenKeys.has(r.key)) return false;
+            if (!r) return false;
+            if (hasFaculty && r.key === "student") return false;
+            if (seenKeys.has(r.key)) return false;
             seenKeys.add(r.key);
             return true;
           });
+
+        let roles = rawRoles;
+        if (!hasFaculty) {
+          const hasStudent = roles.some((r) => r.key === "student");
+          if (!hasStudent) {
+            const studentRoleObj = store.roles.find((r) => r.key === "student") || {
+              id: "role-student",
+              key: "student",
+              name: "Student Member",
+              scope: "chapter",
+              description: "Active chapter student member.",
+            };
+            roles = [...roles, studentRoleObj as any];
+          }
+        }
         const status = p.status ?? "active";
         const chapter = store.chapters.find((c) => c.id === p.chapterId);
         return { profile: p, roles, status, chapter, urs };
@@ -354,9 +368,16 @@ export default function HqUsersPage() {
       .filter((label): label is string => Boolean(label));
 
     const firstOrg = orgUrs[0];
-    const orgRole = firstOrg
-      ? store.roles.find((r) => r.id === firstOrg.roleId)
-      : undefined;
+    const isFaculty = urs.some((ur) => ur.roleKey === "faculty_coordinator" || store.roles.find((r) => r.id === ur.roleId)?.key === "faculty_coordinator");
+    const firstNonStudent = orgUrs.find((ur) => {
+      const k = ur.roleKey || store.roles.find((r) => r.id === ur.roleId)?.key;
+      return k !== "student";
+    });
+    const effectiveRoleKey: RoleKey = isFaculty
+      ? "faculty_coordinator"
+      : firstNonStudent
+      ? ((store.roles.find((r) => r.id === firstNonStudent.roleId)?.key || firstNonStudent.roleKey) as RoleKey)
+      : "student";
     const roleLocked = !firstOrg && leadershipUrs.length > 0;
 
     setEditingId(p.id);
@@ -365,8 +386,8 @@ export default function HqUsersPage() {
       email: p.email,
       chapterId: p.chapterId ?? "",
       status: p.status ?? "active",
-      roleKey: orgRole?.key ?? "student",
-      roleChapterId: firstOrg?.chapterId ?? p.chapterId ?? "",
+      roleKey: effectiveRoleKey,
+      roleChapterId: (isFaculty ? urs.find((u) => u.roleKey === "faculty_coordinator")?.chapterId : firstOrg?.chapterId) ?? p.chapterId ?? "",
       roleLocked,
       leadershipLabels,
     });
@@ -563,9 +584,10 @@ export default function HqUsersPage() {
                     SIX_ROLES.forEach((r) => {
                       if (!chaptersMap[r.key] && defaultChap) chaptersMap[r.key] = defaultChap;
                     });
-                    const initialSelected = existingKeys.length > 0
-                      ? existingKeys
-                      : [canAssign[0]];
+                    const isFaculty = existingKeys.includes("faculty_coordinator");
+                    const initialSelected = isFaculty
+                      ? ["faculty_coordinator" as RoleKey]
+                      : existingKeys.filter((k) => k !== "student");
                     setRoleModalSelected(initialSelected);
                     setRoleModalChapters(chaptersMap);
                     setRoleModalUser(matched);
@@ -1018,7 +1040,7 @@ export default function HqUsersPage() {
                                 : undefined
                             }
                           >
-                            <Badge tone="cyan">
+                            <Badge tone={r.key === "faculty_coordinator" ? "magenta" : r.key === "student" ? "mute" : r.key === "campus_lead" ? "orange" : "cyan"}>
                               {roleKeyLabel(r.key)}
                               {matchingUr?.createdAt && (
                                 <span className="ml-1 text-[10px] opacity-75 font-mono">
@@ -1030,9 +1052,7 @@ export default function HqUsersPage() {
                         );
                       })
                     ) : (
-                      <span className="text-[11px] text-text-mute">
-                        No roles
-                      </span>
+                      <Badge tone="mute">Student</Badge>
                     )}
                   </div>
                 </div>
@@ -1066,10 +1086,11 @@ export default function HqUsersPage() {
                             }
                           });
                         }
-                        const initialSelected = existingKeys.length > 0
-                          ? existingKeys
-                          : ([(profile as any).roleKey].filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey)));
-                        setRoleModalSelected(initialSelected.length > 0 ? initialSelected : [canAssign[0]]);
+                        const isFaculty = existingKeys.includes("faculty_coordinator");
+                        const initialSelected = isFaculty
+                          ? ["faculty_coordinator" as RoleKey]
+                          : existingKeys.filter((k) => k !== "student");
+                        setRoleModalSelected(initialSelected);
                         setRoleModalChapters(chaptersMap);
                         setRoleModalUser(profile);
                       }}
@@ -1218,7 +1239,6 @@ export default function HqUsersPage() {
           ? campusLeadChapterId
           : (roleModalUser.chapterId || store.chapters[0]?.id || "");
         const canSave =
-          roleModalSelected.length > 0 &&
           chapterNeeded.every((k: RoleKey) => Boolean(roleModalChapters[k] || defaultChap));
         return (
           <Dialog
@@ -1227,44 +1247,77 @@ export default function HqUsersPage() {
             title={`Assign Roles — ${roleModalUser.fullName}`}
             description={
               isCampusLead && lockedChapter
-                ? `Assigning within ${lockedChapter.name} only. Check roles for ${roleModalUser.email}.`
-                : `Check all roles to assign to ${roleModalUser.email}. Multiple roles allowed.`
+                ? `Assigning within ${lockedChapter.name} only. Select elevated roles for ${roleModalUser.email}.`
+                : `Student is default for every account. Assign elevated roles or Faculty for ${roleModalUser.email}.`
             }
           >
             <div className="space-y-4">
+              <div className="p-2.5 rounded-[var(--radius-sm)] bg-bg border border-border text-[11px] text-text-dim">
+                {roleModalSelected.includes("faculty_coordinator") ? (
+                  <span className="text-amber-500 font-medium">
+                    Faculty role assigned: Campus Lead, Class Rep, and Student roles are not assignable. Only Faculty Coordinator remains.
+                  </span>
+                ) : roleModalSelected.length === 0 ? (
+                  <span>
+                    Student is the default role for all accounts. No elevated roles selected.
+                  </span>
+                ) : (
+                  <span>
+                    Student is the default role for all accounts. Additional elevated roles selected below.
+                  </span>
+                )}
+              </div>
+
               {/* Role cards — multi checkbox */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {SIX_ROLES.filter((r) => canAssign.includes(r.key)).map((role) => {
+                  const isFacultySelected = roleModalSelected.includes("faculty_coordinator");
                   const isChecked = roleModalSelected.includes(role.key as RoleKey);
+                  // Campus Lead, Class Rep, and Alumni roles are not assignable when Faculty role is given
+                  const isBlockedByFaculty = isFacultySelected && (role.key === "campus_lead" || role.key === "class_representative" || role.key === "alumni");
+
                   return (
                     <button
                       key={role.key}
                       type="button"
+                      disabled={isBlockedByFaculty}
                       onClick={() => {
+                        if (isBlockedByFaculty) return;
                         if (!isChecked && defaultChap && !roleModalChapters[role.key]) {
                           setRoleModalChapters((prev) => ({ ...prev, [role.key]: defaultChap }));
                         }
-                        setRoleModalSelected((prev) =>
-                          isChecked
-                            ? prev.filter((k) => k !== role.key)
-                            : [...prev, role.key as RoleKey],
-                        );
+                        if (role.key === "faculty_coordinator") {
+                          // Faculty replaces student, campus lead, class rep, and all other roles
+                          setRoleModalSelected(isChecked ? [] : ["faculty_coordinator"]);
+                        } else {
+                          // Selecting other roles removes faculty
+                          setRoleModalSelected((prev) => {
+                            const withoutFaculty = prev.filter((k) => k !== "faculty_coordinator");
+                            return isChecked
+                              ? withoutFaculty.filter((k) => k !== role.key)
+                              : [...withoutFaculty, role.key as RoleKey];
+                          });
+                        }
                       }}
                       className={`flex items-start gap-3 p-3 rounded-[var(--radius-sm)] text-left border transition-all ${
-                        isChecked
-                          ? "border-[var(--accent)] bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30"
-                          : "border-border bg-bg-panel hover:bg-bg hover:border-border-hover"
+                        isBlockedByFaculty
+                          ? "opacity-35 cursor-not-allowed bg-bg/50 border-border"
+                          : isChecked
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30 cursor-pointer"
+                          : "border-border bg-bg-panel hover:bg-bg hover:border-border-hover cursor-pointer"
                       }`}
                     >
                       <span className="mt-0.5 shrink-0">
                         {isChecked ? (
                           <CheckSquare size={15} className="text-[var(--accent)]" />
+                        ) : isBlockedByFaculty ? (
+                          <Square size={15} className="text-text-mute opacity-40" />
                         ) : (
                           <Square size={15} className="text-text-mute" />
                         )}
                       </span>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <p className="text-[12px] font-semibold text-text">{role.label}</p>
                           <span className={`text-[9px] font-mono px-1 py-0.5 rounded ${
                             role.scope === "hq"
@@ -1273,6 +1326,11 @@ export default function HqUsersPage() {
                           }`}>
                             {role.scope === "hq" ? "HQ" : "Chapter"}
                           </span>
+                          {isBlockedByFaculty && (
+                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">
+                              Not assignable (Faculty assigned)
+                            </span>
+                          )}
                         </div>
                         <p className="text-[10px] text-text-dim mt-0.5 leading-snug">{role.powers}</p>
                       </div>
@@ -1322,10 +1380,6 @@ export default function HqUsersPage() {
                 </div>
               ) : null}
 
-              {roleModalSelected.length === 0 ? (
-                <p className="text-[11px] text-text-mute text-center py-1">Select at least one role above.</p>
-              ) : null}
-
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
                 <Button variant="ghost" onClick={() => setRoleModalUser(null)}>Cancel</Button>
                 <Button
@@ -1333,23 +1387,47 @@ export default function HqUsersPage() {
                   disabled={!canSave}
                   onClick={() => {
                     if (!roleModalUser || !canSave) return;
-                    const assignments: UserRoleAssignmentInput[] = roleModalSelected.map((rk) => {
-                      const isHq = SIX_ROLES.find((r) => r.key === rk)?.scope === "hq";
-                      const chap = roleModalChapters[rk] || defaultChap;
-                      return isHq
-                        ? { roleKey: rk }
-                        : { roleKey: rk, chapterId: chap };
-                    });
+                    let assignments: UserRoleAssignmentInput[];
+                    if (roleModalSelected.includes("faculty_coordinator")) {
+                      const isHq = SIX_ROLES.find((r) => r.key === "faculty_coordinator")?.scope === "hq";
+                      const chap = roleModalChapters["faculty_coordinator"] || defaultChap;
+                      assignments = [
+                        isHq
+                          ? { roleKey: "faculty_coordinator" }
+                          : { roleKey: "faculty_coordinator", chapterId: chap },
+                      ];
+                    } else if (roleModalSelected.length === 0) {
+                      assignments = [{ roleKey: "student", chapterId: defaultChap || undefined }];
+                    } else {
+                      assignments = roleModalSelected.map((rk) => {
+                        const isHq = SIX_ROLES.find((r) => r.key === rk)?.scope === "hq";
+                        const chap = roleModalChapters[rk] || defaultChap;
+                        return isHq
+                          ? { roleKey: rk }
+                          : { roleKey: rk, chapterId: chap };
+                      });
+                      assignments.push({ roleKey: "student", chapterId: defaultChap || undefined });
+                    }
                     const res = setUserRoles(roleModalUser.id, assignments);
                     if (res) {
                       setRoleModalUser(null);
-                      flashMsg(`${assignments.length} role(s) assigned successfully`);
+                      flashMsg(
+                        roleModalSelected.includes("faculty_coordinator")
+                          ? "Faculty Coordinator role assigned (student role removed)"
+                          : roleModalSelected.length === 0
+                          ? "Saved as default Student"
+                          : `${roleModalSelected.length} elevated role(s) assigned`
+                      );
                     } else {
                       flashMsg("Could not update roles");
                     }
                   }}
                 >
-                  Assign {roleModalSelected.length > 0 ? `${roleModalSelected.length} Role${roleModalSelected.length > 1 ? "s" : ""}` : "Role"}
+                  {roleModalSelected.includes("faculty_coordinator")
+                    ? "Assign Faculty Role"
+                    : roleModalSelected.length === 0
+                    ? "Save (Default Student)"
+                    : `Assign ${roleModalSelected.length} Role${roleModalSelected.length > 1 ? "s" : ""}`}
                 </Button>
               </div>
             </div>

@@ -108,7 +108,14 @@ export function RoleSwitcher() {
       keys.push(session.roleKey);
     }
 
-    return [...new Set(keys)];
+    const uniqueKeys = [...new Set(keys)];
+    if (uniqueKeys.includes("faculty_coordinator")) {
+      return uniqueKeys.filter((k) => k !== "student");
+    }
+    if (!uniqueKeys.includes("student")) {
+      uniqueKeys.push("student");
+    }
+    return uniqueKeys;
   }, [session, store.userRoles, store.roles]);
 
   const isHqUser = useMemo(() => {

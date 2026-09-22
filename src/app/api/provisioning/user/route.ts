@@ -129,9 +129,28 @@ export async function POST(req: Request) {
 
     const { data: existingProfiles } = await admin
       .from("profiles")
-      .select("id")
+      .select("id, role")
       .eq("email", targetUser.email.trim().toLowerCase())
       .maybeSingle();
+
+    if (existingProfiles && ["campus_lead", "class_representative"].includes(requestedRole)) {
+      const { data: facultyRoles } = await admin
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", existingProfiles.id)
+        .eq("role_key", "faculty_coordinator")
+        .maybeSingle();
+
+      if (facultyRoles || existingProfiles.role === "faculty_coordinator") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Faculty members cannot be assigned as Campus Lead or Class Representative.",
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     if (!existingProfiles) {
       const authUserPayload: {
@@ -205,23 +224,64 @@ export async function POST(req: Request) {
     }
 
     // 6. Assign User Role
-    await admin
-      .from("user_roles")
-      .delete()
-      .eq("user_id", finalUserId)
-      .eq("chapter_id", targetUser.chapterId);
-
-    const { error: roleAssignError } = await admin.from("user_roles").insert({
-      user_id: finalUserId,
-      role_id: roleData.id,
-      role_key: requestedRole,
-      chapter_id: targetUser.chapterId,
-    });
-
     let warning: string | undefined;
-    if (roleAssignError) {
-      console.error("Role assign error:", roleAssignError);
-      warning = `User profile created, but role assignment failed: ${roleAssignError.message}`;
+    if (requestedRole === "faculty_coordinator") {
+      // Faculty replaces all roles (including student); only faculty remains
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", finalUserId);
+
+      const { error: roleAssignError } = await admin.from("user_roles").insert({
+        user_id: finalUserId,
+        role_id: roleData.id,
+        role_key: "faculty_coordinator",
+        chapter_id: targetUser.chapterId,
+      });
+
+      if (roleAssignError) {
+        console.error("Role assign error:", roleAssignError);
+        warning = `User profile created, but role assignment failed: ${roleAssignError.message}`;
+      }
+    } else {
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", finalUserId)
+        .eq("chapter_id", targetUser.chapterId);
+
+      const rolesToInsert: any[] = [
+        {
+          user_id: finalUserId,
+          role_id: roleData.id,
+          role_key: requestedRole,
+          chapter_id: targetUser.chapterId,
+        },
+      ];
+
+      if (requestedRole !== "student") {
+        const { data: studentRole } = await admin
+          .from("roles")
+          .select("id")
+          .eq("key", "student")
+          .maybeSingle();
+
+        if (studentRole) {
+          rolesToInsert.push({
+            user_id: finalUserId,
+            role_id: studentRole.id,
+            role_key: "student",
+            chapter_id: targetUser.chapterId,
+          });
+        }
+      }
+
+      const { error: roleAssignError } = await admin.from("user_roles").insert(rolesToInsert);
+
+      if (roleAssignError) {
+        console.error("Role assign error:", roleAssignError);
+        warning = `User profile created, but role assignment failed: ${roleAssignError.message}`;
+      }
     }
 
     // 7. Auto-link Class Cohort if Class Rep

@@ -3468,56 +3468,105 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ...(patch.mapUrl !== undefined ? { map_url: patch.mapUrl } : {}),
           },
         };
+        let rolesToBroadcast: UserRole[] | null = null;
         setStore((s) => {
           let updatedUserRoles = s.userRoles;
           let updatedProfiles = s.profiles;
-          if (patch.campusLeadId) {
-            const leadId = patch.campusLeadId;
-            updatedProfiles = s.profiles.map((p) =>
-              p.id === leadId ? { ...p, chapterId: id } : p,
-            );
-            const hasRole = updatedUserRoles.some(
-              (ur) => ur.userId === leadId && ur.chapterId === id && ur.roleKey === "campus_lead",
-            );
-            if (!hasRole) {
-              const leadRole = s.roles.find((r) => r.key === "campus_lead");
-              updatedUserRoles = [
-                ...updatedUserRoles.filter(
-                  (ur) => !(ur.chapterId === id && ur.roleKey === "campus_lead"),
-                ),
-                {
-                  id: genUuid(),
-                  userId: leadId,
-                  roleId: leadRole?.id || "role-campus_lead",
-                  roleKey: "campus_lead",
-                  chapterId: id,
-                },
-              ];
+          if (patch.campusLeadId !== undefined) {
+            if (patch.campusLeadId) {
+              const leadId = patch.campusLeadId;
+              const isFaculty = updatedUserRoles.some(
+                (ur) => ur.userId === leadId && ur.roleKey === "faculty_coordinator",
+              );
+              if (!isFaculty) {
+                updatedProfiles = s.profiles.map((p) =>
+                  p.id === leadId ? { ...p, chapterId: id } : p,
+                );
+                const hasRole = updatedUserRoles.some(
+                  (ur) => ur.userId === leadId && ur.chapterId === id && ur.roleKey === "campus_lead",
+                );
+                const leadRole = s.roles.find((r) => r.key === "campus_lead");
+                updatedUserRoles = [
+                  ...updatedUserRoles.filter(
+                    (ur) => !(ur.chapterId === id && ur.roleKey === "campus_lead"),
+                  ),
+                  ...(hasRole
+                    ? []
+                    : [
+                        {
+                          id: genUuid(),
+                          userId: leadId,
+                          roleId: leadRole?.id || "role-campus_lead",
+                          roleKey: "campus_lead" as RoleKey,
+                          chapterId: id,
+                        },
+                      ]),
+                ];
+              }
+            } else {
+              // Campus lead cleared
+              updatedUserRoles = updatedUserRoles.filter(
+                (ur) => !(ur.chapterId === id && ur.roleKey === "campus_lead"),
+              );
             }
           }
-          if (patch.facultyId) {
-            const facId = patch.facultyId;
-            const hasRole = updatedUserRoles.some(
-              (ur) => ur.userId === facId && ur.roleKey === "faculty_coordinator",
-            );
-            if (!hasRole) {
+          if (patch.facultyId !== undefined) {
+            if (patch.facultyId) {
+              const facId = patch.facultyId;
               const facRole = s.roles.find((r) => r.key === "faculty_coordinator");
+              // Mutual exclusivity: remove all student, campus_lead, class_rep roles for facId
               updatedUserRoles = [
-                ...updatedUserRoles,
+                ...updatedUserRoles.filter(
+                  (ur) => !(ur.chapterId === id && ur.roleKey === "faculty_coordinator") && ur.userId !== facId,
+                ),
                 {
                   id: genUuid(),
                   userId: facId,
                   roleId: facRole?.id || "role-faculty_coordinator",
-                  roleKey: "faculty_coordinator",
+                  roleKey: "faculty_coordinator" as RoleKey,
                   chapterId: id,
                 },
               ];
+              updatedProfiles = updatedProfiles.map((p) =>
+                p.id === facId ? { ...p, role: "faculty_coordinator", chapterId: id } : p,
+              );
+            } else {
+              // Faculty cleared
+              updatedUserRoles = updatedUserRoles.filter(
+                (ur) => !(ur.chapterId === id && ur.roleKey === "faculty_coordinator"),
+              );
             }
           }
+
+          if (updatedUserRoles !== s.userRoles) {
+            rolesToBroadcast = updatedUserRoles;
+          }
+
+          let nextSession = s.session;
+          const affectedUsers = [
+            patch.campusLeadId,
+            patch.facultyId,
+            prevChapter.campusLeadId,
+            prevChapter.facultyId,
+          ].filter(Boolean);
+          if (
+            affectedUsers.includes(s.session.userId) ||
+            (s.session.authUserId && affectedUsers.includes(s.session.authUserId))
+          ) {
+            nextSession = recalculateUserSession(
+              s.session,
+              updatedUserRoles,
+              s.roles,
+              updatedProfiles,
+              s.session.userId,
+            );
+          }
+
           return {
             ...s,
             profiles: updatedProfiles,
             userRoles: updatedUserRoles,
+            session: nextSession,
             chapters: s.chapters.map((c) => (c.id === id ? updated : c)),
             activityLogs: [
               log(
@@ -3531,6 +3580,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ],
           };
         });
+        if (rolesToBroadcast) {
+          broadcastChange("user_roles", "UPDATE", rolesToBroadcast);
+        }
         void runPersist(persistChapter(updated), {
           errorMessage: `Failed to update chapter "${updated.name}"`,
           rollback: () => {
@@ -4746,6 +4798,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           badges: [],
         };
         const orgId = input.organizationId ?? store.organization.id;
+        const isFaculty = role.key === "faculty_coordinator";
         const userRole: UserRole = {
           id: genUuid(),
           userId: id,
@@ -4753,10 +4806,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           chapterId: isHq ? undefined : input.chapterId,
           organizationId: isHq ? orgId : undefined,
         };
+        const userRolesToAdd: UserRole[] = [userRole];
+        if (!isFaculty && role.key !== "student") {
+          const studentRole = store.roles.find((r) => r.key === "student");
+          if (studentRole) {
+            userRolesToAdd.push({
+              id: genUuid(),
+              userId: id,
+              roleId: studentRole.id,
+              roleKey: "student",
+              chapterId: isHq ? undefined : input.chapterId,
+            });
+          }
+        }
         setStore((s) => ({
           ...s,
           profiles: [profile, ...s.profiles],
-          userRoles: [...s.userRoles, userRole],
+          userRoles: [...s.userRoles, ...userRolesToAdd],
           chapters: s.chapters.map((c) =>
             c.id === input.chapterId
               ? { ...c, memberCount: c.memberCount + 1 }
@@ -4916,10 +4982,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const profile = store.profiles.find((p) => p.id === userId);
         if (!profile) return false;
         const prevUserRoles = store.userRoles;
+
+        const hasFaculty = assignments.some((a) => a.roleKey === "faculty_coordinator");
+        let effectiveAssignments = assignments;
+
+        if (hasFaculty) {
+          // Faculty role replaces student role automatically; only faculty role remains
+          effectiveAssignments = assignments.filter((a) => a.roleKey === "faculty_coordinator");
+        } else {
+          // Student role is default for all non-faculty accounts; cannot be removed
+          if (!effectiveAssignments.some((a) => a.roleKey === "student")) {
+            const chapId = effectiveAssignments[0]?.chapterId || profile.chapterId || store.chapters[0]?.id || "";
+            effectiveAssignments = [
+              ...effectiveAssignments,
+              { roleKey: "student", chapterId: chapId },
+            ];
+          }
+        }
+
         const built: UserRole[] = [];
         let assignedChapId: string | undefined = undefined;
 
-        for (const a of assignments) {
+        for (const a of effectiveAssignments) {
           let role = store.roles.find((r) => r.key === a.roleKey);
           const isHq = ["founder", "hq_admin"].includes(a.roleKey);
           if (!role) {
@@ -4954,14 +5038,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
         setStore((s) => {
           const others = s.userRoles.filter((ur) => ur.userId !== userId);
-          const leadershipLinked = s.userRoles.filter(
-            (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
-          );
+          // If faculty, clear any leadership roles as faculty only holds faculty
+          const leadershipLinked = hasFaculty
+            ? []
+            : s.userRoles.filter(
+                (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
+              );
           const nextUserRoles = [...others, ...built, ...leadershipLinked];
-          const updatedProfiles = assignedChapId
-            ? s.profiles.map((p) => (p.id === userId ? { ...p, chapterId: assignedChapId } : p))
-            : s.profiles;
-          const roleSummary = assignments.map((a) => a.roleKey).join(", ") || "none";
+          const updatedProfiles = s.profiles.map((p) => {
+            if (p.id !== userId) return p;
+            return {
+              ...p,
+              chapterId: assignedChapId || p.chapterId,
+              role: hasFaculty ? "faculty_coordinator" : (built.find((b) => b.roleKey !== "student")?.roleKey || "student"),
+            };
+          });
+          const roleSummary = effectiveAssignments.map((a) => a.roleKey).join(", ") || "none";
 
           let nextSession = s.session;
           if (userId === s.session.userId || userId === s.session.authUserId) {
@@ -4995,7 +5087,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         broadcastChange("user_roles", "UPDATE", built);
 
         void runPersist(
-          persistUserRoles(userId, assignments, store.organization.id),
+          persistUserRoles(userId, effectiveAssignments, store.organization.id),
           {
             errorMessage: `Failed to update roles for user ${userId}`,
             rollback: () => {
@@ -5220,6 +5312,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           store.profiles.some((p) => p.id === id),
         );
         if (!repsOk) return null;
+        const hasFacultyRep = repIds.some((rId) => {
+          const p = store.profiles.find((prof) => prof.id === rId);
+          if (p?.role === "faculty_coordinator") return true;
+          return (store.userRoles ?? []).some(
+            (ur) => ur.userId === rId && ur.roleKey === "faculty_coordinator",
+          );
+        });
+        if (hasFacultyRep) return null;
         const cohortId = input.id && isUuid(input.id) ? input.id : genUuid();
         const cohort: ClassCohort = {
           id: cohortId,
@@ -5264,6 +5364,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               .filter(Boolean),
           ),
         ].slice(0, 2);
+        const hasFacultyRep = repIds.some((rId) => {
+          const p = store.profiles.find((prof) => prof.id === rId);
+          if (p?.role === "faculty_coordinator") return true;
+          return (store.userRoles ?? []).some(
+            (ur) => ur.userId === rId && ur.roleKey === "faculty_coordinator",
+          );
+        });
+        if (hasFacultyRep) return false;
         const next: ClassCohort & { boyRepId?: string; girlRepId?: string; representativeId?: string } = {
           id: existing.id,
           chapterId: existing.chapterId,

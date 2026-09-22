@@ -24,6 +24,8 @@ import {
   Shield,
   GraduationCap,
   Tag,
+  ExternalLink,
+  ChevronDown,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -213,6 +215,21 @@ export default function ChapterStudentsPage({
       if ((p.status as unknown as string) === "disabled") status = "unclaimed";
       else if ((p.status as unknown as string) === "pending") status = "pending";
 
+      const isExecutiveLead =
+        roleInfo.label.toLowerCase().includes("lead") ||
+        roleInfo.label.toLowerCase().includes("coordinator") ||
+        roleInfo.label.toLowerCase().includes("chairman");
+
+      const rawVolunteerTag = vol.isVolunteer ? vol.effectiveTag : undefined;
+      // Prevent duplicate or clashing badges: only show volunteerTag if distinct from role label and not a duplicate lead tag
+      const volunteerTag =
+        rawVolunteerTag &&
+        rawVolunteerTag.toLowerCase() !== roleInfo.label.toLowerCase() &&
+        !rawVolunteerTag.toLowerCase().includes("lead") &&
+        !isExecutiveLead
+          ? rawVolunteerTag
+          : undefined;
+
       return {
         id: p.id,
         elevatesId,
@@ -226,7 +243,7 @@ export default function ChapterStudentsPage({
         interests: p.interests || [],
         status,
         roleInfo,
-        volunteerTag: vol.isVolunteer ? vol.effectiveTag : undefined,
+        volunteerTag,
         collectedAt: new Date().toISOString().split("T")[0],
         createdAt: p.createdAt,
         joinedAt: p.joinedAt || p.createdAt,
@@ -504,30 +521,14 @@ export default function ChapterStudentsPage({
               <Download size={14} /> Export CSV
             </Button>
             {session.roleKey !== "class_representative" && (
-              <>
-                <Link href="/referrals">
-                  <Button
-                    variant="secondary"
-                    className="flex items-center gap-1.5 text-xs"
-                  >
-                    <UserPlus size={14} /> Invite Students
-                  </Button>
-                </Link>
+              <Link href="/referrals">
                 <Button
                   variant="secondary"
-                  onClick={() => setIsBulkOpen(true)}
                   className="flex items-center gap-1.5 text-xs"
                 >
-                  <FileSpreadsheet size={14} /> Bulk CSV Import
+                  <UserPlus size={14} /> Invite Students
                 </Button>
-                <Button
-                  variant="orange"
-                  onClick={() => setIsAdding(true)}
-                  className="flex items-center gap-1.5 text-xs"
-                >
-                  <Plus size={14} /> Add Member
-                </Button>
-              </>
+              </Link>
             )}
           </div>
         }
@@ -603,88 +604,43 @@ export default function ChapterStudentsPage({
         )}
       </div>
 
-      {/* Modern Filter Toolbar */}
-      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/60 p-4 shadow-[var(--shadow-sm)] space-y-3.5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="relative w-full lg:max-w-md">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute" />
+      {/* Modern Unified Filter Toolbar */}
+      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/70 p-3 sm:p-3.5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search Input */}
+          <div className="relative min-w-[240px] max-w-md flex-1">
+            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={
                 session.roleKey === "class_representative"
-                  ? "Search by Elevates ID (ELV-...), name, email, or phone..."
-                  : "Search by Elevates ID, name, email, role, or phone..."
+                  ? "Search ID, name, email, or phone..."
+                  : "Search ID, name, email, or role..."
               }
-              className="pl-9 pr-9 text-xs h-9 rounded-full bg-bg-page/70 border-border/60 focus:bg-bg-panel transition-all"
+              className="h-9 pl-9 pr-8 text-xs rounded-xl bg-bg-page/70 border-border/70 hover:border-border focus:bg-bg-panel focus:border-[var(--accent)] transition-all placeholder:text-text-mute/80"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-mute hover:text-text p-0.5 rounded-full"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-mute hover:text-text p-1 rounded-full cursor-pointer"
                 title="Clear search"
               >
-                <X size={13} />
+                <X size={12} />
               </button>
             )}
           </div>
 
-          {/* Status Segmented Pills */}
-          <div className="inline-flex items-center gap-1 rounded-full bg-bg-page/80 p-1 border border-border/50 self-start lg:self-auto">
-            {(["all", "claimed", "unclaimed"] as const).map((st) => {
-              const isActive = filterStatus === st;
-              const count =
-                st === "all"
-                  ? chapterMembers.length
-                  : st === "claimed"
-                    ? activeSyncedCount
-                    : pendingCount;
-              const label =
-                st === "all"
-                  ? "All"
-                  : st === "claimed"
-                    ? "Active Synced"
-                    : "Unclaimed";
-              return (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => setFilterStatus(st)}
-                  className={cn(
-                    "h-7 rounded-full px-3 text-xs font-semibold transition-all inline-flex items-center gap-1.5",
-                    isActive
-                      ? "bg-[var(--accent)] text-white shadow-sm"
-                      : "text-text-dim hover:text-text hover:bg-bg-panel"
-                  )}
-                >
-                  <span>{label}</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.2 text-[10px]",
-                      isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-bg-panel text-text-mute border border-border/40"
-                    )}
-                  >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Filter Controls: Department & Role & Reset */}
-        {session.roleKey !== "class_representative" && (
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-border/40">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-text-dim">Dept:</span>
+          {/* Department Filter Chip */}
+          {session.roleKey !== "class_representative" && (
+            <div className="relative inline-flex items-center">
+              <div className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-bg-page/70 pl-2.5 pr-7 text-xs text-text hover:border-border transition-colors focus-within:border-[var(--accent)]">
+                <GraduationCap size={13} className="text-text-mute shrink-0" />
                 <select
                   value={selectedDepartmentFilter}
                   onChange={(e) => setSelectedDepartmentFilter(e.target.value)}
-                  className="h-7 rounded-lg border border-border/60 bg-bg-page px-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  className="bg-transparent text-xs text-text font-medium focus:outline-none cursor-pointer appearance-none"
                 >
                   <option value="all">All Departments ({chapterMembers.length})</option>
                   {chapterDepartments.map((dept) => {
@@ -700,25 +656,31 @@ export default function ChapterStudentsPage({
                   {chapterMembers.some(
                     (s) => !s.department || s.department.toLowerCase() === "unassigned"
                   ) && (
-                      <option value="Unassigned">
-                        Unassigned (
-                        {
-                          chapterMembers.filter(
-                            (s) => !s.department || s.department.toLowerCase() === "unassigned"
-                          ).length
-                        }
-                        )
-                      </option>
-                    )}
+                    <option value="Unassigned">
+                      Unassigned (
+                      {
+                        chapterMembers.filter(
+                          (s) => !s.department || s.department.toLowerCase() === "unassigned"
+                        ).length
+                      }
+                      )
+                    </option>
+                  )}
                 </select>
+                <ChevronDown size={12} className="text-text-mute pointer-events-none absolute right-2.5" />
               </div>
+            </div>
+          )}
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium text-text-dim">Role:</span>
+          {/* Role Filter Chip */}
+          {session.roleKey !== "class_representative" && (
+            <div className="relative inline-flex items-center">
+              <div className="flex h-9 items-center gap-1.5 rounded-xl border border-border/70 bg-bg-page/70 pl-2.5 pr-7 text-xs text-text hover:border-border transition-colors focus-within:border-[var(--accent)]">
+                <Shield size={13} className="text-text-mute shrink-0" />
                 <select
                   value={selectedRoleFilter}
                   onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                  className="h-7 rounded-lg border border-border/60 bg-bg-page px-2.5 text-xs text-text focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  className="bg-transparent text-xs text-text font-medium focus:outline-none cursor-pointer appearance-none"
                 >
                   <option value="all">All Roles</option>
                   <option value="campus lead">Campus Lead</option>
@@ -726,147 +688,93 @@ export default function ChapterStudentsPage({
                   <option value="class rep">Class Representative</option>
                   <option value="student">Student Member</option>
                 </select>
+                <ChevronDown size={12} className="text-text-mute pointer-events-none absolute right-2.5" />
               </div>
-
-              {(selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all" || search || filterStatus !== "all") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    setFilterStatus("all");
-                    setSelectedDepartmentFilter("all");
-                    setSelectedRoleFilter("all");
-                  }}
-                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] hover:underline font-medium ml-1"
-                >
-                  <RotateCcw size={11} /> Reset filters
-                </button>
-              )}
             </div>
+          )}
 
-            <div className="text-[11px] text-text-dim font-medium">
-              Showing <strong className="text-text font-semibold">{filteredStudents.length}</strong> of {chapterMembers.length} members
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Multi-Select Action Bar */}
-      {selectedStudentIds.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-xl)] border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-3.5 shadow-sm animate-fade-in">
-          <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent)] text-white text-[11px] font-bold">
-              {selectedStudentIds.length}
-            </span>
-            <span className="text-xs font-semibold text-text">
-              member{selectedStudentIds.length > 1 ? "s" : ""} selected
-            </span>
+          {/* Reset Filters Button */}
+          {(selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all" || search) && (
             <button
               type="button"
-              onClick={() => setSelectedStudentIds([])}
-              className="text-[11px] text-text-dim hover:text-text underline ml-1"
+              onClick={() => {
+                setSearch("");
+                setFilterStatus("all");
+                setSelectedDepartmentFilter("all");
+                setSelectedRoleFilter("all");
+              }}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--accent)]/10 px-2.5 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/20 transition-colors cursor-pointer"
+              title="Reset all filters"
             >
-              Clear selection
+              <RotateCcw size={12} />
+              <span>Reset</span>
             </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={handleBatchReject} className="h-8 px-3 text-xs text-red-500 hover:bg-red-500/10">
-              Reject Selected
-            </Button>
-            <Button variant="orange" onClick={handleBatchApprove} className="h-8 px-3 text-xs">
-              <CheckCircle size={14} className="mr-1.5" /> Accept & Sync ({selectedStudentIds.length})
-            </Button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Student & Member List Table */}
-      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/60 p-4 sm:p-5 shadow-[var(--shadow)] overflow-hidden">
+      <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/70 shadow-[var(--shadow)] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-left text-xs">
+          <table className="w-full min-w-[760px] text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border text-text-dim">
-                <th className="pb-3 w-8">
-                  <input
-                    type="checkbox"
-                    checked={
-                      filteredStudents.length > 0 &&
-                      selectedStudentIds.length === filteredStudents.length
-                    }
-                    onChange={toggleSelectAll}
-                    className="rounded border-border"
-                  />
+              <tr className="border-b border-border/70 bg-bg-page/50 text-text-dim text-[11px] font-semibold uppercase tracking-wider">
+                <th className="py-3.5 pl-5 pr-3 w-36">Member ID</th>
+                <th className="py-3.5 px-3 min-w-[220px]">
+                  {session.roleKey === "class_representative" ? "Member Details" : "Member & Role"}
                 </th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Member ID</th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">
-                  {session.roleKey === "class_representative" ? "Member Details" : "Member Details & Role"}
-                </th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Contact</th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Academic Cohort</th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Skills / Focus</th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider">Account Status</th>
-                <th className="pb-3 font-semibold text-[11px] uppercase tracking-wider text-right">Actions</th>
+                <th className="py-3.5 px-3 w-52">Contact</th>
+                <th className="py-3.5 px-3 w-44">Academic Cohort</th>
+                <th className="py-3.5 px-3 w-36">Skills / Focus</th>
+                <th className="py-3.5 pr-5 pl-3 w-36">Account Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
               {filteredStudents.length > 0 ? (
                 filteredStudents.map((stu) => {
-                  const isSelected = selectedStudentIds.includes(stu.id);
                   const isCopied = copiedId === stu.elevatesId;
 
                   return (
                     <tr
                       key={stu.id}
-                      className={cn(
-                        "group hover:bg-bg-page/70 transition-colors",
-                        isSelected && "bg-[var(--accent)]/5"
-                      )}
+                      className="group hover:bg-bg-page/60 transition-colors"
                     >
-                      <td className="py-3.5">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectStudent(stu.id)}
-                          className="rounded border-border"
-                        />
-                      </td>
-
-                      <td className="py-3.5">
+                      <td className="py-3.5 pl-5 pr-3">
                         <button
                           type="button"
                           onClick={() => copyToClipboard(stu.elevatesId)}
-                          className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 hover:bg-[var(--accent)]/20 transition-colors inline-flex items-center gap-1.5"
-                          title="Click to copy Member ID"
+                          className="group/id inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-bg-page/70 px-2 py-1 font-mono text-[11px] font-semibold text-text-dim transition-all hover:border-[var(--accent)] hover:bg-bg-panel hover:text-text shadow-2xs"
+                          title="Click to copy Elevates ID"
                         >
                           <span>{stu.elevatesId}</span>
                           {isCopied ? (
                             <Check size={11} className="text-emerald-500" />
                           ) : (
-                            <Copy size={11} className="opacity-60 group-hover:opacity-100" />
+                            <Copy size={11} className="text-text-mute opacity-40 group-hover/id:opacity-100 transition-opacity" />
                           )}
                         </button>
                       </td>
 
-                      <td className="py-3.5">
-                        <div className="flex items-center gap-2.5">
-                          <span className="flex h-8 w-8 items-center justify-center shrink-0 overflow-hidden rounded-full bg-[var(--secondary-soft)] text-xs font-bold text-[var(--secondary)]">
+                      <td className="py-3.5 px-3">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-bold text-[var(--accent-hover)] shadow-2xs">
                             {initials(stu.fullName)}
                           </span>
-                          <div>
+                          <div className="min-w-0">
                             <Link
                               href={`/profile/${stu.elevatesId || stu.id}`}
-                              className="font-semibold text-text hover:text-[var(--accent)] hover:underline transition-colors block text-xs"
+                              className="font-semibold text-text hover:text-[var(--accent)] hover:underline transition-colors block text-xs truncate max-w-[200px]"
                             >
                               {stu.fullName}
                             </Link>
                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
                               {session.roleKey !== "class_representative" && (
-                                <Badge tone={stu.roleInfo.tone}>
+                                <Badge tone={stu.roleInfo.tone} className="text-[10px] px-2 py-0.5 font-medium">
                                   {stu.roleInfo.label}
                                 </Badge>
                               )}
                               {stu.volunteerTag && (
-                                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 text-[10px] font-semibold">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 text-[10px] font-medium">
                                   <Tag size={9} />
                                   {stu.volunteerTag}
                                 </span>
@@ -881,105 +789,92 @@ export default function ChapterStudentsPage({
                         </div>
                       </td>
 
-                      <td className="py-3.5 text-text-dim">
+                      <td className="py-3.5 px-3">
                         <div className="flex flex-col gap-0.5">
+                          <a
+                            href={`mailto:${stu.email}`}
+                            className="inline-flex items-center gap-1.5 text-xs text-text hover:text-[var(--accent)] hover:underline truncate max-w-[190px]"
+                            title={stu.email}
+                          >
+                            <Mail size={12} className="text-text-mute shrink-0" />
+                            <span className="truncate">{stu.email || "No email"}</span>
+                          </a>
                           {stu.phone ? (
                             <a
                               href={`tel:${stu.phone}`}
-                              className="flex items-center gap-1 text-text hover:underline text-xs"
+                              className="inline-flex items-center gap-1.5 text-[11px] text-text-dim hover:text-text hover:underline"
                             >
-                              <Phone size={11} className="text-text-mute shrink-0" /> {stu.phone}
+                              <Phone size={11} className="text-text-mute shrink-0" />
+                              <span>{stu.phone}</span>
                             </a>
                           ) : (
-                            <span className="text-[11px] text-text-mute">—</span>
+                            <span className="text-[10px] text-text-mute/60 pl-4.5">—</span>
                           )}
-                          <a
-                            href={`mailto:${stu.email}`}
-                            className="flex items-center gap-1 text-[11px] text-text-dim hover:text-[var(--accent)]"
-                          >
-                            <Mail size={11} className="text-text-mute shrink-0" /> {stu.email}
-                          </a>
                         </div>
                       </td>
 
-                      <td className="py-3.5 text-text">
+                      <td className="py-3.5 px-3">
                         <div>
-                          <p className="font-semibold text-text">{stu.department}</p>
-                          <p className="text-[11px] text-text-dim">
+                          <p className="font-semibold text-xs text-text truncate max-w-[170px]" title={stu.department}>
+                            {stu.department}
+                          </p>
+                          <p className="text-[11px] text-text-dim mt-0.5">
                             {stu.year} {stu.section ? `· Sec ${stu.section}` : ""}
                           </p>
                         </div>
                       </td>
 
-                      <td className="py-3.5">
-                        <div className="flex flex-wrap gap-1 max-w-xs">
+                      <td className="py-3.5 px-3">
+                        <div className="flex flex-wrap items-center gap-1">
                           {stu.skills.length > 0 ? (
-                            stu.skills.slice(0, 3).map((sk) => (
-                              <span
-                                key={sk}
-                                className="rounded-md bg-bg-page border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-text-dim"
-                              >
-                                {sk}
-                              </span>
-                            ))
+                            <>
+                              {stu.skills.slice(0, 2).map((sk) => (
+                                <span
+                                  key={sk}
+                                  className="rounded-full bg-bg-page border border-border/70 px-2 py-0.5 text-[10px] font-medium text-text-dim"
+                                >
+                                  {sk}
+                                </span>
+                              ))}
+                              {stu.skills.length > 2 && (
+                                <span
+                                  className="rounded-full bg-bg-page border border-border/70 px-1.5 py-0.5 text-[10px] font-semibold text-text-mute hover:text-text cursor-default"
+                                  title={stu.skills.slice(2).join(", ")}
+                                >
+                                  +{stu.skills.length - 2}
+                                </span>
+                              )}
+                            </>
                           ) : (
                             <span className="text-[11px] text-text-mute">—</span>
                           )}
-                          {stu.skills.length > 3 && (
-                            <span className="rounded-md bg-bg-page border border-border/60 px-1 py-0.5 text-[10px] font-medium text-text-mute">
-                              +{stu.skills.length - 3}
-                            </span>
-                          )}
                         </div>
                       </td>
 
-                      <td className="py-3.5">
+                      <td className="py-3.5 pr-5 pl-3">
                         {stu.status === "claimed" ? (
-                          <Badge tone="green">
-                            <UserCheck size={11} className="mr-1" /> Active Profile
-                          </Badge>
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Active Profile
+                          </span>
                         ) : stu.status === "pending" ? (
-                          <Badge tone="orange">
-                            <Clock size={11} className="mr-1" /> Pending Approval
-                          </Badge>
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Pending Approval
+                          </span>
                         ) : (
-                          <Badge tone="orange">
-                            <Clock size={11} className="mr-1" /> Unclaimed
-                          </Badge>
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Unclaimed
+                          </span>
                         )}
-                      </td>
-
-                      <td className="py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {stu.status === "unclaimed" && (
-                            <Button
-                              variant="orange"
-                              size="sm"
-                              onClick={() => handleSyncToProfile(stu)}
-                              className="h-7 px-2.5 text-[11px]"
-                            >
-                              <Sparkles size={12} className="mr-1" /> Sync
-                            </Button>
-                          )}
-                          {canDelete && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(stu.id)}
-                              className="h-7 px-2 text-red-500 hover:bg-red-50 hover:text-red-600"
-                              title="Remove member from chapter"
-                            >
-                              <Trash2 size={13} />
-                            </Button>
-                          )}
-                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-text-dim">
+                  <td colSpan={6} className="py-12 text-center text-text-dim">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg-page border border-border/60 mx-auto mb-3 text-text-mute">
                       <Users size={22} />
                     </div>
@@ -987,7 +882,7 @@ export default function ChapterStudentsPage({
                     <p className="text-xs text-text-mute mt-1 max-w-sm mx-auto">
                       {search || filterStatus !== "all" || selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all"
                         ? "No students match your active filter criteria. Try clearing search or resetting filters."
-                        : "No students registered in this chapter yet. Use 'Add Member' or 'Bulk CSV Import' to get started."}
+                        : "No students registered in this chapter yet. Use 'Add Member' to get started."}
                     </p>
                     {(search || filterStatus !== "all" || selectedDepartmentFilter !== "all" || selectedRoleFilter !== "all") && (
                       <Button

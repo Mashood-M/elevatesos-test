@@ -23,11 +23,14 @@ import {
   ChevronRight,
   Filter,
   GraduationCap,
+  Layers,
   Lock,
+  Pencil,
   Plus,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserCheck,
   UserMinus,
   Users,
@@ -56,15 +59,9 @@ function draftToRepIds(d: Draft): string[] {
 
 const DEFAULT_STANDARD_DEPARTMENTS = [
   "Computer Science & Engineering (CSE)",
-  "Information Technology (IT)",
   "Electronics & Communication Engineering (ECE)",
-  "Electrical & Electronics Engineering (EEE)",
   "Mechanical Engineering (ME)",
   "Civil Engineering (CE)",
-  "Artificial Intelligence & Data Science (AI & DS)",
-  "Biotechnology (BT)",
-  "Chemical Engineering (CHE)",
-  "Common / First Year",
 ];
 
 export default function ChapterClassesPage({
@@ -125,6 +122,12 @@ export default function ChapterClassesPage({
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [store.departments, chapter]);
+
+  const unaddedStandardDepts = useMemo(() => {
+    return standardDeptOptions.filter(
+      (dept) => !departments.some((d) => d.name.trim().toLowerCase() === dept.trim().toLowerCase()),
+    );
+  }, [standardDeptOptions, departments]);
 
   const cohorts = useMemo(() => {
     if (!chapter) return [];
@@ -774,162 +777,121 @@ export default function ChapterClassesPage({
           accent="orange"
           className="mb-6"
         >
-          <div className="space-y-5">
-            {/* Header info */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)]">
-                  <Building2 size={18} />
+          <div className="space-y-6">
+            {/* Header info & Quick CTA */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)] shrink-0 shadow-2xs">
+                  <Building2 size={20} />
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-text">
                     College Academic Departments
                   </h3>
-                  <p className="text-[12px] text-text-dim">
-                    Pick from standard college departments or add custom ones. Saved to Supabase for this chapter only.
+                  <p className="text-xs text-text-dim mt-0.5">
+                    Add standard college branches or create custom departments for {chapter.name}.
                   </p>
                 </div>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="text-xs"
-                onClick={handleAddAllStandardDepts}
-              >
-                <Sparkles size={13} className="text-[var(--accent)]" />
-                <span>Add All Standard Depts</span>
-              </Button>
+              {unaddedStandardDepts.length > 0 ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-3 text-xs font-semibold"
+                  onClick={handleAddAllStandardDepts}
+                >
+                  <Sparkles size={13} className="text-[var(--accent)] mr-1.5" />
+                  <span>Add All Standard Depts</span>
+                </Button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                  <CheckCircle2 size={13} />
+                  <span>All Standard Depts Added</span>
+                </span>
+              )}
             </div>
 
             {deptError ? (
-              <p className="rounded-[12px] bg-red-500/10 border border-red-500/25 px-3 py-2 text-xs text-red-500 font-medium">
-                {deptError}
+              <p className="rounded-xl bg-red-500/10 border border-red-500/25 px-3.5 py-2 text-xs text-red-500 font-medium animate-fade-in flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{deptError}</span>
               </p>
             ) : null}
 
-            {/* Option 1: Select from standard college departments */}
-            <div className="rounded-[16px] bg-bg/70 border border-border p-4 space-y-3">
-              <p className="text-xs font-bold text-text flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
-                  1
-                </span>
-                Select from Standard College Department List:
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Select
-                  className="max-w-md text-xs bg-bg-panel"
-                  value={selectedStandardDept}
-                  onChange={(e) => setSelectedStandardDept(e.target.value)}
-                >
-                  <option value="">-- Choose from standard college list --</option>
-                  {standardDeptOptions.map((dept) => {
-                    const alreadyAdded = departments.some(
-                      (d) => d.name.trim().toLowerCase() === dept.trim().toLowerCase(),
-                    );
-                    return (
-                      <option key={dept} value={dept} disabled={alreadyAdded}>
-                        {dept} {alreadyAdded ? "(Already added)" : ""}
-                      </option>
-                    );
-                  })}
-                </Select>
+            {/* Smart Unified Add Department Bar */}
+            <div className="rounded-[var(--radius-xl)] bg-bg-page/60 border border-border/70 p-4 shadow-xs space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <div className="relative flex-1">
+                  <Building2 size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute" />
+                  <Input
+                    className="pl-9.5 pr-4 h-10 text-xs rounded-xl bg-bg-panel border-border/80 focus:border-[var(--accent)] placeholder:text-text-mute/80"
+                    placeholder="Type a custom department name (e.g. Biomedical Engineering, Architecture)..."
+                    value={newDeptName}
+                    onChange={(e) => {
+                      setNewDeptName(e.target.value);
+                      if (deptError) setDeptError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") addCustomDepartment();
+                    }}
+                  />
+                </div>
                 <Button
                   variant="orange"
-                  size="sm"
-                  onClick={() => handleAddStandardDept(selectedStandardDept)}
-                  disabled={!selectedStandardDept}
-                  className="text-xs"
+                  onClick={addCustomDepartment}
+                  disabled={!newDeptName.trim()}
+                  className="h-10 px-4 text-xs font-semibold rounded-xl shrink-0 cursor-pointer"
                 >
-                  Add Selected
+                  <Plus size={14} className="mr-1.5" /> Add Department
                 </Button>
               </div>
 
-              {/* Quick-add chips */}
-              <div className="pt-1">
-                <p className="text-[11px] text-text-dim mb-2">
-                  Quick-add chips (click to add to your chapter):
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {standardDeptOptions.map((dept) => {
-                    const isAdded = departments.some(
-                      (d) => d.name.trim().toLowerCase() === dept.trim().toLowerCase(),
-                    );
-                    return (
+              {/* Quick-Add Chips for Unadded Standard Departments */}
+              {unaddedStandardDepts.length > 0 && (
+                <div className="pt-1.5 border-t border-border/40">
+                  <p className="text-[11px] font-medium text-text-dim mb-2 flex items-center gap-1.5">
+                    <Sparkles size={11} className="text-[var(--accent)]" />
+
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unaddedStandardDepts.map((dept) => (
                       <button
                         key={dept}
                         type="button"
-                        onClick={() => !isAdded && handleAddStandardDept(dept)}
-                        disabled={isAdded}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition ${isAdded
-                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 cursor-default"
-                            : "bg-bg-panel hover:bg-[var(--accent)]/10 text-text-dim hover:text-[var(--accent)] border border-border hover:border-[var(--accent)]/30 cursor-pointer active:scale-95"
-                          }`}
+                        onClick={() => handleAddStandardDept(dept)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-bg-panel hover:bg-[var(--accent)]/10 text-text-dim hover:text-[var(--accent)] border border-border/80 hover:border-[var(--accent)]/30 transition-all cursor-pointer shadow-2xs hover:scale-[1.02] active:scale-95"
+                        title={`Click to add ${dept}`}
                       >
-                        {isAdded ? (
-                          <>
-                            <Check size={11} className="text-emerald-500" />
-                            <span>{dept}</span>
-                            <span className="text-[9px] opacity-75 font-normal">(Added)</span>
-                          </>
-                        ) : (
-                          <>
-                            <Plus size={11} className="text-[var(--accent)]" />
-                            <span>{dept}</span>
-                          </>
-                        )}
+                        <Plus size={11} className="text-[var(--accent)]" />
+                        <span>{dept}</span>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Option 2: Add custom department */}
-            <div className="rounded-[16px] bg-bg/70 border border-border p-4 space-y-2">
-              <p className="text-xs font-bold text-text flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
-                  2
-                </span>
-                Add Other Department (Custom for this chapter only):
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  className="max-w-md text-xs bg-bg-panel"
-                  placeholder="e.g. Biomedical Engineering, Robotics, Architecture..."
-                  value={newDeptName}
-                  onChange={(e) => setNewDeptName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addCustomDepartment();
-                  }}
-                />
-                <Button
-                  variant="orange"
-                  size="sm"
-                  onClick={addCustomDepartment}
-                  disabled={!newDeptName.trim()}
-                  className="text-xs"
-                >
-                  <Plus size={13} /> Add Custom Department
-                </Button>
+            {/* Configured Departments List */}
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-text-dim flex items-center gap-2">
+                  <span>Configured Departments</span>
+                  <span className="rounded-full bg-bg-page border border-border/70 px-2 py-0.2 text-[10px] font-mono font-semibold text-text">
+                    {departments.length}
+                  </span>
+                </h4>
               </div>
-              <p className="text-[11px] text-text-dim">
-                Custom departments added here are saved to Supabase specifically for this chapter.
-              </p>
-            </div>
-
-            {/* Configured departments list */}
-            <div className="pt-2">
-              <p className="text-xs font-bold text-text mb-2.5">
-                Configured Departments in this Chapter ({departments.length})
-              </p>
 
               {!departments.length ? (
-                <div className="rounded-[14px] border border-dashed border-border p-6 text-center text-xs text-text-dim">
-                  No departments added yet. Select from the standard list above or add a custom department.
+                <div className="rounded-[var(--radius-xl)] border border-dashed border-border/80 p-8 text-center bg-bg-page/40 space-y-1.5">
+                  <Building2 size={24} className="mx-auto text-text-mute opacity-50" />
+                  <p className="text-xs font-semibold text-text">No departments configured yet</p>
+                  <p className="text-[11px] text-text-dim max-w-sm mx-auto">
+                    Add standard branches from the quick-add buttons above or enter custom department names.
+                  </p>
                 </div>
               ) : (
-                <ul className="grid gap-2.5 sm:grid-cols-2">
+                <ul className="grid gap-3 sm:grid-cols-2">
                   {departments.map((d) => {
                     const classCount = cohorts.filter(
                       (c) => c.department.trim().toLowerCase() === d.name.trim().toLowerCase(),
@@ -941,27 +903,25 @@ export default function ChapterClassesPage({
                     return (
                       <li
                         key={d.id}
-                        className="flex flex-col justify-between gap-2 rounded-[14px] bg-bg-panel border border-border shadow-[var(--shadow-sm)] p-3.5 hover:border-[var(--accent)]/30 transition"
+                        className="group flex flex-col justify-between gap-3 rounded-[var(--radius-xl)] bg-bg-panel border border-border/70 shadow-[var(--shadow-sm)] p-4 hover:border-[var(--accent)]/40 hover:shadow-md transition-all"
                       >
                         {renamingId === d.id ? (
-                          <div className="flex flex-1 flex-wrap gap-1.5">
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-semibold text-text-dim">Rename Department</p>
                             <Input
-                              className="text-xs bg-bg"
+                              className="text-xs bg-bg-page h-9 rounded-xl"
                               value={renameValue}
                               onChange={(e) => setRenameValue(e.target.value)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter") saveRename();
+                                if (e.key === "Escape") {
+                                  setRenamingId(null);
+                                  setRenameValue("");
+                                }
                               }}
+                              autoFocus
                             />
-                            <div className="flex gap-1.5 w-full justify-end mt-1">
-                              <Button
-                                variant="orange"
-                                size="sm"
-                                onClick={saveRename}
-                                className="text-xs py-1 h-auto"
-                              >
-                                Save
-                              </Button>
+                            <div className="flex gap-2 justify-end">
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -969,47 +929,70 @@ export default function ChapterClassesPage({
                                   setRenamingId(null);
                                   setRenameValue("");
                                 }}
-                                className="text-xs py-1 h-auto"
+                                className="text-xs h-7 px-2.5"
                               >
                                 Cancel
+                              </Button>
+                              <Button
+                                variant="orange"
+                                size="sm"
+                                onClick={saveRename}
+                                className="text-xs h-7 px-3 font-semibold"
+                              >
+                                <Check size={12} className="mr-1" /> Save
                               </Button>
                             </div>
                           </div>
                         ) : (
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-bold text-xs text-text">{d.name}</p>
-                              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px] text-text-dim">
-                                <span className="rounded-full bg-bg px-2.5 py-0.5 border border-border">
-                                  {classCount} {classCount === 1 ? "class" : "classes"}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2.5">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] shrink-0 font-mono text-[11px] font-bold">
+                                  {d.name.includes("(") && d.name.includes(")")
+                                    ? d.name.substring(d.name.lastIndexOf("(") + 1, d.name.lastIndexOf(")"))
+                                    : d.name.slice(0, 3).toUpperCase()}
+                                </div>
+                                <p className="font-bold text-xs text-text truncate" title={d.name}>
+                                  {d.name}
+                                </p>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-bg-page border border-border/70 px-2.5 py-0.5 text-text-dim font-medium">
+                                  <Layers size={11} className="text-text-mute" />
+                                  <span>{classCount} {classCount === 1 ? "class" : "classes"}</span>
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => viewStudentsForDept(d.name)}
-                                  className="rounded-full bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/20 px-2.5 py-0.5 flex items-center gap-1 transition font-medium"
-                                  title="Click to view students in this department"
+                                  className="inline-flex items-center gap-1 rounded-full bg-[var(--accent)]/10 hover:bg-[var(--accent)]/20 text-[var(--accent)] border border-[var(--accent)]/20 px-2.5 py-0.5 transition-colors font-medium cursor-pointer"
+                                  title="View students in this department"
                                 >
-                                  <span>{studentCount} students</span>
+                                  <Users size={11} />
+                                  <span>{studentCount} {studentCount === 1 ? "student" : "students"}</span>
                                   <ChevronRight size={10} />
                                 </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0">
+
+                            <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => startRename(d)}
-                                className="text-[11px] py-1 px-2.5 h-auto text-text-dim hover:text-text"
+                                className="h-7 w-7 p-0 text-text-dim hover:text-text rounded-lg"
+                                title="Rename Department"
                               >
-                                Rename
+                                <Pencil size={12} />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => removeDepartment(d)}
-                                className="text-[11px] py-1 px-2.5 h-auto text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                                className="h-7 w-7 p-0 text-text-mute hover:text-red-500 hover:bg-red-500/10 rounded-lg"
+                                title="Delete Department"
                               >
-                                Delete
+                                <Trash2 size={12} />
                               </Button>
                             </div>
                           </div>
@@ -1354,8 +1337,8 @@ export default function ChapterClassesPage({
                   type="button"
                   onClick={() => setSelectedDeptFilter("all")}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${selectedDeptFilter === "all"
-                      ? "bg-[var(--accent)] text-white shadow-sm"
-                      : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                    ? "bg-[var(--accent)] text-white shadow-sm"
+                    : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                     }`}
                 >
                   All Departments ({chapterStudents.length})
@@ -1372,8 +1355,8 @@ export default function ChapterClassesPage({
                       type="button"
                       onClick={() => setSelectedDeptFilter(dept.name)}
                       className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isSelected
-                          ? "bg-[var(--accent)] text-white shadow-sm"
-                          : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                        ? "bg-[var(--accent)] text-white shadow-sm"
+                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                         }`}
                     >
                       {dept.name} ({count})
@@ -1387,8 +1370,8 @@ export default function ChapterClassesPage({
                       type="button"
                       onClick={() => setSelectedDeptFilter("Unassigned")}
                       className={`rounded-full px-3 py-1 text-xs font-semibold transition ${selectedDeptFilter === "Unassigned"
-                          ? "bg-[var(--accent)] text-white shadow-sm"
-                          : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
+                        ? "bg-[var(--accent)] text-white shadow-sm"
+                        : "bg-bg-panel text-text-dim hover:text-text border border-border hover:bg-bg"
                         }`}
                     >
                       Unassigned (

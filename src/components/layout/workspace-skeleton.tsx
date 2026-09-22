@@ -89,25 +89,36 @@ export function ContentSkeleton() {
  */
 export function WorkspaceSkeleton() {
   return (
-    <div className="min-h-screen bg-background text-text flex">
+    <div
+      className="min-h-dvh bg-bg lg:grid"
+      style={{ gridTemplateColumns: "var(--rail-width) minmax(0, 1fr)" }}
+    >
       {/* Structural Left Sidebar Rail (248px) */}
       <aside
-        className="hidden md:flex w-[248px] shrink-0 border-r border-border bg-surface flex-col h-screen sticky top-0 select-none"
+        className="hidden lg:flex w-[var(--rail-width)] shrink-0 border-r border-[var(--rail-border)] bg-[var(--rail)] flex-col h-dvh sticky top-0 select-none"
         aria-hidden="true"
       >
         {/* Brand Header */}
-        <div className="p-4 flex items-center gap-3 border-b border-border/60">
-          <div className="h-9 w-9 rounded-xl bg-[var(--accent)]/15 flex items-center justify-center text-[var(--accent)] font-bold text-base">
-            E
-          </div>
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-24 rounded-md" />
-            <Skeleton className="h-3 w-16 rounded-md" />
+        <div
+          className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--rail-border)] pb-4 pt-5"
+          style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-[var(--accent)] font-[family-name:var(--font-display)] text-[15px] font-extrabold text-white shadow-[var(--shadow-sm)]">
+              E
+            </div>
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-24 rounded-md" />
+              <Skeleton className="h-3 w-16 rounded-md" />
+            </div>
           </div>
         </div>
 
         {/* Navigation Shimmer Links */}
-        <div className="p-3 flex-1 space-y-6 overflow-y-auto">
+        <div
+          className="p-3 flex-1 space-y-6 overflow-y-auto"
+          style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
+        >
           {/* Section 1 */}
           <div className="space-y-1.5">
             <Skeleton className="h-2.5 w-16 rounded mb-2 mx-3" />
@@ -148,9 +159,12 @@ export function WorkspaceSkeleton() {
         </div>
 
         {/* User Profile Footer Pill */}
-        <div className="p-3 border-t border-border/60">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-background/60 border border-border/40">
-            <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+        <div
+          className="shrink-0 space-y-3 border-t border-[var(--rail-border)] py-4"
+          style={{ paddingLeft: "var(--sidebar-pad)", paddingRight: "var(--sidebar-pad)" }}
+        >
+          <div className="flex items-center gap-3 p-2 rounded-xl bg-bg border border-border">
+            <Skeleton className="h-9 w-9 rounded-full shrink-0" />
             <div className="space-y-1 min-w-0 flex-1">
               <Skeleton className="h-3.5 w-20 rounded-md" />
               <Skeleton className="h-2.5 w-14 rounded-md" />
@@ -162,21 +176,24 @@ export function WorkspaceSkeleton() {
       {/* Main Content Pane */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Sticky Top Bar */}
-        <header className="h-14 border-b border-border bg-surface/80 backdrop-blur-sm px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-10">
+        <header
+          className="border-b border-[var(--rail-border)] bg-white/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-10"
+          style={{ height: "var(--header-height)" }}
+        >
           <div className="flex items-center gap-3">
             {/* Mobile Menu Icon Placeholder */}
-            <Skeleton className="h-8 w-8 rounded-lg md:hidden" />
+            <Skeleton className="h-8 w-8 rounded-lg lg:hidden" />
             {/* Search Pill */}
-            <div className="hidden sm:flex items-center gap-2 h-9 w-64 lg:w-80 rounded-full border border-border/60 bg-background/60 px-3">
+            <div className="hidden sm:flex items-center gap-2 h-10 w-64 lg:w-80 rounded-full bg-bg px-4">
               <Skeleton className="h-4 w-4 rounded-full" />
               <Skeleton className="h-3 w-36 rounded-md" />
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
-            <Skeleton className="h-8 w-28 rounded-full hidden sm:block" />
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-8 w-8 rounded-full" />
+            <Skeleton className="h-9 w-28 rounded-full hidden sm:block" />
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <Skeleton className="h-10 w-10 rounded-full" />
           </div>
         </header>
 

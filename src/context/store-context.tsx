@@ -1291,16 +1291,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   const [store, setStore] = useState<ElevatesStore>(() => {
-    const cached = getCachedStore();
-    if (cached) return cached;
     return sanitizeStore(defaultEmptyStore);
   });
-  const [hydrated, setHydrated] = useState(() => {
-    if (typeof window !== "undefined") {
-      return Boolean(getCachedStore());
+  const [hydrated, setHydrated] = useState(false);
+
+  // Fast client cache hydration immediately after mount
+  useEffect(() => {
+    const cached = getCachedStore();
+    if (cached) {
+      setStore(cached);
+      setHydrated(true);
     }
-    return false;
-  });
+  }, []);
 
   // Keep persistent storage cache synchronized whenever store updates
   useEffect(() => {
@@ -1345,20 +1347,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
-      const result = await loadStoreFromSupabase();
-      if (!cancelled && result?.store) {
-        setStore((prev) => {
-          const fresh = sanitizeStore(result.store);
-          if (prev.chapters.length > 0) {
-            return sanitizeStore(
-              mergeStoreData(prev, fresh, (newRole) => {
-                showToast(`Role updated! You now have ${newRole} access.`, "info");
-              })
-            );
-          }
-          return fresh;
-        });
-        setHydrated(true);
+      try {
+        const result = await loadStoreFromSupabase();
+        if (!cancelled && result?.store) {
+          setStore((prev) => {
+            const fresh = sanitizeStore(result.store);
+            if (prev.chapters.length > 0) {
+              return sanitizeStore(
+                mergeStoreData(prev, fresh, (newRole) => {
+                  showToast(`Role updated! You now have ${newRole} access.`, "info");
+                })
+              );
+            }
+            return fresh;
+          });
+        }
+      } catch (err) {
+        console.warn("[Elevates Store] Supabase initial load error:", err);
+      } finally {
+        if (!cancelled) {
+          setHydrated(true);
+        }
       }
     }
     void hydrate();

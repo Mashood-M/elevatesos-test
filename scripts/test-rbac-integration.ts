@@ -1,5 +1,14 @@
 import { canAccessPath, homeForRole, resolveChapter } from "../src/lib/access";
-import { isHqRole, isSuperAdmin, isCampusLead, isFounder, canDeleteUser } from "../src/lib/permissions";
+import {
+  isHqRole,
+  isSuperAdmin,
+  isCampusLead,
+  isFounder,
+  canDeleteUser,
+  canCreateEvent,
+  canManageClasses,
+  canVerifyAttendance,
+} from "../src/lib/permissions";
 import { roleKeyLabel, ASSIGNABLE_LEADERSHIP_ROLES } from "../src/lib/leadership";
 import type { ElevatesStore, RoleKey } from "../src/types";
 
@@ -27,21 +36,32 @@ async function runTests() {
   assert(isHqRole("hq_admin"), "hq_admin is recognized as HQ role");
   assert(!isHqRole("campus_lead"), "campus_lead is NOT recognized as HQ role");
   assert(!isHqRole("student"), "student is NOT recognized as HQ role");
+  assert(!isHqRole("executive_member"), "executive_member is NOT recognized as HQ role");
   assert(isCampusLead("campus_lead"), "campus_lead is recognized by isCampusLead");
+  assert(!isCampusLead("executive_member"), "executive_member is NOT recognized as campus lead");
   assert(isFounder("founder"), "founder is recognized by isFounder");
   assert(!isFounder("hq_admin"), "hq_admin is NOT recognized as founder");
   assert(canDeleteUser("founder"), "founder CAN delete users");
   assert(!canDeleteUser("hq_admin"), "hq_admin CANNOT delete users");
   assert(!canDeleteUser("campus_lead"), "campus_lead CANNOT delete users");
+  assert(!canDeleteUser("executive_member"), "executive_member CANNOT delete users");
   assert(!canDeleteUser("student"), "student CANNOT delete users");
   assert(ASSIGNABLE_LEADERSHIP_ROLES.includes("campus_lead"), "campus_lead is assignable leadership role");
+  assert(ASSIGNABLE_LEADERSHIP_ROLES.includes("executive_member"), "executive_member is assignable leadership role");
   assert(roleKeyLabel("campus_lead") !== "campus_lead", "campus_lead has proper label");
+  assert(roleKeyLabel("executive_member") === "Executive Member", "executive_member has proper label");
+
+  // Executive Member day-to-day permissions
+  assert(canCreateEvent("executive_member"), "executive_member can create events");
+  assert(canManageClasses("executive_member"), "executive_member can manage classes");
+  assert(canVerifyAttendance("executive_member"), "executive_member can verify attendance");
 
   // 2. DASHBOARD REDIRECT & NAVIGATION ROUTING
   console.log("\n--- 2. Dashboard Redirect & Navigation Scoping ---");
   assert(homeForRole("founder") === "/hq", "HQ founder home is /hq");
   assert(homeForRole("hq_admin") === "/hq", "HQ admin home is /hq");
   assert(homeForRole("campus_lead", "ekc-chapter") === "/chapter/ekc-chapter", "Campus Lead home is scoped chapter dashboard");
+  assert(homeForRole("executive_member", "ekc-chapter") === "/chapter/ekc-chapter", "Executive Member home is scoped chapter dashboard");
   assert(homeForRole("chairman", "ekc-chapter") === "/chapter/ekc-chapter", "Chairman home is scoped chapter dashboard");
   assert(homeForRole("class_representative", "ekc-chapter") === "/chapter/ekc-chapter", "Class Rep home is scoped chapter dashboard");
   assert(homeForRole("student", "ekc-chapter") === "/chapter/ekc-chapter", "Student home is scoped chapter dashboard");
@@ -51,9 +71,12 @@ async function runTests() {
   // Non-HQ role visiting another chapter's page
   assert(!canAccessPath("/chapter/other-chapter", "student", "ekc-chapter"), "Student from EKC blocked from visiting other chapter");
   assert(!canAccessPath("/chapter/other-chapter/students", "campus_lead", "ekc-chapter"), "Campus Lead from EKC blocked from visiting other chapter students");
+  assert(!canAccessPath("/chapter/other-chapter/students", "executive_member", "ekc-chapter"), "Executive Member from EKC blocked from visiting other chapter students");
   assert(!canAccessPath("/hq", "campus_lead", "ekc-chapter"), "Campus Lead blocked from accessing HQ routes");
+  assert(!canAccessPath("/hq", "executive_member", "ekc-chapter"), "Executive Member blocked from accessing HQ routes");
   assert(!canAccessPath("/hq/chapters", "class_representative", "ekc-chapter"), "Class Rep blocked from accessing HQ chapters");
   assert(canAccessPath("/chapter/ekc-chapter/events", "student", "ekc-chapter"), "Student can access own chapter events");
+  assert(canAccessPath("/chapter/ekc-chapter/events", "executive_member", "ekc-chapter"), "Executive Member can access own chapter events");
   assert(canAccessPath("/chapter/ekc-chapter/students", "campus_lead", "ekc-chapter"), "Campus Lead can access own chapter students");
   assert(canAccessPath("/chapter/other-chapter/students", "founder", "ekc-chapter"), "HQ Founder can access any chapter page");
 

@@ -18,6 +18,7 @@ export type RoleKey =
   | "innovation_lead"
   | "innovation_team"
   | "class_representative"
+  | "executive_member"
   | "student"
   | "alumni"
   | "guest"
@@ -335,6 +336,35 @@ export interface LeadershipAssignment {
   roleKey: RoleKey;
   title: string;
   createdAt?: string;
+}
+
+export interface Term {
+  id: string;
+  chapterId: string;
+  termYear: string;
+  campusLeadId: string;
+  status: "active" | "closed";
+  startedAt: string;
+  endedAt?: string | null;
+}
+
+export interface TermMember {
+  id: string;
+  termId: string;
+  userId: string;
+  role: "executive_member";
+  designation?: string | null;
+  addedAt: string;
+}
+
+export interface HandoverWindow {
+  id: string;
+  chapterId: string;
+  year: string;
+  openedAt: string;
+  closedAt?: string | null;
+  openedBy: string;
+  status: "open" | "closed";
 }
 
 export interface EventCaseStudy {
@@ -993,6 +1023,9 @@ export interface ElevatesStore {
   eventPermissions: EventPermission[];
   leadershipTerms: LeadershipTerm[];
   leadershipAssignments: LeadershipAssignment[];
+  terms: Term[];
+  termMembers: TermMember[];
+  handoverWindows: HandoverWindow[];
   events: EventItem[];
   /** Global org-wide event categories (always uppercase, de-duplicated). Managed by HQ/Campus Leads. */
   eventCategories: string[];

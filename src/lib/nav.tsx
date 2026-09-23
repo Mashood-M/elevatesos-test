@@ -211,6 +211,7 @@ export function navGroupsForRole(
         label: "People & ops",
         items: [
           { href: `${base}/students`, label: "Student Directory", icon: I.students },
+          { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
           { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
           { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
           {
@@ -254,6 +255,7 @@ export function navGroupsForRole(
       label: "Explore",
       items: [
         { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
+        ...(slug ? [{ href: `${base}/leadership`, label: "Leadership", icon: I.leadership }] : []),
         { href: eventsHref, label: "Events", icon: I.events },
         { href: slug ? `${base}/peer-labs` : "/peer-labs", label: "Peer Labs", icon: I.playbook },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },

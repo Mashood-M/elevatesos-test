@@ -180,8 +180,8 @@ Contains migrations `001` through `040` representing the Postgres relational dat
 - **`039_fix_missing_tables_and_peer_labs.sql`**: Dedicated Peer Labs tables (`peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`), student referrals, chapter standards, and discord integrations.
 - **`040_lock_down_rls.sql`**: Hardens Row-Level Security across all Discord tables, leadership/volunteer write paths (`service_role` only), integrations, and anonymous access to profiles.
 - **`041_peer_lab_lessons_and_resources.sql`**: Extends Peer Labs and Events with multi-day lessons (`lessons`), gated resources (`resources`), `poster_url`, and `thumbnail_url`.
-- **`042_fix_sequential_elevates_id.sql`**: Permanently fixes Elevates ID generation across all sign-up pathways (`ELV-0155` vs `ELV-3VHC4E`), ensures `profiles_elevates_id_seq` sequence, updates sanitization triggers, and renumbers legacy random IDs.
-- **`043_fix_discord_links_guild_fk.sql`**: Removes `discord_links_guild_id_fkey` constraint on `discord_links.guild_id` to allow discord linking/verification when a guild is not pre-registered in `guild_config`, auto-upserts `guild_config`, and hardens `verify_discord_otp`.
+- **`044_default_student_and_faculty_mutual_exclusion.sql`**: Enforces default student role on signup and mutual exclusion between student/lead/rep and faculty roles.
+- **`045_chapter_terms_and_handover_system.sql`**: Introduces `terms`, `term_members`, and `handover_windows` tables, `executive_member` role, per-chapter handover windows controlled by Founders, and single-transaction term handover procedure executable by active Campus Leads.
 - **`FULL_DATABASE_SETUP.sql`**: Consolidated script for bootstrapping a fresh Supabase database in a single run.
 
 #### Migration Execution Order for Existing Databases
@@ -193,6 +193,7 @@ When applying new migrations to an existing database, execute them in this exact
 5. `supabase/migrations/042_fix_sequential_elevates_id.sql`
 6. `supabase/migrations/043_fix_discord_links_guild_fk.sql`
 7. `supabase/migrations/044_default_student_and_faculty_mutual_exclusion.sql`
+8. `supabase/migrations/045_chapter_terms_and_handover_system.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

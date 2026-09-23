@@ -14,6 +14,7 @@ export const ASSIGNABLE_LEADERSHIP_ROLES: RoleKey[] = [
   "innovation_team",
   "elevates_coordinator",
   "class_representative",
+  "executive_member",
 ];
 
 /** Only one of these per term */
@@ -40,6 +41,8 @@ export function roleKeyLabel(key: RoleKey): string {
     case "campus_lead":
     case "chairman":
       return "Campus Lead";
+    case "executive_member":
+      return "Executive Member";
     case "class_representative":
       return "Class Rep";
     case "volunteer":

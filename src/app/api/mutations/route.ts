@@ -11,6 +11,7 @@ import {
   canManageClasses,
   canVerifyAttendance,
   isCampusLead,
+  isFounder,
 } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
 
@@ -363,6 +364,26 @@ export async function GET(req: Request) {
         groups: groups ?? [],
         groupMembers: groupMembers ?? [],
         assignments: assignments ?? [],
+      });
+    }
+    if (type === "terms_data") {
+      const { data: terms } = await admin
+        .from("terms")
+        .select("*")
+        .order("started_at", { ascending: false });
+      const { data: termMembers } = await admin
+        .from("term_members")
+        .select("*")
+        .order("added_at", { ascending: false });
+      const { data: handoverWindows } = await admin
+        .from("handover_windows")
+        .select("*")
+        .order("opened_at", { ascending: false });
+      return NextResponse.json({
+        ok: true,
+        terms: terms ?? [],
+        termMembers: termMembers ?? [],
+        handoverWindows: handoverWindows ?? [],
       });
     }
     if (type === "validate_invite") {
@@ -4267,6 +4288,334 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
       }
       return NextResponse.json({ ok: true });
+    }
+
+    if (type === "open_handover_window") {
+      if (auth.roleKey !== "founder" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only founders can open handover windows" }, { status: 403 });
+      }
+      const { chapterId, year, closedAt } = data;
+      if (!chapterId || !year) {
+        return NextResponse.json({ ok: false, error: "chapterId and year are required" }, { status: 400 });
+      }
+
+      // Close any existing open handover window for this chapter first
+      await admin
+        .from("handover_windows")
+        .update({ status: "closed", closed_at: new Date().toISOString() })
+        .eq("chapter_id", chapterId)
+        .eq("status", "open");
+
+      const windowId = genUuid();
+      const { data: newRow, error: insErr } = await admin
+        .from("handover_windows")
+        .insert({
+          id: windowId,
+          chapter_id: chapterId,
+          year: String(year).trim(),
+          opened_at: new Date().toISOString(),
+          closed_at: closedAt ? new Date(closedAt).toISOString() : null,
+          opened_by: auth.userId,
+          status: "open",
+        })
+        .select()
+        .single();
+
+      if (insErr) {
+        console.error("open_handover_window insert error:", insErr);
+        return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, data: newRow, id: windowId });
+    }
+
+    if (type === "close_handover_window") {
+      if (auth.roleKey !== "founder" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only founders can close handover windows" }, { status: 403 });
+      }
+      const { chapterId } = data;
+      if (!chapterId) {
+        return NextResponse.json({ ok: false, error: "chapterId is required" }, { status: 400 });
+      }
+      const { error: updErr } = await admin
+        .from("handover_windows")
+        .update({ status: "closed", closed_at: new Date().toISOString() })
+        .eq("chapter_id", chapterId)
+        .eq("status", "open");
+
+      if (updErr) {
+        console.error("close_handover_window error:", updErr);
+        return NextResponse.json({ ok: false, error: updErr.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    if (type === "execute_term_handover") {
+      const { chapterId, nextCampusLeadId, nextTermYear, nextExecutiveMembers } = data;
+      if (!chapterId || !nextCampusLeadId || !nextTermYear) {
+        return NextResponse.json(
+          { ok: false, error: "chapterId, nextCampusLeadId, and nextTermYear are required" },
+          { status: 400 },
+        );
+      }
+
+      // Check handover window status
+      const { data: openWin } = await admin
+        .from("handover_windows")
+        .select("id, status")
+        .eq("chapter_id", chapterId)
+        .eq("status", "open")
+        .maybeSingle();
+
+      if (!openWin) {
+        return NextResponse.json(
+          { ok: false, error: "Handover window is not open for this chapter" },
+          { status: 400 },
+        );
+      }
+
+      // Check current active term
+      const { data: activeTerm } = await admin
+        .from("terms")
+        .select("*")
+        .eq("chapter_id", chapterId)
+        .eq("status", "active")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Only the current active term's campus_lead_id for a chapter can execute the handover action
+      if (activeTerm) {
+        if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
+          return NextResponse.json(
+            { ok: false, error: "Only the current active term campus lead can execute the handover" },
+            { status: 403 },
+          );
+        }
+      } else {
+        if (auth.chapterId !== chapterId && auth.roleKey !== "founder") {
+          return NextResponse.json({ ok: false, error: "Permission denied for this chapter" }, { status: 403 });
+        }
+      }
+
+      // Try stored procedure first
+      const { data: rpcRes, error: rpcErr } = await admin.rpc("execute_term_handover", {
+        p_chapter_id: chapterId,
+        p_acting_user_id: auth.userId,
+        p_next_campus_lead_id: nextCampusLeadId,
+        p_next_term_year: String(nextTermYear).trim(),
+        p_next_exec_members: Array.isArray(nextExecutiveMembers) ? nextExecutiveMembers : [],
+      });
+
+      if (!rpcErr && rpcRes) {
+        return NextResponse.json({ ok: true, data: rpcRes });
+      }
+
+      // Fallback transactional execution
+      const nowIso = new Date().toISOString();
+      const { data: studentRole } = await admin.from("roles").select("id").eq("key", "student").maybeSingle();
+      const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+      const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
+
+      if (activeTerm) {
+        // a. Sets current terms row: status='closed', ended_at=now()
+        await admin.from("terms").update({ status: "closed", ended_at: nowIso }).eq("id", activeTerm.id);
+
+        // b. Sets outgoing campus lead's role -> 'student'
+        await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", activeTerm.campus_lead_id)
+          .eq("chapter_id", chapterId)
+          .in("role_key", ["campus_lead", "chairman"]);
+
+        await admin.from("user_roles").insert({
+          user_id: activeTerm.campus_lead_id,
+          role_key: "student",
+          role_id: studentRole?.id ?? null,
+          chapter_id: chapterId,
+          is_permanent: true,
+        });
+
+        // c. Sets every current term_members user's role -> 'student'
+        const { data: currentMembers } = await admin
+          .from("term_members")
+          .select("user_id")
+          .eq("term_id", activeTerm.id);
+
+        if (currentMembers && currentMembers.length > 0) {
+          for (const m of currentMembers) {
+            await admin
+              .from("user_roles")
+              .delete()
+              .eq("user_id", m.user_id)
+              .eq("chapter_id", chapterId)
+              .eq("role_key", "executive_member");
+
+            await admin.from("user_roles").insert({
+              user_id: m.user_id,
+              role_key: "student",
+              role_id: studentRole?.id ?? null,
+              chapter_id: chapterId,
+              is_permanent: true,
+            });
+          }
+        }
+      }
+
+      // d. Inserts new terms row (chapter_id, term_year = next year, campus_lead_id = new pick, status='active', started_at=now())
+      const newTermId = genUuid();
+      const { error: newTermErr } = await admin.from("terms").insert({
+        id: newTermId,
+        chapter_id: chapterId,
+        term_year: String(nextTermYear).trim(),
+        campus_lead_id: nextCampusLeadId,
+        status: "active",
+        started_at: nowIso,
+      });
+
+      if (newTermErr) {
+        console.error("execute_term_handover new terms insert error:", newTermErr);
+        return NextResponse.json({ ok: false, error: newTermErr.message }, { status: 400 });
+      }
+
+      // e. Sets new campus lead's role -> 'campus_lead'
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", nextCampusLeadId)
+        .eq("chapter_id", chapterId)
+        .eq("role_key", "executive_member");
+
+      await admin.from("user_roles").insert({
+        user_id: nextCampusLeadId,
+        role_key: "campus_lead",
+        role_id: leadRole?.id ?? null,
+        chapter_id: chapterId,
+        is_permanent: true,
+      });
+      await admin.from("chapters").update({ campus_lead_id: nextCampusLeadId }).eq("id", chapterId);
+
+      // f. Inserts term_members rows for the new executive members, sets each of their user role -> 'executive_member'
+      if (Array.isArray(nextExecutiveMembers) && nextExecutiveMembers.length > 0) {
+        for (const item of nextExecutiveMembers) {
+          const uId = item.userId ?? item.user_id;
+          const designation = item.designation ? String(item.designation).trim() : null;
+          if (uId && uId !== nextCampusLeadId) {
+            await admin.from("term_members").insert({
+              id: genUuid(),
+              term_id: newTermId,
+              user_id: uId,
+              role: "executive_member",
+              designation,
+              added_at: nowIso,
+            });
+            await admin
+              .from("user_roles")
+              .delete()
+              .eq("user_id", uId)
+              .eq("chapter_id", chapterId)
+              .eq("role_key", "executive_member");
+
+            await admin.from("user_roles").insert({
+              user_id: uId,
+              role_key: "executive_member",
+              role_id: execRole?.id ?? null,
+              chapter_id: chapterId,
+              is_permanent: true,
+            });
+          }
+        }
+      }
+
+      // g. Do NOT touch handover_windows.status here
+      return NextResponse.json({ ok: true, newTermId });
+    }
+
+    if (type === "assign_executive_member") {
+      const { chapterId, userId, designation } = data;
+      if (!chapterId || !userId) {
+        return NextResponse.json({ ok: false, error: "chapterId and userId are required" }, { status: 400 });
+      }
+
+      // Restrict this option to users with role 'campus_lead' for their own chapter only (or founder)
+      const isLead =
+        (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") && auth.chapterId === chapterId;
+      if (!isLead && auth.roleKey !== "founder") {
+        return NextResponse.json(
+          { ok: false, error: "Only Campus Lead for this chapter can assign Executive Members" },
+          { status: 403 },
+        );
+      }
+
+      // Try stored procedure first
+      const { data: rpcRes, error: rpcErr } = await admin.rpc("assign_chapter_executive_member", {
+        p_chapter_id: chapterId,
+        p_acting_user_id: auth.userId,
+        p_target_user_id: userId,
+        p_designation: designation ? String(designation).trim() : null,
+      });
+
+      if (!rpcErr && rpcRes) {
+        return NextResponse.json({ ok: true, data: rpcRes });
+      }
+
+      // Fallback
+      let { data: activeTerm } = await admin
+        .from("terms")
+        .select("id")
+        .eq("chapter_id", chapterId)
+        .eq("status", "active")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!activeTerm) {
+        const newTermId = genUuid();
+        const currentYear = new Date().getFullYear().toString();
+        const { data: insTerm } = await admin
+          .from("terms")
+          .insert({
+            id: newTermId,
+            chapter_id: chapterId,
+            term_year: currentYear,
+            campus_lead_id: auth.userId,
+            status: "active",
+            started_at: new Date().toISOString(),
+          })
+          .select("id")
+          .single();
+        activeTerm = insTerm;
+      }
+
+      if (!activeTerm) {
+        return NextResponse.json({ ok: false, error: "Could not resolve active term" }, { status: 500 });
+      }
+
+      const termMemberId = genUuid();
+      await admin.from("term_members").insert({
+        id: termMemberId,
+        term_id: activeTerm.id,
+        user_id: userId,
+        role: "executive_member",
+        designation: designation ? String(designation).trim() : null,
+        added_at: new Date().toISOString(),
+      });
+
+      const { data: execRole } = await admin
+        .from("roles")
+        .select("id")
+        .eq("key", "executive_member")
+        .maybeSingle();
+
+      await admin.from("user_roles").insert({
+        user_id: userId,
+        role_key: "executive_member",
+        role_id: execRole?.id ?? null,
+        chapter_id: chapterId,
+        is_permanent: true,
+      });
+
+      return NextResponse.json({ ok: true, termMemberId, termId: activeTerm.id });
     }
 
     return NextResponse.json({ ok: false, error: `Unknown mutation type: ${type}` }, { status: 400 });

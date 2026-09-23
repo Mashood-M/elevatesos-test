@@ -59,6 +59,9 @@ function emptyStore(): ElevatesStore {
     eventPermissions: [],
     leadershipTerms: [],
     leadershipAssignments: [],
+    terms: [],
+    termMembers: [],
+    handoverWindows: [],
     events: [],
     eventCategories: DEFAULT_EVENT_CATEGORIES,
     standardDepartments: [],
@@ -202,6 +205,9 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let vgRows: any[] | null = null;
     let vgmRows: any[] | null = null;
     let vaRows: any[] | null = null;
+    let termsRows: any[] | null = null;
+    let termMemberRows: any[] | null = null;
+    let handoverWindowRows: any[] | null = null;
 
     if (isAuthenticated) {
       const [
@@ -224,6 +230,9 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         vgRes,
         vgmRes,
         vaRes,
+        tRes,
+        tmRes,
+        hwRes,
       ] = await Promise.all([
         supabase.from("profiles").select("*"),
         supabase.from("reports").select("*"),
@@ -244,6 +253,9 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         supabase.from("volunteer_groups").select("*"),
         supabase.from("volunteer_group_members").select("*"),
         supabase.from("volunteer_assignments").select("*"),
+        supabase.from("terms").select("*"),
+        supabase.from("term_members").select("*"),
+        supabase.from("handover_windows").select("*"),
       ]);
 
       profileRows = pRes.data;
@@ -265,6 +277,9 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
       vgRows = vgRes.data;
       vgmRows = vgmRes.data;
       vaRows = vaRes.data;
+      termsRows = tRes.data;
+      termMemberRows = tmRes.data;
+      handoverWindowRows = hwRes.data;
     }
 
     const orgRow = orgs?.[0];
@@ -708,6 +723,58 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         createdAt: la.createdAt ?? la.created_at ?? undefined,
       }));
 
+    let termsRowsFinal = termsRows ?? [];
+    let termMemberRowsFinal = termMemberRows ?? [];
+    let handoverWindowRowsFinal = handoverWindowRows ?? [];
+
+    if (isAuthenticated && termsRowsFinal.length === 0 && typeof window !== "undefined") {
+      try {
+        const termsRes = await fetch("/api/mutations?type=terms_data");
+        if (termsRes.ok) {
+          const termsJson = await termsRes.json();
+          if (termsJson.ok) {
+            termsRowsFinal = termsJson.terms ?? [];
+            termMemberRowsFinal = termsJson.termMembers ?? [];
+            handoverWindowRowsFinal = termsJson.handoverWindows ?? [];
+          }
+        }
+      } catch (termsErr) {
+        console.warn("[Elevates Bootstrap] Could not fetch terms fallback:", termsErr);
+      }
+    }
+
+    const terms: import("@/types").Term[] =
+      termsRowsFinal.map((t: Record<string, any>) => ({
+        id: t.id,
+        chapterId: t.chapterId ?? t.chapter_id,
+        termYear: t.termYear ?? t.term_year,
+        campusLeadId: t.campusLeadId ?? t.campus_lead_id,
+        status: t.status,
+        startedAt: t.startedAt ?? t.started_at ?? new Date().toISOString(),
+        endedAt: t.endedAt ?? t.ended_at ?? null,
+      }));
+
+    const termMembers: import("@/types").TermMember[] =
+      termMemberRowsFinal.map((tm: Record<string, any>) => ({
+        id: tm.id,
+        termId: tm.termId ?? tm.term_id,
+        userId: tm.userId ?? tm.user_id,
+        role: "executive_member" as const,
+        designation: tm.designation ?? null,
+        addedAt: tm.addedAt ?? tm.added_at ?? new Date().toISOString(),
+      }));
+
+    const handoverWindows: import("@/types").HandoverWindow[] =
+      handoverWindowRowsFinal.map((hw: Record<string, any>) => ({
+        id: hw.id,
+        chapterId: hw.chapterId ?? hw.chapter_id,
+        year: hw.year,
+        openedAt: hw.openedAt ?? hw.opened_at ?? new Date().toISOString(),
+        closedAt: hw.closedAt ?? hw.closed_at ?? null,
+        openedBy: hw.openedBy ?? hw.opened_by,
+        status: hw.status,
+      }));
+
     let vgRowsFinal = vgRows ?? [];
     let vgmRowsFinal = vgmRows ?? [];
     let vaRowsFinal = vaRows ?? [];
@@ -1128,6 +1195,9 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         eventPermissions,
         leadershipTerms,
         leadershipAssignments,
+        terms,
+        termMembers,
+        handoverWindows,
         leadershipApplications,
         volunteerGroups,
         volunteerAssignments,

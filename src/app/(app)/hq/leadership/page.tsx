@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
@@ -21,10 +22,17 @@ const statusTone = {
 };
 
 export default function HqLeadershipPage() {
-  const { store } = useStore();
+  const { store, openHandoverWindow, closeHandoverWindow } = useStore();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Handover window modal state
+  const [openWindowModalChapter, setOpenWindowModalChapter] = useState<{ id: string; name: string } | null>(null);
+  const [targetYear, setTargetYear] = useState<number>(new Date().getFullYear() + 1);
+  const [closesAtInput, setClosesAtInput] = useState<string>("");
+  const [windowActionLoading, setWindowActionLoading] = useState<string | null>(null);
+  const [windowActionError, setWindowActionError] = useState<string>("");
 
   const activeTerms = store.leadershipTerms.filter((t) => t.status === "active");
   const archivedTermIds = new Set(
@@ -35,6 +43,50 @@ export default function HqLeadershipPage() {
   const activeAssignmentCount = store.leadershipAssignments.filter(
     (a) => !archivedTermIds.has(a.termId),
   ).length;
+
+  const openWindowsCount = store.chapters.filter((ch) => {
+    const w = store.handoverWindows
+      .filter((hw) => hw.chapterId === ch.id)
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0];
+    return w?.status === "open";
+  }).length;
+
+  async function handleOpenWindow() {
+    if (!openWindowModalChapter) return;
+    setWindowActionLoading(openWindowModalChapter.id);
+    setWindowActionError("");
+    try {
+      const ok = await openHandoverWindow({
+        chapterId: openWindowModalChapter.id,
+        year: String(targetYear),
+        closedAt: closesAtInput ? new Date(closesAtInput).toISOString() : undefined,
+      });
+      if (!ok) {
+        setWindowActionError("Failed to open handover window");
+      } else {
+        setOpenWindowModalChapter(null);
+        setClosesAtInput("");
+      }
+    } catch (err) {
+      setWindowActionError(err instanceof Error ? err.message : "Error opening window");
+    } finally {
+      setWindowActionLoading(null);
+    }
+  }
+
+  async function handleCloseWindow(chapterId: string) {
+    setWindowActionLoading(chapterId);
+    try {
+      const ok = await closeHandoverWindow({ chapterId });
+      if (!ok) {
+        alert("Failed to close handover window");
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error closing window");
+    } finally {
+      setWindowActionLoading(null);
+    }
+  }
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -101,7 +153,7 @@ export default function HqLeadershipPage() {
         description="Network overview of executive terms and Campus Leads. Open a chapter to manage terms and assignments."
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Total Terms"
           value={store.leadershipTerms.length}
@@ -113,7 +165,103 @@ export default function HqLeadershipPage() {
           value={activeAssignmentCount}
           accent="magenta"
         />
+        <Stat
+          label="Open Handover Windows"
+          value={openWindowsCount}
+          accent="orange"
+        />
       </div>
+
+      <TerminalPanel
+        title="Chapter Handover Windows"
+        meta={`${openWindowsCount} of ${store.chapters.length} open`}
+        className="mt-6"
+      >
+        <div className="space-y-3">
+          <p className="text-[12px] text-text-dim">
+            Per-chapter leadership transition control. When a chapter&apos;s handover window is open, the current Campus Lead can execute the term handover to appoint the incoming Campus Lead and Executive Members.
+          </p>
+
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-border bg-bg/60 text-text-dim">
+                <tr>
+                  <th className="px-3.5 py-2.5 font-semibold">Chapter</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Status</th>
+                  <th className="px-3.5 py-2.5 font-semibold">Details</th>
+                  <th className="px-3.5 py-2.5 font-semibold text-right">Handover Window Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {store.chapters.map((chapter) => {
+                  const latestWindow = store.handoverWindows
+                    .filter((w) => w.chapterId === chapter.id)
+                    .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0];
+                  const isOpen = latestWindow?.status === "open";
+                  const isLoading = windowActionLoading === chapter.id;
+
+                  return (
+                    <tr key={chapter.id} className="hover:bg-bg/40 transition">
+                      <td className="px-3.5 py-3">
+                        <p className="font-semibold text-text">{chapter.name}</p>
+                        <p className="text-[11px] text-text-dim">{chapter.college}</p>
+                      </td>
+                      <td className="px-3.5 py-3">
+                        {isOpen ? (
+                          <Badge tone="green">
+                            {latestWindow.closedAt
+                              ? `Open until ${formatDate(latestWindow.closedAt)}`
+                              : "Open"}
+                          </Badge>
+                        ) : (
+                          <Badge tone="mute">Closed</Badge>
+                        )}
+                      </td>
+                      <td className="px-3.5 py-3 text-[11px] text-text-dim">
+                        {isOpen ? (
+                          <span>
+                            Year {latestWindow.year} · Opened {formatDate(latestWindow.openedAt)}
+                          </span>
+                        ) : latestWindow ? (
+                          <span>Last cycle: Year {latestWindow.year}</span>
+                        ) : (
+                          <span>No previous window</span>
+                        )}
+                      </td>
+                      <td className="px-3.5 py-3 text-right">
+                        {isOpen ? (
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleCloseWindow(chapter.id)}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? "Closing..." : "Close Window"}
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => {
+                              setOpenWindowModalChapter({ id: chapter.id, name: chapter.name });
+                              setTargetYear(new Date().getFullYear() + 1);
+                              setClosesAtInput("");
+                              setWindowActionError("");
+                            }}
+                            disabled={isLoading}
+                          >
+                            Open Window
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </TerminalPanel>
 
       <TerminalPanel
         title="Network registry"
@@ -278,6 +426,67 @@ export default function HqLeadershipPage() {
           </ul>
         )}
       </TerminalPanel>
+
+      {openWindowModalChapter && (
+        <Dialog
+          open={Boolean(openWindowModalChapter)}
+          onClose={() => setOpenWindowModalChapter(null)}
+          title={`Open Handover Window — ${openWindowModalChapter.name}`}
+          description="Grant permission for the current Campus Lead to appoint the next leadership team."
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpenWindowModalChapter(null)}
+                disabled={Boolean(windowActionLoading)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleOpenWindow}
+                disabled={Boolean(windowActionLoading)}
+              >
+                {windowActionLoading ? "Opening..." : "Confirm & Open Window"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-3.5 py-2 text-xs">
+            {windowActionError && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-2.5 text-xs text-red-400">
+                {windowActionError}
+              </div>
+            )}
+            <div>
+              <FieldLabel>Target Term Year *</FieldLabel>
+              <Input
+                type="number"
+                value={targetYear}
+                onChange={(e) => setTargetYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
+                placeholder="e.g. 2026"
+              />
+              <p className="mt-1 text-[11px] text-text-dim">
+                The academic/calendar year for the incoming leadership term.
+              </p>
+            </div>
+            <div>
+              <FieldLabel>Closes At (Optional deadline)</FieldLabel>
+              <Input
+                type="datetime-local"
+                value={closesAtInput}
+                onChange={(e) => setClosesAtInput(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-text-dim">
+                Leave blank to keep open indefinitely until manually closed.
+              </p>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
+

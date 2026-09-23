@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAppDialogs } from "@/components/ui/app-dialogs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
@@ -28,6 +29,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Shield,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -80,6 +82,7 @@ export default function ChapterClassesPage({
     deleteClassCohort,
     setUserRoles,
     updateUser,
+    assignExecutiveMember,
   } = useStore();
   const { session } = useCurrentUser();
   const { confirm } = useAppDialogs();
@@ -223,6 +226,54 @@ export default function ChapterClassesPage({
   const [assignModalStudentId, setAssignModalStudentId] = useState("");
   const [assignModalError, setAssignModalError] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
+
+  // Modal State for Executive Member Assignment
+  const [assignExecModalOpen, setAssignExecModalOpen] = useState(false);
+  const [assignExecStudentId, setAssignExecStudentId] = useState("");
+  const [assignExecDesignation, setAssignExecDesignation] = useState("");
+  const [assignExecError, setAssignExecError] = useState("");
+  const [isAssigningExec, setIsAssigningExec] = useState(false);
+
+  const activeTerm = useMemo(() => {
+    if (!chapter) return null;
+    return (
+      store.terms.find((t) => t.chapterId === chapter.id && t.status === "active") ?? null
+    );
+  }, [store.terms, chapter]);
+
+  const isCampusLeadForThisChapter =
+    session.roleKey === "founder" ||
+    (session.roleKey === "campus_lead" &&
+      (session.chapterId === chapter?.id || session.chapterId === chapter?.slug));
+
+  async function executeAssignExecutiveMember() {
+    if (!chapter) return;
+    if (!assignExecStudentId) {
+      setAssignExecError("Please choose a student to appoint as Executive Member.");
+      return;
+    }
+    setIsAssigningExec(true);
+    setAssignExecError("");
+    try {
+      const res = await assignExecutiveMember({
+        chapterId: chapter.id,
+        userId: assignExecStudentId,
+        designation: assignExecDesignation.trim() || undefined,
+      });
+      if (!res.ok) {
+        setAssignExecError(res.error || "Failed to appoint Executive Member.");
+      } else {
+        setAssignExecModalOpen(false);
+        setAssignExecStudentId("");
+        setAssignExecDesignation("");
+        setFlash("✓ Successfully appointed Executive Member!");
+      }
+    } catch (err) {
+      setAssignExecError(err instanceof Error ? err.message : "Error appointing Executive Member.");
+    } finally {
+      setIsAssigningExec(false);
+    }
+  }
 
   const eligibleCandidates = useMemo(() => {
     if (!assignModalDept || !assignModalYear) return { inSlot: [], others: chapterStudents };
@@ -1236,8 +1287,8 @@ export default function ChapterClassesPage({
         <div className="space-y-6">
           {/* Overview & Role Scope Panel */}
           <TerminalPanel
-            title="class_rep.assignment_hub"
-            meta={`${totalRepsCount} Class Reps Appointed`}
+            title="leadership_and_class_assignments"
+            meta={`${totalRepsCount} Class Reps`}
             accent="orange"
             className="mb-6"
           >
@@ -1248,27 +1299,42 @@ export default function ChapterClassesPage({
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent)]/15 text-[var(--accent)]">
                     <UserCheck size={16} />
                   </span>
-                  <h3 className="text-base font-bold text-text">Assign Class Representatives</h3>
+                  <h3 className="text-base font-bold text-text">Assign Leadership &amp; Class Roles</h3>
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold text-amber-500">
-                    <Lock size={10} /> Campus Lead Scope: Class Rep Only
+                    <Lock size={10} /> Campus Lead Scope: Class Reps &amp; Executive Members
                   </span>
                 </div>
                 <p className="text-xs text-text-dim max-w-2xl">
-                  Campus Leads can appoint students as <strong>Class Representatives</strong> for their respective departments and academic years. Search or filter students below to appoint or remove Class Representatives.
+                  Campus Leads can appoint students as <strong>Class Representatives</strong> for their departments or as <strong>Executive Members</strong> for the current active term. Search or filter students below to manage appointments.
                 </p>
               </div>
 
-              {canManage && (
-                <Button
-                  variant="orange"
-                  size="sm"
-                  onClick={() => openAssignModal()}
-                  disabled={!departments.length}
-                  className="shrink-0"
-                >
-                  <Plus size={14} className="mr-1" /> Appoint Class Rep
-                </Button>
-              )}
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {isCampusLeadForThisChapter && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setAssignExecStudentId("");
+                      setAssignExecDesignation("");
+                      setAssignExecError("");
+                      setAssignExecModalOpen(true);
+                    }}
+                  >
+                    <Shield size={14} className="mr-1 text-cyan" /> Assign Executive Member
+                  </Button>
+                )}
+                {canManage && (
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    onClick={() => openAssignModal()}
+                    disabled={!departments.length}
+                  >
+                    <Plus size={14} className="mr-1" /> Appoint Class Rep
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* 3-Stat Metric Cards */}
@@ -1451,6 +1517,10 @@ export default function ChapterClassesPage({
                                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600">
                                   <CheckCircle2 size={12} /> Class Rep {stu.cohortLabel ? `· ${stu.cohortLabel}` : ""}
                                 </span>
+                              ) : stu.roleKey === "executive_member" ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-cyan-600">
+                                  <Shield size={12} /> Executive Member
+                                </span>
                               ) : (
                                 <span className="text-[11px] text-text-dim capitalize">
                                   {stu.roleKey ? stu.roleKey.replace("_", " ") : "student"}
@@ -1470,23 +1540,41 @@ export default function ChapterClassesPage({
                                     Remove Rep
                                   </Button>
                                 ) : (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() =>
-                                      openAssignModal(
-                                        stu.deptNorm !== "Unassigned"
-                                          ? stu.deptNorm
-                                          : departments[0]?.name,
-                                        stu.year || activeYears[0],
-                                        stu.id,
-                                      )
-                                    }
-                                    className="text-xs text-[var(--accent)] hover:bg-[var(--accent)]/10 py-1 h-7"
-                                  >
-                                    <UserCheck size={12} className="mr-1" />
-                                    Assign as Class Rep
-                                  </Button>
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() =>
+                                        openAssignModal(
+                                          stu.deptNorm !== "Unassigned"
+                                            ? stu.deptNorm
+                                            : departments[0]?.name,
+                                          stu.year || activeYears[0],
+                                          stu.id,
+                                        )
+                                      }
+                                      className="text-xs text-[var(--accent)] hover:bg-[var(--accent)]/10 py-1 h-7"
+                                    >
+                                      <UserCheck size={12} className="mr-1" />
+                                      Class Rep
+                                    </Button>
+                                    {isCampusLeadForThisChapter && stu.roleKey !== "executive_member" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setAssignExecStudentId(stu.id);
+                                          setAssignExecDesignation("");
+                                          setAssignExecError("");
+                                          setAssignExecModalOpen(true);
+                                        }}
+                                        className="text-xs text-cyan hover:bg-cyan/10 py-1 h-7"
+                                      >
+                                        <Shield size={12} className="mr-1" />
+                                        Executive
+                                      </Button>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                             )}
@@ -1633,6 +1721,79 @@ export default function ChapterClassesPage({
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Modal for Appointing Executive Member */}
+          {assignExecModalOpen && (
+            <Dialog
+              open={assignExecModalOpen}
+              onClose={() => setAssignExecModalOpen(false)}
+              title="Assign Executive Member"
+              description={`Appoint a student as Executive Member for ${chapter?.name || "chapter"}${activeTerm ? ` (Term ${activeTerm.termYear})` : ""}.`}
+              footer={
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setAssignExecModalOpen(false)}
+                    disabled={isAssigningExec}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="orange"
+                    size="sm"
+                    onClick={executeAssignExecutiveMember}
+                    disabled={isAssigningExec || !assignExecStudentId}
+                  >
+                    {isAssigningExec ? "Assigning..." : "Confirm & Appoint"}
+                  </Button>
+                </div>
+              }
+            >
+              <div className="space-y-3.5 py-2 text-xs">
+                {assignExecError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-400">
+                    {assignExecError}
+                  </div>
+                )}
+
+                <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 flex items-start gap-2.5">
+                  <ShieldCheck size={16} className="text-cyan shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-text-dim leading-relaxed">
+                    <strong className="text-text font-semibold">Executive Member Role:</strong>{" "}
+                    Appointees receive the same operational event &amp; attendance tracking capabilities as Campus Leads for this chapter, attached to the current active term.
+                  </div>
+                </div>
+
+                <div>
+                  <FieldLabel>Select Student to Appoint *</FieldLabel>
+                  <Select
+                    value={assignExecStudentId}
+                    onChange={(e) => setAssignExecStudentId(e.target.value)}
+                  >
+                    <option value="">-- Choose student in chapter --</option>
+                    {chapterStudents.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullName} ({s.department || "No Dept"} · Year {s.year || "—"}) — {s.email}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div>
+                  <FieldLabel>Designation (Optional free-text label)</FieldLabel>
+                  <Input
+                    value={assignExecDesignation}
+                    onChange={(e) => setAssignExecDesignation(e.target.value)}
+                    placeholder="e.g. Vice Chairman, Secretary, Operations Lead"
+                  />
+                  <p className="mt-1 text-[10px] text-text-mute">
+                    Free-text title for display on profiles and leadership directories (does not change permissions).
+                  </p>
+                </div>
+              </div>
+            </Dialog>
           )}
         </div>
       )}

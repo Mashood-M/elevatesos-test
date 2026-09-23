@@ -68,6 +68,7 @@ const EXECUTIVE_ROLES: RoleKey[] = [
   "innovation_lead",
   "innovation_team",
   "class_representative",
+  "executive_member",
 ];
 
 export function isExecutiveRole(roleKey: RoleKey) {

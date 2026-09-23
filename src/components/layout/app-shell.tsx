@@ -38,6 +38,7 @@ function isNavActive(pathname: string, href: string) {
     "/chapter/events",
     "/chapter/announcements",
     "/chapter/students",
+    "/chapter/leadership",
     "/chapter/calendar",
     "/chapter/reports",
     "/chapter/peer-labs",

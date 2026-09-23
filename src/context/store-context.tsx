@@ -526,6 +526,23 @@ type StoreContextValue = {
     patch: Partial<Pick<LeadershipAssignment, "userId" | "roleKey" | "title">>,
   ) => boolean;
   removeLeadershipAssignment: (id: string) => boolean;
+  openHandoverWindow: (input: {
+    chapterId: string;
+    year: string;
+    closedAt?: string;
+  }) => Promise<boolean>;
+  closeHandoverWindow: (input: { chapterId: string }) => Promise<boolean>;
+  executeTermHandover: (input: {
+    chapterId: string;
+    nextCampusLeadId: string;
+    nextTermYear: string;
+    nextExecutiveMembers: { userId: string; designation?: string }[];
+  }) => Promise<{ ok: boolean; error?: string; newTermId?: string }>;
+  assignExecutiveMember: (input: {
+    chapterId: string;
+    userId: string;
+    designation?: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   createVolunteerGroup: (input: {
     chapterId: string;
     name: string;
@@ -1214,6 +1231,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     eventPermissions: [],
     leadershipTerms: [],
     leadershipAssignments: [],
+    terms: [],
+    termMembers: [],
+    handoverWindows: [],
     events: [],
     eventCategories: DEFAULT_EVENT_CATEGORIES,
     standardDepartments: [],
@@ -5961,6 +5981,335 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           },
         });
         return true;
+      },
+      openHandoverWindow: async (input) => {
+        const id = genUuid();
+        const nowIso = new Date().toISOString();
+        const newWindow: import("@/types").HandoverWindow = {
+          id,
+          chapterId: input.chapterId,
+          year: String(input.year).trim(),
+          openedAt: nowIso,
+          closedAt: input.closedAt ? new Date(input.closedAt).toISOString() : null,
+          openedBy: store.session.userId,
+          status: "open",
+        };
+
+        setStore((s) => ({
+          ...s,
+          handoverWindows: [
+            newWindow,
+            ...s.handoverWindows.map((w) =>
+              w.chapterId === input.chapterId && w.status === "open"
+                ? { ...w, status: "closed" as const, closedAt: nowIso }
+                : w,
+            ),
+          ],
+        }));
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "open_handover_window",
+              data: {
+                chapterId: input.chapterId,
+                year: input.year,
+                closedAt: input.closedAt,
+              },
+            }),
+          });
+          const json = await res.json();
+          return Boolean(json.ok);
+        } catch {
+          return false;
+        }
+      },
+      closeHandoverWindow: async (input) => {
+        const nowIso = new Date().toISOString();
+        setStore((s) => ({
+          ...s,
+          handoverWindows: s.handoverWindows.map((w) =>
+            w.chapterId === input.chapterId && w.status === "open"
+              ? { ...w, status: "closed" as const, closedAt: nowIso }
+              : w,
+          ),
+        }));
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "close_handover_window",
+              data: { chapterId: input.chapterId },
+            }),
+          });
+          const json = await res.json();
+          return Boolean(json.ok);
+        } catch {
+          return false;
+        }
+      },
+      executeTermHandover: async (input) => {
+        const nowIso = new Date().toISOString();
+        const newTermId = genUuid();
+        const studentRoleId = store.roles.find((r) => r.key === "student")?.id;
+        const leadRoleId = store.roles.find((r) => r.key === "campus_lead")?.id;
+        const execRoleId = store.roles.find((r) => r.key === "executive_member")?.id;
+
+        const currentActiveTerm = store.terms.find(
+          (t) => t.chapterId === input.chapterId && t.status === "active",
+        );
+        const currentMemberUserIds = currentActiveTerm
+          ? store.termMembers.filter((m) => m.termId === currentActiveTerm.id).map((m) => m.userId)
+          : [];
+
+        setStore((s) => {
+          // a. Sets current terms row: status='closed', ended_at=now()
+          const nextTerms = s.terms.map((t) =>
+            t.chapterId === input.chapterId && t.status === "active"
+              ? { ...t, status: "closed" as const, endedAt: nowIso }
+              : t,
+          );
+          // d. Inserts new terms row (chapter_id, term_year = next year, campus_lead_id = new pick, status='active', started_at=now())
+          const newTerm: import("@/types").Term = {
+            id: newTermId,
+            chapterId: input.chapterId,
+            termYear: input.nextTermYear,
+            campusLeadId: input.nextCampusLeadId,
+            status: "active",
+            startedAt: nowIso,
+            endedAt: null,
+          };
+          nextTerms.unshift(newTerm);
+
+          // Update userRoles:
+          // b. Sets outgoing campus lead's role -> 'student'
+          // c. Sets every current term_members user's role -> 'student'
+          const nextUserRoles = s.userRoles.filter((ur) => {
+            if (ur.chapterId !== input.chapterId) return true;
+            if (
+              currentActiveTerm &&
+              ur.userId === currentActiveTerm.campusLeadId &&
+              (ur.roleKey === "campus_lead" || ur.roleKey === "chairman")
+            ) {
+              return false;
+            }
+            if (currentMemberUserIds.includes(ur.userId) && ur.roleKey === "executive_member") {
+              return false;
+            }
+            if (ur.userId === input.nextCampusLeadId && ur.roleKey === "executive_member") {
+              return false;
+            }
+            return true;
+          });
+
+          if (currentActiveTerm) {
+            nextUserRoles.push({
+              id: genUuid(),
+              userId: currentActiveTerm.campusLeadId,
+              roleKey: "student",
+              roleId: studentRoleId || "role-student",
+              chapterId: input.chapterId,
+              isPermanent: true,
+              createdAt: nowIso,
+            });
+            for (const mId of currentMemberUserIds) {
+              if (
+                mId !== input.nextCampusLeadId &&
+                !input.nextExecutiveMembers.some((em) => em.userId === mId)
+              ) {
+                nextUserRoles.push({
+                  id: genUuid(),
+                  userId: mId,
+                  roleKey: "student",
+                  roleId: studentRoleId || "role-student",
+                  chapterId: input.chapterId,
+                  isPermanent: true,
+                  createdAt: nowIso,
+                });
+              }
+            }
+          }
+
+          // e. Sets new campus lead's role -> 'campus_lead'
+          nextUserRoles.push({
+            id: genUuid(),
+            userId: input.nextCampusLeadId,
+            roleKey: "campus_lead",
+            roleId: leadRoleId || "role-campus_lead",
+            chapterId: input.chapterId,
+            isPermanent: true,
+            createdAt: nowIso,
+          });
+
+          // f. Inserts term_members rows for the new executive members, sets each of their user role -> 'executive_member'
+          const newTermMembers: import("@/types").TermMember[] = [];
+          for (const em of input.nextExecutiveMembers) {
+            if (em.userId && em.userId !== input.nextCampusLeadId) {
+              newTermMembers.push({
+                id: genUuid(),
+                termId: newTermId,
+                userId: em.userId,
+                role: "executive_member",
+                designation: em.designation?.trim() || null,
+                addedAt: nowIso,
+              });
+              nextUserRoles.push({
+                id: genUuid(),
+                userId: em.userId,
+                roleKey: "executive_member",
+                roleId: execRoleId || "role-executive_member",
+                chapterId: input.chapterId,
+                isPermanent: true,
+                createdAt: nowIso,
+              });
+            }
+          }
+
+          // Update chapter's campus_lead_id
+          const nextChapters = s.chapters.map((c) =>
+            c.id === input.chapterId ? { ...c, campusLeadId: input.nextCampusLeadId } : c,
+          );
+
+          // Update profile role & designation
+          const nextProfiles = s.profiles.map((p) => {
+            if (currentActiveTerm && p.id === currentActiveTerm.campusLeadId) {
+              return { ...p, role: "Member", designation: "student" };
+            }
+            if (p.id === input.nextCampusLeadId) {
+              return { ...p, role: "Campus Lead", designation: "campus_lead" };
+            }
+            if (input.nextExecutiveMembers.some((em) => em.userId === p.id)) {
+              return { ...p, role: "Executive Member", designation: "executive_member" };
+            }
+            if (currentMemberUserIds.includes(p.id)) {
+              return { ...p, role: "Member", designation: "student" };
+            }
+            return p;
+          });
+
+          return {
+            ...s,
+            terms: nextTerms,
+            termMembers: [...newTermMembers, ...s.termMembers],
+            userRoles: nextUserRoles,
+            chapters: nextChapters,
+            profiles: nextProfiles,
+          };
+        });
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "execute_term_handover",
+              data: {
+                chapterId: input.chapterId,
+                nextCampusLeadId: input.nextCampusLeadId,
+                nextTermYear: input.nextTermYear,
+                nextExecutiveMembers: input.nextExecutiveMembers,
+              },
+            }),
+          });
+          const json = await res.json();
+          if (!json.ok) {
+            return { ok: false, error: json.error || "Handover failed" };
+          }
+          return { ok: true, newTermId: json.newTermId || newTermId };
+        } catch (err: unknown) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+      assignExecutiveMember: async (input) => {
+        const nowIso = new Date().toISOString();
+        const activeTerm =
+          store.terms.find((t) => t.chapterId === input.chapterId && t.status === "active") ??
+          store.terms.find((t) => t.chapterId === input.chapterId);
+        const resolvedTermId = activeTerm?.id || genUuid();
+        const newMemberId = genUuid();
+        const execRoleId = store.roles.find((r) => r.key === "executive_member")?.id;
+
+        setStore((s) => {
+          let nextTerms = s.terms;
+          if (!activeTerm) {
+            nextTerms = [
+              {
+                id: resolvedTermId,
+                chapterId: input.chapterId,
+                termYear: String(new Date().getFullYear()),
+                campusLeadId: s.session.userId,
+                status: "active",
+                startedAt: nowIso,
+                endedAt: null,
+              },
+              ...s.terms,
+            ];
+          }
+
+          const newMember: import("@/types").TermMember = {
+            id: newMemberId,
+            termId: resolvedTermId,
+            userId: input.userId,
+            role: "executive_member",
+            designation: input.designation?.trim() || null,
+            addedAt: nowIso,
+          };
+
+          const nextUserRoles = [
+            ...s.userRoles.filter(
+              (ur) => !(ur.userId === input.userId && ur.chapterId === input.chapterId && ur.roleKey === "executive_member"),
+            ),
+            {
+              id: genUuid(),
+              userId: input.userId,
+              roleKey: "executive_member" as const,
+              roleId: execRoleId || "role-executive_member",
+              chapterId: input.chapterId,
+              isPermanent: true,
+              createdAt: nowIso,
+            },
+          ];
+
+          const nextProfiles = s.profiles.map((p) =>
+            p.id === input.userId
+              ? { ...p, role: "Executive Member", designation: "executive_member" }
+              : p,
+          );
+
+          return {
+            ...s,
+            terms: nextTerms,
+            termMembers: [newMember, ...s.termMembers],
+            userRoles: nextUserRoles,
+            profiles: nextProfiles,
+          };
+        });
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "assign_executive_member",
+              data: {
+                chapterId: input.chapterId,
+                userId: input.userId,
+                designation: input.designation,
+              },
+            }),
+          });
+          const json = await res.json();
+          if (!json.ok) {
+            return { ok: false, error: json.error || "Assignment failed" };
+          }
+          return { ok: true };
+        } catch (err: unknown) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
       },
       createVolunteerGroup: (input) => {
         const id = genUuid();

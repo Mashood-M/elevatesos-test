@@ -5,12 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/context/store-context";
 import { canAccessPath, homeForRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { createClient } from "@/lib/supabase/client";
 import { WorkspaceSkeleton } from "@/components/layout/workspace-skeleton";
 
 export function RoleGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { store, hydrated } = useStore();
+  const { store, hydrated, refreshStore } = useStore();
   const { userId, roleKey, chapterId } = store.session;
   const chapterSlug = chapterId
     ? (store.chapters.find((c) => c.id === chapterId)?.slug ?? "")
@@ -29,17 +30,41 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     // Wait until Supabase store hydration has finished before enforcing permissions
     if (!hydrated) return;
 
-    // No authenticated user — redirect to login using replace (clears stale state)
+    // If store session does not have userId, check Supabase auth directly before redirecting.
+    // This prevents kicking out authenticated users during store rehydration or cache sync.
     if (!userId) {
-      window.location.replace("/login");
-      return;
+      let isMounted = true;
+      void (async () => {
+        try {
+          const supabase = createClient();
+          if (supabase) {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session?.user) {
+              if (isMounted) {
+                void refreshStore();
+              }
+              return;
+            }
+          }
+        } catch {
+          // If check errors, proceed to login redirect
+        }
+
+        if (isMounted) {
+          window.location.replace("/login");
+        }
+      })();
+
+      return () => {
+        isMounted = false;
+      };
     }
 
     // User is logged in but doesn't have permission for this path
     if (!canAccessPath(pathname, roleKey, chapterSlug, store.session.authRoleKey, isVolunteer)) {
       router.replace(homeForRole(roleKey, chapterSlug));
     }
-  }, [pathname, userId, roleKey, chapterSlug, router, hydrated, store.session.authRoleKey, isVolunteer]);
+  }, [pathname, userId, roleKey, chapterSlug, router, hydrated, store.session.authRoleKey, isVolunteer, refreshStore]);
 
   // While store is hydrating from Supabase, render full modern ERP workspace skeleton
   if (!hydrated) {

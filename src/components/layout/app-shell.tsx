@@ -9,6 +9,7 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { homeForRole, notificationsHref } from "@/lib/access";
 import { useSupabaseAuth } from "@/lib/mode";
 import { createClient, resetClient } from "@/lib/supabase/client";
+import { resetStoreBootstrapCache } from "@/lib/data/supabase-bootstrap";
 import { navGroupsForRole } from "@/lib/nav";
 import { isHqRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
@@ -175,6 +176,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       });
     }
 
+    resetStoreBootstrapCache();
     resetClient();
     window.location.replace("/login");
   }

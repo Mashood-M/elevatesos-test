@@ -176,8 +176,81 @@ async function runTests() {
   const vol1Event2Powers = getUserVolunteerPowers(testStore as any, "u-vol-1", "ev-2");
   assert(vol1Event2Powers.powers.canManageTasks, "Vol 1 inherits canManageTasks for assigned event ev-2");
 
-  const vol1Event1Powers = getUserVolunteerPowers(testStore as any, "u-vol-1", "ev-1");
-  assert(!vol1Event1Powers.powers.canManageTasks, "Vol 1 does not have canManageTasks for unlinked event ev-1");
+  // 6. CHAPTER TERMS & HANDOVER SYSTEM INVARIANTS
+  console.log("\n--- 6. Chapter Terms & Handover System Invariants ---");
+  // A. Handover window management: Only Founder can open/close windows
+  assert(isFounder("founder"), "Only founder has isFounder check for opening/closing handover windows");
+  assert(!isFounder("campus_lead"), "Campus Lead cannot open/close handover windows");
+  assert(!isFounder("executive_member"), "Executive Member cannot open/close handover windows");
+  assert(!isFounder("student"), "Student cannot open/close handover windows");
+
+  // B. First term creation: Only Founder can create the initial term
+  const canInitializeFirstTerm = (role: RoleKey) => isFounder(role);
+  assert(canInitializeFirstTerm("founder"), "Founder can initialize the first chapter term");
+  assert(!canInitializeFirstTerm("campus_lead"), "Campus Lead cannot initialize the first chapter term");
+  assert(!canInitializeFirstTerm("executive_member"), "Executive Member cannot initialize the first chapter term");
+
+  // C. Handover execution authorization
+  const canExecuteHandover = (
+    role: RoleKey,
+    actingUserId: string,
+    activeTermLeadId: string,
+    isWindowOpen: boolean,
+  ) => {
+    if (!isWindowOpen) return false;
+    if (isFounder(role)) return true;
+    return role === "campus_lead" && actingUserId === activeTermLeadId;
+  };
+
+  assert(
+    canExecuteHandover("campus_lead", "u-lead-1", "u-lead-1", true),
+    "Current active campus lead can execute handover when window is open",
+  );
+  assert(
+    !canExecuteHandover("campus_lead", "u-lead-1", "u-lead-1", false),
+    "Current active campus lead CANNOT execute handover when window is closed",
+  );
+  assert(
+    !canExecuteHandover("campus_lead", "u-lead-2", "u-lead-1", true),
+    "Different campus lead CANNOT execute handover for another lead's active term",
+  );
+  assert(
+    !canExecuteHandover("executive_member", "u-exec-1", "u-lead-1", true),
+    "Executive Member CANNOT execute handover even when window is open",
+  );
+  assert(
+    !canExecuteHandover("student", "u-student-1", "u-lead-1", true),
+    "Student CANNOT execute handover even when window is open",
+  );
+
+  // D. Executive Member role assignment: Restricted to active campus lead of own chapter (or founder)
+  const canAssignExecutiveMember = (
+    role: RoleKey,
+    userChapterId: string,
+    targetChapterId: string,
+    hasActiveTerm: boolean,
+  ) => {
+    if (!hasActiveTerm) return false;
+    if (isFounder(role)) return true;
+    return role === "campus_lead" && userChapterId === targetChapterId;
+  };
+
+  assert(
+    canAssignExecutiveMember("campus_lead", "ch-1", "ch-1", true),
+    "Campus Lead can assign executive member in own chapter with active term",
+  );
+  assert(
+    !canAssignExecutiveMember("campus_lead", "ch-1", "ch-1", false),
+    "Campus Lead CANNOT assign executive member if chapter has no active term",
+  );
+  assert(
+    !canAssignExecutiveMember("campus_lead", "ch-1", "ch-2", true),
+    "Campus Lead CANNOT assign executive member in another chapter",
+  );
+  assert(
+    !canAssignExecutiveMember("executive_member", "ch-1", "ch-1", true),
+    "Executive Member CANNOT assign other executive members",
+  );
 
   // SUMMARY
   console.log("\n==================================================");

@@ -248,6 +248,10 @@ export default function ChapterClassesPage({
 
   async function executeAssignExecutiveMember() {
     if (!chapter) return;
+    if (!activeTerm) {
+      setAssignExecError("Cannot appoint executive member: chapter has no active term yet. A founder must initialize the first term.");
+      return;
+    }
     if (!assignExecStudentId) {
       setAssignExecError("Please choose a student to appoint as Executive Member.");
       return;
@@ -1320,6 +1324,8 @@ export default function ChapterClassesPage({
                       setAssignExecError("");
                       setAssignExecModalOpen(true);
                     }}
+                    disabled={!activeTerm}
+                    title={!activeTerm ? "Chapter has no active term yet. A founder must create the initial term." : undefined}
                   >
                     <Shield size={14} className="mr-1 text-cyan" /> Assign Executive Member
                   </Button>
@@ -1558,7 +1564,7 @@ export default function ChapterClassesPage({
                                       <UserCheck size={12} className="mr-1" />
                                       Class Rep
                                     </Button>
-                                    {isCampusLeadForThisChapter && stu.roleKey !== "executive_member" && (
+                                    {isCampusLeadForThisChapter && Boolean(activeTerm) && stu.roleKey !== "executive_member" && (
                                       <Button
                                         variant="ghost"
                                         size="sm"

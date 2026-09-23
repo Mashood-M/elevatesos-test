@@ -4383,18 +4383,19 @@ export async function POST(req: Request) {
         .limit(1)
         .maybeSingle();
 
+      if (!activeTerm) {
+        return NextResponse.json(
+          { ok: false, error: "No active term exists for this chapter. Founders must initialize the first term." },
+          { status: 400 },
+        );
+      }
+
       // Only the current active term's campus_lead_id for a chapter can execute the handover action
-      if (activeTerm) {
-        if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
-          return NextResponse.json(
-            { ok: false, error: "Only the current active term campus lead can execute the handover" },
-            { status: 403 },
-          );
-        }
-      } else {
-        if (auth.chapterId !== chapterId && auth.roleKey !== "founder") {
-          return NextResponse.json({ ok: false, error: "Permission denied for this chapter" }, { status: 403 });
-        }
+      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
+        return NextResponse.json(
+          { ok: false, error: "Only the current active term campus lead can execute the handover" },
+          { status: 403 },
+        );
       }
 
       // Try stored procedure first
@@ -4560,9 +4561,9 @@ export async function POST(req: Request) {
       }
 
       // Fallback
-      let { data: activeTerm } = await admin
+      const { data: activeTerm } = await admin
         .from("terms")
-        .select("id")
+        .select("id, campus_lead_id")
         .eq("chapter_id", chapterId)
         .eq("status", "active")
         .order("started_at", { ascending: false })
@@ -4570,25 +4571,18 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (!activeTerm) {
-        const newTermId = genUuid();
-        const currentYear = new Date().getFullYear().toString();
-        const { data: insTerm } = await admin
-          .from("terms")
-          .insert({
-            id: newTermId,
-            chapter_id: chapterId,
-            term_year: currentYear,
-            campus_lead_id: auth.userId,
-            status: "active",
-            started_at: new Date().toISOString(),
-          })
-          .select("id")
-          .single();
-        activeTerm = insTerm;
+        return NextResponse.json(
+          { ok: false, error: "Cannot assign executive member: chapter has no active term. A founder must create the initial term first." },
+          { status: 400 },
+        );
       }
 
-      if (!activeTerm) {
-        return NextResponse.json({ ok: false, error: "Could not resolve active term" }, { status: 500 });
+      // Verify caller is active campus lead for this chapter (or founder)
+      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
+        return NextResponse.json(
+          { ok: false, error: "Only the active campus lead for this chapter can assign executive members" },
+          { status: 403 },
+        );
       }
 
       const termMemberId = genUuid();
@@ -4616,6 +4610,122 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json({ ok: true, termMemberId, termId: activeTerm.id });
+    }
+
+    // 21. CREATE FIRST CHAPTER TERM (FOUNDER ONLY)
+    if (type === "create_first_term") {
+      const { chapterId, campusLeadId, termYear, executiveMembers } = data;
+      if (!isUuid(chapterId) || !isUuid(campusLeadId)) {
+        return NextResponse.json({ ok: false, error: "Invalid chapterId or campusLeadId" }, { status: 400 });
+      }
+
+      // Only role 'founder' can create the first term
+      if (auth.roleKey !== "founder" && !auth.assignedKeys?.includes("founder")) {
+        return NextResponse.json(
+          { ok: false, error: "Only founders can initialize the first chapter term" },
+          { status: 403 },
+        );
+      }
+
+      // Check that no active term already exists
+      const { data: existingActive } = await admin
+        .from("terms")
+        .select("id")
+        .eq("chapter_id", chapterId)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (existingActive) {
+        return NextResponse.json(
+          { ok: false, error: "An active term already exists for this chapter. Use Term Change instead." },
+          { status: 400 },
+        );
+      }
+
+      // Try stored procedure first
+      const { data: rpcRes, error: rpcErr } = await admin.rpc("create_first_chapter_term", {
+        p_chapter_id: chapterId,
+        p_acting_user_id: auth.userId,
+        p_campus_lead_id: campusLeadId,
+        p_term_year: String(termYear || new Date().getFullYear()).trim(),
+        p_exec_members: Array.isArray(executiveMembers) ? executiveMembers : [],
+      });
+
+      if (!rpcErr && rpcRes) {
+        return NextResponse.json({ ok: true, data: rpcRes });
+      }
+
+      // Fallback
+      const nowIso = new Date().toISOString();
+      const newTermId = genUuid();
+      const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+      const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
+
+      const { error: termErr } = await admin.from("terms").insert({
+        id: newTermId,
+        chapter_id: chapterId,
+        term_year: String(termYear || new Date().getFullYear()).trim(),
+        campus_lead_id: campusLeadId,
+        status: "active",
+        started_at: nowIso,
+      });
+
+      if (termErr) {
+        return NextResponse.json({ ok: false, error: termErr.message }, { status: 400 });
+      }
+
+      // Set campus lead role
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", campusLeadId)
+        .eq("chapter_id", chapterId)
+        .in("role_key", ["executive_member", "campus_lead", "chairman"]);
+
+      await admin.from("user_roles").insert({
+        user_id: campusLeadId,
+        role_key: "campus_lead",
+        role_id: leadRole?.id ?? null,
+        chapter_id: chapterId,
+        is_permanent: true,
+      });
+
+      await admin.from("chapters").update({ campus_lead_id: campusLeadId }).eq("id", chapterId);
+
+      // Insert executive members
+      if (Array.isArray(executiveMembers) && executiveMembers.length > 0) {
+        for (const item of executiveMembers) {
+          const uId = item.userId ?? item.user_id;
+          const designation = item.designation ? String(item.designation).trim() : null;
+          if (uId && uId !== campusLeadId) {
+            await admin.from("term_members").insert({
+              id: genUuid(),
+              term_id: newTermId,
+              user_id: uId,
+              role: "executive_member",
+              designation,
+              added_at: nowIso,
+            });
+
+            await admin
+              .from("user_roles")
+              .delete()
+              .eq("user_id", uId)
+              .eq("chapter_id", chapterId)
+              .eq("role_key", "executive_member");
+
+            await admin.from("user_roles").insert({
+              user_id: uId,
+              role_key: "executive_member",
+              role_id: execRole?.id ?? null,
+              chapter_id: chapterId,
+              is_permanent: true,
+            });
+          }
+        }
+      }
+
+      return NextResponse.json({ ok: true, termId: newTermId });
     }
 
     return NextResponse.json({ ok: false, error: `Unknown mutation type: ${type}` }, { status: 400 });

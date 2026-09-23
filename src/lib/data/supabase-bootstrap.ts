@@ -116,6 +116,13 @@ let inflightLoadPromise: Promise<StoreLoadResult> | null = null;
 let lastLoadCompletedAt = 0;
 let lastLoadResult: StoreLoadResult | null = null;
 
+/** Reset the in-memory load cache so fresh data/session is fetched on demand */
+export function resetStoreBootstrapCache() {
+  lastLoadResult = null;
+  lastLoadCompletedAt = 0;
+  inflightLoadPromise = null;
+}
+
 /** Load org + chapters + events + projects + forms + public profiles from Supabase. */
 export async function loadStoreFromSupabase(force = false): Promise<StoreLoadResult> {
   const now = Date.now();
@@ -146,10 +153,17 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
   try {
     const sessionRes = await Promise.race([
       supabase.auth.getSession().catch(() => null),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
     ]);
 
-    const authUser = sessionRes?.data?.session?.user ?? null;
+    let authUser = sessionRes?.data?.session?.user ?? null;
+    if (!authUser) {
+      const userRes = await Promise.race([
+        supabase.auth.getUser().catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]);
+      authUser = userRes?.data?.user ?? null;
+    }
     const isAuthenticated = Boolean(authUser);
 
     const [

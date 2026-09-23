@@ -143,26 +143,32 @@ export async function middleware(request: NextRequest) {
   }
 
   // Validate the user with supabase.auth.getUser() instead of trusting cookie existence alone
-  const { user, isNetworkError } = await getUserWithRetryAndTimeout(supabase, 4000, 1);
+  const { user, isNetworkError, isAuthError } = await getUserWithRetryAndTimeout(supabase, 4000, 1);
 
   // Unauthenticated user accessing protected route → redirect to /login
   if (!user) {
-    if (isNetworkError) {
-      // If a transient network/timeout error occurred, check if session cookies exist.
-      // If auth cookies are present, do NOT kick the user out on network hiccup or local dev compilation pause!
-      const allCookies = request.cookies.getAll();
-      const hasAuthCookie = allCookies.some(
-        (c) => c.name.includes("-auth-token") || c.name.startsWith("sb-")
-      );
-      if (hasAuthCookie) {
-        return supabaseResponse;
-      }
+    const allCookies = request.cookies.getAll();
+    const hasAuthCookie = allCookies.some(
+      (c) =>
+        (c.name.includes("-auth-token") || c.name.startsWith("sb-")) &&
+        Boolean(c.value && c.value.trim() && c.value !== '""')
+    );
+
+    // If session cookies exist and it was a network timeout or transition hiccup (not an explicit auth rejection),
+    // let supabaseResponse pass through to the page so client-side hydration can complete.
+    if (hasAuthCookie && (!isAuthError || isNetworkError)) {
+      return supabaseResponse;
     }
 
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     redirectUrl.search = "";
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    // Forward any cookie updates from supabaseResponse
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return redirectResponse;
   }
 
   // Prevent back-button caching of protected app pages after sign out

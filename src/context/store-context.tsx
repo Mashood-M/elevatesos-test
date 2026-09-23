@@ -543,6 +543,12 @@ type StoreContextValue = {
     userId: string;
     designation?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  createFirstTerm: (input: {
+    chapterId: string;
+    campusLeadId: string;
+    termYear: string;
+    executiveMembers: { userId: string; designation?: string }[];
+  }) => Promise<{ ok: boolean; error?: string; termId?: string }>;
   createVolunteerGroup: (input: {
     chapterId: string;
     name: string;
@@ -1320,7 +1326,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const cached = getCachedStore();
     if (cached) {
       setStore(cached);
-      setHydrated(true);
+      // Only mark hydrated as true immediately if cache has an authenticated session.
+      // If the cache has no userId, we must wait for loadStoreFromSupabase to complete
+      // so RoleGate doesn't prematurely kick an authenticating user back to /login.
+      if (cached.session?.userId) {
+        setHydrated(true);
+      }
     }
   }, []);
 
@@ -6226,33 +6237,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       assignExecutiveMember: async (input) => {
         const nowIso = new Date().toISOString();
-        const activeTerm =
-          store.terms.find((t) => t.chapterId === input.chapterId && t.status === "active") ??
-          store.terms.find((t) => t.chapterId === input.chapterId);
-        const resolvedTermId = activeTerm?.id || genUuid();
+        const activeTerm = store.terms.find(
+          (t) => t.chapterId === input.chapterId && t.status === "active",
+        );
+        if (!activeTerm) {
+          return {
+            ok: false,
+            error: "Cannot assign executive member: chapter has no active term. A founder must create the initial term first.",
+          };
+        }
+
         const newMemberId = genUuid();
         const execRoleId = store.roles.find((r) => r.key === "executive_member")?.id;
 
         setStore((s) => {
-          let nextTerms = s.terms;
-          if (!activeTerm) {
-            nextTerms = [
-              {
-                id: resolvedTermId,
-                chapterId: input.chapterId,
-                termYear: String(new Date().getFullYear()),
-                campusLeadId: s.session.userId,
-                status: "active",
-                startedAt: nowIso,
-                endedAt: null,
-              },
-              ...s.terms,
-            ];
-          }
-
           const newMember: import("@/types").TermMember = {
             id: newMemberId,
-            termId: resolvedTermId,
+            termId: activeTerm.id,
             userId: input.userId,
             role: "executive_member",
             designation: input.designation?.trim() || null,
@@ -6282,7 +6283,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
           return {
             ...s,
-            terms: nextTerms,
             termMembers: [newMember, ...s.termMembers],
             userRoles: nextUserRoles,
             profiles: nextProfiles,
@@ -6307,6 +6307,115 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return { ok: false, error: json.error || "Assignment failed" };
           }
           return { ok: true };
+        } catch (err: unknown) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+      createFirstTerm: async (input) => {
+        const nowIso = new Date().toISOString();
+        const newTermId = genUuid();
+        const leadRoleId = store.roles.find((r) => r.key === "campus_lead")?.id;
+        const execRoleId = store.roles.find((r) => r.key === "executive_member")?.id;
+
+        setStore((s) => {
+          const newTerm: import("@/types").Term = {
+            id: newTermId,
+            chapterId: input.chapterId,
+            termYear: input.termYear,
+            campusLeadId: input.campusLeadId,
+            status: "active",
+            startedAt: nowIso,
+            endedAt: null,
+          };
+
+          const nextUserRoles = s.userRoles.filter((ur) => {
+            if (ur.chapterId !== input.chapterId) return true;
+            if (
+              ur.userId === input.campusLeadId &&
+              (ur.roleKey === "executive_member" || ur.roleKey === "campus_lead" || ur.roleKey === "chairman")
+            ) {
+              return false;
+            }
+            return true;
+          });
+
+          nextUserRoles.push({
+            id: genUuid(),
+            userId: input.campusLeadId,
+            roleKey: "campus_lead",
+            roleId: leadRoleId || "role-campus_lead",
+            chapterId: input.chapterId,
+            isPermanent: true,
+            createdAt: nowIso,
+          });
+
+          const newTermMembers: import("@/types").TermMember[] = [];
+          for (const em of input.executiveMembers) {
+            if (em.userId && em.userId !== input.campusLeadId) {
+              newTermMembers.push({
+                id: genUuid(),
+                termId: newTermId,
+                userId: em.userId,
+                role: "executive_member",
+                designation: em.designation?.trim() || null,
+                addedAt: nowIso,
+              });
+
+              nextUserRoles.push({
+                id: genUuid(),
+                userId: em.userId,
+                roleKey: "executive_member",
+                roleId: execRoleId || "role-executive_member",
+                chapterId: input.chapterId,
+                isPermanent: true,
+                createdAt: nowIso,
+              });
+            }
+          }
+
+          const nextChapters = s.chapters.map((c) =>
+            c.id === input.chapterId ? { ...c, campusLeadId: input.campusLeadId } : c,
+          );
+
+          const nextProfiles = s.profiles.map((p) => {
+            if (p.id === input.campusLeadId) {
+              return { ...p, role: "Campus Lead", designation: "campus_lead" };
+            }
+            if (input.executiveMembers.some((em) => em.userId === p.id)) {
+              return { ...p, role: "Executive Member", designation: "executive_member" };
+            }
+            return p;
+          });
+
+          return {
+            ...s,
+            terms: [newTerm, ...s.terms],
+            termMembers: [...newTermMembers, ...s.termMembers],
+            userRoles: nextUserRoles,
+            chapters: nextChapters,
+            profiles: nextProfiles,
+          };
+        });
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "create_first_term",
+              data: {
+                chapterId: input.chapterId,
+                campusLeadId: input.campusLeadId,
+                termYear: input.termYear,
+                executiveMembers: input.executiveMembers,
+              },
+            }),
+          });
+          const json = await res.json();
+          if (!json.ok) {
+            return { ok: false, error: json.error || "Failed to create first term" };
+          }
+          return { ok: true, termId: json.termId || newTermId };
         } catch (err: unknown) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }

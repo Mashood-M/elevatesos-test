@@ -1,17 +1,16 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input } from "@/components/ui/input";
-import { homeForRole } from "@/lib/access";
 import { createClient } from "@/lib/supabase/client";
-import { Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
+import { resetStoreBootstrapCache } from "@/lib/data/supabase-bootstrap";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import type { RoleKey } from "@/types";
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next");
 
@@ -19,6 +18,33 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // If already authenticated in Supabase, automatically redirect to workspace
+  useEffect(() => {
+    const supabase = createClient();
+    if (!supabase) return;
+    async function checkExistingSession() {
+      try {
+        const res = await supabase!.auth.getSession();
+        const user = res?.data?.session?.user;
+        if (user) {
+          const activeRole = localStorage.getItem("elevates_active_role_key") || "student";
+          let dest = next;
+          if (!dest) {
+            if (["founder", "hq_admin"].includes(activeRole)) {
+              dest = "/hq";
+            } else {
+              dest = "/chapter";
+            }
+          }
+          window.location.href = dest;
+        }
+      } catch {
+        // Ignore check failure
+      }
+    }
+    void checkExistingSession();
+  }, [next]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -162,8 +188,9 @@ function LoginForm() {
 
         const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 2500));
         await Promise.race([fetchDetailsPromise, timeoutPromise]);
-      } catch (detailErr: any) {
-        if (detailErr?.message === "ACCOUNT_DISABLED") {
+      } catch (detailErr: unknown) {
+        const msg = (detailErr as { message?: string })?.message;
+        if (msg === "ACCOUNT_DISABLED") {
           setError("This account has been disabled. Please contact your campus administrator.");
           setLoading(false);
           return;
@@ -196,7 +223,23 @@ function LoginForm() {
           localStorage.removeItem("elevates_active_chapter_id");
           localStorage.removeItem("elevates_locked_chapter_id");
         }
+
+        // CRITICAL: Wipe stale unauthenticated store cache so target route loads with fresh authenticated session
+        localStorage.removeItem("elevates_store_cache_v2");
+        sessionStorage.removeItem("elevates_store_cache_v2");
       }
+
+      resetStoreBootstrapCache();
+
+      // Ensure Supabase auth session is committed to client cookies
+      try {
+        await supabase.auth.getSession();
+      } catch {
+        // Continue
+      }
+
+      // Small tick to ensure browser cookie jar has flushed document.cookie before full navigation
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       window.location.href = destination;
     } catch (err: unknown) {

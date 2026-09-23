@@ -409,12 +409,14 @@ BEGIN
     LIMIT 1;
 
     -- Step 3: Verify acting user is current active campus lead
-    IF v_active_term IS NOT NULL THEN
-        IF v_active_term.campus_lead_id <> p_acting_user_id THEN
-            -- Founder bypass allowed if needed, otherwise strict check
-            IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = p_acting_user_id AND role_key = 'founder') THEN
-                RAISE EXCEPTION 'Only the current active term campus lead can execute the handover';
-            END IF;
+    IF v_active_term IS NULL THEN
+        RAISE EXCEPTION 'No active term exists for this chapter. Founders must initialize the first term.';
+    END IF;
+
+    IF v_active_term.campus_lead_id <> p_acting_user_id THEN
+        -- Founder bypass allowed if needed, otherwise strict check
+        IF NOT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = p_acting_user_id AND role_key = 'founder') THEN
+            RAISE EXCEPTION 'Only the current active term campus lead can execute the handover';
         END IF;
     END IF;
 
@@ -555,11 +557,16 @@ BEGIN
     ORDER BY started_at DESC
     LIMIT 1;
 
-    -- If no active term exists, create one
+    -- If no active term exists, fail (Founders must create the first term)
     IF v_active_term IS NULL THEN
-        INSERT INTO public.terms (chapter_id, term_year, campus_lead_id, status, started_at)
-        VALUES (p_chapter_id, to_char(now(), 'YYYY'), p_acting_user_id, 'active', now())
-        RETURNING * INTO v_active_term;
+        RAISE EXCEPTION 'Cannot assign executive member: chapter has no active term. A founder must create the initial term first.';
+    END IF;
+
+    -- Verify acting user is current active campus lead (or founder)
+    IF v_active_term.campus_lead_id <> p_acting_user_id AND NOT EXISTS (
+        SELECT 1 FROM public.user_roles ur WHERE ur.user_id = p_acting_user_id AND ur.role_key = 'founder'
+    ) THEN
+        RAISE EXCEPTION 'Only the active campus lead for this chapter can assign executive members';
     END IF;
 
     -- Insert into term_members
@@ -641,3 +648,95 @@ BEGIN
     RETURN jsonb_build_object('success', true);
 END;
 $$;
+
+-- 12. CREATE FIRST CHAPTER TERM STORED PROCEDURE (FOUNDER ONLY)
+CREATE OR REPLACE FUNCTION public.create_first_chapter_term(
+    p_chapter_id UUID,
+    p_acting_user_id UUID,
+    p_campus_lead_id UUID,
+    p_term_year TEXT,
+    p_exec_members JSONB DEFAULT '[]'::jsonb
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_active_term RECORD;
+    v_new_term_id UUID;
+    v_campus_lead_role_id UUID;
+    v_exec_member_role_id UUID;
+    v_item JSONB;
+    v_target_user_id UUID;
+    v_designation TEXT;
+BEGIN
+    -- Verify caller is founder
+    IF NOT EXISTS (
+        SELECT 1 FROM public.user_roles ur
+        WHERE ur.user_id = p_acting_user_id AND ur.role_key = 'founder'
+    ) THEN
+        RAISE EXCEPTION 'Only founders can create the first chapter term';
+    END IF;
+
+    -- Verify no active term already exists
+    SELECT * INTO v_active_term
+    FROM public.terms
+    WHERE chapter_id = p_chapter_id AND status = 'active'
+    LIMIT 1;
+
+    IF v_active_term IS NOT NULL THEN
+        RAISE EXCEPTION 'An active term already exists for this chapter. Use term handover instead.';
+    END IF;
+
+    SELECT id INTO v_campus_lead_role_id FROM public.roles WHERE key = 'campus_lead' LIMIT 1;
+    SELECT id INTO v_exec_member_role_id FROM public.roles WHERE key = 'executive_member' LIMIT 1;
+
+    -- Insert first term
+    INSERT INTO public.terms (chapter_id, term_year, campus_lead_id, status, started_at)
+    VALUES (p_chapter_id, p_term_year, p_campus_lead_id, 'active', now())
+    RETURNING id INTO v_new_term_id;
+
+    -- Set campus lead role for this user & chapter
+    DELETE FROM public.user_roles
+    WHERE user_id = p_campus_lead_id
+      AND chapter_id = p_chapter_id
+      AND role_key IN ('executive_member', 'campus_lead', 'chairman');
+
+    INSERT INTO public.user_roles (user_id, role_key, role_id, chapter_id, is_permanent)
+    VALUES (p_campus_lead_id, 'campus_lead', v_campus_lead_role_id, p_chapter_id, true)
+    ON CONFLICT DO NOTHING;
+
+    -- Update chapters table campus_lead_id
+    UPDATE public.chapters
+    SET campus_lead_id = p_campus_lead_id
+    WHERE id = p_chapter_id;
+
+    -- Insert executive members
+    IF p_exec_members IS NOT NULL AND jsonb_typeof(p_exec_members) = 'array' THEN
+        FOR v_item IN SELECT * FROM jsonb_array_elements(p_exec_members) LOOP
+            v_target_user_id := (v_item->>'user_id')::UUID;
+            v_designation := NULLIF(trim(v_item->>'designation'), '');
+
+            IF v_target_user_id IS NOT NULL AND v_target_user_id <> p_campus_lead_id THEN
+                INSERT INTO public.term_members (term_id, user_id, role, designation, added_at)
+                VALUES (v_new_term_id, v_target_user_id, 'executive_member', v_designation, now());
+
+                DELETE FROM public.user_roles
+                WHERE user_id = v_target_user_id
+                  AND chapter_id = p_chapter_id
+                  AND role_key = 'executive_member';
+
+                INSERT INTO public.user_roles (user_id, role_key, role_id, chapter_id, is_permanent)
+                VALUES (v_target_user_id, 'executive_member', v_exec_member_role_id, p_chapter_id, true)
+                ON CONFLICT DO NOTHING;
+            END IF;
+        END LOOP;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'new_term_id', v_new_term_id
+    );
+END;
+$$;
+

@@ -199,6 +199,10 @@ export default function ChapterLeadershipPage({
 
   async function handleConfirmAssignExecutive() {
     if (!chapter) return;
+    if (!activeTerm) {
+      setAssignError("Cannot appoint executive member: chapter has no active term yet. A founder must initialize the first term.");
+      return;
+    }
     if (!assignStudentId) {
       setAssignError("Please choose a student to assign.");
       return;

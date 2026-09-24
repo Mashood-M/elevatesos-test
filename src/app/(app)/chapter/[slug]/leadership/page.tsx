@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import React, { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -803,8 +803,8 @@ export default function ChapterLeadershipPage({
                   const done = step.n < currentStep;
                   const active = step.n === currentStep;
                   return (
-                    <>
-                      <div key={step.n} className="flex items-center gap-1.5">
+                    <React.Fragment key={step.n}>
+                      <div className="flex items-center gap-1.5">
                         <span className={cn(
                           "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 transition-all",
                           done
@@ -823,7 +823,7 @@ export default function ChapterLeadershipPage({
                         </span>
                       </div>
                       {i < 2 && <div className={cn("flex-1 h-px mx-2", done ? "bg-[var(--accent)]/30" : "bg-border")} />}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </div>

@@ -336,9 +336,9 @@ export default function PeerLabsCMSPage() {
 
       {/* Edit Modal */}
       {editingLab && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto">
-          <div className="my-8 w-full max-w-3xl rounded-[var(--radius-xl)] bg-bg-panel p-6 shadow-2xl border border-border space-y-5">
-            <div className="flex items-center justify-between border-b border-border pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl max-h-[90vh] rounded-[var(--radius-xl)] bg-bg-panel shadow-2xl border border-border flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4 shrink-0 bg-bg-panel">
               <div>
                 <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
                   {isNew ? "Create Peer Lab Series" : "Edit Peer Lab Series"}
@@ -347,13 +347,13 @@ export default function PeerLabsCMSPage() {
               </div>
               <button
                 onClick={() => setEditingLab(null)}
-                className="text-text-dim hover:text-text p-1.5 rounded-full hover:bg-bg-page"
+                className="text-text-dim hover:text-text p-1.5 rounded-full hover:bg-bg-page transition cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4 text-xs max-h-[70vh] overflow-y-auto pr-1">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs scrollbar-thin">
               <div>
                 <label className="font-semibold text-text-dim block mb-1">Track Title</label>
                 <Input
@@ -746,7 +746,7 @@ export default function PeerLabsCMSPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-border">
+            <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-border bg-bg-panel shrink-0">
               <Button variant="ghost" size="sm" onClick={() => setEditingLab(null)}>
                 Cancel
               </Button>

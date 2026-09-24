@@ -272,13 +272,26 @@ export function EventRegistrationDialog({
           {/* Background Poster Image or Abstract Generative Art */}
           {posterImage ? (
             <>
+              {/* Atmospheric Ambient Blur Backdrop */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={posterImage}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-full h-full object-cover blur-2xl opacity-40 scale-125"
+                />
+                <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+              </div>
+
+              {/* Main Poster Image - Cropped and Fitted cleanly */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={posterImage}
                 alt={event.title}
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-300"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#090b10] via-black/35 to-black/55" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#090b10] via-black/35 to-black/55 pointer-events-none" />
             </>
           ) : (
             /* Vibrant abstract generative 3D swirl artwork matching Image 1 */

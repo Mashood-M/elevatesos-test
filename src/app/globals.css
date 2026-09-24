@@ -111,11 +111,11 @@
 }
 
 html {
-  overflow-x: clip;
+  height: 100%;
 }
 
 body {
-  min-height: 100dvh;
+  min-height: 100%;
   margin: 0;
   background: var(--bg);
   color: var(--text);
@@ -125,7 +125,7 @@ body {
   letter-spacing: -0.005em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: clip;
+  overflow-x: hidden;
 }
 
 h1,

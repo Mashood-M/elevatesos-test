@@ -156,15 +156,39 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
     ]);
 
-    let authUser = sessionRes?.data?.session?.user ?? null;
+    let authSession = sessionRes?.data?.session ?? null;
+    let authUser = authSession?.user ?? null;
+
+    // Validate that session token is not expired; if expired, try refreshing
+    if (authSession?.expires_at && Math.floor(Date.now() / 1000) >= authSession.expires_at) {
+      try {
+        const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+        if (!refreshErr && refreshed?.session) {
+          authSession = refreshed.session;
+          authUser = refreshed.session.user;
+        } else {
+          authSession = null;
+          authUser = null;
+        }
+      } catch {
+        authSession = null;
+        authUser = null;
+      }
+    }
+
     if (!authUser) {
       const userRes = await Promise.race([
         supabase.auth.getUser().catch(() => null),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
       ]);
       authUser = userRes?.data?.user ?? null;
+      if (authUser && !authSession) {
+        const sRes = await supabase.auth.getSession().catch(() => null);
+        authSession = sRes?.data?.session ?? null;
+      }
     }
     const isAuthenticated = Boolean(authUser);
+    const accessToken = authSession?.access_token ?? null;
 
     const [
       { data: orgs },
@@ -223,6 +247,16 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let termMemberRows: any[] | null = null;
     let handoverWindowRows: any[] | null = null;
 
+    let ltError: unknown = null;
+    let laError: unknown = null;
+    let termsError: unknown = null;
+    let termMemberError: unknown = null;
+    let handoverWindowError: unknown = null;
+    let vgError: unknown = null;
+    let vgmError: unknown = null;
+    let vaError: unknown = null;
+    let inviteError: unknown = null;
+
     if (isAuthenticated) {
       const [
         pRes,
@@ -279,9 +313,12 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
       attRows = attRes.data;
       urRows = urRes.data;
       ltRows = ltRes.data;
+      ltError = ltRes.error;
       laRows = laRes.data;
+      laError = laRes.error;
       epRows = epRes.data;
       inviteRows = invRes.data;
+      inviteError = invRes.error;
       taskRows = taskRes.data;
       notifRows = notifRes.data;
       activityRows = actRes.data;
@@ -289,11 +326,17 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
       laAppRows = laAppRes.data;
       standardCheckRows = scRes.data;
       vgRows = vgRes.data;
+      vgError = vgRes.error;
       vgmRows = vgmRes.data;
+      vgmError = vgmRes.error;
       vaRows = vaRes.data;
+      vaError = vaRes.error;
       termsRows = tRes.data;
+      termsError = tRes.error;
       termMemberRows = tmRes.data;
+      termMemberError = tmRes.error;
       handoverWindowRows = hwRes.data;
+      handoverWindowError = hwRes.error;
     }
 
     const orgRow = orgs?.[0];
@@ -695,9 +738,11 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let ltRowsFinal = ltRows ?? [];
     let laRowsFinal = laRows ?? [];
 
-    if (isAuthenticated && (ltRowsFinal.length === 0 || laRowsFinal.length === 0) && typeof window !== "undefined") {
+    if (isAuthenticated && (Boolean(ltError) || Boolean(laError)) && typeof window !== "undefined") {
       try {
-        const leadRes = await fetch("/api/mutations?type=leadership_data");
+        const headers: Record<string, string> = {};
+        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+        const leadRes = await fetch("/api/mutations?type=leadership_data", { headers });
         if (leadRes.ok) {
           const leadJson = await leadRes.json();
           if (leadJson.ok) {
@@ -741,9 +786,11 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let termMemberRowsFinal = termMemberRows ?? [];
     let handoverWindowRowsFinal = handoverWindowRows ?? [];
 
-    if (isAuthenticated && termsRowsFinal.length === 0 && typeof window !== "undefined") {
+    if (isAuthenticated && (Boolean(termsError) || Boolean(termMemberError) || Boolean(handoverWindowError)) && typeof window !== "undefined") {
       try {
-        const termsRes = await fetch("/api/mutations?type=terms_data");
+        const headers: Record<string, string> = {};
+        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+        const termsRes = await fetch("/api/mutations?type=terms_data", { headers });
         if (termsRes.ok) {
           const termsJson = await termsRes.json();
           if (termsJson.ok) {
@@ -793,9 +840,11 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     let vgmRowsFinal = vgmRows ?? [];
     let vaRowsFinal = vaRows ?? [];
 
-    if (isAuthenticated && vgRowsFinal.length === 0 && vaRowsFinal.length === 0 && typeof window !== "undefined") {
+    if (isAuthenticated && (Boolean(vgError) || Boolean(vgmError) || Boolean(vaError)) && typeof window !== "undefined") {
       try {
-        const volRes = await fetch("/api/mutations?type=volunteer_data");
+        const headers: Record<string, string> = {};
+        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+        const volRes = await fetch("/api/mutations?type=volunteer_data", { headers });
         if (volRes.ok) {
           const volJson = await volRes.json();
           if (volJson.ok) {
@@ -1152,9 +1201,11 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
     }
 
     let finalInviteRows = inviteRows;
-    if (isAuthenticated && (!finalInviteRows || finalInviteRows.length === 0) && typeof window !== "undefined") {
+    if (isAuthenticated && Boolean(inviteError) && typeof window !== "undefined") {
       try {
-        const fallbackRes = await fetch("/api/mutations?type=invite_tokens");
+        const headers: Record<string, string> = {};
+        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+        const fallbackRes = await fetch("/api/mutations?type=invite_tokens", { headers });
         const fallbackJson = await fallbackRes.json();
         if (fallbackJson?.ok && Array.isArray(fallbackJson.data)) {
           finalInviteRows = fallbackJson.data;

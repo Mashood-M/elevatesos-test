@@ -90,12 +90,12 @@ export function ContentSkeleton() {
 export function WorkspaceSkeleton() {
   return (
     <div
-      className="min-h-dvh bg-bg lg:grid"
+      className="h-dvh bg-bg lg:grid overflow-hidden"
       style={{ gridTemplateColumns: "var(--rail-width) minmax(0, 1fr)" }}
     >
       {/* Structural Left Sidebar Rail (248px) */}
       <aside
-        className="hidden lg:flex w-[var(--rail-width)] shrink-0 border-r border-[var(--rail-border)] bg-[var(--rail)] flex-col h-dvh sticky top-0 select-none"
+        className="hidden lg:flex w-[var(--rail-width)] shrink-0 border-r border-[var(--rail-border)] bg-[var(--rail)] flex-col h-dvh select-none"
         aria-hidden="true"
       >
         {/* Brand Header */}
@@ -174,10 +174,10 @@ export function WorkspaceSkeleton() {
       </aside>
 
       {/* Main Content Pane */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col h-dvh overflow-hidden">
         {/* Sticky Top Bar */}
         <header
-          className="border-b border-[var(--rail-border)] bg-white/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between sticky top-0 z-10"
+          className="border-b border-[var(--rail-border)] bg-white/90 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between shrink-0 z-10"
           style={{ height: "var(--header-height)" }}
         >
           <div className="flex items-center gap-3">
@@ -198,7 +198,7 @@ export function WorkspaceSkeleton() {
         </header>
 
         {/* Content Body */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
           <ContentSkeleton />
         </main>
       </div>

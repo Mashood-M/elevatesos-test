@@ -78,9 +78,6 @@ async function syncMemberTable(
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireUser();
-    if (!auth.ok) return auth.response;
-
     const admin = createServiceClient();
     if (!admin) {
       return NextResponse.json({ ok: false, error: "Supabase service client not configured" }, { status: 500 });
@@ -88,6 +85,62 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
     const requestedChapterId = searchParams.get("chapterId");
+
+    // Public invite validation does not require user authentication
+    if (type === "validate_invite") {
+      const token = searchParams.get("token")?.trim();
+      if (!token) {
+        return NextResponse.json({ ok: false, error: "token required" }, { status: 400 });
+      }
+
+      // Check system_ui_states for explicit revocation
+      const { data: uiRevoked } = await admin
+        .from("system_ui_states")
+        .select("is_enabled")
+        .eq("key", `revoked_invite_${token.toUpperCase()}`)
+        .maybeSingle();
+
+      if (uiRevoked && !uiRevoked.is_enabled) {
+        return NextResponse.json({
+          ok: true,
+          data: { token, is_active: false, isRevoked: true },
+        });
+      }
+
+      // Query invite_tokens case-insensitively
+      let tokenData: any = null;
+      let queryError: any = null;
+
+      const res = await admin
+        .from("invite_tokens")
+        .select("id, token, created_by, chapter_id, is_active, used_by, expires_at, uses_count")
+        .ilike("token", token)
+        .maybeSingle();
+
+      tokenData = res.data;
+      queryError = res.error;
+
+      if (queryError && queryError.message?.includes("uses_count")) {
+        const fallback = await admin
+          .from("invite_tokens")
+          .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
+          .ilike("token", token)
+          .maybeSingle();
+        tokenData = fallback.data ? { ...fallback.data, uses_count: 0 } : null;
+        queryError = fallback.error;
+      }
+
+      if (queryError) {
+        return NextResponse.json({ ok: false, error: queryError.message }, { status: 500 });
+      }
+      if (!tokenData) {
+        return NextResponse.json({ ok: false, error: "Invite token not found" }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true, data: tokenData });
+    }
+
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
     if (type === "peer_labs") {
       let query = admin
         .from("peer_labs")
@@ -386,57 +439,6 @@ export async function GET(req: Request) {
         handoverWindows: handoverWindows ?? [],
       });
     }
-    if (type === "validate_invite") {
-      const token = searchParams.get("token")?.trim();
-      if (!token) {
-        return NextResponse.json({ ok: false, error: "token required" }, { status: 400 });
-      }
-
-      // Check system_ui_states for explicit revocation
-      const { data: uiRevoked } = await admin
-        .from("system_ui_states")
-        .select("is_enabled")
-        .eq("key", `revoked_invite_${token.toUpperCase()}`)
-        .maybeSingle();
-
-      if (uiRevoked && !uiRevoked.is_enabled) {
-        return NextResponse.json({
-          ok: true,
-          data: { token, is_active: false, isRevoked: true },
-        });
-      }
-
-      // Query invite_tokens case-insensitively
-      let tokenData: any = null;
-      let queryError: any = null;
-
-      const res = await admin
-        .from("invite_tokens")
-        .select("id, token, created_by, chapter_id, is_active, used_by, expires_at, uses_count")
-        .ilike("token", token)
-        .maybeSingle();
-
-      tokenData = res.data;
-      queryError = res.error;
-
-      if (queryError && queryError.message?.includes("uses_count")) {
-        const fallback = await admin
-          .from("invite_tokens")
-          .select("id, token, created_by, chapter_id, is_active, used_by, expires_at")
-          .ilike("token", token)
-          .maybeSingle();
-        tokenData = fallback.data ? { ...fallback.data, uses_count: 0 } : null;
-        queryError = fallback.error;
-      }
-
-      if (queryError) {
-        return NextResponse.json({ ok: false, error: queryError.message }, { status: 500 });
-      }
-      if (!tokenData) {
-        return NextResponse.json({ ok: false, error: "Invite token not found" }, { status: 404 });
-      }
-      return NextResponse.json({ ok: true, data: tokenData });
-    }
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -507,7 +509,7 @@ export async function POST(req: Request) {
     }
 
     // ALL other mutations require a verified authenticated session
-    const auth = await requireUser();
+    const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
 
     // Central HQ-only gate

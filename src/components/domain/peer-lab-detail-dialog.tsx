@@ -13,12 +13,14 @@ import {
   Globe,
   Layers,
   Lock,
+  Maximize2,
   Send,
   Settings2,
   Share2,
   Shield,
   Sparkles,
   Users,
+  X,
 } from "lucide-react";
 import type { PeerLabSeriesItem } from "@/components/domain/peer-lab-manager-dialog";
 
@@ -52,6 +54,7 @@ export function PeerLabDetailDialog({
 }: PeerLabDetailDialogProps) {
   const { session, profile } = useCurrentUser();
   const [enrolling, setEnrolling] = useState(false);
+  const [showPosterModal, setShowPosterModal] = useState(false);
 
   if (!lab) return null;
 
@@ -59,6 +62,7 @@ export function PeerLabDetailDialog({
   const isOpenToAll = !lab.chapterId;
   const isClosed = lab.applicationsOpen === false;
   const sessionCount = lab.lessons?.length ?? 0;
+  const posterSrc = lab.posterUrl || lab.thumbnailUrl;
 
   const handleEnroll = async () => {
     if (!session.userId) {
@@ -111,97 +115,129 @@ export function PeerLabDetailDialog({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      className="max-w-4xl w-full p-0 border-0 rounded-[28px] overflow-hidden bg-white shadow-2xl"
-    >
-      <div className="flex flex-col md:flex-row min-h-0 max-h-[92vh]">
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        className="max-w-4xl w-full p-0 border-0 rounded-[28px] overflow-hidden bg-white shadow-2xl"
+      >
+        <div className="flex flex-col md:flex-row min-h-0 max-h-[92vh]">
 
-        {/* LEFT: Poster Panel */}
-        <div className="relative md:w-[42%] md:flex-shrink-0 h-56 md:h-auto bg-gradient-to-br from-[#1a1a22] via-[#2d2d34] to-[#111117]">
-          {lab.posterUrl ? (
-            <img
-              src={lab.posterUrl}
-              alt={lab.title}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : (
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/30 via-purple-900/20 to-[#1a1a22]" />
-              <div
-                className="absolute inset-0 opacity-10"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px)",
-                  backgroundSize: "28px 28px",
-                }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-20 h-20 rounded-3xl bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                  <BookOpen size={36} className="text-white/60" />
+          {/* LEFT: Poster Panel - Cropped & Fitted with Ambient Atmosphere */}
+          <div className="relative md:w-[42%] md:flex-shrink-0 min-h-[300px] sm:min-h-[360px] md:min-h-[580px] bg-gradient-to-br from-[#1a1a22] via-[#2d2d34] to-[#111117] overflow-hidden flex flex-col justify-between select-none">
+            {posterSrc ? (
+              <>
+                {/* Atmospheric Ambient Blur Backdrop */}
+                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                  <img
+                    src={posterSrc}
+                    alt=""
+                    aria-hidden="true"
+                    className="w-full h-full object-cover blur-2xl opacity-40 scale-125"
+                  />
+                  <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
                 </div>
+
+                {/* Main Poster Image - Cropped and Fitted cleanly */}
+                <img
+                  src={posterSrc}
+                  alt={lab.title}
+                  className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-300"
+                />
+
+                {/* Scrim for Text Readability */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/20 pointer-events-none" />
+              </>
+            ) : (
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--accent)]/30 via-purple-900/20 to-[#1a1a22]" />
+                <div
+                  className="absolute inset-0 opacity-10"
+                  style={{
+                    backgroundImage:
+                      "linear-gradient(rgba(255,255,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.07) 1px,transparent 1px)",
+                    backgroundSize: "28px 28px",
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-3xl bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                    <BookOpen size={36} className="text-white/60" />
+                  </div>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent pointer-events-none" />
+              </div>
+            )}
+
+            {/* Top badges & Full Poster toggle */}
+            <div className="relative z-10 p-4 flex items-center justify-between gap-2 w-full">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                {isOpenToAll ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[var(--accent)] text-white shadow-sm">
+                    <Globe size={10} /> Global
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white text-zinc-900 shadow-sm">
+                    <Shield size={10} className="text-[var(--accent)]" />
+                    {chapterName || "Campus"}
+                  </span>
+                )}
+                {lab.track && (
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white/20 text-white backdrop-blur-md border border-white/10">
+                    {lab.track}
+                  </span>
+                )}
+              </div>
+
+              {/* View Full Poster button */}
+              {posterSrc && (
+                <button
+                  type="button"
+                  onClick={() => setShowPosterModal(true)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-black/60 hover:bg-black/80 text-white backdrop-blur-md border border-white/20 shadow-sm transition cursor-pointer"
+                  title="Click to view full uncropped poster"
+                >
+                  <Maximize2 size={11} />
+                  <span>Full Poster</span>
+                </button>
+              )}
+            </div>
+
+            {/* Bottom info */}
+            <div className="relative z-10 p-5 pt-8">
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold mb-2 shadow-xs ${
+                  STATUS_STYLES[lab.status] ?? "bg-white/20 text-white"
+                }`}
+              >
+                {lab.status}
+              </span>
+              <h2 className="text-xl sm:text-2xl font-bold font-[family-name:var(--font-display)] text-white leading-snug drop-shadow-sm">
+                {lab.title}
+              </h2>
+              {lab.subtitle && (
+                <p className="text-[13px] text-zinc-200 mt-1 line-clamp-2 drop-shadow-xs leading-relaxed">
+                  {lab.subtitle}
+                </p>
+              )}
+
+              {/* Quick stat chips */}
+              <div className="mt-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 pt-2 border-t border-white/15">
+                {sessionCount > 0 && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-200">
+                    <Layers size={11} className="text-[var(--accent)]" /> {sessionCount} session{sessionCount !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-200">
+                  <Users size={11} /> {lab.joinedCount} enrolled
+                </span>
+                {lab.maxParticipants && (
+                  <span className="flex items-center gap-1 text-[11px] font-medium text-zinc-200">
+                    <Lock size={11} /> {lab.maxParticipants} seats max
+                  </span>
+                )}
               </div>
             </div>
-          )}
-
-          {/* Scrim */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
-
-          {/* Top badges */}
-          <div className="absolute top-4 left-4 flex flex-wrap gap-1.5">
-            {isOpenToAll ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[var(--accent)] text-white shadow">
-                <Globe size={10} /> Global
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-white text-zinc-900 shadow">
-                <Shield size={10} className="text-[var(--accent)]" />
-                {chapterName || "Campus"}
-              </span>
-            )}
-            {lab.track && (
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-white/20 text-white backdrop-blur-md">
-                {lab.track}
-              </span>
-            )}
           </div>
-
-
-          {/* Bottom info */}
-          <div className="absolute bottom-0 left-0 right-0 p-5">
-            <span
-              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold mb-2 ${
-                STATUS_STYLES[lab.status] ?? "bg-white/20 text-white"
-              }`}
-            >
-              {lab.status}
-            </span>
-            <h2 className="text-xl font-bold font-[family-name:var(--font-display)] text-white leading-snug">
-              {lab.title}
-            </h2>
-            {lab.subtitle && (
-              <p className="text-[13px] text-zinc-300 mt-0.5 line-clamp-2">{lab.subtitle}</p>
-            )}
-
-            {/* Quick stat chips */}
-            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-              {sessionCount > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-zinc-300">
-                  <Layers size={11} /> {sessionCount} session{sessionCount !== 1 ? "s" : ""}
-                </span>
-              )}
-              <span className="flex items-center gap-1 text-[11px] text-zinc-300">
-                <Users size={11} /> {lab.joinedCount} enrolled
-              </span>
-              {lab.maxParticipants && (
-                <span className="flex items-center gap-1 text-[11px] text-zinc-300">
-                  <Lock size={11} /> {lab.maxParticipants} seats max
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
 
         {/* RIGHT: Details Panel */}
         <div className="flex-1 flex flex-col overflow-hidden bg-[#fafafa]">
@@ -434,5 +470,41 @@ export function PeerLabDetailDialog({
         </div>
       </div>
     </Dialog>
+
+      {/* Lightbox to inspect full, uncropped poster flyer */}
+      {showPosterModal && posterSrc && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowPosterModal(false)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between pb-3 text-white">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">{lab.title}</span>
+                <span className="text-xs text-white/60">· Full Poster Flyer</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPosterModal(false)}
+                className="h-8 w-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-white/15 bg-black/50 shadow-2xl">
+              <img
+                src={posterSrc}
+                alt={lab.title}
+                className="max-h-[82vh] w-auto max-w-full object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

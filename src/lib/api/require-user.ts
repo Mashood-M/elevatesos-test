@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isHqRole, isSuperAdmin, isCampusLead, canCreateEvent } from "@/lib/permissions";
 import { isExecutiveRole } from "@/lib/access";
 import type { RoleKey } from "@/types";
+import type { User } from "@supabase/supabase-js";
 
 export interface AuthenticatedUser {
   ok: true;
@@ -56,37 +58,11 @@ const ROLE_PRIORITY: RoleKey[] = [
 ];
 
 /**
- * Validates the Supabase session from request cookies, extracts the authenticated user,
+ * Validates the Supabase session from Bearer token header or request cookies, extracts the authenticated user,
  * and resolves their canonical profile ID, highest role key, and chapter ID.
  * Returns either an AuthenticatedUser object (with ok: true) or an AuthErrorResponse (with ok: false and a 401 response).
  */
-export async function requireUser(): Promise<RequireUserResult> {
-  const supabase = await createServerClient();
-  if (!supabase) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { ok: false, error: "Authentication client unavailable" },
-        { status: 401 },
-      ),
-    };
-  }
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { ok: false, error: "Unauthorized: valid session required" },
-        { status: 401 },
-      ),
-    };
-  }
-
+export async function requireUser(req?: Request): Promise<RequireUserResult> {
   const admin = createServiceClient();
   if (!admin) {
     return {
@@ -94,6 +70,64 @@ export async function requireUser(): Promise<RequireUserResult> {
       response: NextResponse.json(
         { ok: false, error: "Database service client unavailable" },
         { status: 500 },
+      ),
+    };
+  }
+
+  let user: User | null = null;
+
+  // 1. Check for Bearer token in request header or next/headers
+  let bearerToken: string | null = null;
+  if (req) {
+    const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
+    if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+      bearerToken = authHeader.slice(7).trim();
+    }
+  }
+  if (!bearerToken) {
+    try {
+      const headerStore = await headers();
+      const authHeader = headerStore.get("authorization") || headerStore.get("Authorization");
+      if (authHeader && authHeader.toLowerCase().startsWith("bearer ")) {
+        bearerToken = authHeader.slice(7).trim();
+      }
+    } catch {
+      // In contexts where headers() cannot be evaluated, proceed to cookie auth
+    }
+  }
+
+  if (bearerToken) {
+    try {
+      const { data: tokenData, error: tokenErr } = await admin.auth.getUser(bearerToken);
+      if (!tokenErr && tokenData?.user) {
+        user = tokenData.user;
+      }
+    } catch {
+      // Fall through to cookie auth
+    }
+  }
+
+  // 2. Fall back to cookie-based session verification
+  if (!user) {
+    const supabase = await createServerClient();
+    if (supabase) {
+      try {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (!authError && data?.user) {
+          user = data.user;
+        }
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  if (!user) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { ok: false, error: "Unauthorized: valid session required" },
+        { status: 401 },
       ),
     };
   }

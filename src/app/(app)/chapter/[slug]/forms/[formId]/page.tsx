@@ -36,14 +36,22 @@ export default function FormWorkspacePage({
 
   useEffect(() => {
     if (!fullscreen) return;
-    const prev = document.body.style.overflow;
+    const prevBody = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const mainEl = document.getElementById("elevates-main-content");
+    const prevMain = mainEl ? mainEl.style.overflow : undefined;
+    if (mainEl) {
+      mainEl.style.overflow = "hidden";
+    }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setFullscreen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevBody;
+      if (mainEl && prevMain !== undefined) {
+        mainEl.style.overflow = prevMain;
+      }
       window.removeEventListener("keydown", onKey);
     };
   }, [fullscreen]);

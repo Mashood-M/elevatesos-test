@@ -183,12 +183,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div
-      className="min-h-dvh bg-bg lg:grid"
+      className="h-dvh bg-bg lg:grid overflow-hidden"
       style={{ gridTemplateColumns: "var(--rail-width) minmax(0, 1fr)" }}
     >
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex h-dvh flex-col border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:sticky lg:top-0 lg:w-[var(--rail-width)] lg:translate-x-0 lg:z-30",
+          "fixed inset-y-0 left-0 z-[var(--z-overlay)] flex h-dvh flex-col border-r border-[var(--rail-border)] bg-[var(--rail)] text-[var(--rail-fg)] transition duration-200 lg:static lg:h-dvh lg:w-[var(--rail-width)] lg:translate-x-0 lg:z-30",
           open
             ? "w-[var(--rail-width-mobile)] translate-x-0 shadow-[var(--shadow)]"
             : "w-[var(--rail-width-mobile)] -translate-x-full",
@@ -313,8 +313,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       ) : null}
 
-      <div className="flex min-w-0 flex-col">
-        <header className="sticky top-0 z-[var(--z-sticky)] border-b border-[var(--rail-border)] bg-white/90 backdrop-blur-md">
+      <div className="flex h-dvh w-full flex-col min-w-0 overflow-hidden">
+        <header className="shrink-0 z-[var(--z-sticky)] border-b border-[var(--rail-border)] bg-white/90 backdrop-blur-md">
           <div
             className="flex items-center justify-between gap-4 px-4 md:px-8"
             style={{ height: "var(--header-height)" }}
@@ -406,7 +406,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main
-          className="flex-1"
+          id="elevates-main-content"
+          className="flex-1 min-h-0 overflow-y-auto scrollbar-thin"
           style={{
             paddingLeft: "var(--content-pad-x)",
             paddingRight: "var(--content-pad-x)",

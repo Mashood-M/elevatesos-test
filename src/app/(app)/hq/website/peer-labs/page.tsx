@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { showToast, useStore } from "@/context/store-context";
 import {
   Edit,
+  Eye,
   Plus,
   Search,
   Trash2,
@@ -15,6 +16,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { genUuid } from "@/lib/uuid";
+import { PeerLabDetailDialog } from "@/components/domain/peer-lab-detail-dialog";
+import {
+  DatePickerInput,
+  TimePickerInput,
+  getTodayDateKey,
+} from "@/components/domain/date-time-pickers";
 
 export interface LessonPhase {
   id: string;
@@ -65,6 +72,7 @@ export default function PeerLabsCMSPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [editingLab, setEditingLab] = useState<PeerLabSeriesItem | null>(null);
+  const [viewingLab, setViewingLab] = useState<PeerLabSeriesItem | null>(null);
   const [isNew, setIsNew] = useState(false);
 
   const campusLabel = (chapterId: string | null) => {
@@ -280,6 +288,13 @@ export default function PeerLabsCMSPage() {
               </div>
 
               <div className="flex gap-2 self-start">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setViewingLab(lab)}
+                >
+                  <Eye size={13} /> View
+                </Button>
                 <Button
                   variant="secondary"
                   size="sm"
@@ -542,29 +557,28 @@ export default function PeerLabsCMSPage() {
                       </div>
 
                       <div className="grid grid-cols-3 gap-2">
-                        <input
-                          className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
-                          placeholder="Date (e.g. 17 Sep 2025)"
+                        <DatePickerInput
                           value={ls.date}
-                          onChange={(e) => {
+                          min={getTodayDateKey()}
+                          placeholder="Select date..."
+                          onChange={(_key, displayDate) => {
                             const next = [...editingLab.lessons];
-                            next[idx].date = e.target.value;
+                            next[idx].date = displayDate;
+                            setEditingLab({ ...editingLab, lessons: next });
+                          }}
+                        />
+                        <TimePickerInput
+                          value={ls.time || "10:00 AM"}
+                          placeholder="Select time..."
+                          onChange={(_key, displayTime) => {
+                            const next = [...editingLab.lessons];
+                            next[idx].time = displayTime;
                             setEditingLab({ ...editingLab, lessons: next });
                           }}
                         />
                         <input
-                          className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
-                          placeholder="Time (e.g. 10:00 AM)"
-                          value={ls.time}
-                          onChange={(e) => {
-                            const next = [...editingLab.lessons];
-                            next[idx].time = e.target.value;
-                            setEditingLab({ ...editingLab, lessons: next });
-                          }}
-                        />
-                        <input
-                          className="h-8 rounded border border-border bg-bg px-2 text-xs text-text"
-                          placeholder="Location"
+                          className="h-9 rounded-xl border border-border bg-bg px-2.5 text-xs text-text"
+                          placeholder="Location / Platform"
                           value={ls.location}
                           onChange={(e) => {
                             const next = [...editingLab.lessons];
@@ -789,6 +803,14 @@ export default function PeerLabsCMSPage() {
             </div>
           </div>
         </div>
+      )}
+      {viewingLab && (
+        <PeerLabDetailDialog
+          open={Boolean(viewingLab)}
+          lab={viewingLab as any}
+          onClose={() => setViewingLab(null)}
+          canManage={true}
+        />
       )}
     </div>
   );

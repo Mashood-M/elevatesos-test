@@ -1158,13 +1158,13 @@ export function EventEditor({
                       <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
                         Date
                       </span>
-                      <input
-                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text"
-                        placeholder="e.g. 08 Sep"
-                        value={ls.date}
-                        onChange={(e) => {
+                      <DatePickerInput
+                        value={ls.date || ""}
+                        min={getTodayDateKey()}
+                        placeholder="Select date..."
+                        onChange={(_key, displayDate) => {
                           const updated = [...(d.lessons || [])];
-                          updated[idx] = { ...updated[idx], date: e.target.value };
+                          updated[idx] = { ...updated[idx], date: displayDate };
                           u({ lessons: updated });
                         }}
                       />
@@ -1173,13 +1173,12 @@ export function EventEditor({
                       <span className="text-[10px] text-text-dim uppercase font-semibold block mb-0.5">
                         Time
                       </span>
-                      <input
-                        className="h-8 w-full rounded border border-border bg-bg-panel px-2 text-xs text-text"
-                        placeholder="e.g. 07:45PM"
-                        value={ls.time}
-                        onChange={(e) => {
+                      <TimePickerInput
+                        value={ls.time || "10:00 AM"}
+                        placeholder="Select time..."
+                        onChange={(_key, displayTime) => {
                           const updated = [...(d.lessons || [])];
-                          updated[idx] = { ...updated[idx], time: e.target.value };
+                          updated[idx] = { ...updated[idx], time: displayTime };
                           u({ lessons: updated });
                         }}
                       />

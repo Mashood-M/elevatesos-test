@@ -1,28 +1,30 @@
 import { cn } from "@/lib/utils";
 
-const tones = {
-  cyan: "bg-[var(--accent-soft)] text-[var(--accent)]",
-  magenta: "bg-bg text-text-dim border border-border/70",
-  green: "bg-bg text-text font-medium border border-border/70",
-  orange: "bg-[var(--accent-soft)] text-[var(--accent)] font-semibold",
-  amber: "bg-amber-500/10 text-amber-700 border border-amber-500/20",
-  mute: "bg-bg text-text-dim border border-border/70",
-};
-
 export function Badge({
   children,
   tone = "mute",
   className,
 }: {
   children: React.ReactNode;
-  tone?: keyof typeof tones;
+  tone?: "cyan" | "magenta" | "green" | "orange" | "amber" | "mute" | "blue" | "red";
   className?: string;
 }) {
+  const styles: Record<string, string> = {
+    cyan:    "bg-orange-50 text-orange-600",
+    magenta: "bg-violet-50 text-violet-600",
+    green:   "bg-emerald-50 text-emerald-700",
+    orange:  "bg-orange-50 text-orange-700",
+    amber:   "bg-amber-50 text-amber-700",
+    mute:    "bg-gray-100 text-gray-500",
+    blue:    "bg-sky-50 text-sky-700",
+    red:     "bg-red-50 text-red-600",
+  };
+
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium tracking-[-0.01em]",
-        tones[tone] ?? tones.mute,
+        "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap",
+        styles[tone] ?? styles.mute,
         className,
       )}
     >

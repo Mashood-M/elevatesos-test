@@ -4375,8 +4375,8 @@ export async function POST(req: Request) {
     }
 
     if (type === "open_handover_window") {
-      if (auth.roleKey !== "founder" && !auth.isHq) {
-        return NextResponse.json({ ok: false, error: "Only founders can open handover windows" }, { status: 403 });
+      if (auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only HQ Admins and Founders can open handover windows" }, { status: 403 });
       }
       const { chapterId, year, closedAt } = data;
       if (!chapterId || !year) {
@@ -4413,8 +4413,8 @@ export async function POST(req: Request) {
     }
 
     if (type === "close_handover_window") {
-      if (auth.roleKey !== "founder" && !auth.isHq) {
-        return NextResponse.json({ ok: false, error: "Only founders can close handover windows" }, { status: 403 });
+      if (auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only HQ Admins and Founders can close handover windows" }, { status: 403 });
       }
       const { chapterId } = data;
       if (!chapterId) {
@@ -4442,7 +4442,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Check handover window status
+      // Check handover window status (HQ manual window, or auto February window, or HQ override)
       const { data: openWin } = await admin
         .from("handover_windows")
         .select("id, status")
@@ -4450,7 +4450,19 @@ export async function POST(req: Request) {
         .eq("status", "open")
         .maybeSingle();
 
-      if (!openWin) {
+      const isFeb = new Date().getMonth() === 1;
+      const currentYear = new Date().getFullYear();
+      const { data: closedWin } = await admin
+        .from("handover_windows")
+        .select("id, status")
+        .eq("chapter_id", chapterId)
+        .eq("status", "closed")
+        .gte("closed_at", `${currentYear}-01-01T00:00:00.000Z`)
+        .maybeSingle();
+
+      const isWindowOpen = Boolean(openWin) || (isFeb && !closedWin) || auth.isHq || auth.roleKey === "founder" || auth.roleKey === "hq_admin";
+
+      if (!isWindowOpen) {
         return NextResponse.json(
           { ok: false, error: "Handover window is not open for this chapter" },
           { status: 400 },
@@ -4469,13 +4481,13 @@ export async function POST(req: Request) {
 
       if (!activeTerm) {
         return NextResponse.json(
-          { ok: false, error: "No active term exists for this chapter. Founders must initialize the first term." },
+          { ok: false, error: "No active term exists for this chapter. HQ Admins or Founders must initialize the first term." },
           { status: 400 },
         );
       }
 
-      // Only the current active term's campus_lead_id for a chapter can execute the handover action
-      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
+      // Only the current active term's campus_lead_id for a chapter can execute the handover action (or HQ)
+      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
         return NextResponse.json(
           { ok: false, error: "Only the current active term campus lead can execute the handover" },
           { status: 403 },
@@ -4627,6 +4639,26 @@ export async function POST(req: Request) {
             role: "Member",
             designation: "student",
           }).eq("id", activeTerm.campus_lead_id);
+
+          await admin.auth.admin.updateUserById(activeTerm.campus_lead_id, {
+            user_metadata: { role_key: "student", designation: "student" },
+          }).catch(() => null);
+        }
+
+        // Outgoing executive members auth metadata demoted to student
+        const { data: oldMembers } = await admin
+          .from("term_members")
+          .select("user_id")
+          .eq("term_id", activeTerm.id);
+
+        if (oldMembers && oldMembers.length > 0) {
+          for (const om of oldMembers) {
+            if (om.user_id !== nextCampusLeadId && (!Array.isArray(nextExecutiveMembers) || !nextExecutiveMembers.some((em: any) => (em.userId || em.user_id) === om.user_id))) {
+              await admin.auth.admin.updateUserById(om.user_id, {
+                user_metadata: { role_key: "student", designation: "student" },
+              }).catch(() => null);
+            }
+          }
         }
 
         // Ensure user_roles has clean campus_lead
@@ -4667,6 +4699,10 @@ export async function POST(req: Request) {
                 designation: "executive_member",
                 chapter_id: chapterId,
               }).eq("id", uId);
+
+              await admin.auth.admin.updateUserById(uId, {
+                user_metadata: { role_key: "executive_member", designation: "executive_member" },
+              }).catch(() => null);
             }
           }
         }
@@ -4674,11 +4710,17 @@ export async function POST(req: Request) {
         await admin.auth.admin.updateUserById(nextCampusLeadId, {
           user_metadata: { role_key: "campus_lead", designation: "campus_lead" },
         }).catch(() => null);
+
+        // Close any open handover window for this chapter now that handover is complete
+        await admin
+          .from("handover_windows")
+          .update({ status: "closed", closed_at: new Date().toISOString() })
+          .eq("chapter_id", chapterId)
+          .eq("status", "open");
       } catch (syncErr) {
         console.warn("execute_term_handover profile/role sync warning:", syncErr);
       }
 
-      // g. Do NOT touch handover_windows.status here
       return NextResponse.json({ ok: true, newTermId: finalNewTermId, data: rpcRes });
     }
 
@@ -4778,6 +4820,66 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, termMemberId, termId: activeTerm.id });
     }
 
+    // REMOVE EXECUTIVE MEMBER
+    if (type === "remove_executive_member") {
+      const { termMemberId, userId, chapterId } = data;
+      if (!termMemberId || !userId || !chapterId) {
+        return NextResponse.json(
+          { ok: false, error: "termMemberId, userId, and chapterId are required" },
+          { status: 400 },
+        );
+      }
+
+      // Only campus_lead of this chapter or founder/hq_admin can remove
+      const isLead =
+        (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+        auth.chapterId === chapterId;
+      const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin";
+      if (!isLead && !isHqPrivileged) {
+        return NextResponse.json(
+          { ok: false, error: "Only the Campus Lead for this chapter can remove Executive Members" },
+          { status: 403 },
+        );
+      }
+
+      // Delete the term_member row
+      const { error: delErr } = await admin
+        .from("term_members")
+        .delete()
+        .eq("id", termMemberId);
+
+      if (delErr) {
+        return NextResponse.json({ ok: false, error: delErr.message }, { status: 500 });
+      }
+
+      // Remove executive_member user_role for this chapter
+      await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", userId)
+        .eq("chapter_id", chapterId)
+        .eq("role_key", "executive_member");
+
+      // Check if user still has executive_member role in any other term_member row
+      const { data: remaining } = await admin
+        .from("term_members")
+        .select("id")
+        .eq("user_id", userId)
+        .limit(1);
+
+      if (!remaining || remaining.length === 0) {
+        // Revert profile role back to Student
+        try {
+          await admin
+            .from("profiles")
+            .update({ role: "Student", designation: null })
+            .eq("id", userId);
+        } catch {}
+      }
+
+      return NextResponse.json({ ok: true });
+    }
+
     // 21. CREATE FIRST CHAPTER TERM (FOUNDER ONLY)
     if (type === "create_first_term") {
       const { chapterId, campusLeadId, termYear, executiveMembers } = data;
@@ -4785,10 +4887,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "Invalid chapterId or campusLeadId" }, { status: 400 });
       }
 
-      // Only role 'founder' can create the first term
-      if (auth.roleKey !== "founder" && !auth.assignedKeys?.includes("founder")) {
+      // Only role 'founder' and 'hq_admin' can create the first term
+      if (
+        auth.roleKey !== "founder" &&
+        auth.roleKey !== "hq_admin" &&
+        !auth.isHq &&
+        !auth.assignedKeys?.includes("founder") &&
+        !auth.assignedKeys?.includes("hq_admin")
+      ) {
         return NextResponse.json(
-          { ok: false, error: "Only founders can initialize the first chapter term" },
+          { ok: false, error: "Only HQ Admins and Founders can initialize the first chapter term" },
           { status: 403 },
         );
       }

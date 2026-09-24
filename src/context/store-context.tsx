@@ -544,6 +544,11 @@ type StoreContextValue = {
     userId: string;
     designation?: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  removeExecutiveMember: (input: {
+    termMemberId: string;
+    userId: string;
+    chapterId: string;
+  }) => Promise<{ ok: boolean; error?: string }>;
   createFirstTerm: (input: {
     chapterId: string;
     campusLeadId: string;
@@ -6409,6 +6414,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const json = await res.json();
           if (!json.ok) {
             return { ok: false, error: json.error || "Assignment failed" };
+          }
+          return { ok: true };
+        } catch (err: unknown) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+      removeExecutiveMember: async (input: { termMemberId: string; userId: string; chapterId: string }) => {
+        // Optimistic: remove from termMembers, revert role to student
+        setStore((s) => {
+          const nextTermMembers = s.termMembers.filter((tm) => tm.id !== input.termMemberId);
+          const nextUserRoles = s.userRoles.filter(
+            (ur) => !(ur.userId === input.userId && ur.chapterId === input.chapterId && ur.roleKey === "executive_member"),
+          );
+          const nextProfiles = s.profiles.map((p) =>
+            p.id === input.userId ? { ...p, role: "Student", designation: null } : p,
+          );
+          return { ...s, termMembers: nextTermMembers, userRoles: nextUserRoles, profiles: nextProfiles };
+        });
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "remove_executive_member",
+              data: {
+                termMemberId: input.termMemberId,
+                userId: input.userId,
+                chapterId: input.chapterId,
+              },
+            }),
+          });
+          const json = await res.json();
+          if (!json.ok) {
+            return { ok: false, error: json.error || "Removal failed" };
           }
           return { ok: true };
         } catch (err: unknown) {

@@ -33,6 +33,7 @@ const ROLE_ORDER: RoleKey[] = [
   "founder",
   "hq_admin",
   "campus_lead",
+  "executive_member",
   "class_representative",
   "faculty_coordinator",
   "student",
@@ -62,7 +63,13 @@ const SIX_ROLES: {
     key: "campus_lead",
     label: "Campus Lead",
     scope: "chapter",
-    powers: "Appointed by HQ or HQ Admin · Full chapter dashboard · No role-assign power",
+    powers: "Appointed by HQ or HQ Admin · Full chapter dashboard · Handover management",
+  },
+  {
+    key: "executive_member",
+    label: "Executive Member",
+    scope: "chapter",
+    powers: "Term executive team · Operational authority over events and attendance",
   },
   {
     key: "class_representative",
@@ -90,9 +97,9 @@ function assignableRoles(currentRoleKey: RoleKey): RoleKey[] {
   if (currentRoleKey === "founder") {
     return SIX_ROLES.map((r) => r.key);
   }
-  // HQ Admin — can give Campus Lead and Faculty only
+  // HQ Admin — can give Campus Lead, Executive Member, and Faculty
   if (currentRoleKey === "hq_admin") {
-    return ["campus_lead", "faculty_coordinator"];
+    return ["campus_lead", "executive_member", "faculty_coordinator"];
   }
   // Everyone else (including Campus Lead) — no assignment power
   return [];
@@ -177,7 +184,16 @@ export default function HqUsersPage() {
   // per-role chapter id map: { [roleKey]: chapterId }
   const [roleModalChapters, setRoleModalChapters] = useState<Record<string, string>>({});
 
-  const allowedRoleKeys: RoleKey[] = ["founder", "hq_admin", "campus_lead", "class_representative", "faculty_coordinator", "student", "alumni"];
+  const allowedRoleKeys: RoleKey[] = [
+    "founder",
+    "hq_admin",
+    "campus_lead",
+    "executive_member",
+    "class_representative",
+    "faculty_coordinator",
+    "student",
+    "alumni",
+  ];
   const sortByOrder = (a: { key: string }, b: { key: string }) =>
     ROLE_ORDER.indexOf(a.key as RoleKey) - ROLE_ORDER.indexOf(b.key as RoleKey);
   const hqRoles = store.roles.filter((r) => r.scope === "hq" && allowedRoleKeys.includes(r.key as RoleKey)).sort(sortByOrder);
@@ -209,6 +225,38 @@ export default function HqUsersPage() {
           });
 
         let roles = rawRoles;
+
+        // Check if user is active Campus Lead of any active term or chapter
+        const isActiveCampusLead = store.terms.some(
+          (t) => t.campusLeadId === p.id && t.status === "active",
+        ) || store.chapters.some((c) => c.campusLeadId === p.id);
+
+        if (isActiveCampusLead && !roles.some((r) => r.key === "campus_lead")) {
+          const leadRoleObj = store.roles.find((r) => r.key === "campus_lead") || {
+            id: "role-campus_lead",
+            key: "campus_lead",
+            name: "Campus Lead",
+            scope: "chapter",
+            description: "Appointed chapter leader.",
+          };
+          roles = [leadRoleObj as any, ...roles];
+        }
+
+        // Check if user is active Executive Member in any active term
+        const isActiveExecMember = store.termMembers.some(
+          (tm) => tm.userId === p.id && store.terms.some((t) => t.id === tm.termId && t.status === "active"),
+        );
+        if (isActiveExecMember && !roles.some((r) => r.key === "executive_member" || r.key === "campus_lead")) {
+          const execRoleObj = store.roles.find((r) => r.key === "executive_member") || {
+            id: "role-executive_member",
+            key: "executive_member",
+            name: "Executive Member",
+            scope: "chapter",
+            description: "Active term executive member.",
+          };
+          roles = [execRoleObj as any, ...roles];
+        }
+
         if (!hasFaculty) {
           const hasStudent = roles.some((r) => r.key === "student");
           if (!hasStudent) {
@@ -275,6 +323,8 @@ export default function HqUsersPage() {
     store.userRoles,
     store.roles,
     store.chapters,
+    store.terms,
+    store.termMembers,
     q,
     filterChapter,
     filterRole,
@@ -369,16 +419,21 @@ export default function HqUsersPage() {
 
     const firstOrg = orgUrs[0];
     const isFaculty = urs.some((ur) => ur.roleKey === "faculty_coordinator" || store.roles.find((r) => r.id === ur.roleId)?.key === "faculty_coordinator");
+    const isActiveCampusLead = store.terms.some(
+      (t) => t.campusLeadId === p.id && t.status === "active",
+    ) || store.chapters.some((c) => c.campusLeadId === p.id);
     const firstNonStudent = orgUrs.find((ur) => {
       const k = ur.roleKey || store.roles.find((r) => r.id === ur.roleId)?.key;
       return k !== "student";
     });
     const effectiveRoleKey: RoleKey = isFaculty
       ? "faculty_coordinator"
+      : isActiveCampusLead
+      ? "campus_lead"
       : firstNonStudent
       ? ((store.roles.find((r) => r.id === firstNonStudent.roleId)?.key || firstNonStudent.roleKey) as RoleKey)
       : "student";
-    const roleLocked = !firstOrg && leadershipUrs.length > 0;
+    const roleLocked = false;
 
     setEditingId(p.id);
     setEditDraft({

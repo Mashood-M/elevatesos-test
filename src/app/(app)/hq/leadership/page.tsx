@@ -9,124 +9,211 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
-import { useStore } from "@/context/store-context";
-import { roleKeyLabel } from "@/lib/leadership";
-import { formatDate, formatDateTime } from "@/lib/utils";
-import { Plus, Trash2 } from "lucide-react";
+import { useCurrentUser, useStore } from "@/context/store-context";
+import { getChapterHandoverStatus } from "@/lib/leadership";
+import { isSuperAdmin } from "@/lib/permissions";
+import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  Crown,
+  Lock,
+  Plus,
+  Search,
+  Shield,
+  Trash2,
+  Unlock,
+  UserCheck,
+  UserPlus,
+  Users,
+} from "lucide-react";
 
-type StatusFilter = "all" | "active_cycle" | "no_cycle" | "onboarding";
-
-const statusTone = {
-  active: "green" as const,
-  upcoming: "cyan" as const,
-  archived: "mute" as const,
-};
+type FilterStatus = "all" | "active" | "vacant" | "window_open";
 
 export default function HqLeadershipPage() {
   const { store, openHandoverWindow, closeHandoverWindow, createFirstTerm } = useStore();
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { session } = useCurrentUser();
+  const canManage = isSuperAdmin(session.roleKey);
 
-  // Per-chapter handover & term actions state
-  const [confirmTermChangeChapter, setConfirmTermChangeChapter] = useState<{
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
+  const [flashMsg, setFlashMsg] = useState("");
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Modal states
+  // 1. Assign Initial Campus Lead / Create First Term
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignChapterId, setAssignChapterId] = useState("");
+  const [assignLeadId, setAssignLeadId] = useState("");
+  const [assignYear, setAssignYear] = useState<number>(new Date().getFullYear());
+  const [assignExecMembers, setAssignExecMembers] = useState<Array<{ userId: string; designation: string }>>([]);
+  const [assignError, setAssignError] = useState("");
+  const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
+
+  // 2. Open Handover Window modal
+  const [openWindowModalChapter, setOpenWindowModalChapter] = useState<{
     id: string;
     name: string;
-    currentTermYear: string;
+    currentYear: string;
   } | null>(null);
-  const [confirmCloseWindowChapter, setConfirmCloseWindowChapter] = useState<{
+  const [openTargetYear, setOpenTargetYear] = useState<number>(new Date().getFullYear() + 1);
+  const [openClosedAt, setOpenClosedAt] = useState<string>("");
+
+  // 3. Close Handover Window modal
+  const [closeWindowModalChapter, setCloseWindowModalChapter] = useState<{
     id: string;
     name: string;
   } | null>(null);
-
-  // Add First Term modal state
-  const [addTermModalChapter, setAddTermModalChapter] = useState<{ id: string; name: string } | null>(null);
-  const [addTermYear, setAddTermYear] = useState<number>(new Date().getFullYear());
-  const [addCampusLeadId, setAddCampusLeadId] = useState<string>("");
-  const [addExecMembers, setAddExecMembers] = useState<Array<{ userId: string; designation: string }>>([
-    { userId: "", designation: "" },
-  ]);
-  const [addTermLoading, setAddTermLoading] = useState<boolean>(false);
-  const [addTermError, setAddTermError] = useState<string>("");
-
-  const [windowActionLoading, setWindowActionLoading] = useState<string | null>(null);
-  const [flashMsg, setFlashMsg] = useState<string>("");
 
   function showFlash(msg: string) {
     setFlashMsg(msg);
     setTimeout(() => setFlashMsg(""), 3500);
   }
 
-  const activeTerms = store.leadershipTerms.filter((t) => t.status === "active");
-  const archivedTermIds = new Set(
-    store.leadershipTerms
-      .filter((t) => t.status === "archived")
-      .map((t) => t.id),
-  );
-  const activeAssignmentCount = store.leadershipAssignments.filter(
-    (a) => !archivedTermIds.has(a.termId),
-  ).length;
-
-  const openWindowsCount = store.chapters.filter((ch) => {
-    const activeTerm = store.terms.find((t) => t.chapterId === ch.id && t.status === "active");
-    const w = store.handoverWindows
-      .filter((hw) => hw.chapterId === ch.id)
-      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0];
-    return Boolean(activeTerm && w?.status === "open");
-  }).length;
-
-  async function handleConfirmTermChange() {
-    if (!confirmTermChangeChapter) return;
-    setWindowActionLoading(confirmTermChangeChapter.id);
-    try {
-      const targetNextYear = String(
-        Number(confirmTermChangeChapter.currentTermYear || new Date().getFullYear()) + 1,
+  // Pre-calculate chapter data with new terms system
+  const chapterData = useMemo(() => {
+    return store.chapters.map((chapter) => {
+      const activeTerm =
+        store.terms.find((t) => t.chapterId === chapter.id && t.status === "active") ?? null;
+      const pastTerms = store.terms.filter(
+        (t) => t.chapterId === chapter.id && t.status === "closed",
       );
+      const leadProfile = activeTerm?.campusLeadId
+        ? store.profiles.find((p) => p.id === activeTerm.campusLeadId) ?? null
+        : chapter.campusLeadId
+        ? store.profiles.find((p) => p.id === chapter.campusLeadId) ?? null
+        : null;
+
+      const execMembers = activeTerm
+        ? store.termMembers.filter((m) => m.termId === activeTerm.id)
+        : [];
+
+      const windowStatus = getChapterHandoverStatus(
+        chapter.id,
+        store.handoverWindows,
+        Boolean(activeTerm),
+      );
+
+      return {
+        chapter,
+        activeTerm,
+        pastTerms,
+        leadProfile,
+        execMembers,
+        windowStatus,
+        hasLead: Boolean(leadProfile),
+      };
+    });
+  }, [store.chapters, store.terms, store.termMembers, store.handoverWindows, store.profiles]);
+
+  // Overall metric counts
+  const totalChapters = chapterData.length;
+  const activeLeadCount = chapterData.filter((c) => c.hasLead).length;
+  const vacantCount = totalChapters - activeLeadCount;
+  const openWindowCount = chapterData.filter((c) => c.windowStatus.isOpen).length;
+
+  // Filtered rows for the table
+  const filteredChapters = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return chapterData.filter(({ chapter, leadProfile, activeTerm, windowStatus, hasLead }) => {
+      if (filterStatus === "active" && !hasLead) return false;
+      if (filterStatus === "vacant" && hasLead) return false;
+      if (filterStatus === "window_open" && !windowStatus.isOpen) return false;
+
+      if (!q) return true;
+      return (
+        chapter.name.toLowerCase().includes(q) ||
+        chapter.college.toLowerCase().includes(q) ||
+        (leadProfile?.fullName ?? "").toLowerCase().includes(q) ||
+        (leadProfile?.email ?? "").toLowerCase().includes(q) ||
+        (leadProfile?.elevatesId ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [chapterData, search, filterStatus]);
+
+  // Handlers for Window Open/Close
+  async function handleConfirmOpenWindow() {
+    if (!openWindowModalChapter) return;
+    setActionLoading(openWindowModalChapter.id);
+    try {
       const ok = await openHandoverWindow({
-        chapterId: confirmTermChangeChapter.id,
-        year: targetNextYear,
+        chapterId: openWindowModalChapter.id,
+        year: String(openTargetYear),
+        closedAt: openClosedAt ? new Date(openClosedAt).toISOString() : undefined,
       });
-      if (!ok) {
-        alert("Failed to open handover window");
+      if (ok) {
+        showFlash(`✓ Opened handover window for ${openWindowModalChapter.name} (Term ${openTargetYear})`);
+        setOpenWindowModalChapter(null);
       } else {
-        showFlash(`✓ Opened term-change window for ${confirmTermChangeChapter.name}`);
-        setConfirmTermChangeChapter(null);
+        alert("Could not open handover window. Check permissions.");
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error opening window");
     } finally {
-      setWindowActionLoading(null);
+      setActionLoading(null);
     }
   }
 
   async function handleConfirmCloseWindow() {
-    if (!confirmCloseWindowChapter) return;
-    setWindowActionLoading(confirmCloseWindowChapter.id);
+    if (!closeWindowModalChapter) return;
+    setActionLoading(closeWindowModalChapter.id);
     try {
-      const ok = await closeHandoverWindow({ chapterId: confirmCloseWindowChapter.id });
-      if (!ok) {
-        alert("Failed to close handover window");
+      const ok = await closeHandoverWindow({
+        chapterId: closeWindowModalChapter.id,
+      });
+      if (ok) {
+        showFlash(`✓ Closed handover window for ${closeWindowModalChapter.name}`);
+        setCloseWindowModalChapter(null);
       } else {
-        showFlash(`✓ Closed handover window for ${confirmCloseWindowChapter.name}`);
-        setConfirmCloseWindowChapter(null);
+        alert("Could not close handover window.");
       }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error closing window");
     } finally {
-      setWindowActionLoading(null);
+      setActionLoading(null);
     }
   }
 
-  async function handleCreateFirstTermSubmit() {
-    if (!addTermModalChapter) return;
-    if (!addCampusLeadId) {
-      setAddTermError("Please select the chapter's first Campus Lead.");
+  // Handlers for First Term / Campus Lead Assignment
+  function openAssignModalForChapter(chapterId?: string) {
+    setAssignChapterId(chapterId || store.chapters[0]?.id || "");
+    setAssignLeadId("");
+    setAssignYear(new Date().getFullYear());
+    setAssignExecMembers([]);
+    setAssignError("");
+    setAssignModalOpen(true);
+  }
+
+  function addAssignExecMemberRow() {
+    setAssignExecMembers((prev) => [...prev, { userId: "", designation: "" }]);
+  }
+
+  function updateAssignExecMemberRow(index: number, field: "userId" | "designation", val: string) {
+    setAssignExecMembers((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: val } : row)),
+    );
+  }
+
+  function removeAssignExecMemberRow(index: number) {
+    setAssignExecMembers((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleConfirmAssignSubmit() {
+    if (!assignChapterId) {
+      setAssignError("Please choose a chapter.");
       return;
     }
-    setAddTermLoading(true);
-    setAddTermError("");
+    if (!assignLeadId) {
+      setAssignError("Please select the initial Campus Lead.");
+      return;
+    }
+    setIsSubmittingAssign(true);
+    setAssignError("");
+
     try {
-      const filteredMembers = addExecMembers
+      const filteredExecs = assignExecMembers
         .filter((m) => Boolean(m.userId.trim()))
         .map((m) => ({
           userId: m.userId.trim(),
@@ -134,581 +221,460 @@ export default function HqLeadershipPage() {
         }));
 
       const res = await createFirstTerm({
-        chapterId: addTermModalChapter.id,
-        campusLeadId: addCampusLeadId,
-        termYear: String(addTermYear),
-        executiveMembers: filteredMembers,
+        chapterId: assignChapterId,
+        campusLeadId: assignLeadId,
+        termYear: String(assignYear),
+        executiveMembers: filteredExecs,
       });
 
       if (!res.ok) {
-        setAddTermError(res.error || "Failed to create first term.");
+        setAssignError(res.error || "Failed to initialize chapter term.");
       } else {
-        showFlash(`🎉 First leadership term activated for ${addTermModalChapter.name}!`);
-        setAddTermModalChapter(null);
+        const chapObj = store.chapters.find((c) => c.id === assignChapterId);
+        showFlash(`🎉 Appointed Campus Lead & started Term ${assignYear} for ${chapObj?.name ?? "chapter"}!`);
+        setAssignModalOpen(false);
       }
     } catch (err) {
-      setAddTermError(err instanceof Error ? err.message : "Error creating first term.");
+      setAssignError(err instanceof Error ? err.message : "Error assigning lead");
     } finally {
-      setAddTermLoading(false);
+      setIsSubmittingAssign(false);
     }
   }
 
-  const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return store.chapters
-      .map((chapter) => {
-        const terms = store.leadershipTerms
-          .filter((t) => t.chapterId === chapter.id)
-          .slice()
-          .sort((a, b) => b.startDate.localeCompare(a.startDate));
-        const activeTerm =
-          terms.find((t) => t.status === "active") ??
-          terms.find((t) => t.status === "upcoming") ??
-          null;
-        const termAssignments = activeTerm
-          ? store.leadershipAssignments.filter((a) => a.termId === activeTerm.id)
-          : [];
-        const campusLead = termAssignments.find((a) => a.roleKey === "chairman");
-        const leadProfile = campusLead
-          ? store.profiles.find((p) => p.id === campusLead.userId)
-          : undefined;
-        return {
-          chapter,
-          terms,
-          activeTerm,
-          termAssignments,
-          campusLeadName: leadProfile?.fullName ?? (campusLead ? "Unknown" : null),
-        };
-      })
-      .filter((row) => {
-        if (statusFilter === "active_cycle" && !row.activeTerm) return false;
-        if (statusFilter === "no_cycle" && row.terms.length > 0) return false;
-        if (statusFilter === "onboarding" && row.chapter.status !== "onboarding") {
-          return false;
-        }
-        if (!q) return true;
-        return (
-          row.chapter.name.toLowerCase().includes(q) ||
-          row.chapter.slug.toLowerCase().includes(q) ||
-          row.chapter.college.toLowerCase().includes(q)
-        );
-      })
-      .sort((a, b) => a.chapter.name.localeCompare(b.chapter.name));
-  }, [
-    store.chapters,
-    store.leadershipTerms,
-    store.leadershipAssignments,
-    store.profiles,
-    query,
-    statusFilter,
-  ]);
-
-  const filtersActive = Boolean(query.trim() || statusFilter !== "all");
-
-  function clearFilters() {
-    setQuery("");
-    setStatusFilter("all");
-  }
+  // Candidates for Campus Lead in Assign Modal
+  // If chapter selected, prioritize users belonging to that chapter, but allow selecting any user in network
+  const assignModalCandidateProfiles = useMemo(() => {
+    if (!assignChapterId) return store.profiles;
+    const inChapter = store.profiles.filter((p) => p.chapterId === assignChapterId);
+    const others = store.profiles.filter((p) => p.chapterId !== assignChapterId);
+    return { inChapter, others };
+  }, [store.profiles, assignChapterId]);
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        eyebrow="Network"
-        title="Leadership Cycles"
-        description="Network overview of executive terms and Campus Leads. Open a chapter to manage terms and assignments."
+        eyebrow="Network Governance"
+        title="Chapter Leadership & Terms"
+        description="Network-wide governance of Campus Leads, active terms, and transition handover windows. Manage initial campus appointments and annual February cycles."
+        actions={
+          canManage ? (
+            <Button
+              variant="orange"
+              onClick={() => openAssignModalForChapter()}
+              className="gap-1.5 font-semibold text-xs sm:text-sm"
+            >
+              <UserPlus size={15} />
+              Assign Campus Lead
+            </Button>
+          ) : null
+        }
       />
 
+      {/* Flash message */}
       {flashMsg && (
-        <div className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-semibold text-emerald-400 animate-in fade-in">
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs font-semibold text-emerald-400 animate-in fade-in">
           {flashMsg}
         </div>
       )}
 
+      {/* 4-Stat Overview */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat
-          label="Total Terms"
-          value={store.leadershipTerms.length}
+          label="Total Chapters"
+          value={totalChapters}
           accent="cyan"
         />
-        <Stat label="Active Cycles" value={activeTerms.length} accent="green" />
         <Stat
-          label="Assignments"
-          value={activeAssignmentCount}
-          accent="magenta"
+          label="Active Campus Leads"
+          value={activeLeadCount}
+          accent="green"
         />
         <Stat
-          label="Open Handover Windows"
-          value={openWindowsCount}
-          accent="orange"
+          label="Vacant Chapters"
+          value={vacantCount}
+          accent={vacantCount > 0 ? "orange" : "cyan"}
+        />
+        <Stat
+          label="Handover Windows Open"
+          value={openWindowCount}
+          accent={openWindowCount > 0 ? "orange" : "magenta"}
         />
       </div>
 
+      {/* Main Governance Panel */}
       <TerminalPanel
-        title="Chapter Handover Windows"
-        meta={`${openWindowsCount} of ${store.chapters.length} open`}
-        className="mt-6"
+        title="Chapter Leadership Registry"
+        meta={`${filteredChapters.length} of ${totalChapters} chapters`}
+        accent="orange"
       >
-        <div className="space-y-3">
-          <p className="text-[12px] text-text-dim">
-            Per-chapter leadership transition control. When a chapter&apos;s handover window is open, the current Campus Lead can execute the term handover to appoint the incoming Campus Lead and Executive Members.
-          </p>
-
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-border bg-bg/60 text-text-dim">
-                <tr>
-                  <th className="px-3.5 py-2.5 font-semibold">Chapter</th>
-                  <th className="px-3.5 py-2.5 font-semibold">Status</th>
-                  <th className="px-3.5 py-2.5 font-semibold">Details</th>
-                  <th className="px-3.5 py-2.5 font-semibold text-right">Handover Window Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {store.chapters.map((chapter) => {
-                  const activeTerm = store.terms.find(
-                    (t) => t.chapterId === chapter.id && t.status === "active",
-                  );
-                  const latestWindow = store.handoverWindows
-                    .filter((w) => w.chapterId === chapter.id)
-                    .sort((a, b) => b.openedAt.localeCompare(a.openedAt))[0];
-                  const isOpen = Boolean(activeTerm && latestWindow?.status === "open");
-                  const isLoading = windowActionLoading === chapter.id;
-
-                  const leadProfile = activeTerm
-                    ? store.profiles.find((p) => p.id === activeTerm.campusLeadId)
-                    : null;
-                  const execMembersCount = activeTerm
-                    ? store.termMembers.filter((m) => m.termId === activeTerm.id).length
-                    : 0;
-
-                  return (
-                    <tr key={chapter.id} className="hover:bg-bg/40 transition">
-                      <td className="px-3.5 py-3">
-                        <p className="font-semibold text-text">{chapter.name}</p>
-                        <p className="text-[11px] text-text-dim">{chapter.college}</p>
-                      </td>
-                      <td className="px-3.5 py-3">
-                        {isOpen ? (
-                          <Badge tone="green">
-                            Open since {formatDate(latestWindow.openedAt)}
-                          </Badge>
-                        ) : (
-                          <Badge tone="mute">Closed</Badge>
-                        )}
-                      </td>
-                      <td className="px-3.5 py-3 text-[11px] text-text-dim">
-                        {!activeTerm ? (
-                          <span className="text-amber-500 font-medium">No active term</span>
-                        ) : (
-                          <span>
-                            Term {activeTerm.termYear} · Lead:{" "}
-                            <strong className="text-text font-semibold">
-                              {leadProfile?.fullName ?? "Unknown"}
-                            </strong>{" "}
-                            ({execMembersCount} Exec{execMembersCount === 1 ? "" : "s"})
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3.5 py-3 text-right">
-                        {!activeTerm ? (
-                          <Button
-                            variant="orange"
-                            size="sm"
-                            onClick={() => {
-                              setAddTermModalChapter({ id: chapter.id, name: chapter.name });
-                              setAddTermYear(new Date().getFullYear());
-                              setAddCampusLeadId("");
-                              setAddExecMembers([{ userId: "", designation: "" }]);
-                              setAddTermError("");
-                            }}
-                          >
-                            Add Term
-                          </Button>
-                        ) : isOpen ? (
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            onClick={() =>
-                              setConfirmCloseWindowChapter({
-                                id: chapter.id,
-                                name: chapter.name,
-                              })
-                            }
-                            disabled={isLoading}
-                          >
-                            {isLoading ? "Closing..." : "Close Window"}
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() =>
-                              setConfirmTermChangeChapter({
-                                id: chapter.id,
-                                name: chapter.name,
-                                currentTermYear: activeTerm.termYear,
-                              })
-                            }
-                            disabled={isLoading}
-                          >
-                            Term Change
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </TerminalPanel>
-
-      <TerminalPanel
-        title="Network registry"
-        meta={`${rows.length} of ${store.chapters.length} chapters`}
-        className="mt-6"
-      >
-        <div className="mb-4 grid gap-3 md:grid-cols-2">
-          <div>
+        {/* Search & Filter Bar */}
+        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+          <div className="sm:col-span-2">
             <FieldLabel>Search</FieldLabel>
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Chapter name, slug, college…"
-            />
+            <div className="relative">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-mute"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search chapter name, college, Campus Lead name, or email..."
+                className="pl-9"
+              />
+            </div>
           </div>
           <div>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel>Status Filter</FieldLabel>
             <Select
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as StatusFilter)
-              }
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as FilterStatus)}
             >
-              <option value="all">All chapters</option>
-              <option value="active_cycle">Has active/upcoming cycle</option>
-              <option value="no_cycle">No cycle yet</option>
-              <option value="onboarding">Onboarding chapters</option>
+              <option value="all">All Chapters ({totalChapters})</option>
+              <option value="active">Has Campus Lead ({activeLeadCount})</option>
+              <option value="vacant">Vacant Chapters ({vacantCount})</option>
+              <option value="window_open">Handover Window Open ({openWindowCount})</option>
             </Select>
           </div>
         </div>
 
-        {!rows.length ? (
-          <div className="py-8 text-center">
-            <p className="text-[13px] text-text-dim">
-              {filtersActive
-                ? "No chapters match these filters."
-                : "No chapters in the network yet."}
-            </p>
-            {filtersActive ? (
-              <Button variant="ghost" className="mt-3" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : null}
+        {/* Directory Table */}
+        {!filteredChapters.length ? (
+          <div className="py-10 text-center">
+            <p className="text-xs text-text-dim">No chapters match your search or filters.</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setSearch("");
+                setFilterStatus("all");
+              }}
+            >
+              Clear filters
+            </Button>
           </div>
         ) : (
-          <ul className="divide-y divide-border">
-            {rows.map(
-              ({
-                chapter,
-                terms,
-                activeTerm,
-                termAssignments,
-                campusLeadName,
-              }) => {
-                const open = expandedId === chapter.id;
-                return (
-                  <li key={chapter.id} className="py-3.5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-semibold text-text">
-                            {chapter.name}
-                          </p>
-                          <Badge
-                            tone={
-                              chapter.status === "active"
-                                ? "green"
-                                : chapter.status === "onboarding"
-                                  ? "cyan"
-                                  : "mute"
-                            }
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-border bg-bg/60 text-text-dim">
+                <tr>
+                  <th className="px-3.5 py-3 font-semibold">Chapter</th>
+                  <th className="px-3.5 py-3 font-semibold">Current Term</th>
+                  <th className="px-3.5 py-3 font-semibold">Campus Lead</th>
+                  <th className="px-3.5 py-3 font-semibold">Executive Team</th>
+                  <th className="px-3.5 py-3 font-semibold">Handover Window</th>
+                  <th className="px-3.5 py-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filteredChapters.map(
+                  ({ chapter, activeTerm, leadProfile, execMembers, windowStatus, hasLead }) => {
+                    const isBusy = actionLoading === chapter.id;
+
+                    return (
+                      <tr key={chapter.id} className="hover:bg-bg/40 transition">
+                        {/* 1. Chapter Name */}
+                        <td className="px-3.5 py-3">
+                          <Link
+                            href={`/chapter/${chapter.slug}/leadership`}
+                            className="font-bold text-text hover:text-[var(--accent)] text-sm"
                           >
-                            {chapter.status}
-                          </Badge>
+                            {chapter.name}
+                          </Link>
+                          <p className="text-[11px] text-text-dim truncate max-w-xs">
+                            {chapter.college}
+                          </p>
+                          <span className="font-mono text-[10px] text-text-mute">
+                            /{chapter.slug}
+                          </span>
+                        </td>
+
+                        {/* 2. Current Term */}
+                        <td className="px-3.5 py-3">
                           {activeTerm ? (
-                            <Badge tone={statusTone[activeTerm.status]}>
-                              {activeTerm.status}
+                            <div>
+                              <span className="font-semibold text-text">
+                                Term {activeTerm.termYear}
+                              </span>
+                              <p className="font-mono text-[10px] text-text-mute">
+                                Started {formatDate(activeTerm.startedAt)}
+                              </p>
+                            </div>
+                          ) : (
+                            <Badge tone="amber">No Active Term</Badge>
+                          )}
+                        </td>
+
+                        {/* 3. Campus Lead */}
+                        <td className="px-3.5 py-3">
+                          {leadProfile ? (
+                            <div className="flex items-center gap-2.5">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/20 text-[11px] font-bold text-amber-500 shrink-0">
+                                {initials(leadProfile.fullName)}
+                              </span>
+                              <div className="min-w-0">
+                                <Link
+                                  href={`/profile/${leadProfile.elevatesId || leadProfile.id}`}
+                                  className="font-semibold text-text hover:text-[var(--accent)] block truncate"
+                                >
+                                  {leadProfile.fullName}
+                                </Link>
+                                <p className="text-[10px] text-text-dim truncate">
+                                  {leadProfile.email}
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-amber-600 font-medium">
+                              <AlertTriangle size={13} />
+                              <span>Vacant</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 4. Executive Team */}
+                        <td className="px-3.5 py-3">
+                          {activeTerm ? (
+                            <div className="flex items-center gap-1.5">
+                              <Shield size={13} className="text-cyan shrink-0" />
+                              <span className="font-medium text-text">
+                                {execMembers.length} Exec{execMembers.length === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-text-mute">—</span>
+                          )}
+                        </td>
+
+                        {/* 5. Handover Window Status */}
+                        <td className="px-3.5 py-3">
+                          {windowStatus.isOpen ? (
+                            <Badge
+                              tone={windowStatus.reason === "february_auto" ? "green" : "orange"}
+                              className="font-semibold"
+                            >
+                              <Clock size={11} className="mr-1 inline" />
+                              {windowStatus.label}
                             </Badge>
                           ) : (
-                            <Badge tone="mute">no cycle</Badge>
+                            <Badge tone="mute">
+                              <Lock size={11} className="mr-1 inline" />
+                              {windowStatus.label}
+                            </Badge>
                           )}
-                        </div>
-                        <p className="mt-1 text-[12px] text-text-dim">
-                          {activeTerm
-                            ? `${activeTerm.title} · ${activeTerm.academicYear} · ${formatDate(activeTerm.startDate)} → ${formatDate(activeTerm.endDate)}`
-                            : "No leadership cycle yet"}
-                          {" · "}
-                          Campus Lead: {campusLeadName ?? "—"}
-                          {" · "}
-                          {termAssignments.length} assignment
-                          {termAssignments.length === 1 ? "" : "s"}
-                          {terms.length > 1
-                            ? ` · ${terms.length} terms total`
-                            : ""}
-                        </p>
-                        {open && activeTerm ? (
-                          <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
-                            {termAssignments.length ? (
-                              termAssignments.map((a) => {
-                                const user = store.profiles.find(
-                                  (p) => p.id === a.userId,
-                                );
-                                return (
-                                  <li
-                                    key={a.id}
-                                    className="flex flex-wrap items-center justify-between gap-2 text-[12px]"
-                                  >
-                                    <span>
-                                      <span className="text-text-mute">
-                                        {a.title}
-                                      </span>
-                                      {" · "}
-                                      <Link
-                                        href={`/profile/${user?.elevatesId || a.userId}`}
-                                        className="text-cyan hover:text-green"
-                                      >
-                                        {user?.fullName ?? "Unknown"}
-                                      </Link>
-                                    </span>
-                                    <span className="text-[11px] text-text-mute flex items-center gap-1.5 font-mono">
-                                      <span>{roleKeyLabel(a.roleKey)}</span>
-                                      {a.createdAt && (
-                                        <span className="text-[10px] text-text-dim">
-                                          · Appointed {formatDateTime(a.createdAt)}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </li>
-                                );
-                              })
+                        </td>
+
+                        {/* 6. Actions */}
+                        <td className="px-3.5 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {!hasLead ? (
+                              <Button
+                                variant="orange"
+                                size="sm"
+                                onClick={() => openAssignModalForChapter(chapter.id)}
+                              >
+                                <UserPlus size={13} className="mr-1" />
+                                Assign Lead
+                              </Button>
+                            ) : windowStatus.isOpen ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  setCloseWindowModalChapter({
+                                    id: chapter.id,
+                                    name: chapter.name,
+                                  })
+                                }
+                                disabled={isBusy}
+                                className="text-red-500 hover:text-red-600 border border-red-500/20"
+                              >
+                                {isBusy ? "Closing..." : "Close Window"}
+                              </Button>
                             ) : (
-                              <li className="text-[12px] text-text-mute">
-                                No assignments on this cycle.
-                              </li>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  const curYear = Number(
+                                    activeTerm?.termYear ?? new Date().getFullYear(),
+                                  );
+                                  setOpenWindowModalChapter({
+                                    id: chapter.id,
+                                    name: chapter.name,
+                                    currentYear: String(curYear),
+                                  });
+                                  setOpenTargetYear(curYear + 1);
+                                  setOpenClosedAt("");
+                                }}
+                                disabled={isBusy}
+                              >
+                                <Unlock size={12} className="mr-1" />
+                                Open Window
+                              </Button>
                             )}
-                          </ul>
-                        ) : null}
-                        {open && !activeTerm ? (
-                          <p className="mt-3 border-t border-border pt-3 text-[12px] text-text-mute">
-                            Create a cycle on the chapter leadership page.
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() =>
-                            setExpandedId(open ? null : chapter.id)
-                          }
-                        >
-                          {open ? "Hide directory" : "Directory"}
-                        </Button>
-                        <Link href={`/chapter/${chapter.slug}/leadership`}>
-                          <Button variant="primary">Open chapter</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </li>
-                );
-              },
-            )}
-          </ul>
+
+                            <Link
+                              href={`/chapter/${chapter.slug}/leadership`}
+                              className="rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-text-dim hover:text-text hover:bg-bg transition"
+                            >
+                              View
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  },
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </TerminalPanel>
 
-      {/* DIALOG 1: CONFIRM TERM CHANGE (OPEN WINDOW) */}
-      {confirmTermChangeChapter && (
+      {/* MODAL 1: ASSIGN INITIAL CAMPUS LEAD (CREATE FIRST TERM) */}
+      {assignModalOpen && (
         <Dialog
-          open={Boolean(confirmTermChangeChapter)}
-          onClose={() => setConfirmTermChangeChapter(null)}
-          title={`Open Term-Change Window — ${confirmTermChangeChapter.name}`}
-          description={`This opens the term-change window for ${confirmTermChangeChapter.name}. The current Campus Lead will then be able to hand the team over to a new term. Continue?`}
+          open={assignModalOpen}
+          onClose={() => setAssignModalOpen(false)}
+          title="Assign Initial Campus Lead"
+          description="Appoint the initial Campus Lead for a chapter and activate its first leadership term. For brand new chapters, any student across Elevates can be appointed."
           footer={
             <div className="flex items-center justify-end gap-2">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setConfirmTermChangeChapter(null)}
-                disabled={Boolean(windowActionLoading)}
+                onClick={() => setAssignModalOpen(false)}
+                disabled={isSubmittingAssign}
               >
                 Cancel
               </Button>
               <Button
                 variant="orange"
                 size="sm"
-                onClick={handleConfirmTermChange}
-                disabled={Boolean(windowActionLoading)}
+                onClick={handleConfirmAssignSubmit}
+                disabled={isSubmittingAssign || !assignChapterId || !assignLeadId}
               >
-                {windowActionLoading ? "Opening..." : "Confirm & Open Window"}
-              </Button>
-            </div>
-          }
-        >
-          <div className="py-2 text-xs text-text-dim">
-            Once open, the active Campus Lead can choose the incoming leadership team from their chapter leadership dashboard.
-          </div>
-        </Dialog>
-      )}
-
-      {/* DIALOG 2: CONFIRM CLOSE WINDOW */}
-      {confirmCloseWindowChapter && (
-        <Dialog
-          open={Boolean(confirmCloseWindowChapter)}
-          onClose={() => setConfirmCloseWindowChapter(null)}
-          title={`Close Handover Window — ${confirmCloseWindowChapter.name}`}
-          description={`Close the leadership handover window for ${confirmCloseWindowChapter.name}?`}
-          footer={
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmCloseWindowChapter(null)}
-                disabled={Boolean(windowActionLoading)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleConfirmCloseWindow}
-                disabled={Boolean(windowActionLoading)}
-              >
-                {windowActionLoading ? "Closing..." : "Close Window"}
-              </Button>
-            </div>
-          }
-        >
-          <div className="py-2 text-xs text-text-dim">
-            Closing the window will prevent further term handovers until reopened by HQ.
-          </div>
-        </Dialog>
-      )}
-
-      {/* DIALOG 3: ADD FIRST TERM */}
-      {addTermModalChapter && (
-        <Dialog
-          open={Boolean(addTermModalChapter)}
-          onClose={() => setAddTermModalChapter(null)}
-          title={`Add First Term — ${addTermModalChapter.name}`}
-          description={`Initialize the first leadership term for ${addTermModalChapter.name}. Pick the first Campus Lead and Executive Members.`}
-          footer={
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setAddTermModalChapter(null)}
-                disabled={addTermLoading}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="orange"
-                size="sm"
-                onClick={handleCreateFirstTermSubmit}
-                disabled={addTermLoading || !addCampusLeadId}
-              >
-                {addTermLoading ? "Activating Term..." : "Activate First Term"}
+                {isSubmittingAssign ? "Activating Term..." : "Confirm & Appoint"}
               </Button>
             </div>
           }
         >
           <div className="space-y-4 py-2 text-xs">
-            {addTermError && (
+            {assignError && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-red-400">
-                {addTermError}
+                {assignError}
               </div>
             )}
 
+            {/* Chapter Selection */}
+            <div>
+              <FieldLabel>Select Chapter *</FieldLabel>
+              <Select
+                value={assignChapterId}
+                onChange={(e) => {
+                  setAssignChapterId(e.target.value);
+                  setAssignLeadId("");
+                }}
+              >
+                <option value="">-- Choose Chapter --</option>
+                {store.chapters.map((c) => {
+                  const hasTerm = store.terms.some(
+                    (t) => t.chapterId === c.id && t.status === "active",
+                  );
+                  return (
+                    <option key={c.id} value={c.id}>
+                      {c.name} {hasTerm ? "(Has Active Term)" : "★ (Vacant / Needs Lead)"}
+                    </option>
+                  );
+                })}
+              </Select>
+            </div>
+
+            {/* Term Year Input */}
             <div>
               <FieldLabel>Term Year *</FieldLabel>
               <Input
                 type="number"
-                value={addTermYear}
-                onChange={(e) => setAddTermYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
-                placeholder="e.g. 2026"
+                value={assignYear}
+                onChange={(e) => setAssignYear(parseInt(e.target.value, 10) || 2025)}
+                placeholder="e.g. 2025"
               />
-              <p className="mt-1 text-[11px] text-text-dim">
-                The academic/calendar year for this initial term.
-              </p>
             </div>
 
+            {/* Campus Lead Selection */}
             <div>
-              <FieldLabel>Select First Campus Lead *</FieldLabel>
+              <FieldLabel>Select Campus Lead *</FieldLabel>
               <Select
-                value={addCampusLeadId}
-                onChange={(e) => setAddCampusLeadId(e.target.value)}
+                value={assignLeadId}
+                onChange={(e) => setAssignLeadId(e.target.value)}
               >
-                <option value="">-- Choose student in chapter --</option>
-                {store.profiles
-                  .filter((p) => p.chapterId === addTermModalChapter.id)
-                  .sort((a, b) => a.fullName.localeCompare(b.fullName))
-                  .map((stu) => (
-                    <option key={stu.id} value={stu.id}>
-                      {stu.fullName} ({stu.department || "No Dept"} · Year {stu.year || "—"}) — {stu.email}
+                <option value="">-- Select student / user to appoint --</option>
+                {Array.isArray(assignModalCandidateProfiles) ? (
+                  assignModalCandidateProfiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.fullName} ({p.email})
                     </option>
-                  ))}
+                  ))
+                ) : (
+                  <>
+                    {assignModalCandidateProfiles.inChapter.length > 0 && (
+                      <optgroup label="Members in this chapter">
+                        {assignModalCandidateProfiles.inChapter.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.fullName} ({p.department || "No Dept"} · {p.email})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Elevates members (network-wide)">
+                      {assignModalCandidateProfiles.others.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.fullName} ({p.email})
+                        </option>
+                      ))}
+                    </optgroup>
+                  </>
+                )}
               </Select>
               <p className="mt-1 text-[11px] text-text-dim">
-                The selected student will be appointed with the &apos;campus_lead&apos; role.
+                The selected user will be promoted to Campus Lead and the chapter leadership term will become active.
               </p>
             </div>
 
+            {/* Optional Initial Executive Members */}
             <div className="border-t border-border pt-3">
               <div className="flex items-center justify-between mb-2">
-                <FieldLabel>First Executive Members (Optional)</FieldLabel>
+                <FieldLabel>Initial Executive Members (Optional)</FieldLabel>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
-                    setAddExecMembers((prev) => [...prev, { userId: "", designation: "" }])
-                  }
+                  onClick={addAssignExecMemberRow}
                   className="text-xs text-[var(--accent)]"
                 >
                   <Plus size={12} className="mr-1" /> Add Member
                 </Button>
               </div>
 
-              <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                {addExecMembers.map((member, idx) => (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {assignExecMembers.map((row, idx) => (
                   <div
                     key={idx}
                     className="flex items-center gap-2 rounded-lg border border-border bg-bg/40 p-2"
                   >
                     <div className="flex-1">
                       <Select
-                        value={member.userId}
-                        onChange={(e) =>
-                          setAddExecMembers((prev) =>
-                            prev.map((row, i) =>
-                              i === idx ? { ...row, userId: e.target.value } : row,
-                            ),
-                          )
-                        }
+                        value={row.userId}
+                        onChange={(e) => updateAssignExecMemberRow(idx, "userId", e.target.value)}
                       >
                         <option value="">-- Pick student --</option>
                         {store.profiles
-                          .filter(
-                            (p) =>
-                              p.chapterId === addTermModalChapter.id &&
-                              p.id !== addCampusLeadId,
-                          )
-                          .sort((a, b) => a.fullName.localeCompare(b.fullName))
-                          .map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.fullName} ({s.department || "—"})
+                          .filter((p) => p.id !== assignLeadId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.fullName} ({p.email})
                             </option>
                           ))}
                       </Select>
@@ -717,25 +683,19 @@ export default function HqLeadershipPage() {
                     <div className="w-36 sm:w-44">
                       <Input
                         placeholder="Designation (optional)"
-                        value={member.designation}
+                        value={row.designation}
                         onChange={(e) =>
-                          setAddExecMembers((prev) =>
-                            prev.map((row, i) =>
-                              i === idx ? { ...row, designation: e.target.value } : row,
-                            ),
-                          )
+                          updateAssignExecMemberRow(idx, "designation", e.target.value)
                         }
                       />
                     </div>
 
                     <button
                       type="button"
-                      onClick={() =>
-                        setAddExecMembers((prev) => prev.filter((_, i) => i !== idx))
-                      }
+                      onClick={() => removeAssignExecMemberRow(idx)}
                       className="p-1.5 text-text-mute hover:text-red-400"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 ))}
@@ -744,7 +704,94 @@ export default function HqLeadershipPage() {
           </div>
         </Dialog>
       )}
+
+      {/* MODAL 2: CONFIRM OPEN HANDOVER WINDOW */}
+      {openWindowModalChapter && (
+        <Dialog
+          open={Boolean(openWindowModalChapter)}
+          onClose={() => setOpenWindowModalChapter(null)}
+          title={`Open Handover Window · ${openWindowModalChapter.name}`}
+          description="Opening the handover window allows the active Campus Lead to select the incoming Campus Lead and Executive Members to transition to the next term."
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpenWindowModalChapter(null)}
+                disabled={Boolean(actionLoading)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="orange"
+                size="sm"
+                onClick={handleConfirmOpenWindow}
+                disabled={Boolean(actionLoading)}
+              >
+                {actionLoading ? "Opening..." : "Confirm & Open Window"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-3.5 py-2 text-xs">
+            <div>
+              <FieldLabel>Target Next Term Year *</FieldLabel>
+              <Input
+                type="number"
+                value={openTargetYear}
+                onChange={(e) => setOpenTargetYear(parseInt(e.target.value, 10) || 2026)}
+                placeholder="e.g. 2026"
+              />
+            </div>
+
+            <div>
+              <FieldLabel>Window Closes At (Optional)</FieldLabel>
+              <Input
+                type="date"
+                value={openClosedAt}
+                onChange={(e) => setOpenClosedAt(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-text-dim">
+                Leave blank to keep window open until manually closed by HQ or until term handover completes.
+              </p>
+            </div>
+          </div>
+        </Dialog>
+      )}
+
+      {/* MODAL 3: CONFIRM CLOSE HANDOVER WINDOW */}
+      {closeWindowModalChapter && (
+        <Dialog
+          open={Boolean(closeWindowModalChapter)}
+          onClose={() => setCloseWindowModalChapter(null)}
+          title={`Close Handover Window · ${closeWindowModalChapter.name}`}
+          description={`Are you sure you want to close the transition window for ${closeWindowModalChapter.name}? Campus Leads will not be able to execute handovers while the window is closed.`}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCloseWindowModalChapter(null)}
+                disabled={Boolean(actionLoading)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleConfirmCloseWindow}
+                disabled={Boolean(actionLoading)}
+              >
+                {actionLoading ? "Closing..." : "Close Window"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="py-2 text-xs text-text-dim">
+            This closes the window immediately. You can reopen it at any time.
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
-

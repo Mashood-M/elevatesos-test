@@ -28,6 +28,7 @@ import type {
 } from "@/types";
 import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 import { generateElevatesId } from "@/lib/forms/helpers";
+import { getChapterHandoverStatus } from "@/lib/leadership";
 
 const defaultBrandKit: BrandKit = {
   logoUrl: "/logo.svg",
@@ -1000,6 +1001,31 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         createdAt: n.created_at ?? new Date().toISOString(),
         href: n.href ?? undefined,
       })) ?? [];
+
+    // Synthesize handover window notifications for active Campus Leads if their chapter window is open
+    for (const term of terms) {
+      if (term.status === "active" && term.campusLeadId) {
+        const chapter = chapters.find((c) => c.id === term.chapterId);
+        if (!chapter) continue;
+        const winStatus = getChapterHandoverStatus(term.chapterId, handoverWindows, true);
+        if (winStatus.isOpen) {
+          const alreadyNotified = notifications.some(
+            (n) => n.userId === term.campusLeadId && (n.id.startsWith("handover-alert-") || n.title.includes("Term Handover")),
+          );
+          if (!alreadyNotified) {
+            notifications.unshift({
+              id: `handover-alert-${term.id}`,
+              userId: term.campusLeadId,
+              title: "Term Handover Window Open",
+              body: `The leadership handover window is now open for ${chapter.name}. Select the incoming Campus Lead and Executive Members to begin the new term.`,
+              read: false,
+              createdAt: new Date().toISOString(),
+              href: `/chapter/${chapter.slug}/leadership`,
+            });
+          }
+        }
+      }
+    }
 
     const activityLogs: import("@/types").ActivityLog[] =
       activityRows?.map((al: Record<string, any>) => ({

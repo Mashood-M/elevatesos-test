@@ -182,6 +182,7 @@ Contains migrations `001` through `040` representing the Postgres relational dat
 - **`041_peer_lab_lessons_and_resources.sql`**: Extends Peer Labs and Events with multi-day lessons (`lessons`), gated resources (`resources`), `poster_url`, and `thumbnail_url`.
 - **`044_default_student_and_faculty_mutual_exclusion.sql`**: Enforces default student role on signup and mutual exclusion between student/lead/rep and faculty roles.
 - **`045_chapter_terms_and_handover_system.sql`**: Introduces `terms`, `term_members`, and `handover_windows` tables, `executive_member` role, per-chapter handover windows controlled by Founders, and single-transaction term handover procedure executable by active Campus Leads.
+- **`046_allow_null_campus_lead_in_terms.sql`**: Drops NOT NULL constraint on `public.terms(campus_lead_id)` so an active term can have a vacant Campus Lead position when a lead is demoted or removed from HQ User Control.
 - **`FULL_DATABASE_SETUP.sql`**: Consolidated script for bootstrapping a fresh Supabase database in a single run.
 
 #### Migration Execution Order for Existing Databases
@@ -194,6 +195,7 @@ When applying new migrations to an existing database, execute them in this exact
 6. `supabase/migrations/043_fix_discord_links_guild_fk.sql`
 7. `supabase/migrations/044_default_student_and_faculty_mutual_exclusion.sql`
 8. `supabase/migrations/045_chapter_terms_and_handover_system.sql`
+9. `supabase/migrations/046_allow_null_campus_lead_in_terms.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

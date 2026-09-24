@@ -1065,6 +1065,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         const ROLE_PRIORITY: RoleKey[] = [
           "alumni",
           "student",
+          "executive_member",
           "faculty_coordinator",
           "class_representative",
           "campus_lead",
@@ -1080,6 +1081,54 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
             return (rObj?.key ?? null) as RoleKey | null;
           })
           .filter((k: RoleKey | null): k is RoleKey => k !== null && (k as string) !== "volunteer");
+
+        const hasExplicitRoles = assignedKeys.length > 0;
+
+        // Fallback checks ONLY if no explicit roles found in user_roles
+        if (!hasExplicitRoles) {
+          // Check active terms (Migration 045)
+          const isLeadInActiveTerm = terms.some(
+            (t) => (t.campusLeadId === matchedProfile.id || t.campusLeadId === authUser.id) && t.status === "active",
+          );
+          const isChapterLead = chapters.some(
+            (c) => c.campusLeadId === matchedProfile.id || c.campusLeadId === authUser.id,
+          );
+          if ((isLeadInActiveTerm || isChapterLead) && !assignedKeys.includes("campus_lead")) {
+            const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
+            if (profDesig !== "student") {
+              assignedKeys.push("campus_lead");
+            }
+          }
+
+          // Check active term members (Migration 045)
+          const isExecMember = termMembers.some(
+            (tm) =>
+              (tm.userId === matchedProfile.id || tm.userId === authUser.id) &&
+              terms.some((t) => t.id === tm.termId && t.status === "active"),
+          );
+          if (isExecMember && !assignedKeys.includes("executive_member")) {
+            const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
+            if (profDesig !== "student") {
+              assignedKeys.push("executive_member");
+            }
+          }
+
+          // Check profile designation / role
+          const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
+          const profRole = (matchedProfile.role || "").toLowerCase().trim();
+          if ((profDesig === "campus_lead" || profRole.includes("campus lead")) && !assignedKeys.includes("campus_lead")) {
+            assignedKeys.push("campus_lead");
+          }
+          if ((profDesig === "chairman" || profRole.includes("chairman")) && !assignedKeys.includes("chairman")) {
+            assignedKeys.push("chairman");
+          }
+          if ((profDesig === "executive_member" || profRole.includes("executive member")) && !assignedKeys.includes("executive_member")) {
+            assignedKeys.push("executive_member");
+          }
+          if ((profDesig === "class_rep" || profRole.includes("class representative")) && !assignedKeys.includes("class_representative")) {
+            assignedKeys.push("class_representative");
+          }
+        }
 
         if (assignedKeys.length === 0) {
           const e = (matchedProfile.email || authUser.email || "").toLowerCase();
@@ -1107,8 +1156,20 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
           return curIdx > bestIdx ? cur : best;
         }, assignedKeys[0] || "student");
 
+        const leadActiveTerm = terms.find(
+          (t) => (t.campusLeadId === matchedProfile.id || t.campusLeadId === authUser.id) && t.status === "active",
+        );
+        const leadChapter = chapters.find(
+          (c) => c.campusLeadId === matchedProfile.id || c.campusLeadId === authUser.id,
+        );
+
         let activeRoleKey = topRoleKey;
-        let activeChapterId = userRoleEntries[0]?.chapterId ?? (userRoleEntries[0] as any)?.chapter_id ?? matchedProfile.chapterId;
+        let activeChapterId =
+          leadActiveTerm?.chapterId ??
+          leadChapter?.id ??
+          userRoleEntries[0]?.chapterId ??
+          (userRoleEntries[0] as any)?.chapter_id ??
+          matchedProfile.chapterId;
 
         if (typeof window !== "undefined") {
           const rawSavedRole = localStorage.getItem("elevates_active_role_key");
@@ -1148,6 +1209,8 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
 
           const userAllowedChapterIds = [
             matchedProfile.chapterId,
+            leadActiveTerm?.chapterId,
+            leadChapter?.id,
             ...userRoleEntries.map((ur: any) => ur.chapterId || ur.chapter_id),
           ].filter(Boolean);
 

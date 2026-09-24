@@ -25,6 +25,7 @@ import {
   broadcastChange,
   broadcastSessionUpdate,
   recalculateUserSession,
+  ROLE_PRIORITY,
 } from "@/lib/data/realtime-sync";
 import { deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
 import { isUuid, genUuid } from "@/lib/uuid";
@@ -1536,6 +1537,49 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 return rObj?.key;
               })
               .filter((k): k is RoleKey => Boolean(k) && (k as string) !== "volunteer");
+
+            // Check active terms & chapters for campus lead (Migration 045)
+            const isLead =
+              s.terms.some(
+                (t) =>
+                  (t.campusLeadId === userId || t.campusLeadId === origAuthUserId) &&
+                  t.status === "active",
+              ) ||
+              s.chapters.some(
+                (c) => c.campusLeadId === userId || c.campusLeadId === origAuthUserId,
+              );
+            if (isLead && !assignedRoleKeys.includes("campus_lead")) {
+              assignedRoleKeys.push("campus_lead");
+            }
+
+            // Check active term members for executive member (Migration 045)
+            const isExec = s.termMembers.some(
+              (tm) =>
+                (tm.userId === userId || tm.userId === origAuthUserId) &&
+                s.terms.some((t) => t.id === tm.termId && t.status === "active"),
+            );
+            if (isExec && !assignedRoleKeys.includes("executive_member")) {
+              assignedRoleKeys.push("executive_member");
+            }
+
+            // Check profile designation / role
+            const prof = s.profiles.find((p) => p.id === userId || p.id === origAuthUserId);
+            if (prof) {
+              const d = (prof.designation || "").toLowerCase().trim();
+              const r = (prof.role || "").toLowerCase().trim();
+              if ((d === "campus_lead" || r.includes("campus lead")) && !assignedRoleKeys.includes("campus_lead")) {
+                assignedRoleKeys.push("campus_lead");
+              }
+              if ((d === "chairman" || r.includes("chairman")) && !assignedRoleKeys.includes("chairman")) {
+                assignedRoleKeys.push("chairman");
+              }
+              if ((d === "executive_member" || r.includes("executive member")) && !assignedRoleKeys.includes("executive_member")) {
+                assignedRoleKeys.push("executive_member");
+              }
+              if ((d === "class_rep" || r.includes("class representative")) && !assignedRoleKeys.includes("class_representative")) {
+                assignedRoleKeys.push("class_representative");
+              }
+            }
 
             if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(effectiveRoleKey)) {
               console.warn(`Permission denied: User ${userId} cannot switch to unassigned role '${effectiveRoleKey}'`);
@@ -5149,24 +5193,58 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             });
           }
         }
+        const hasCampusLead = built.some((b) => b.roleKey === "campus_lead" || b.roleKey === "chairman");
+        const hasExecMember = built.some((b) => b.roleKey === "executive_member");
+
         setStore((s) => {
           const others = s.userRoles.filter((ur) => ur.userId !== userId);
-          // If faculty, clear any leadership roles as faculty only holds faculty
-          const leadershipLinked = hasFaculty
-            ? []
-            : s.userRoles.filter(
-                (ur) => ur.userId === userId && Boolean(ur.leadershipTermId),
-              );
-          const nextUserRoles = [...others, ...built, ...leadershipLinked];
+          const nextUserRoles = [...others, ...built];
+
+          const assignedRoleKeys: RoleKey[] = built
+            .map((b) => b.roleKey)
+            .filter((k): k is RoleKey => Boolean(k));
+          const topRole: RoleKey = hasFaculty
+            ? "faculty_coordinator"
+            : assignedRoleKeys.reduce<RoleKey>((best, cur) => {
+                return ROLE_PRIORITY.indexOf(cur) > ROLE_PRIORITY.indexOf(best) ? cur : best;
+              }, assignedRoleKeys[0] || "student");
+
           const updatedProfiles = s.profiles.map((p) => {
             if (p.id !== userId) return p;
             return {
               ...p,
               chapterId: assignedChapId || p.chapterId,
-              role: hasFaculty ? "faculty_coordinator" : (built.find((b) => b.roleKey !== "student")?.roleKey || "student"),
+              designation: topRole,
+              role: topRole === "student" ? "Member" : (hasFaculty ? "Faculty Coordinator" : roleKeyFallback(topRole)),
             };
           });
-          const roleSummary = effectiveAssignments.map((a) => a.roleKey).join(", ") || "none";
+
+          // Sync chapters campusLeadId
+          const updatedChapters = s.chapters.map((c) => {
+            if (!hasCampusLead && c.campusLeadId === userId) {
+              return { ...c, campusLeadId: undefined };
+            }
+            if (hasCampusLead && assignedChapId && c.id === assignedChapId) {
+              return { ...c, campusLeadId: userId };
+            }
+            return c;
+          });
+
+          // Sync terms campusLeadId
+          const updatedTerms = s.terms.map((t) => {
+            if (!hasCampusLead && t.campusLeadId === userId && t.status === "active") {
+              return { ...t, campusLeadId: "" };
+            }
+            if (hasCampusLead && assignedChapId && t.chapterId === assignedChapId && t.status === "active") {
+              return { ...t, campusLeadId: userId };
+            }
+            return t;
+          });
+
+          // Sync termMembers
+          const updatedTermMembers = hasExecMember
+            ? s.termMembers
+            : s.termMembers.filter((tm) => tm.userId !== userId);
 
           let nextSession = s.session;
           if (userId === s.session.userId || userId === s.session.authUserId) {
@@ -5175,14 +5253,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               nextUserRoles,
               s.roles,
               updatedProfiles,
-              userId
+              userId,
+              { forceRoleKey: topRole }
             );
+            if (typeof window !== "undefined") {
+              localStorage.setItem("elevates_active_role_key", topRole);
+              localStorage.setItem("elevates_known_top_role", topRole);
+            }
           }
+
+          const roleSummary = effectiveAssignments.map((a) => a.roleKey).join(", ") || "none";
 
           return {
             ...s,
             profiles: updatedProfiles,
             userRoles: nextUserRoles,
+            chapters: updatedChapters,
+            terms: updatedTerms,
+            termMembers: updatedTermMembers,
             session: nextSession,
             activityLogs: [
               log(
@@ -6202,6 +6290,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return p;
           });
 
+          let nextSession = s.session;
+          if (s.session.userId === input.nextCampusLeadId) {
+            nextSession = {
+              ...s.session,
+              roleKey: "campus_lead",
+              chapterId: input.chapterId,
+              authRoleKey: "campus_lead",
+            };
+            if (typeof window !== "undefined") {
+              localStorage.setItem("elevates_active_role_key", "campus_lead");
+              localStorage.setItem("elevates_known_top_role", "campus_lead");
+              localStorage.setItem("elevates_active_chapter_id", input.chapterId);
+            }
+          }
+
           return {
             ...s,
             terms: nextTerms,
@@ -6209,6 +6312,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userRoles: nextUserRoles,
             chapters: nextChapters,
             profiles: nextProfiles,
+            session: nextSession,
           };
         });
 
@@ -6387,6 +6491,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return p;
           });
 
+          let nextSession = s.session;
+          if (s.session.userId === input.campusLeadId) {
+            nextSession = {
+              ...s.session,
+              roleKey: "campus_lead",
+              chapterId: input.chapterId,
+              authRoleKey: "campus_lead",
+            };
+            if (typeof window !== "undefined") {
+              localStorage.setItem("elevates_active_role_key", "campus_lead");
+              localStorage.setItem("elevates_known_top_role", "campus_lead");
+              localStorage.setItem("elevates_active_chapter_id", input.chapterId);
+            }
+          }
+
           return {
             ...s,
             terms: [newTerm, ...s.terms],
@@ -6394,6 +6513,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userRoles: nextUserRoles,
             chapters: nextChapters,
             profiles: nextProfiles,
+            session: nextSession,
           };
         });
 

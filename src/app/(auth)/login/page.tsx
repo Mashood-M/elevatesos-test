@@ -139,18 +139,19 @@ function LoginForm() {
             .select("role_id, role_key, chapter_id")
             .eq("user_id", userId);
 
-          if (userRoleRows && userRoleRows.length > 0) {
-            const ROLE_PRIORITY: RoleKey[] = [
-              "alumni",
-              "student",
-              "faculty_coordinator",
-              "class_representative",
-              "campus_lead",
-              "hq_admin",
-              "founder",
-            ];
+          const ROLE_PRIORITY: RoleKey[] = [
+            "alumni",
+            "student",
+            "executive_member",
+            "faculty_coordinator",
+            "class_representative",
+            "campus_lead",
+            "hq_admin",
+            "founder",
+          ];
 
-            const foundRoleKeys: RoleKey[] = [];
+          const foundRoleKeys: RoleKey[] = [];
+          if (userRoleRows && userRoleRows.length > 0) {
             for (const ur of userRoleRows) {
               if (ur.chapter_id && !chapterId) {
                 chapterId = ur.chapter_id;
@@ -168,12 +169,78 @@ function LoginForm() {
                 }
               }
             }
+          }
 
-            if (foundRoleKeys.length > 0) {
-              roleKey = foundRoleKeys.reduce<RoleKey>((best, cur) => {
-                return ROLE_PRIORITY.indexOf(cur) > ROLE_PRIORITY.indexOf(best) ? cur : best;
-              }, foundRoleKeys[0]);
+          const hasExplicitRoles = foundRoleKeys.length > 0;
+
+          // Check active terms (Migration 045)
+          try {
+            const { data: leadTerms } = await supabase
+              .from("terms")
+              .select("id, chapter_id")
+              .eq("campus_lead_id", userId)
+              .eq("status", "active")
+              .maybeSingle();
+
+            if (leadTerms) {
+              if (!hasExplicitRoles && !foundRoleKeys.includes("campus_lead")) {
+                foundRoleKeys.push("campus_lead");
+              }
+              if (leadTerms.chapter_id && !chapterId) {
+                chapterId = leadTerms.chapter_id;
+              }
             }
+          } catch {}
+
+          // Check active term members (Migration 045)
+          try {
+            const { data: execTerms } = await supabase
+              .from("term_members")
+              .select("id, term_id, terms!inner(id, chapter_id, status)")
+              .eq("user_id", userId)
+              .eq("terms.status", "active")
+              .maybeSingle();
+
+            if (execTerms) {
+              if (!hasExplicitRoles && !foundRoleKeys.includes("executive_member")) {
+                foundRoleKeys.push("executive_member");
+              }
+              const ch = (execTerms.terms as any)?.chapter_id;
+              if (ch && !chapterId) {
+                chapterId = ch;
+              }
+            }
+          } catch {}
+
+          // Check profile designation / role
+          try {
+            const { data: prof } = await supabase
+              .from("profiles")
+              .select("designation, role, chapter_id")
+              .eq("id", userId)
+              .maybeSingle();
+
+            if (prof) {
+              if (!hasExplicitRoles) {
+                const d = (prof.designation || "").toLowerCase().trim();
+                const r = (prof.role || "").toLowerCase().trim();
+                if ((d === "campus_lead" || r.includes("campus lead")) && !foundRoleKeys.includes("campus_lead")) {
+                  foundRoleKeys.push("campus_lead");
+                }
+                if ((d === "executive_member" || r.includes("executive member")) && !foundRoleKeys.includes("executive_member")) {
+                  foundRoleKeys.push("executive_member");
+                }
+              }
+              if (prof.chapter_id && !chapterId) {
+                chapterId = prof.chapter_id;
+              }
+            }
+          } catch {}
+
+          if (foundRoleKeys.length > 0) {
+            roleKey = foundRoleKeys.reduce<RoleKey>((best, cur) => {
+              return ROLE_PRIORITY.indexOf(cur) > ROLE_PRIORITY.indexOf(best) ? cur : best;
+            }, foundRoleKeys[0]);
           }
 
           if (chapterId) {

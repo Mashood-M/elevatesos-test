@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   BookOpen,
   CheckCircle2,
@@ -12,6 +13,7 @@ import {
   LockOpen,
   Send,
   Shield,
+  Ticket,
   Trash2,
   Users,
 } from "lucide-react";
@@ -201,8 +203,8 @@ export function PeerLabCard({
           ) : (
             <div className="flex items-center justify-between w-full">
               {isEnrolled ? (
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600">
-                  <CheckCircle2 size={14} /> Enrolled
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
+                  <CheckCircle2 size={14} className="text-emerald-500" /> Pass Ready
                 </span>
               ) : (
                 <span className="text-[11px] text-text-mute">
@@ -211,11 +213,23 @@ export function PeerLabCard({
               )}
               <Button
                 size="sm"
-                variant={isEnrolled ? "secondary" : "orange"}
+                variant="orange"
                 onClick={() => onSelect(lab)}
-                className="h-8 px-3.5 text-xs font-bold rounded-full"
+                className={cn(
+                  "h-8 px-3.5 text-xs font-bold rounded-full gap-1.5 shadow-xs transition-all",
+                  isEnrolled
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white"
+                )}
               >
-                {isEnrolled ? "View Pass" : "View & Enroll"}
+                {isEnrolled ? (
+                  <>
+                    <Ticket size={12} />
+                    <span>View Pass</span>
+                  </>
+                ) : (
+                  <span>View &amp; Enroll</span>
+                )}
               </Button>
             </div>
           )}

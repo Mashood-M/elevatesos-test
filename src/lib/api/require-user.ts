@@ -37,6 +37,7 @@ const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "guest",
   "student",
+  "executive_member",
   "media_team",
   "technical_team",
   "innovation_team",
@@ -202,25 +203,33 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
     }
   }
 
-  // 3. Check Profile designation and role
-  if (matchedProfile?.designation) {
-    const d = matchedProfile.designation.toLowerCase().trim();
-    if (d === "campus_lead" && !assignedKeys.includes("campus_lead")) {
-      assignedKeys.push("campus_lead");
-    } else if (d === "chairman" && !assignedKeys.includes("chairman")) {
-      assignedKeys.push("chairman");
-    } else if (d === "class_rep" && !assignedKeys.includes("class_representative")) {
-      assignedKeys.push("class_representative");
+  const hasExplicitRoles = assignedKeys.length > 0;
+
+  // 3. Fallback: Check Profile designation and role ONLY if no explicit roles found
+  if (!hasExplicitRoles) {
+    if (matchedProfile?.designation) {
+      const d = matchedProfile.designation.toLowerCase().trim();
+      if (d === "campus_lead" && !assignedKeys.includes("campus_lead")) {
+        assignedKeys.push("campus_lead");
+      } else if (d === "chairman" && !assignedKeys.includes("chairman")) {
+        assignedKeys.push("chairman");
+      } else if (d === "class_rep" && !assignedKeys.includes("class_representative")) {
+        assignedKeys.push("class_representative");
+      } else if (d === "executive_member" && !assignedKeys.includes("executive_member")) {
+        assignedKeys.push("executive_member");
+      }
     }
-  }
-  if (matchedProfile?.role) {
-    const r = matchedProfile.role.toLowerCase().trim();
-    if (r.includes("campus lead") && !assignedKeys.includes("campus_lead")) {
-      assignedKeys.push("campus_lead");
-    } else if (r.includes("chairman") && !assignedKeys.includes("chairman")) {
-      assignedKeys.push("chairman");
-    } else if (r.includes("class representative") && !assignedKeys.includes("class_representative")) {
-      assignedKeys.push("class_representative");
+    if (matchedProfile?.role) {
+      const r = matchedProfile.role.toLowerCase().trim();
+      if (r.includes("campus lead") && !assignedKeys.includes("campus_lead")) {
+        assignedKeys.push("campus_lead");
+      } else if (r.includes("chairman") && !assignedKeys.includes("chairman")) {
+        assignedKeys.push("chairman");
+      } else if (r.includes("class representative") && !assignedKeys.includes("class_representative")) {
+        assignedKeys.push("class_representative");
+      } else if (r.includes("executive member") && !assignedKeys.includes("executive_member")) {
+        assignedKeys.push("executive_member");
+      }
     }
   }
 
@@ -237,8 +246,11 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
           allowedChapterIds.push(lc.id);
         }
       }
-      if (!assignedKeys.includes("campus_lead")) {
-        assignedKeys.push("campus_lead");
+      if (!hasExplicitRoles && !assignedKeys.includes("campus_lead")) {
+        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
+        if (profDesig !== "student") {
+          assignedKeys.push("campus_lead");
+        }
       }
       if (!resolvedChapterId) {
         resolvedChapterId = leadChapters[0].id;
@@ -246,31 +258,90 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
     }
   } catch {}
 
-  // 5. Check leadership_assignments
+  // 4b. Check if user is appointed as campus_lead_id in active terms table (Migration 045)
   try {
-    const { data: leadAssignments } = await admin
-      .from("leadership_assignments")
-      .select("role_key, term_id")
-      .or(`user_id.eq.${effectiveUserId},user_id.eq.${user.id}`);
+    const { data: activeTerms } = await admin
+      .from("terms")
+      .select("id, chapter_id, campus_lead_id")
+      .eq("status", "active")
+      .or(`campus_lead_id.eq.${effectiveUserId},campus_lead_id.eq.${user.id}`);
 
-    if (leadAssignments && leadAssignments.length > 0) {
-      for (const la of leadAssignments) {
-        if (la.role_key && la.role_key !== "volunteer") {
-          const k = String(la.role_key).toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
-          if (!assignedKeys.includes(k)) {
-            assignedKeys.push(k);
-          }
+    if (activeTerms && activeTerms.length > 0) {
+      for (const at of activeTerms) {
+        if (at.chapter_id && !allowedChapterIds.includes(at.chapter_id)) {
+          allowedChapterIds.push(at.chapter_id);
         }
+      }
+      if (!hasExplicitRoles && !assignedKeys.includes("campus_lead")) {
+        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
+        if (profDesig !== "student") {
+          assignedKeys.push("campus_lead");
+        }
+      }
+      if (!resolvedChapterId && activeTerms[0]?.chapter_id) {
+        resolvedChapterId = activeTerms[0].chapter_id;
       }
     }
   } catch {}
 
-  // 6. Check user metadata
-  const metaRole = (user.user_metadata?.role_key || user.user_metadata?.role || user.user_metadata?.designation) as string | undefined;
-  if (metaRole) {
-    const k = metaRole.toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
-    if (k && k !== "volunteer" && !assignedKeys.includes(k)) {
-      assignedKeys.push(k);
+  // 4c. Check if user is active member in term_members table (Migration 045)
+  try {
+    const { data: activeExecMembers } = await admin
+      .from("term_members")
+      .select("id, term_id, user_id, terms!inner(id, chapter_id, status)")
+      .or(`user_id.eq.${effectiveUserId},user_id.eq.${user.id}`)
+      .eq("terms.status", "active");
+
+    if (activeExecMembers && activeExecMembers.length > 0) {
+      for (const em of activeExecMembers) {
+        const termsObj = em.terms as unknown as { chapter_id?: string } | null;
+        const chId = termsObj?.chapter_id;
+        if (chId && !allowedChapterIds.includes(chId)) {
+          allowedChapterIds.push(chId);
+        }
+      }
+      if (!hasExplicitRoles && !assignedKeys.includes("executive_member")) {
+        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
+        if (profDesig !== "student") {
+          assignedKeys.push("executive_member");
+        }
+      }
+      const firstTermsObj = activeExecMembers[0]?.terms as unknown as { chapter_id?: string } | null;
+      if (!resolvedChapterId && firstTermsObj?.chapter_id) {
+        resolvedChapterId = firstTermsObj.chapter_id;
+      }
+    }
+  } catch {}
+
+  // 5. Check leadership_assignments (fallback only)
+  if (!hasExplicitRoles) {
+    try {
+      const { data: leadAssignments } = await admin
+        .from("leadership_assignments")
+        .select("role_key, term_id")
+        .or(`user_id.eq.${effectiveUserId},user_id.eq.${user.id}`);
+
+      if (leadAssignments && leadAssignments.length > 0) {
+        for (const la of leadAssignments) {
+          if (la.role_key && la.role_key !== "volunteer") {
+            const k = String(la.role_key).toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
+            if (!assignedKeys.includes(k)) {
+              assignedKeys.push(k);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 6. Check user metadata (fallback only)
+  if (!hasExplicitRoles) {
+    const metaRole = (user.user_metadata?.role_key || user.user_metadata?.role || user.user_metadata?.designation) as string | undefined;
+    if (metaRole) {
+      const k = metaRole.toLowerCase().trim().replace(/[\s-]+/g, "_") as RoleKey;
+      if (k && k !== "volunteer" && !assignedKeys.includes(k)) {
+        assignedKeys.push(k);
+      }
     }
   }
 

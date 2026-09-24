@@ -43,20 +43,8 @@ import type {
   VolunteerGroup,
 } from "@/types";
 
-export const ROLE_PRIORITY: RoleKey[] = [
-  "alumni",
-  "student",
-  "faculty_coordinator",
-  "class_representative",
-  "campus_lead",
-  "hq_admin",
-  "founder",
-];
-
-export function roleRank(key: RoleKey): number {
-  const idx = ROLE_PRIORITY.indexOf(key);
-  return idx === -1 ? 0 : idx;
-}
+import { ROLE_PRIORITY, roleRank } from "@/lib/permissions";
+export { ROLE_PRIORITY, roleRank };
 
 // ── TRANSFORMERS (DB Snake_case -> Store CamelCase) ──────────────────────────
 
@@ -1801,7 +1789,11 @@ export function setupRealtimeSync(options: {
         if (status === "SUBSCRIBED") {
           // Connected cleanly
         } else if (status === "CHANNEL_ERROR") {
-          console.warn("[Elevates Realtime] Channel notice:", err?.message || err);
+          const msg = err?.message || String(err || "");
+          // Socket 1006 is a normal transient close during tab backgrounding/page transitions
+          if (!msg.includes("1006")) {
+            console.warn("[Elevates Realtime] Channel notice:", msg);
+          }
         }
       });
     } catch (realtimeErr) {

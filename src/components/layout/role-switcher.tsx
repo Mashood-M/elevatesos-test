@@ -38,6 +38,7 @@ const HQ_ROLES: SwitchableRole[] = [
 
 const CHAPTER_ROLES: SwitchableRole[] = [
   { label: "Campus Lead", roleKey: "campus_lead",          isChapterScoped: true },
+  { label: "Executive Member", roleKey: "executive_member", isChapterScoped: true },
   { label: "Class Rep",   roleKey: "class_representative", isChapterScoped: true },
   { label: "Faculty",     roleKey: "faculty_coordinator",  isChapterScoped: true },
   { label: "Student",     roleKey: "student",              isChapterScoped: true },
@@ -49,6 +50,7 @@ const ALL_SWITCHABLE_ROLES: SwitchableRole[] = [...HQ_ROLES, ...CHAPTER_ROLES];
 const ROLE_PRIORITY: RoleKey[] = [
   "alumni",
   "student",
+  "executive_member",
   "faculty_coordinator",
   "class_representative",
   "campus_lead",
@@ -84,22 +86,65 @@ export function RoleSwitcher() {
     return () => document.removeEventListener("mousedown", onOutside);
   }, []);
 
-  // Derive actual assigned roles from Supabase user_roles (excluding operational tags like volunteer)
+  // Derive actual assigned roles from Supabase user_roles, active terms, and profiles
   const actualRoleKeys = useMemo<RoleKey[]>(() => {
     const uid = session.authUserId ?? session.userId;
     if (!uid) return [];
 
     const userRoleEntries = store.userRoles.filter(
-      (ur: any) => ur.userId === uid,
+      (ur: { userId: string; roleKey?: RoleKey; roleId?: string }) => ur.userId === uid,
     );
 
     const keys: RoleKey[] = userRoleEntries
-      .map((ur: any) => {
+      .map((ur: { userId: string; roleKey?: RoleKey; roleId?: string }) => {
         if (ur.roleKey) return ur.roleKey as RoleKey;
-        const roleObj = store.roles.find((r: any) => r.id === ur.roleId);
+        const roleObj = store.roles.find((r: { id: string; key: RoleKey }) => r.id === ur.roleId);
         return (roleObj?.key ?? null) as RoleKey | null;
       })
       .filter((k): k is RoleKey => k !== null && (k as string) !== "volunteer");
+
+    const hasExplicitRoles = keys.length > 0;
+
+    // Fallback checks ONLY if no explicit roles found in user_roles
+    if (!hasExplicitRoles) {
+      // Check active terms (Migration 045)
+      const isLeadInActiveTerm = store.terms.some(
+        (t) => t.campusLeadId === uid && t.status === "active",
+      );
+      const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
+      if ((isLeadInActiveTerm || isChapterLead) && !keys.includes("campus_lead")) {
+        keys.push("campus_lead");
+      }
+
+      // Check active term members (Migration 045)
+      const isExecMember = store.termMembers.some(
+        (tm) =>
+          tm.userId === uid &&
+          store.terms.some((t) => t.id === tm.termId && t.status === "active"),
+      );
+      if (isExecMember && !keys.includes("executive_member")) {
+        keys.push("executive_member");
+      }
+
+      // Check profile designation / role
+      const prof = store.profiles.find((p) => p.id === uid);
+      if (prof) {
+        const d = (prof.designation || "").toLowerCase().trim();
+        const r = (prof.role || "").toLowerCase().trim();
+        if ((d === "campus_lead" || r.includes("campus lead")) && !keys.includes("campus_lead")) {
+          keys.push("campus_lead");
+        }
+        if ((d === "chairman" || r.includes("chairman")) && !keys.includes("chairman")) {
+          keys.push("chairman");
+        }
+        if ((d === "executive_member" || r.includes("executive member")) && !keys.includes("executive_member")) {
+          keys.push("executive_member");
+        }
+        if ((d === "class_rep" || r.includes("class representative")) && !keys.includes("class_representative")) {
+          keys.push("class_representative");
+        }
+      }
+    }
 
     if (session.authRoleKey && session.authRoleKey !== "volunteer" && !keys.includes(session.authRoleKey)) {
       keys.push(session.authRoleKey);
@@ -116,7 +161,7 @@ export function RoleSwitcher() {
       uniqueKeys.push("student");
     }
     return uniqueKeys;
-  }, [session, store.userRoles, store.roles]);
+  }, [session, store.userRoles, store.roles, store.terms, store.chapters, store.termMembers, store.profiles]);
 
   const isHqUser = useMemo(() => {
     return (
@@ -241,15 +286,25 @@ export function RoleSwitcher() {
       return;
     }
 
-    // Chapter-scoped role: Use the confirmed/selected chapter directly
-    if (!selectedChapter) {
+    // Chapter-scoped role: Use the confirmed/selected chapter, or resolve from active terms / profile
+    let targetChapter = selectedChapter;
+    if (!targetChapter && target.isChapterScoped) {
+      const leadTerm = store.terms.find((t) => t.campusLeadId === loggedUserId && t.status === "active");
+      if (leadTerm) {
+        targetChapter = allChapters.find((c) => c.id === leadTerm.chapterId) || null;
+      }
+      if (!targetChapter && currentProfile?.chapterId) {
+        targetChapter = allChapters.find((c) => c.id === currentProfile.chapterId) || null;
+      }
+    }
+
+    if (!targetChapter) {
       // If student hasn't joined a chapter yet, prompt them to join
       setSession(loggedUserId, target.roleKey, undefined);
       router.push("/join");
       return;
     }
 
-    const targetChapter = selectedChapter;
     setSession(loggedUserId, target.roleKey, targetChapter.id);
     router.push(homeForRole(target.roleKey, targetChapter.slug));
   }

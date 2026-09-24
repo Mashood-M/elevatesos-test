@@ -95,6 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    */
   const highestRoleLabel = useMemo(() => {
     const ROLE_PRIORITY = [
+      "executive_member",
       "faculty_coordinator",
       "class_representative",
       "campus_lead",
@@ -106,13 +107,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const uid = session.authUserId ?? session.userId;
     if (!uid) return null;
 
-    const allKeys: string[] = store.userRoles
-      .filter((ur: any) => ur.userId === uid)
-      .map((ur: any) => {
+    const userRoleEntries = store.userRoles.filter(
+      (ur: { userId: string; roleKey?: string; roleId?: string }) => ur.userId === uid
+    );
+
+    const allKeys: string[] = userRoleEntries
+      .map((ur: { userId: string; roleKey?: string; roleId?: string }) => {
         if (ur.roleKey) return ur.roleKey as string;
-        return store.roles.find((r: any) => r.id === ur.roleId)?.key ?? null;
+        return store.roles.find((r: { id: string; key: string }) => r.id === ur.roleId)?.key ?? null;
       })
       .filter((k): k is string => k !== null && k !== "volunteer" && k !== "student");
+
+    const hasExplicitRoles = userRoleEntries.length > 0;
+
+    // Fallback checks ONLY if no explicit roles found in user_roles
+    if (!hasExplicitRoles) {
+      // Check active terms (Migration 045)
+      const isLeadInActiveTerm = store.terms.some(
+        (t) => t.campusLeadId === uid && t.status === "active",
+      );
+      const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
+      if ((isLeadInActiveTerm || isChapterLead) && !allKeys.includes("campus_lead")) {
+        allKeys.push("campus_lead");
+      }
+
+      // Check active term members (Migration 045)
+      const isExecMember = store.termMembers.some(
+        (tm) =>
+          tm.userId === uid &&
+          store.terms.some((t) => t.id === tm.termId && t.status === "active"),
+      );
+      if (isExecMember && !allKeys.includes("executive_member")) {
+        allKeys.push("executive_member");
+      }
+
+      // Check profile
+      const prof = store.profiles.find((p) => p.id === uid);
+      if (prof) {
+        const d = (prof.designation || "").toLowerCase().trim();
+        const r = (prof.role || "").toLowerCase().trim();
+        if ((d === "campus_lead" || r.includes("campus lead")) && !allKeys.includes("campus_lead")) {
+          allKeys.push("campus_lead");
+        }
+        if ((d === "executive_member" || r.includes("executive member")) && !allKeys.includes("executive_member")) {
+          allKeys.push("executive_member");
+        }
+        if ((d === "class_rep" || r.includes("class representative")) && !allKeys.includes("class_representative")) {
+          allKeys.push("class_representative");
+        }
+      }
+    }
 
     // Also include the session's authRoleKey if not already present and not student
     if (
@@ -134,7 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }, null);
 
     return best ? roleKeyLabel(best) : null;
-  }, [session, store.userRoles, store.roles]);
+  }, [session, store.userRoles, store.roles, store.terms, store.chapters, store.termMembers, store.profiles]);
 
   async function handleLogout() {
     try {

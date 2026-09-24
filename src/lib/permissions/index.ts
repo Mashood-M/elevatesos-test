@@ -1,6 +1,22 @@
 import type { ElevatesStore, PermissionKey, RoleKey } from "@/types";
 export * from "@/lib/volunteers";
 
+export const ROLE_PRIORITY: RoleKey[] = [
+  "alumni",
+  "student",
+  "executive_member",
+  "faculty_coordinator",
+  "class_representative",
+  "campus_lead",
+  "hq_admin",
+  "founder",
+];
+
+export function roleRank(key: RoleKey): number {
+  const idx = ROLE_PRIORITY.indexOf(key);
+  return idx === -1 ? 0 : idx;
+}
+
 export function getRoleByKey(store: ElevatesStore, key: RoleKey) {
   return store.roles.find((r) => r.key === key);
 }

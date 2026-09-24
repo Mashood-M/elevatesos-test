@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS public.terms (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chapter_id UUID NOT NULL REFERENCES public.chapters(id) ON DELETE CASCADE,
     term_year TEXT NOT NULL,
-    campus_lead_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+    campus_lead_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'closed')),
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at TIMESTAMPTZ

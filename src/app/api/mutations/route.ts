@@ -12,8 +12,10 @@ import {
   canVerifyAttendance,
   isCampusLead,
   isFounder,
+  ROLE_PRIORITY,
 } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import type { RoleKey } from "@/types";
 
 // Default Root Organization UUID seeded in database migration 001/002
 const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
@@ -3334,6 +3336,16 @@ export async function POST(req: Request) {
       }
       let effectiveAssignments = assignments;
 
+      const hasCampusLead = assignments.some((a: any) =>
+        ["campus_lead", "chairman"].includes(a.roleKey),
+      );
+      const hasExecMember = assignments.some((a: any) =>
+        a.roleKey === "executive_member",
+      );
+      const hasClassRep = assignments.some((a: any) =>
+        a.roleKey === "class_representative",
+      );
+
       if (hasFaculty) {
         // Faculty role only remains: delete ALL existing user_roles for this user
         effectiveAssignments = assignments.filter((a: any) => a.roleKey === "faculty_coordinator");
@@ -3350,13 +3362,17 @@ export async function POST(req: Request) {
         // Clean up any chapter campus_lead or class cohort rep references
         await admin.from("chapters").update({ campus_lead_id: null }).eq("campus_lead_id", userId);
         await admin.from("class_cohorts").update({ representative_id: null }).eq("representative_id", userId);
+        try {
+          await admin.from("terms").update({ campus_lead_id: null }).eq("campus_lead_id", userId).eq("status", "active");
+        } catch {}
+        await admin.from("term_members").delete().eq("user_id", userId);
+        await admin.from("leadership_assignments").delete().eq("user_id", userId);
       } else {
-        // Delete existing non-leadership user_roles for this user
+        // Authoritative role update from HQ User Control: delete ALL existing user_roles for this user
         const { error: delError } = await admin
           .from("user_roles")
           .delete()
-          .eq("user_id", userId)
-          .is("leadership_term_id", null);
+          .eq("user_id", userId);
 
         if (delError) {
           console.error("Error deleting old user_roles:", delError);
@@ -3371,6 +3387,40 @@ export async function POST(req: Request) {
             ...effectiveAssignments,
             { roleKey: "student", chapterId: primaryChap },
           ];
+        }
+
+        if (!hasCampusLead) {
+          // Clear campus lead status from chapters and active terms
+          await admin.from("chapters").update({ campus_lead_id: null }).eq("campus_lead_id", userId);
+          const { error: termErr } = await admin
+            .from("terms")
+            .update({ campus_lead_id: null })
+            .eq("campus_lead_id", userId)
+            .eq("status", "active");
+          if (termErr) {
+            console.warn("terms campus_lead_id null update notice (closing term as fallback):", termErr.message);
+            await admin
+              .from("terms")
+              .update({ status: "closed", ended_at: new Date().toISOString() })
+              .eq("campus_lead_id", userId)
+              .eq("status", "active");
+          }
+          await admin
+            .from("leadership_assignments")
+            .delete()
+            .eq("user_id", userId)
+            .in("role_key", ["campus_lead", "chairman"]);
+        }
+
+        if (!hasExecMember) {
+          await admin.from("term_members").delete().eq("user_id", userId);
+        }
+
+        if (!hasClassRep) {
+          await admin
+            .from("class_cohorts")
+            .update({ representative_id: null })
+            .eq("representative_id", userId);
         }
       }
 
@@ -3412,12 +3462,35 @@ export async function POST(req: Request) {
         }
       }
 
-      // 3. Keep profiles.chapter_id and role synchronized
-      const profileUpdates: Record<string, any> = {};
+      // If user was assigned campus lead and has a primary chapter, link chapter and active term
+      if (hasCampusLead && primaryChapterId) {
+        await admin.from("chapters").update({ campus_lead_id: userId }).eq("id", primaryChapterId);
+        await admin
+          .from("terms")
+          .update({ campus_lead_id: userId })
+          .eq("chapter_id", primaryChapterId)
+          .eq("status", "active");
+      }
+
+      // 3. Keep profiles.chapter_id, designation, and role synchronized
+      const assignedRoleKeys: RoleKey[] = effectiveAssignments.map((a: any) => a.roleKey as RoleKey);
+      const topRole: RoleKey = hasFaculty
+        ? "faculty_coordinator"
+        : assignedRoleKeys.reduce<RoleKey>((best, cur) => {
+            return ROLE_PRIORITY.indexOf(cur) > ROLE_PRIORITY.indexOf(best) ? cur : best;
+          }, assignedRoleKeys[0] || "student");
+
+      const roleDisplayName = topRole === "student"
+        ? "Member"
+        : (roleIdMap.has(topRole) ? topRole.split("_").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ") : "Member");
+
+      const profileUpdates: Record<string, any> = {
+        designation: topRole,
+        role: roleDisplayName,
+      };
       if (primaryChapterId) {
         profileUpdates.chapter_id = primaryChapterId;
       }
-      profileUpdates.role = hasFaculty ? "faculty_coordinator" : (effectiveAssignments.find((a: any) => a.roleKey !== "student")?.roleKey || "student");
 
       let profileSyncError: string | null = null;
       const { error: profErr } = await admin
@@ -3427,6 +3500,15 @@ export async function POST(req: Request) {
       if (profErr) {
         console.warn("user_roles profiles chapter_id sync notice:", profErr);
         profileSyncError = profErr.message;
+      }
+
+      // 4. Synchronize Supabase Auth user metadata
+      try {
+        await admin.auth.admin.updateUserById(userId, {
+          user_metadata: { role_key: topRole, designation: topRole },
+        });
+      } catch (authErr) {
+        console.warn("Could not update auth metadata for user:", userId, authErr);
       }
 
       return NextResponse.json({
@@ -4409,129 +4491,195 @@ export async function POST(req: Request) {
         p_next_exec_members: Array.isArray(nextExecutiveMembers) ? nextExecutiveMembers : [],
       });
 
+      let finalNewTermId: string | null = null;
       if (!rpcErr && rpcRes) {
-        return NextResponse.json({ ok: true, data: rpcRes });
-      }
+        finalNewTermId = (rpcRes as any)?.new_term_id || null;
+      } else {
+        // Fallback transactional execution
+        const nowIso = new Date().toISOString();
+        const { data: studentRole } = await admin.from("roles").select("id").eq("key", "student").maybeSingle();
+        const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+        const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
 
-      // Fallback transactional execution
-      const nowIso = new Date().toISOString();
-      const { data: studentRole } = await admin.from("roles").select("id").eq("key", "student").maybeSingle();
-      const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
-      const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
+        if (activeTerm) {
+          // a. Sets current terms row: status='closed', ended_at=now()
+          await admin.from("terms").update({ status: "closed", ended_at: nowIso }).eq("id", activeTerm.id);
 
-      if (activeTerm) {
-        // a. Sets current terms row: status='closed', ended_at=now()
-        await admin.from("terms").update({ status: "closed", ended_at: nowIso }).eq("id", activeTerm.id);
+          // b. Sets outgoing campus lead's role -> 'student'
+          await admin
+            .from("user_roles")
+            .delete()
+            .eq("user_id", activeTerm.campus_lead_id)
+            .eq("chapter_id", chapterId)
+            .in("role_key", ["campus_lead", "chairman"]);
 
-        // b. Sets outgoing campus lead's role -> 'student'
+          await admin.from("user_roles").insert({
+            user_id: activeTerm.campus_lead_id,
+            role_key: "student",
+            role_id: studentRole?.id ?? null,
+            chapter_id: chapterId,
+            is_permanent: true,
+          });
+
+          // c. Sets every current term_members user's role -> 'student'
+          const { data: currentMembers } = await admin
+            .from("term_members")
+            .select("user_id")
+            .eq("term_id", activeTerm.id);
+
+          if (currentMembers && currentMembers.length > 0) {
+            for (const m of currentMembers) {
+              await admin
+                .from("user_roles")
+                .delete()
+                .eq("user_id", m.user_id)
+                .eq("chapter_id", chapterId)
+                .eq("role_key", "executive_member");
+
+              await admin.from("user_roles").insert({
+                user_id: m.user_id,
+                role_key: "student",
+                role_id: studentRole?.id ?? null,
+                chapter_id: chapterId,
+                is_permanent: true,
+              });
+            }
+          }
+        }
+
+        // d. Inserts new terms row (chapter_id, term_year = next year, campus_lead_id = new pick, status='active', started_at=now())
+        const newTermId = genUuid();
+        finalNewTermId = newTermId;
+        const { error: newTermErr } = await admin.from("terms").insert({
+          id: newTermId,
+          chapter_id: chapterId,
+          term_year: String(nextTermYear).trim(),
+          campus_lead_id: nextCampusLeadId,
+          status: "active",
+          started_at: nowIso,
+        });
+
+        if (newTermErr) {
+          console.error("execute_term_handover new terms insert error:", newTermErr);
+          return NextResponse.json({ ok: false, error: newTermErr.message }, { status: 400 });
+        }
+
+        // e. Sets new campus lead's role -> 'campus_lead'
         await admin
           .from("user_roles")
           .delete()
-          .eq("user_id", activeTerm.campus_lead_id)
+          .eq("user_id", nextCampusLeadId)
           .eq("chapter_id", chapterId)
-          .in("role_key", ["campus_lead", "chairman"]);
+          .in("role_key", ["executive_member", "student"]);
 
         await admin.from("user_roles").insert({
-          user_id: activeTerm.campus_lead_id,
-          role_key: "student",
-          role_id: studentRole?.id ?? null,
+          user_id: nextCampusLeadId,
+          role_key: "campus_lead",
+          role_id: leadRole?.id ?? null,
           chapter_id: chapterId,
           is_permanent: true,
         });
+        await admin.from("chapters").update({ campus_lead_id: nextCampusLeadId }).eq("id", chapterId);
 
-        // c. Sets every current term_members user's role -> 'student'
-        const { data: currentMembers } = await admin
-          .from("term_members")
-          .select("user_id")
-          .eq("term_id", activeTerm.id);
+        // f. Inserts term_members rows for the new executive members, sets each of their user role -> 'executive_member'
+        if (Array.isArray(nextExecutiveMembers) && nextExecutiveMembers.length > 0) {
+          for (const item of nextExecutiveMembers) {
+            const uId = item.userId ?? item.user_id;
+            const designation = item.designation ? String(item.designation).trim() : null;
+            if (uId && uId !== nextCampusLeadId) {
+              await admin.from("term_members").insert({
+                id: genUuid(),
+                term_id: newTermId,
+                user_id: uId,
+                role: "executive_member",
+                designation,
+                added_at: nowIso,
+              });
+              await admin
+                .from("user_roles")
+                .delete()
+                .eq("user_id", uId)
+                .eq("chapter_id", chapterId)
+                .eq("role_key", "executive_member");
 
-        if (currentMembers && currentMembers.length > 0) {
-          for (const m of currentMembers) {
-            await admin
-              .from("user_roles")
-              .delete()
-              .eq("user_id", m.user_id)
-              .eq("chapter_id", chapterId)
-              .eq("role_key", "executive_member");
-
-            await admin.from("user_roles").insert({
-              user_id: m.user_id,
-              role_key: "student",
-              role_id: studentRole?.id ?? null,
-              chapter_id: chapterId,
-              is_permanent: true,
-            });
+              await admin.from("user_roles").insert({
+                user_id: uId,
+                role_key: "executive_member",
+                role_id: execRole?.id ?? null,
+                chapter_id: chapterId,
+                is_permanent: true,
+              });
+            }
           }
         }
       }
 
-      // d. Inserts new terms row (chapter_id, term_year = next year, campus_lead_id = new pick, status='active', started_at=now())
-      const newTermId = genUuid();
-      const { error: newTermErr } = await admin.from("terms").insert({
-        id: newTermId,
-        chapter_id: chapterId,
-        term_year: String(nextTermYear).trim(),
-        campus_lead_id: nextCampusLeadId,
-        status: "active",
-        started_at: nowIso,
-      });
+      // Synchronize profiles and metadata across both RPC and fallback execution paths
+      try {
+        await admin.from("profiles").update({
+          role: "Campus Lead",
+          designation: "campus_lead",
+          chapter_id: chapterId,
+        }).eq("id", nextCampusLeadId);
 
-      if (newTermErr) {
-        console.error("execute_term_handover new terms insert error:", newTermErr);
-        return NextResponse.json({ ok: false, error: newTermErr.message }, { status: 400 });
-      }
+        if (activeTerm?.campus_lead_id && activeTerm.campus_lead_id !== nextCampusLeadId) {
+          await admin.from("profiles").update({
+            role: "Member",
+            designation: "student",
+          }).eq("id", activeTerm.campus_lead_id);
+        }
 
-      // e. Sets new campus lead's role -> 'campus_lead'
-      await admin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", nextCampusLeadId)
-        .eq("chapter_id", chapterId)
-        .eq("role_key", "executive_member");
+        // Ensure user_roles has clean campus_lead
+        await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", nextCampusLeadId)
+          .eq("chapter_id", chapterId)
+          .in("role_key", ["student", "executive_member"]);
 
-      await admin.from("user_roles").insert({
-        user_id: nextCampusLeadId,
-        role_key: "campus_lead",
-        role_id: leadRole?.id ?? null,
-        chapter_id: chapterId,
-        is_permanent: true,
-      });
-      await admin.from("chapters").update({ campus_lead_id: nextCampusLeadId }).eq("id", chapterId);
+        const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+        const { data: existingLeadRole } = await admin
+          .from("user_roles")
+          .select("id")
+          .eq("user_id", nextCampusLeadId)
+          .eq("role_key", "campus_lead")
+          .eq("chapter_id", chapterId)
+          .maybeSingle();
 
-      // f. Inserts term_members rows for the new executive members, sets each of their user role -> 'executive_member'
-      if (Array.isArray(nextExecutiveMembers) && nextExecutiveMembers.length > 0) {
-        for (const item of nextExecutiveMembers) {
-          const uId = item.userId ?? item.user_id;
-          const designation = item.designation ? String(item.designation).trim() : null;
-          if (uId && uId !== nextCampusLeadId) {
-            await admin.from("term_members").insert({
-              id: genUuid(),
-              term_id: newTermId,
-              user_id: uId,
-              role: "executive_member",
-              designation,
-              added_at: nowIso,
-            });
-            await admin
-              .from("user_roles")
-              .delete()
-              .eq("user_id", uId)
-              .eq("chapter_id", chapterId)
-              .eq("role_key", "executive_member");
+        if (!existingLeadRole) {
+          await admin.from("user_roles").insert({
+            user_id: nextCampusLeadId,
+            role_key: "campus_lead",
+            role_id: leadRole?.id ?? null,
+            chapter_id: chapterId,
+            is_permanent: true,
+          });
+        }
 
-            await admin.from("user_roles").insert({
-              user_id: uId,
-              role_key: "executive_member",
-              role_id: execRole?.id ?? null,
-              chapter_id: chapterId,
-              is_permanent: true,
-            });
+        await admin.from("chapters").update({ campus_lead_id: nextCampusLeadId }).eq("id", chapterId);
+
+        if (Array.isArray(nextExecutiveMembers)) {
+          for (const item of nextExecutiveMembers) {
+            const uId = item.userId ?? item.user_id;
+            if (uId && uId !== nextCampusLeadId) {
+              await admin.from("profiles").update({
+                role: "Executive Member",
+                designation: "executive_member",
+                chapter_id: chapterId,
+              }).eq("id", uId);
+            }
           }
         }
+
+        await admin.auth.admin.updateUserById(nextCampusLeadId, {
+          user_metadata: { role_key: "campus_lead", designation: "campus_lead" },
+        }).catch(() => null);
+      } catch (syncErr) {
+        console.warn("execute_term_handover profile/role sync warning:", syncErr);
       }
 
       // g. Do NOT touch handover_windows.status here
-      return NextResponse.json({ ok: true, newTermId });
+      return NextResponse.json({ ok: true, newTermId: finalNewTermId, data: rpcRes });
     }
 
     if (type === "assign_executive_member") {
@@ -4559,6 +4707,14 @@ export async function POST(req: Request) {
       });
 
       if (!rpcErr && rpcRes) {
+        try {
+          await admin.from("profiles").update({
+            role: "Executive Member",
+            designation: "executive_member",
+            chapter_id: chapterId,
+          }).eq("id", userId);
+        } catch {}
+
         return NextResponse.json({ ok: true, data: rpcRes });
       }
 
@@ -4611,6 +4767,14 @@ export async function POST(req: Request) {
         is_permanent: true,
       });
 
+      try {
+        await admin.from("profiles").update({
+          role: "Executive Member",
+          designation: "executive_member",
+          chapter_id: chapterId,
+        }).eq("id", userId);
+      } catch {}
+
       return NextResponse.json({ ok: true, termMemberId, termId: activeTerm.id });
     }
 
@@ -4653,81 +4817,139 @@ export async function POST(req: Request) {
         p_exec_members: Array.isArray(executiveMembers) ? executiveMembers : [],
       });
 
+      let finalFirstTermId: string | null = null;
       if (!rpcErr && rpcRes) {
-        return NextResponse.json({ ok: true, data: rpcRes });
-      }
+        finalFirstTermId = (rpcRes as any)?.new_term_id || null;
+      } else {
+        // Fallback
+        const nowIso = new Date().toISOString();
+        const newTermId = genUuid();
+        finalFirstTermId = newTermId;
+        const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+        const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
 
-      // Fallback
-      const nowIso = new Date().toISOString();
-      const newTermId = genUuid();
-      const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
-      const { data: execRole } = await admin.from("roles").select("id").eq("key", "executive_member").maybeSingle();
+        const { error: termErr } = await admin.from("terms").insert({
+          id: newTermId,
+          chapter_id: chapterId,
+          term_year: String(termYear || new Date().getFullYear()).trim(),
+          campus_lead_id: campusLeadId,
+          status: "active",
+          started_at: nowIso,
+        });
 
-      const { error: termErr } = await admin.from("terms").insert({
-        id: newTermId,
-        chapter_id: chapterId,
-        term_year: String(termYear || new Date().getFullYear()).trim(),
-        campus_lead_id: campusLeadId,
-        status: "active",
-        started_at: nowIso,
-      });
+        if (termErr) {
+          return NextResponse.json({ ok: false, error: termErr.message }, { status: 400 });
+        }
 
-      if (termErr) {
-        return NextResponse.json({ ok: false, error: termErr.message }, { status: 400 });
-      }
+        // Set campus lead role
+        await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", campusLeadId)
+          .eq("chapter_id", chapterId)
+          .in("role_key", ["executive_member", "campus_lead", "chairman", "student"]);
 
-      // Set campus lead role
-      await admin
-        .from("user_roles")
-        .delete()
-        .eq("user_id", campusLeadId)
-        .eq("chapter_id", chapterId)
-        .in("role_key", ["executive_member", "campus_lead", "chairman"]);
+        await admin.from("user_roles").insert({
+          user_id: campusLeadId,
+          role_key: "campus_lead",
+          role_id: leadRole?.id ?? null,
+          chapter_id: chapterId,
+          is_permanent: true,
+        });
 
-      await admin.from("user_roles").insert({
-        user_id: campusLeadId,
-        role_key: "campus_lead",
-        role_id: leadRole?.id ?? null,
-        chapter_id: chapterId,
-        is_permanent: true,
-      });
+        await admin.from("chapters").update({ campus_lead_id: campusLeadId }).eq("id", chapterId);
 
-      await admin.from("chapters").update({ campus_lead_id: campusLeadId }).eq("id", chapterId);
+        // Insert executive members
+        if (Array.isArray(executiveMembers) && executiveMembers.length > 0) {
+          for (const item of executiveMembers) {
+            const uId = item.userId ?? item.user_id;
+            const designation = item.designation ? String(item.designation).trim() : null;
+            if (uId && uId !== campusLeadId) {
+              await admin.from("term_members").insert({
+                id: genUuid(),
+                term_id: newTermId,
+                user_id: uId,
+                role: "executive_member",
+                designation,
+                added_at: nowIso,
+              });
 
-      // Insert executive members
-      if (Array.isArray(executiveMembers) && executiveMembers.length > 0) {
-        for (const item of executiveMembers) {
-          const uId = item.userId ?? item.user_id;
-          const designation = item.designation ? String(item.designation).trim() : null;
-          if (uId && uId !== campusLeadId) {
-            await admin.from("term_members").insert({
-              id: genUuid(),
-              term_id: newTermId,
-              user_id: uId,
-              role: "executive_member",
-              designation,
-              added_at: nowIso,
-            });
+              await admin
+                .from("user_roles")
+                .delete()
+                .eq("user_id", uId)
+                .eq("chapter_id", chapterId)
+                .eq("role_key", "executive_member");
 
-            await admin
-              .from("user_roles")
-              .delete()
-              .eq("user_id", uId)
-              .eq("chapter_id", chapterId)
-              .eq("role_key", "executive_member");
-
-            await admin.from("user_roles").insert({
-              user_id: uId,
-              role_key: "executive_member",
-              role_id: execRole?.id ?? null,
-              chapter_id: chapterId,
-              is_permanent: true,
-            });
+              await admin.from("user_roles").insert({
+                user_id: uId,
+                role_key: "executive_member",
+                role_id: execRole?.id ?? null,
+                chapter_id: chapterId,
+                is_permanent: true,
+              });
+            }
           }
         }
       }
 
-      return NextResponse.json({ ok: true, termId: newTermId });
+      // Synchronize profiles and metadata across both RPC and fallback execution paths
+      try {
+        await admin.from("profiles").update({
+          role: "Campus Lead",
+          designation: "campus_lead",
+          chapter_id: chapterId,
+        }).eq("id", campusLeadId);
+
+        await admin
+          .from("user_roles")
+          .delete()
+          .eq("user_id", campusLeadId)
+          .eq("chapter_id", chapterId)
+          .in("role_key", ["student", "executive_member"]);
+
+        const { data: leadRole } = await admin.from("roles").select("id").eq("key", "campus_lead").maybeSingle();
+        const { data: existingLeadRole } = await admin
+          .from("user_roles")
+          .select("id")
+          .eq("user_id", campusLeadId)
+          .eq("role_key", "campus_lead")
+          .eq("chapter_id", chapterId)
+          .maybeSingle();
+
+        if (!existingLeadRole) {
+          await admin.from("user_roles").insert({
+            user_id: campusLeadId,
+            role_key: "campus_lead",
+            role_id: leadRole?.id ?? null,
+            chapter_id: chapterId,
+            is_permanent: true,
+          });
+        }
+
+        await admin.from("chapters").update({ campus_lead_id: campusLeadId }).eq("id", chapterId);
+
+        if (Array.isArray(executiveMembers)) {
+          for (const item of executiveMembers) {
+            const uId = item.userId ?? item.user_id;
+            if (uId && uId !== campusLeadId) {
+              await admin.from("profiles").update({
+                role: "Executive Member",
+                designation: "executive_member",
+                chapter_id: chapterId,
+              }).eq("id", uId);
+            }
+          }
+        }
+
+        await admin.auth.admin.updateUserById(campusLeadId, {
+          user_metadata: { role_key: "campus_lead", designation: "campus_lead" },
+        }).catch(() => null);
+      } catch (syncErr) {
+        console.warn("create_first_term profile/role sync warning:", syncErr);
+      }
+
+      return NextResponse.json({ ok: true, termId: finalFirstTermId, data: rpcRes });
     }
 
     return NextResponse.json({ ok: false, error: `Unknown mutation type: ${type}` }, { status: 400 });

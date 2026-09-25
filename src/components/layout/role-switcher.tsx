@@ -105,27 +105,27 @@ export function RoleSwitcher() {
 
     const hasExplicitRoles = keys.length > 0;
 
+    // Check active terms (Migration 045)
+    const isLeadInActiveTerm = store.terms.some(
+      (t) => t.campusLeadId === uid && t.status === "active",
+    );
+    const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
+    if ((isLeadInActiveTerm || isChapterLead) && !keys.includes("campus_lead")) {
+      keys.push("campus_lead");
+    }
+
+    // Check active term members (Migration 045)
+    const isExecMember = store.termMembers.some(
+      (tm) =>
+        tm.userId === uid &&
+        store.terms.some((t) => t.id === tm.termId && t.status === "active"),
+    );
+    if (isExecMember && !keys.includes("executive_member")) {
+      keys.push("executive_member");
+    }
+
     // Fallback checks ONLY if no explicit roles found in user_roles
     if (!hasExplicitRoles) {
-      // Check active terms (Migration 045)
-      const isLeadInActiveTerm = store.terms.some(
-        (t) => t.campusLeadId === uid && t.status === "active",
-      );
-      const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
-      if ((isLeadInActiveTerm || isChapterLead) && !keys.includes("campus_lead")) {
-        keys.push("campus_lead");
-      }
-
-      // Check active term members (Migration 045)
-      const isExecMember = store.termMembers.some(
-        (tm) =>
-          tm.userId === uid &&
-          store.terms.some((t) => t.id === tm.termId && t.status === "active"),
-      );
-      if (isExecMember && !keys.includes("executive_member")) {
-        keys.push("executive_member");
-      }
-
       // Check profile designation / role
       const prof = store.profiles.find((p) => p.id === uid);
       if (prof) {

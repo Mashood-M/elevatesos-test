@@ -1,4 +1,12 @@
-import type { HandoverWindow, RoleKey } from "@/types";
+import type {
+  Chapter,
+  DemoUserSession,
+  HandoverWindow,
+  Profile,
+  RoleKey,
+  Term,
+  TermMember,
+} from "@/types";
 
 export const ASSIGNABLE_LEADERSHIP_ROLES: RoleKey[] = [
   "campus_lead",
@@ -168,10 +176,15 @@ export function getChapterHandoverStatus(
 }
 
 export type CampusLeadOptionKey =
+  | "manage_events"
+  | "manage_peer_labs"
+  | "manage_attendance"
+  | "manage_volunteers"
+  | "manage_clusters"
+  | "manage_certificates"
+  | "manage_projects"
   | "manage_settings"
   | "manage_classes"
-  | "manage_volunteers"
-  | "manage_events"
   | "manage_reports"
   | "manage_invites"
   | "attendance_override"
@@ -186,73 +199,190 @@ export interface CampusLeadDelegationOption {
 
 export const CAMPUS_LEAD_DELEGATION_OPTIONS: CampusLeadDelegationOption[] = [
   {
-    key: "manage_settings",
-    label: "Chapter Settings & Profile",
-    category: "Administration",
-    description: "Access chapter settings, configure college details, coordinates, social handles, and branding.",
+    key: "manage_events",
+    label: "Events Tab & Operations",
+    category: "Programs",
+    description: "Display chapter Events in sidebar, draft and manage sessions, review and approve registrations.",
   },
   {
-    key: "manage_classes",
-    label: "Class Representatives & Cohorts",
-    category: "Governance",
-    description: "Appoint and revoke Class Representatives across departments, assign cohorts, and manage class sections.",
+    key: "manage_peer_labs",
+    label: "Peer Labs Tab & Series",
+    category: "Programs",
+    description: "Display chapter Peer Labs in sidebar, create and configure learning lab tracks and multi-day phases.",
   },
   {
     key: "manage_volunteers",
-    label: "Volunteer Team & Powers",
+    label: "Volunteer Team Tab",
     category: "Operations",
-    description: "Create and manage volunteer groups, recruit student volunteers, and configure delegated check-in powers.",
+    description: "Display Volunteer Team in sidebar, create volunteer groups, recruit helpers, and assign badges.",
   },
   {
-    key: "manage_events",
-    label: "Event Approvals & Publishing",
+    key: "manage_attendance",
+    label: "Attendance Scanner Tab",
     category: "Programs",
-    description: "Review pending event drafts, publish official campus events to public calendar, and manage cancellations.",
+    description: "Display Attendance in sidebar, scan attendee QR codes, verify session check-ins, and override time windows.",
+  },
+  {
+    key: "manage_clusters",
+    label: "Interest Clusters Tab",
+    category: "Programs",
+    description: "Display Clusters in sidebar, launch campus technology tracks, and manage cluster memberships.",
+  },
+  {
+    key: "manage_projects",
+    label: "Project Pipeline Tab",
+    category: "Programs",
+    description: "Display Projects in sidebar and track student startup incubation from idea to campus showcase.",
+  },
+  {
+    key: "manage_classes",
+    label: "Classes & Cohorts Tab",
+    category: "Governance",
+    description: "Display Classes in sidebar, appoint Class Representatives across departments, and manage class sections.",
+  },
+  {
+    key: "manage_certificates",
+    label: "Certificates & Badges Tab",
+    category: "Operations",
+    description: "Display Certificates in sidebar, design badge templates, and issue verifiable digital credentials.",
   },
   {
     key: "manage_reports",
-    label: "Official Reports Sign-off",
+    label: "Official Reports Tab",
     category: "Operations",
-    description: "Formally review, sign off, and submit event and quarterly compliance reports to Faculty and HQ.",
+    description: "Display Reports in sidebar, write formal event reports in rich editor, and submit to Faculty Coordinator.",
   },
   {
     key: "manage_invites",
-    label: "Chapter Invitations & Codes",
+    label: "Chapter Invitations Tab",
     category: "Administration",
-    description: "Generate 3-day join invitation tokens, QR codes, and approve student membership requests.",
-  },
-  {
-    key: "attendance_override",
-    label: "Attendance Window Override",
-    category: "Operations",
-    description: "Take and verify attendance anytime, bypass strict event hours, and finalize post-event attendance records.",
+    description: "Display Chapter Invitations in sidebar, create instant onboarding tokens, and manage join links.",
   },
   {
     key: "manage_terms",
-    label: "Term Handover Management",
+    label: "Leadership & Handovers Tab",
     category: "Governance",
-    description: "Configure incoming leadership appointments and execute term transition during an open handover window.",
+    description: "Display Leadership in sidebar, appoint committee members, configure delegations, and execute handovers.",
+  },
+  {
+    key: "manage_settings",
+    label: "Chapter Settings Tab",
+    category: "Administration",
+    description: "Display Settings in sidebar, configure college profile, coordinates, social handles, and branding.",
   },
 ];
+
+/**
+ * Encodes delegated permissions into designation string for zero-migration Supabase compatibility.
+ */
+export function encodeDelegationsToDesignation(permissions: string[], customLabel?: string | null): string {
+  const cleanPerms = permissions.filter(Boolean);
+  if (customLabel && !customLabel.startsWith("perms:")) {
+    return cleanPerms.length > 0 ? `${customLabel} | perms:${cleanPerms.join(",")}` : customLabel;
+  }
+  return cleanPerms.length > 0 ? `perms:${cleanPerms.join(",")}` : "executive_member";
+}
+
+/**
+ * Safely parses delegated permissions from standard string arrays,
+ * JSON stringified arrays, PostgreSQL text array literals (e.g. "{manage_events}"),
+ * or fallback designation text column (e.g. "perms:manage_events,manage_peer_labs").
+ */
+export function parseDelegations(val: unknown, fallbackDesignation?: unknown): string[] {
+  let result: string[] = [];
+
+  if (Array.isArray(val)) {
+    result = val.map(String).filter(Boolean);
+  } else if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) result = parsed.map(String).filter(Boolean);
+      } catch {}
+    } else if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      result = trimmed
+        .slice(1, -1)
+        .split(",")
+        .map((s) => s.trim().replace(/^["']|["']$/g, ""))
+        .filter(Boolean);
+    } else if (trimmed) {
+      result = [trimmed];
+    }
+  }
+
+  // Fallback / sync from designation column if val was empty or column missing
+  if (result.length === 0 && typeof fallbackDesignation === "string" && fallbackDesignation.trim()) {
+    const des = fallbackDesignation.trim();
+    const match = des.match(/perms:([a-zA-Z0-9_,]+)/);
+    if (match && match[1]) {
+      result = match[1].split(",").map((s) => s.trim()).filter(Boolean);
+    } else if (des.startsWith("[") && des.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(des);
+        if (Array.isArray(parsed)) result = parsed.map(String).filter(Boolean);
+      } catch {}
+    }
+  }
+
+  // Normalize attendance_override to manage_attendance and vice-versa
+  if (result.includes("attendance_override") && !result.includes("manage_attendance")) {
+    result.push("manage_attendance");
+  } else if (result.includes("manage_attendance") && !result.includes("attendance_override")) {
+    result.push("attendance_override");
+  }
+
+  return [...new Set(result)];
+}
+
+/**
+ * Strips encoded internal permissions from designation strings for clean display in UI.
+ */
+export function cleanDisplayDesignation(val?: string | null): string {
+  if (!val) return "Executive Member";
+  const trimmed = val.trim();
+  if (trimmed.startsWith("perms:") || trimmed === "executive_member") return "Executive Member";
+  const pipeIndex = trimmed.indexOf(" | perms:");
+  if (pipeIndex !== -1) {
+    const custom = trimmed.slice(0, pipeIndex).trim();
+    return custom || "Executive Member";
+  }
+  return trimmed;
+}
 
 /**
  * Checks whether a given user has been granted an exclusive Campus Lead delegated power in their chapter.
  * Campus Leads and Founders implicitly possess all capabilities.
  */
 export function hasExecutiveDelegation(
-  store: { terms?: any[]; termMembers?: any[]; chapters?: any[]; session?: any },
+  store: {
+    terms?: Term[];
+    termMembers?: TermMember[];
+    chapters?: Chapter[];
+    session?: (Partial<DemoUserSession> & { authUserId?: string }) | null;
+    profiles?: Profile[];
+  },
   userId: string,
   chapterId: string,
   optionKey: CampusLeadOptionKey | string,
 ): boolean {
   if (!userId || !chapterId) return false;
 
+  const authUid = store.session?.authUserId;
+
   // 1. If user is the active Campus Lead or Founder / HQ, always allowed
   const isLead =
     store.terms?.some(
-      (t) => t.chapterId === chapterId && t.status === "active" && t.campusLeadId === userId,
+      (t) =>
+        t.chapterId === chapterId &&
+        t.status === "active" &&
+        (t.campusLeadId === userId || (authUid && t.campusLeadId === authUid)),
     ) ||
-    store.chapters?.some((c) => c.id === chapterId && c.campusLeadId === userId);
+    store.chapters?.some(
+      (c) =>
+        c.id === chapterId &&
+        (c.campusLeadId === userId || (authUid && c.campusLeadId === authUid)),
+    );
 
   if (isLead) return true;
 
@@ -262,13 +392,36 @@ export function hasExecutiveDelegation(
   );
   if (!activeTerm) return false;
 
-  // 3. Locate term member entry for this user
-  const member = store.termMembers?.find(
-    (tm) => tm.termId === activeTerm.id && tm.userId === userId,
+  // 3. Locate term member entry for this user (matching profile id, auth id, or profile email)
+  const userProfile = store.profiles?.find(
+    (p) =>
+      p.id === userId ||
+      (authUid && p.id === authUid) ||
+      (p.email && p.email.toLowerCase() === userId.toLowerCase()),
   );
-  if (!member || !Array.isArray(member.permissions)) return false;
 
-  return member.permissions.includes(optionKey);
+  const member = store.termMembers?.find(
+    (tm) =>
+      tm.termId === activeTerm.id &&
+      (tm.userId === userId ||
+        (authUid && tm.userId === authUid) ||
+        (userProfile && tm.userId === userProfile.id) ||
+        (userProfile?.email &&
+          store.profiles?.find((p) => p.id === tm.userId)?.email?.toLowerCase() ===
+            userProfile.email.toLowerCase())),
+  );
+  if (!member) return false;
+
+  const permissions = parseDelegations(member.permissions, member.designation);
+
+  if (optionKey === "attendance_override" || optionKey === "manage_attendance") {
+    return (
+      permissions.includes("attendance_override") ||
+      permissions.includes("manage_attendance")
+    );
+  }
+
+  return permissions.includes(optionKey);
 }
 
 

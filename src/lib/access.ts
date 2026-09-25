@@ -111,6 +111,7 @@ export function canAccessPath(
   chapterSlug?: string,
   authRoleKey?: RoleKey,
   isVolunteer?: boolean,
+  delegatedPermissions: string[] = [],
 ): boolean {
   // If the authenticated user is an HQ founder or admin testing a role, grant full access
   if (authRoleKey && isHqRole(authRoleKey)) {
@@ -137,8 +138,8 @@ export function canAccessPath(
     pathname === "/design-system" ||
     pathname.startsWith("/hq")
   ) {
-    // Only super admins (founder, hq_admin) can access the Users page
-    if (pathname === "/hq/users") {
+    // Only super admins (founder, hq_admin) can access the Users and Leadership pages
+    if (pathname === "/hq/users" || pathname === "/hq/leadership") {
       return isSuperAdmin(roleKey);
     }
     return isHqRole(roleKey);
@@ -184,16 +185,46 @@ export function canAccessPath(
       "certificates",
     ];
     if (firstSeg && opsRoots.includes(firstSeg)) {
+      if (firstSeg === "leadership") {
+        return roleKey === "campus_lead" || isSuperAdmin(roleKey);
+      }
+      if (roleKey === "campus_lead" || isSuperAdmin(roleKey) || isFacultyRole(roleKey)) {
+        return true;
+      }
+      if (roleKey === "executive_member") {
+        if (firstSeg === "attendance") {
+          return true;
+        }
+        if (firstSeg === "volunteer-team") {
+          return delegatedPermissions.includes("manage_volunteers");
+        }
+        if (firstSeg === "certificates") {
+          return delegatedPermissions.includes("manage_certificates");
+        }
+        if (firstSeg === "settings") {
+          return delegatedPermissions.includes("manage_settings");
+        }
+        if (firstSeg === "classes") {
+          return delegatedPermissions.includes("manage_classes");
+        }
+        if (firstSeg === "forms") {
+          return (
+            delegatedPermissions.includes("manage_events") ||
+            delegatedPermissions.includes("manage_reports")
+          );
+        }
+        return true;
+      }
       if (
         roleKey === "class_representative" &&
-        (firstSeg === "certificates" || firstSeg === "leadership" || firstSeg === "volunteer-team" || firstSeg === "classes")
+        (firstSeg === "certificates" || firstSeg === "volunteer-team" || firstSeg === "classes" || firstSeg === "settings" || firstSeg === "forms")
       ) {
         return false;
       }
       if (firstSeg === "attendance" && isVolunteer) {
         return true;
       }
-      if (roleKey === "volunteer" && (firstSeg === "attendance" || firstSeg === "leadership" || firstSeg === "volunteer-team")) {
+      if (roleKey === "volunteer" && (firstSeg === "attendance" || firstSeg === "volunteer-team")) {
         return true;
       }
       return isExecutiveRole(roleKey) || isFacultyRole(roleKey);
@@ -319,7 +350,8 @@ export function navItemsForRole(roleKey: RoleKey, chapterSlug = "") {
     isExecutiveRole(roleKey) || isFacultyRole(roleKey) || roleKey === "student" || roleKey === "volunteer";
 
   return all.filter((item) => {
-    if (item.href === "/hq/users") return isSuperAdmin(roleKey);
+    if (item.href === "/hq/users" || item.href === "/hq/leadership") return isSuperAdmin(roleKey);
+    if (item.href.endsWith("/leadership")) return roleKey === "campus_lead" || isSuperAdmin(roleKey);
     // HQ uses Library Playbook — hide the shared /eos entry.
     if (item.href === "/eos" && isHqRole(roleKey)) return false;
     if (item.access === "shared") return true;

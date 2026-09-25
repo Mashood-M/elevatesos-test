@@ -14,6 +14,7 @@ export interface AuthenticatedUser {
   chapterId: string | null;
   allowedChapterIds: string[];
   email: string | null;
+  authUserId: string;
   isHq: boolean;
   assignedKeys: RoleKey[];
   response?: undefined;
@@ -246,11 +247,8 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
           allowedChapterIds.push(lc.id);
         }
       }
-      if (!hasExplicitRoles && !assignedKeys.includes("campus_lead")) {
-        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
-        if (profDesig !== "student") {
-          assignedKeys.push("campus_lead");
-        }
+      if (!assignedKeys.includes("campus_lead")) {
+        assignedKeys.push("campus_lead");
       }
       if (!resolvedChapterId) {
         resolvedChapterId = leadChapters[0].id;
@@ -272,11 +270,8 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
           allowedChapterIds.push(at.chapter_id);
         }
       }
-      if (!hasExplicitRoles && !assignedKeys.includes("campus_lead")) {
-        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
-        if (profDesig !== "student") {
-          assignedKeys.push("campus_lead");
-        }
+      if (!assignedKeys.includes("campus_lead")) {
+        assignedKeys.push("campus_lead");
       }
       if (!resolvedChapterId && activeTerms[0]?.chapter_id) {
         resolvedChapterId = activeTerms[0].chapter_id;
@@ -300,11 +295,8 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
           allowedChapterIds.push(chId);
         }
       }
-      if (!hasExplicitRoles && !assignedKeys.includes("executive_member")) {
-        const profDesig = (matchedProfile?.designation || "").toLowerCase().trim();
-        if (profDesig !== "student") {
-          assignedKeys.push("executive_member");
-        }
+      if (!assignedKeys.includes("executive_member")) {
+        assignedKeys.push("executive_member");
       }
       const firstTermsObj = activeExecMembers[0]?.terms as unknown as { chapter_id?: string } | null;
       if (!resolvedChapterId && firstTermsObj?.chapter_id) {
@@ -390,6 +382,7 @@ export async function requireUser(req?: Request): Promise<RequireUserResult> {
   return {
     ok: true,
     userId: effectiveUserId,
+    authUserId: user.id,
     roleKey: topRoleKey,
     chapterId: resolvedChapterId,
     allowedChapterIds,

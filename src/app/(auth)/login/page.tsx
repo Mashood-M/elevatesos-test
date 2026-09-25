@@ -183,7 +183,7 @@ function LoginForm() {
               .maybeSingle();
 
             if (leadTerms) {
-              if (!hasExplicitRoles && !foundRoleKeys.includes("campus_lead")) {
+              if (!foundRoleKeys.includes("campus_lead")) {
                 foundRoleKeys.push("campus_lead");
               }
               if (leadTerms.chapter_id && !chapterId) {
@@ -202,7 +202,7 @@ function LoginForm() {
               .maybeSingle();
 
             if (execTerms) {
-              if (!hasExplicitRoles && !foundRoleKeys.includes("executive_member")) {
+              if (!foundRoleKeys.includes("executive_member")) {
                 foundRoleKeys.push("executive_member");
               }
               const ch = (execTerms.terms as any)?.chapter_id;

@@ -28,6 +28,7 @@ import {
   ROLE_PRIORITY,
 } from "@/lib/data/realtime-sync";
 import { deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
+import { encodeDelegationsToDesignation } from "@/lib/leadership";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { remoteMutate } from "@/lib/data/mutations";
 import {
@@ -549,7 +550,8 @@ type StoreContextValue = {
     chapterId: string;
     userId: string;
     designation?: string;
-  }) => Promise<{ ok: boolean; error?: string }>;
+    initialPermissions?: string[];
+  }) => Promise<{ ok: boolean; error?: string; termMemberId?: string }>;
   removeExecutiveMember: (input: {
     termMemberId: string;
     userId: string;
@@ -6459,7 +6461,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       },
-      assignExecutiveMember: async (input) => {
+      assignExecutiveMember: async (input: {
+        chapterId: string;
+        userId: string;
+        designation?: string;
+        initialPermissions?: string[];
+      }) => {
         const nowIso = new Date().toISOString();
         const activeTerm = store.terms.find(
           (t) => t.chapterId === input.chapterId && t.status === "active",
@@ -6474,6 +6481,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const newMemberId = genUuid();
         const execRoleId = store.roles.find((r) => r.key === "executive_member")?.id;
 
+        const previousTermMembers = store.termMembers;
+        const previousUserRoles = store.userRoles;
+        const previousProfiles = store.profiles;
+
         setStore((s) => {
           const newMember: import("@/types").TermMember = {
             id: newMemberId,
@@ -6481,6 +6492,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             userId: input.userId,
             role: "executive_member",
             designation: input.designation?.trim() || null,
+            permissions: input.initialPermissions || [],
             addedAt: nowIso,
           };
 
@@ -6523,15 +6535,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 chapterId: input.chapterId,
                 userId: input.userId,
                 designation: input.designation,
+                permissions: input.initialPermissions || [],
               },
             }),
           });
           const json = await res.json();
           if (!json.ok) {
+            setStore((s) => ({
+              ...s,
+              termMembers: previousTermMembers,
+              userRoles: previousUserRoles,
+              profiles: previousProfiles,
+            }));
             return { ok: false, error: json.error || "Assignment failed" };
           }
-          return { ok: true };
+          return { ok: true, termMemberId: json.termMemberId || newMemberId };
         } catch (err: unknown) {
+          setStore((s) => ({
+            ...s,
+            termMembers: previousTermMembers,
+            userRoles: previousUserRoles,
+            profiles: previousProfiles,
+          }));
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
       },
@@ -6575,10 +6600,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         permissions: string[];
         chapterId: string;
       }) => {
+        const targetMember = store.termMembers.find((tm) => tm.id === input.termMemberId);
+        const previousPermissions = targetMember?.permissions;
+        const previousDesignation = targetMember?.designation;
+        const nextDesignation = encodeDelegationsToDesignation(input.permissions, targetMember?.designation);
+
         setStore((s) => ({
           ...s,
           termMembers: s.termMembers.map((tm) =>
-            tm.id === input.termMemberId ? { ...tm, permissions: input.permissions } : tm,
+            tm.id === input.termMemberId
+              ? { ...tm, permissions: input.permissions, designation: nextDesignation }
+              : tm,
           ),
         }));
 
@@ -6596,8 +6628,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }),
           });
           const json = await res.json();
+          if (!json.ok) {
+            console.error("[Elevates] updateExecutiveMemberPermissions error:", json.error);
+            if (previousPermissions !== undefined) {
+              setStore((s) => ({
+                ...s,
+                termMembers: s.termMembers.map((tm) =>
+                  tm.id === input.termMemberId
+                    ? { ...tm, permissions: previousPermissions, designation: previousDesignation }
+                    : tm,
+                ),
+              }));
+            }
+          }
           return Boolean(json.ok);
-        } catch {
+        } catch (err) {
+          console.error("[Elevates] updateExecutiveMemberPermissions network error:", err);
+          if (previousPermissions !== undefined) {
+            setStore((s) => ({
+              ...s,
+              termMembers: s.termMembers.map((tm) =>
+                tm.id === input.termMemberId
+                  ? { ...tm, permissions: previousPermissions, designation: previousDesignation }
+                  : tm,
+              ),
+            }));
+          }
           return false;
         }
       },

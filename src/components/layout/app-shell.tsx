@@ -17,7 +17,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { ChapterSelectorModal } from "@/components/layout/chapter-selector-modal";
-import { roleKeyLabel } from "@/lib/leadership";
+import { roleKeyLabel, parseDelegations } from "@/lib/leadership";
 
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
@@ -61,31 +61,79 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [chapterModalOpen, setChapterModalOpen] = useState(false);
   const [alreadyInChapterOpen, setAlreadyInChapterOpen] = useState(false);
 
-  const chapter = session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : undefined;
-  const chapterSlug = session.chapterId
+  const pathChapterSlug = pathname.match(/^\/chapter\/([^/]+)/)?.[1] ?? "";
+  const chapter = (pathChapterSlug ? store.chapters.find((c) => c.slug === pathChapterSlug) : null)
+    || (session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : null);
+  const chapterSlug = chapter?.slug ?? (session.chapterId
     ? (chapter?.slug ?? "")
     : isHqRole(session.roleKey)
       ? (store.chapters?.[0]?.slug ?? "")
-      : "";
+      : "");
   const isVolunteer = Boolean(
     session.userId && (
       (store.volunteerGroups || []).some((g) => g.memberIds?.includes(session.userId)) ||
       (store.events || []).some((e) => e.volunteerStudentIds?.includes(session.userId))
     ),
   );
+  const targetUid = session.userId;
+  const targetAuthUid = session.authUserId;
+  const myProfile = (targetUid
+    ? store.profiles.find(
+        (p) =>
+          p.id === targetUid ||
+          (targetAuthUid && p.id === targetAuthUid) ||
+          (p.email && p.email.toLowerCase() === targetUid.toLowerCase()),
+      )
+    : null) || profile;
+
+  const myUserIds = [targetUid, targetAuthUid, myProfile?.id].filter(Boolean) as string[];
+
   const activeTerm = chapter
     ? store.terms.find((t) => t.chapterId === chapter.id && t.status === "active")
-    : null;
-  const myTermMember = activeTerm && session.userId
-    ? store.termMembers.find((tm) => tm.termId === activeTerm.id && tm.userId === session.userId)
-    : null;
-  const myDelegations = Array.isArray(myTermMember?.permissions) ? myTermMember.permissions : [];
+    : store.terms.find(
+        (t) =>
+          t.status === "active" &&
+          store.termMembers.some(
+            (tm) => tm.termId === t.id && myUserIds.includes(tm.userId),
+          ),
+      );
 
-  const groups = navGroupsForRole(session.roleKey, chapterSlug, isVolunteer, myDelegations);
+  const myTermMember = (() => {
+    if (activeTerm) {
+      return store.termMembers.find(
+        (tm) =>
+          tm.termId === activeTerm.id &&
+          (myUserIds.includes(tm.userId) ||
+            (myProfile?.email &&
+              store.profiles.find((p) => p.id === tm.userId)?.email?.toLowerCase() ===
+                myProfile.email.toLowerCase())),
+      ) ?? null;
+    }
+    // Fallback: search across ALL active terms to find this user's term membership
+    // (covers cases where chapter isn't resolved yet or the user is an executive_member)
+    const allActiveTermIds = new Set(
+      store.terms.filter((t) => t.status === "active").map((t) => t.id),
+    );
+    return store.termMembers.find(
+      (tm) =>
+        allActiveTermIds.has(tm.termId) &&
+        (myUserIds.includes(tm.userId) ||
+          (myProfile?.email &&
+            store.profiles.find((p) => p.id === tm.userId)?.email?.toLowerCase() ===
+              myProfile.email.toLowerCase())),
+    ) ?? null;
+  })();
+  const myDelegations = parseDelegations(myTermMember?.permissions, myTermMember?.designation);
+
+  const effectiveRoleKey = (session.roleKey === "student" && myTermMember)
+    ? "executive_member"
+    : session.roleKey;
+
+  const groups = navGroupsForRole(effectiveRoleKey, chapterSlug, isVolunteer, myDelegations);
   const unread = store.notifications.filter(
     (n) => n.userId === session.userId && !n.read,
   ).length;
-  const homeHref = homeForRole(session.roleKey, chapterSlug);
+  const homeHref = homeForRole(effectiveRoleKey, chapterSlug);
   const alertsHref = notificationsHref(session.roleKey);
   const firstName = profile?.fullName?.split(" ")[0] ?? "there";
   const contextLabel = isHqRole(session.roleKey)
@@ -128,26 +176,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     const hasExplicitRoles = userRoleEntries.length > 0;
 
+    // Check active terms (Migration 045)
+    const isLeadInActiveTerm = store.terms.some(
+      (t) => t.campusLeadId === uid && t.status === "active",
+    );
+    const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
+    if ((isLeadInActiveTerm || isChapterLead) && !allKeys.includes("campus_lead")) {
+      allKeys.push("campus_lead");
+    }
+
+    // Check active term members (Migration 045)
+    const isExecMember = store.termMembers.some(
+      (tm) =>
+        tm.userId === uid &&
+        store.terms.some((t) => t.id === tm.termId && t.status === "active"),
+    );
+    if (isExecMember && !allKeys.includes("executive_member")) {
+      allKeys.push("executive_member");
+    }
+
     // Fallback checks ONLY if no explicit roles found in user_roles
     if (!hasExplicitRoles) {
-      // Check active terms (Migration 045)
-      const isLeadInActiveTerm = store.terms.some(
-        (t) => t.campusLeadId === uid && t.status === "active",
-      );
-      const isChapterLead = store.chapters.some((c) => c.campusLeadId === uid);
-      if ((isLeadInActiveTerm || isChapterLead) && !allKeys.includes("campus_lead")) {
-        allKeys.push("campus_lead");
-      }
-
-      // Check active term members (Migration 045)
-      const isExecMember = store.termMembers.some(
-        (tm) =>
-          tm.userId === uid &&
-          store.terms.some((t) => t.id === tm.termId && t.status === "active"),
-      );
-      if (isExecMember && !allKeys.includes("executive_member")) {
-        allKeys.push("executive_member");
-      }
 
       // Check profile
       const prof = store.profiles.find((p) => p.id === uid);

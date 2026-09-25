@@ -4,7 +4,6 @@ import React, { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
@@ -12,8 +11,10 @@ import { chapterEyebrow } from "@/lib/access";
 import {
   CAMPUS_LEAD_DELEGATION_OPTIONS,
   CampusLeadOptionKey,
+  cleanDisplayDesignation,
   getChapterHandoverStatus,
   hasExecutiveDelegation,
+  parseDelegations,
 } from "@/lib/leadership";
 import { cn, formatDate, initials } from "@/lib/utils";
 import {
@@ -22,30 +23,38 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   Clock,
   Crown,
   History,
-  Key,
   Lock,
   Plus,
+  Search,
   Shield,
-  ShieldCheck,
   Sliders,
   Sparkles,
   Trash2,
-  UserCheck,
   UserPlus,
   Users,
   X,
   Zap,
 } from "lucide-react";
 
+const INITIAL_TAB_PERMS = [
+  { key: "manage_events", label: "Events" },
+  { key: "manage_peer_labs", label: "Peer Labs" },
+  { key: "manage_volunteers", label: "Volunteers" },
+  { key: "manage_clusters", label: "Clusters" },
+  { key: "manage_certificates", label: "Certificates" },
+  { key: "manage_projects", label: "Projects" },
+];
+
 type NextMemberDraft = {
   userId: string;
   designation: string;
 };
+
+type Tab = "overview" | "delegations" | "history";
 
 export default function ChapterLeadershipPage({
   params,
@@ -98,6 +107,14 @@ export default function ChapterLeadershipPage({
       .sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [store.profiles, chapter]);
 
+  const eligibleStudents = useMemo(() => {
+    return chapterStudents.filter(
+      (s) =>
+        s.id !== activeTerm?.campusLeadId &&
+        !activeTermMembers.some((tm) => tm.userId === s.id),
+    );
+  }, [chapterStudents, activeTerm, activeTermMembers]);
+
   const windowStatus = useMemo(() => {
     if (!chapter) {
       return { isOpen: false, reason: "no_active_term" as const, label: "No Active Term" };
@@ -137,18 +154,12 @@ export default function ChapterLeadershipPage({
             session.userId === activeTerm.campusLeadId))),
   );
 
-  // Delegations State & Handlers
-  const [collapsedMemberIds, setCollapsedMemberIds] = useState<Set<string>>(new Set());
-  const [updatingPermKey, setUpdatingPermKey] = useState<string | null>(null);
+  // Tab State
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
-  function toggleCollapseMember(id: string) {
-    setCollapsedMemberIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  // Delegations State & Handlers
+  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null);
+  const [updatingPermKey, setUpdatingPermKey] = useState<string | null>(null);
 
   async function handleTogglePermission(
     termMemberId: string,
@@ -159,7 +170,7 @@ export default function ChapterLeadershipPage({
     const target = store.termMembers.find((m) => m.id === termMemberId);
     if (!target) return;
 
-    const current = Array.isArray(target.permissions) ? target.permissions : [];
+    const current = parseDelegations(target.permissions, target.designation);
     const isGranted = current.includes(optionKey);
     const nextPermissions = isGranted
       ? current.filter((k) => k !== optionKey)
@@ -238,14 +249,27 @@ export default function ChapterLeadershipPage({
   const [handoverError, setHandoverError] = useState("");
 
   const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [assignStudentId, setAssignStudentId] = useState("");
-  const [assignDesignation, setAssignDesignation] = useState("");
+  const [assignStudentIds, setAssignStudentIds] = useState<string[]>([]);
+  const [assignStudentSearch, setAssignStudentSearch] = useState("");
+  const [assignInitialPermissions, setAssignInitialPermissions] = useState<string[]>([]);
   const [isSubmittingAssign, setIsSubmittingAssign] = useState(false);
   const [assignError, setAssignError] = useState("");
 
+  const filteredCandidates = useMemo(() => {
+    const q = assignStudentSearch.trim().toLowerCase();
+    if (!q) return eligibleStudents;
+    return eligibleStudents.filter(
+      (s) =>
+        s.fullName.toLowerCase().includes(q) ||
+        (s.department && s.department.toLowerCase().includes(q)) ||
+        (s.elevatesId && s.elevatesId.toLowerCase().includes(q)) ||
+        (s.email && s.email.toLowerCase().includes(q)),
+    );
+  }, [eligibleStudents, assignStudentSearch]);
+
   const [flashMsg, setFlashMsg] = useState("");
   const [expandedPastTerm, setExpandedPastTerm] = useState<string | null>(null);
-  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null); // termMemberId being confirmed
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [isRemovingMember, setIsRemovingMember] = useState(false);
 
   async function handleRemoveExecutive(termMemberId: string, userId: string) {
@@ -339,14 +363,22 @@ export default function ChapterLeadershipPage({
     }
   }
 
+  function handleOpenAssignModal() {
+    setAssignStudentIds([]);
+    setAssignStudentSearch("");
+    setAssignInitialPermissions([]);
+    setAssignError("");
+    setAssignModalOpen(true);
+  }
+
   async function handleConfirmAssignExecutive() {
     if (!chapter) return;
     if (!activeTerm) {
       setAssignError("Cannot appoint executive member: no active term exists.");
       return;
     }
-    if (!assignStudentId) {
-      setAssignError("Please choose a student to assign.");
+    if (assignStudentIds.length === 0) {
+      setAssignError("Please choose at least one student to appoint.");
       return;
     }
 
@@ -354,19 +386,31 @@ export default function ChapterLeadershipPage({
     setAssignError("");
 
     try {
-      const res = await assignExecutiveMember({
-        chapterId: chapter.id,
-        userId: assignStudentId,
-        designation: assignDesignation.trim() || undefined,
-      });
+      const errors: string[] = [];
+      for (const userId of assignStudentIds) {
+        const res = await assignExecutiveMember({
+          chapterId: chapter.id,
+          userId,
+          initialPermissions: assignInitialPermissions,
+        });
+        if (!res.ok) {
+          errors.push(res.error || `Failed to appoint student`);
+        }
+      }
 
-      if (!res.ok) {
-        setAssignError(res.error || "Failed to assign executive member.");
+      if (errors.length > 0) {
+        setAssignError(errors.join(" · "));
       } else {
+        const count = assignStudentIds.length;
         setAssignModalOpen(false);
-        setAssignStudentId("");
-        setAssignDesignation("");
-        showFlash("✓ Executive member successfully appointed!");
+        setAssignStudentIds([]);
+        setAssignStudentSearch("");
+        setAssignInitialPermissions([]);
+        showFlash(
+          count === 1
+            ? "✓ Executive member appointed successfully!"
+            : `✓ ${count} executive members appointed successfully!`,
+        );
       }
     } catch (err) {
       setAssignError(err instanceof Error ? err.message : "Error assigning executive member.");
@@ -383,23 +427,44 @@ export default function ChapterLeadershipPage({
     );
   }
 
+  const tabs: { key: Tab; label: string; icon: React.ReactNode; count?: number }[] = [
+    {
+      key: "overview",
+      label: "Active Term",
+      icon: <Crown size={14} />,
+      count: activeTerm ? activeTermMembers.length + 1 : undefined,
+    },
+    {
+      key: "delegations",
+      label: "Navbar Access & Delegations",
+      icon: <Sliders size={14} />,
+      count: activeTermMembers.length,
+    },
+    {
+      key: "history",
+      label: "Term History",
+      icon: <History size={14} />,
+      count: pastTerms.length,
+    },
+  ];
+
   return (
-    <div className="space-y-5 pb-10">
+    <div className="space-y-5 pb-12">
       <PageHeader
         eyebrow={chapterEyebrow(session.roleKey, "people")}
         title="Chapter Leadership"
         description={`Governance structure, executive appointments, and term history for ${chapter.name}.`}
       />
 
-      {/* Flash toast */}
+      {/* Flash Toast */}
       {flashMsg && (
-        <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-600 animate-in slide-in-from-top-2 fade-in duration-300">
-          <CheckCircle2 size={16} className="shrink-0" />
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-700 animate-in slide-in-from-top-2 fade-in duration-300">
+          <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
           {flashMsg}
         </div>
       )}
 
-      {/* Handover Window Banner */}
+      {/* Handover Window Banner — Open */}
       {isWindowOpen && (
         <div
           className={cn(
@@ -409,9 +474,7 @@ export default function ChapterLeadershipPage({
               : "border-[var(--accent)]/30 bg-gradient-to-r from-[var(--accent)]/10 to-transparent",
           )}
         >
-          {/* Decorative glow */}
-          <div className="pointer-events-none absolute right-0 top-0 h-24 w-24 rounded-full bg-[var(--accent)]/20 blur-3xl" />
-
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-28 rounded-full bg-[var(--accent)]/15 blur-3xl" />
           <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-start gap-3.5">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent)]/20 text-[var(--accent)] shrink-0">
@@ -449,7 +512,7 @@ export default function ChapterLeadershipPage({
         </div>
       )}
 
-      {/* Handover Window Closed Banner (Campus Lead view) */}
+      {/* Handover Closed Banner — Campus Lead view */}
       {!isWindowOpen && isCurrentCampusLead && (
         <div className="relative overflow-hidden rounded-2xl border border-border bg-bg-panel p-5">
           <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -459,11 +522,11 @@ export default function ChapterLeadershipPage({
               </span>
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <h3 className="text-sm font-bold text-text">Leadership Handover Window is Closed</h3>
+                  <h3 className="text-sm font-bold text-text">Handover Window is Closed</h3>
                   <Badge tone="mute">Closed</Badge>
                 </div>
                 <p className="text-xs text-text-dim max-w-lg leading-relaxed">
-                  Leadership transition and term addition is currently locked. Only Elevates HQ can open the handover window for {chapter.name}.
+                  Leadership transition is locked. Only Elevates HQ can open the handover window for {chapter.name}.
                 </p>
               </div>
             </div>
@@ -475,7 +538,7 @@ export default function ChapterLeadershipPage({
               title="Handover window is closed by HQ"
             >
               <Lock size={13} />
-              Add Term (Window Closed)
+              Window Closed
             </Button>
           </div>
         </div>
@@ -560,630 +623,659 @@ export default function ChapterLeadershipPage({
         ))}
       </div>
 
-      {/* ── Current Term Panel ── */}
+      {/* ── Tab Navigation ── */}
       <div className="rounded-2xl bg-bg-panel shadow-[var(--shadow)] overflow-hidden">
-        {/* Panel Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500">
-              <Crown size={18} />
-            </span>
-            <div>
-              <h2 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
-                Active Term{activeTerm ? ` · ${activeTerm.termYear}` : ""}
-              </h2>
-              <p className="text-[12px] text-text-mute">
-                {activeTerm
-                  ? `Started ${formatDate(activeTerm.startedAt)}`
-                  : "No leadership term has been initialized"}
-              </p>
-            </div>
-          </div>
+        {/* Tab Bar */}
+        <div className="flex items-center border-b border-border px-1 gap-0.5 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "relative flex items-center gap-2 px-4 py-3.5 text-sm font-medium transition-colors whitespace-nowrap shrink-0",
+                activeTab === tab.key
+                  ? "text-[var(--accent)]"
+                  : "text-text-mute hover:text-text",
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+              {tab.count !== undefined && (
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-full min-w-[18px] h-[18px] px-1 text-[10px] font-bold transition-colors",
+                    activeTab === tab.key
+                      ? "bg-[var(--accent-soft)] text-[var(--accent)]"
+                      : "bg-bg text-text-mute",
+                  )}
+                >
+                  {tab.count}
+                </span>
+              )}
+              {/* Active indicator */}
+              {activeTab === tab.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--accent)] rounded-t-full" />
+              )}
+            </button>
+          ))}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {isCurrentCampusLead && (
+          {/* Right actions */}
+          <div className="flex items-center gap-2 ml-auto px-3 py-2">
+            {activeTab === "overview" && isCurrentCampusLead && (
               isWindowOpen ? (
                 <Button
                   variant="orange"
                   size="sm"
                   onClick={handleOpenHandoverModal}
-                  className="gap-1.5 font-semibold text-xs"
+                  className="gap-1.5 font-semibold text-xs h-8"
                 >
-                  <Plus size={13} />
-                  Add New Term
+                  <Plus size={12} />
+                  New Term
                 </Button>
               ) : (
                 <Button
                   disabled
                   variant="secondary"
                   size="sm"
-                  className="gap-1.5 opacity-50 cursor-not-allowed text-xs"
-                  title="Handover window is closed by Elevates HQ"
+                  className="gap-1.5 opacity-50 cursor-not-allowed text-xs h-8"
+                  title="Handover window is closed"
                 >
-                  <Lock size={12} />
-                  Add Term (Closed)
+                  <Lock size={11} />
+                  Locked
                 </Button>
               )
             )}
-
-            {canAssignExecutive && activeTerm && (
+            {activeTab === "overview" && canAssignExecutive && activeTerm && (
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => {
-                  setAssignStudentId("");
-                  setAssignDesignation("");
-                  setAssignError("");
-                  setAssignModalOpen(true);
-                }}
-                className="gap-1.5"
+                onClick={handleOpenAssignModal}
+                className="gap-1.5 h-8 text-xs"
               >
-                <UserPlus size={13} />
-                Appoint Executive
+                <UserPlus size={12} />
+                Appoint
               </Button>
             )}
           </div>
         </div>
 
-        {!activeTerm ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16 text-center px-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
-              <Crown size={24} />
-            </span>
-            <div>
-              <p className="font-semibold text-text text-sm">No Active Term</p>
-              <p className="text-xs text-text-dim mt-1 max-w-sm">
-                This chapter has no active leadership term. An HQ Founder or Admin must appoint the first Campus Lead.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {/* Campus Lead Hero */}
-            <div className="p-5">
-              <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-text-mute flex items-center gap-1.5">
-                <Crown size={12} className="text-amber-500" /> Campus Lead
-              </p>
+        {/* ── TAB: OVERVIEW ── */}
+        {activeTab === "overview" && (
+          <div>
+            {!activeTerm ? (
+              <div className="flex flex-col items-center justify-center gap-4 py-20 text-center px-4">
+                <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-bg border-2 border-dashed border-border text-text-mute">
+                  <Crown size={28} />
+                </span>
+                <div>
+                  <p className="font-bold text-text text-base">No Active Term</p>
+                  <p className="text-sm text-text-dim mt-1.5 max-w-sm">
+                    This chapter has no active leadership term. An HQ Founder or Admin must appoint the first Campus Lead.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {/* ── Campus Lead Hero ── */}
+                <div className="p-5 sm:p-6">
+                  <div className="flex items-center gap-1.5 mb-4">
+                    <Crown size={13} className="text-amber-500" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute">Campus Lead</p>
+                  </div>
 
-              {campusLeadProfile ? (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-500/8 to-transparent p-4">
-                  <div className="flex items-center gap-4">
-                    {/* Avatar */}
-                    <div className="relative shrink-0">
-                      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/20 text-lg font-extrabold text-amber-600 border border-amber-500/30">
-                        {initials(campusLeadProfile.fullName)}
-                      </span>
-                      <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow-md">
-                        <Crown size={10} />
-                      </span>
-                    </div>
+                  {campusLeadProfile ? (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-500/8 to-amber-500/3 p-5">
+                      <div className="flex items-center gap-4">
+                        {/* Avatar */}
+                        <div className="relative shrink-0">
+                          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/20 text-lg font-extrabold text-amber-600 border border-amber-500/30">
+                            {initials(campusLeadProfile.fullName)}
+                          </span>
+                          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow-md">
+                            <Crown size={10} />
+                          </span>
+                        </div>
 
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Link
-                          href={`/profile/${campusLeadProfile.elevatesId || campusLeadProfile.id}`}
-                          className="font-bold text-text hover:text-[var(--accent)] text-[15px] transition-colors"
-                        >
-                          {campusLeadProfile.fullName}
-                        </Link>
-                        <Badge tone="cyan">Campus Lead</Badge>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <Link
+                              href={`/profile/${campusLeadProfile.elevatesId || campusLeadProfile.id}`}
+                              className="font-bold text-text hover:text-[var(--accent)] text-base transition-colors"
+                            >
+                              {campusLeadProfile.fullName}
+                            </Link>
+                            <Badge tone="cyan">Campus Lead</Badge>
+                          </div>
+                          <p className="text-xs text-text-dim">
+                            {campusLeadProfile.email}
+                            {campusLeadProfile.department ? ` · ${campusLeadProfile.department}` : ""}
+                            {campusLeadProfile.year ? ` · Year ${campusLeadProfile.year}` : ""}
+                          </p>
+                          {campusLeadProfile.elevatesId && (
+                            <p className="mt-1 font-mono text-[11px] text-text-mute">
+                              {campusLeadProfile.elevatesId}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <p className="mt-0.5 text-xs text-text-dim">
-                        {campusLeadProfile.email}
-                        {campusLeadProfile.department ? ` · ${campusLeadProfile.department}` : ""}
-                        {campusLeadProfile.year ? ` · Year ${campusLeadProfile.year}` : ""}
-                      </p>
-                      {campusLeadProfile.elevatesId && (
-                        <p className="mt-1 font-mono text-[11px] text-text-mute">
-                          {campusLeadProfile.elevatesId}
-                        </p>
+
+                      {isWindowOpen && isCurrentCampusLead && (
+                        <div className="flex items-center gap-2 text-[11px] text-[var(--accent)] font-semibold bg-[var(--accent-soft)] rounded-xl px-3.5 py-2 sm:self-center whitespace-nowrap">
+                          <Sparkles size={13} />
+                          Ready to hand over
+                        </div>
                       )}
                     </div>
-                  </div>
-
-                  {isWindowOpen && isCurrentCampusLead && (
-                    <div className="flex items-center gap-2 text-[11px] text-[var(--accent)] font-semibold bg-[var(--accent-soft)] rounded-xl px-3 py-2 sm:self-center whitespace-nowrap">
-                      <Sparkles size={13} />
-                      Ready to hand over
+                  ) : (
+                    <div className="rounded-xl border border-border bg-bg/40 p-4 text-xs text-text-dim">
+                      Campus Lead profile unavailable (ID: {activeTerm.campusLeadId})
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="rounded-xl border border-border bg-bg/40 p-4 text-xs text-text-dim">
-                  Campus Lead profile unavailable (ID: {activeTerm.campusLeadId})
-                </div>
-              )}
-            </div>
 
-            {/* Executive Members */}
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute flex items-center gap-1.5">
-                  <Shield size={12} className="text-cyan-500" /> Executive Members · {activeTermMembers.length}
-                </p>
-                <span className="text-[11px] text-text-dim">Operational authority & event management</span>
-              </div>
-
-              {!activeTermMembers.length ? (
-                <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border py-10 text-center">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-bg text-text-mute">
-                    <Users size={18} />
-                  </span>
-                  <div>
-                    <p className="text-xs font-semibold text-text">No executive members appointed</p>
-                    <p className="text-[11px] text-text-dim mt-0.5">
-                      The Campus Lead can appoint executive members for this term.
-                    </p>
+                {/* ── Executive Members ── */}
+                <div className="border-t border-border px-5 sm:px-6 py-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-1.5">
+                      <Shield size={13} className="text-cyan-500" />
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute">
+                        Executive Members
+                      </p>
+                      <span className="inline-flex items-center justify-center rounded-full min-w-[18px] h-[18px] px-1 text-[10px] font-bold bg-bg text-text-mute">
+                        {activeTermMembers.length}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-text-dim hidden sm:block">Operational authority & event management</span>
                   </div>
-                  {canAssignExecutive && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[var(--accent)] text-xs mt-1"
-                      onClick={() => {
-                        setAssignStudentId("");
-                        setAssignDesignation("");
-                        setAssignError("");
-                        setAssignModalOpen(true);
-                      }}
-                    >
-                      <Plus size={13} className="mr-1" />
-                      Appoint First Executive Member
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {activeTermMembers.map((tm) => {
-                    const profile = store.profiles.find((p) => p.id === tm.userId);
-                    return (
-                      <div
-                        key={tm.id}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-bg/40 p-3 hover:bg-bg/70 transition-colors group"
-                      >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[12px] font-bold text-[var(--accent)] shrink-0">
-                          {initials(profile?.fullName ?? "EM")}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            href={`/profile/${profile?.elevatesId || tm.userId}`}
-                            className="block truncate font-semibold text-text hover:text-[var(--accent)] text-sm transition-colors"
-                          >
-                            {profile?.fullName ?? "Unknown Member"}
-                          </Link>
-                          <p className="truncate text-[11px] text-text-dim">
-                            {tm.designation || "Executive Member"}
-                            {profile?.department ? ` · ${profile.department}` : ""}
-                          </p>
-                        </div>
-                        <span className="inline-flex items-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-600 shrink-0">
-                          Exec
-                        </span>
-                        {/* Remove button — only visible to campus lead / founder */}
-                        {canAssignExecutive && (
-                          confirmRemoveId === tm.id ? (
-                            <div className="flex items-center gap-1 shrink-0">
-                              <button
-                                disabled={isRemovingMember}
-                                onClick={() => handleRemoveExecutive(tm.id, tm.userId)}
-                                className="rounded-lg bg-red-500/15 border border-red-500/30 px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-500/25 transition-colors disabled:opacity-50"
-                              >
-                                {isRemovingMember ? "…" : "Confirm"}
-                              </button>
-                              <button
-                                onClick={() => setConfirmRemoveId(null)}
-                                className="rounded-lg px-2 py-1 text-[10px] text-text-mute hover:text-text transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmRemoveId(tm.id)}
-                              title="Remove executive member"
-                              className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-text-mute hover:text-red-500 hover:bg-red-500/10 transition-all shrink-0"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
-      {/* ── Executive Delegations Section · Campus Lead Authority ── */}
-      <div className="rounded-2xl bg-bg-panel shadow-[var(--shadow)] overflow-hidden">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border px-5 py-4">
-          <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
-              <Sliders size={18} />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
-                  Executive Delegations · Campus Lead Authority
-                </h2>
-                <Badge tone="cyan">User-Scoped</Badge>
-              </div>
-              <p className="text-[12px] text-text-mute">
-                Empower individual executive members with exclusive Campus Lead powers on a per-user basis.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-text-dim">
-              {activeTermMembers.length} {activeTermMembers.length === 1 ? "Executive Member" : "Executive Members"}
-            </span>
-          </div>
-        </div>
-
-        {/* Content */}
-        {!activeTerm ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center px-4">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
-              <Sliders size={20} />
-            </span>
-            <p className="text-xs font-semibold text-text">No Active Term</p>
-            <p className="text-[11px] text-text-dim max-w-sm">
-              An active term is required to appoint executive members and delegate Campus Lead authority.
-            </p>
-          </div>
-        ) : activeTermMembers.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center px-4">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
-              <Users size={20} />
-            </span>
-            <p className="text-xs font-semibold text-text">No Executive Members to Delegate</p>
-            <p className="text-[11px] text-text-dim max-w-sm">
-              Appoint an executive member in the Active Term panel above to selectively grant exclusive Campus Lead capabilities.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {/* Guide notice */}
-            <div className="bg-bg/40 px-5 py-3 border-b border-border/70 flex items-start gap-2.5 text-xs text-text-dim">
-              <Sparkles size={14} className="text-[var(--accent)] shrink-0 mt-0.5" />
-              <p>
-                Each toggle grants full operational capability for that option to that specific executive user. Delegations take effect immediately across all chapter workspaces.
-              </p>
-            </div>
-
-            {/* List of Executive Members and their toggles */}
-            {activeTermMembers.map((tm) => {
-              const profile = store.profiles.find((p) => p.id === tm.userId);
-              const memberName = profile?.fullName ?? "Executive Member";
-              const memberPerms: string[] = Array.isArray(tm.permissions) ? tm.permissions : [];
-              const isCollapsed = collapsedMemberIds.has(tm.id);
-              const grantedCount = memberPerms.length;
-              const isUpdatingMember = Boolean(updatingPermKey && updatingPermKey.startsWith(`${tm.id}:`));
-
-              return (
-                <div key={tm.id} className="p-5 transition-colors">
-                  {/* Member Card Header */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-sm font-bold text-[var(--accent)] shrink-0">
-                        {initials(memberName)}
+                  {!activeTermMembers.length ? (
+                    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border py-12 text-center">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-bg text-text-mute">
+                        <Users size={18} />
                       </span>
                       <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/profile/${profile?.elevatesId || tm.userId}`}
-                            className="font-bold text-text hover:text-[var(--accent)] text-sm transition-colors"
-                          >
-                            {memberName}
-                          </Link>
-                          <Badge tone="cyan">{tm.designation || "Executive Member"}</Badge>
-                          <Badge tone={grantedCount > 0 ? "orange" : "mute"}>
-                            {grantedCount} of {CAMPUS_LEAD_DELEGATION_OPTIONS.length} Granted
-                          </Badge>
-                        </div>
-                        <p className="text-[11px] text-text-dim mt-0.5">
-                          {profile?.email}
-                          {profile?.department ? ` · ${profile.department}` : ""}
-                          {profile?.year ? ` · Year ${profile.year}` : ""}
+                        <p className="text-sm font-semibold text-text">No executive members appointed</p>
+                        <p className="text-xs text-text-dim mt-0.5 max-w-xs">
+                          The Campus Lead can appoint executive members for this term.
                         </p>
                       </div>
-                    </div>
-
-                    {/* Member Header Actions */}
-                    <div className="flex items-center gap-2 self-start sm:self-center">
-                      {canManageDelegations && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={isUpdatingMember || grantedCount === CAMPUS_LEAD_DELEGATION_OPTIONS.length}
-                            onClick={() => handleBulkPermissions(tm.id, memberName, true)}
-                            className="text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-lg px-2.5 py-1 border border-[var(--accent)]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Grant All
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isUpdatingMember || grantedCount === 0}
-                            onClick={() => handleBulkPermissions(tm.id, memberName, false)}
-                            className="text-[11px] font-medium text-text-mute hover:text-text hover:bg-bg rounded-lg px-2.5 py-1 border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            Revoke All
-                          </button>
-                        </div>
+                      {canAssignExecutive && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[var(--accent)] text-xs mt-1"
+                          onClick={handleOpenAssignModal}
+                        >
+                          <Plus size={13} className="mr-1" />
+                          Appoint First Executive Member
+                        </Button>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={() => toggleCollapseMember(tm.id)}
-                        className="rounded-lg p-1.5 text-text-mute hover:text-text hover:bg-bg transition-colors"
-                        title={isCollapsed ? "Expand permissions" : "Collapse permissions"}
-                      >
-                        {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-border">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border bg-bg/40">
+                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide">Member</th>
+                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide hidden sm:table-cell">Role</th>
+                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold text-text-mute uppercase tracking-wide hidden md:table-cell">Department</th>
+                            <th className="px-4 py-2.5 text-right text-[11px] font-semibold text-text-mute uppercase tracking-wide">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {activeTermMembers.map((tm) => {
+                            const profile = store.profiles.find((p) => p.id === tm.userId);
+                            return (
+                              <tr
+                                key={tm.id}
+                                className="group hover:bg-bg/40 transition-colors"
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-3">
+                                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[11px] font-bold text-[var(--accent)] shrink-0">
+                                      {initials(profile?.fullName ?? "EM")}
+                                    </span>
+                                    <div>
+                                      <Link
+                                        href={`/profile/${profile?.elevatesId || tm.userId}`}
+                                        className="font-semibold text-text hover:text-[var(--accent)] text-sm transition-colors"
+                                      >
+                                        {profile?.fullName ?? "Unknown Member"}
+                                      </Link>
+                                      <p className="text-[11px] text-text-dim sm:hidden">
+                                        {cleanDisplayDesignation(tm.designation)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 hidden sm:table-cell">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="inline-flex items-center rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-600">
+                                      {cleanDisplayDesignation(tm.designation)}
+                                    </span>
+                                    {parseDelegations(tm.permissions, tm.designation).length > 0 && (
+                                      <span
+                                        className="inline-flex items-center rounded-md bg-[var(--accent-soft)] px-1.5 py-0.5 text-[9px] font-bold text-[var(--accent)]"
+                                        title="Configured sidebar tabs"
+                                      >
+                                        {parseDelegations(tm.permissions, tm.designation).length} tabs
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 hidden md:table-cell">
+                                  <span className="text-xs text-text-dim">
+                                    {profile?.department || "—"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {canAssignExecutive && (
+                                    confirmRemoveId === tm.id ? (
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <button
+                                          disabled={isRemovingMember}
+                                          onClick={() => handleRemoveExecutive(tm.id, tm.userId)}
+                                          className="rounded-lg bg-red-500/15 border border-red-500/30 px-2.5 py-1 text-[11px] font-semibold text-red-500 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                                        >
+                                          {isRemovingMember ? "…" : "Confirm"}
+                                        </button>
+                                        <button
+                                          onClick={() => setConfirmRemoveId(null)}
+                                          className="rounded-lg px-2 py-1 text-[11px] text-text-mute hover:text-text transition-colors"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={() => setConfirmRemoveId(tm.id)}
+                                        title="Remove executive member"
+                                        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-text-mute hover:text-red-500 hover:bg-red-500/10 transition-all"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    )
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                  {/* Options List / Grid */}
-                  {!isCollapsed && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                      {CAMPUS_LEAD_DELEGATION_OPTIONS.map((opt) => {
-                        const isGranted = memberPerms.includes(opt.key);
-                        const isThisSaving = updatingPermKey === `${tm.id}:${opt.key}`;
+        {/* ── TAB: DELEGATIONS ── */}
+        {activeTab === "delegations" && (
+          <div>
+            {/* Info notice */}
+            <div className="flex items-start gap-3 bg-bg/40 border-b border-border px-5 py-3">
+              <Sparkles size={14} className="text-[var(--accent)] shrink-0 mt-0.5" />
+              <p className="text-xs text-text-dim leading-relaxed">
+                Assign which sidebar navigation tabs and operational powers each Executive Member can access. Toggling an item immediately displays or hides that tab in their chapter sidebar.
+              </p>
+            </div>
 
-                        // Category Tone
-                        const categoryTone =
-                          opt.category === "Administration"
-                            ? "border-slate-500/20 bg-slate-500/5 text-slate-400"
-                            : opt.category === "Governance"
-                            ? "border-purple-500/20 bg-purple-500/5 text-purple-400"
-                            : opt.category === "Operations"
-                            ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-500"
-                            : "border-amber-500/20 bg-amber-500/5 text-amber-500";
+            {!activeTerm ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center px-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
+                  <Sliders size={20} />
+                </span>
+                <p className="text-sm font-semibold text-text">No Active Term</p>
+                <p className="text-xs text-text-dim max-w-sm">
+                  An active term is required to appoint executive members and delegate authority.
+                </p>
+              </div>
+            ) : activeTermMembers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-center px-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
+                  <Users size={20} />
+                </span>
+                <p className="text-sm font-semibold text-text">No Executive Members</p>
+                <p className="text-xs text-text-dim max-w-sm">
+                  Appoint an executive member in the Active Term tab to grant delegated Campus Lead capabilities.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {activeTermMembers.map((tm) => {
+                  const profile = store.profiles.find((p) => p.id === tm.userId);
+                  const memberName = profile?.fullName ?? "Executive Member";
+                  const memberPerms: string[] = parseDelegations(tm.permissions, tm.designation);
+                  const grantedCount = memberPerms.length;
+                  const isUpdatingMember = Boolean(updatingPermKey && updatingPermKey.startsWith(`${tm.id}:`));
+                  const isExpanded = expandedMemberId === tm.id;
 
-                        return (
-                          <div
-                            key={opt.key}
-                            className={cn(
-                              "flex flex-col justify-between rounded-xl border p-3.5 transition-all duration-200",
-                              isGranted
-                                ? "border-[var(--accent)]/40 bg-[var(--accent-soft)]/20 shadow-xs"
-                                : "border-border/80 bg-bg/50 hover:bg-bg",
+                  const categoryColors: Record<string, { bg: string; text: string; border: string }> = {
+                    Administration: { bg: "bg-slate-500/10", text: "text-slate-600", border: "border-slate-500/20" },
+                    Governance: { bg: "bg-purple-500/10", text: "text-purple-600", border: "border-purple-500/20" },
+                    Operations: { bg: "bg-emerald-500/10", text: "text-emerald-600", border: "border-emerald-500/20" },
+                    Programs: { bg: "bg-amber-500/10", text: "text-amber-600", border: "border-amber-500/20" },
+                  };
+
+                  return (
+                    <div key={tm.id}>
+                      {/* Member Row — click to expand */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-bg/30 transition-colors text-left cursor-pointer select-none"
+                        onClick={() => setExpandedMemberId(isExpanded ? null : tm.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setExpandedMemberId(isExpanded ? null : tm.id);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[12px] font-bold text-[var(--accent)] shrink-0">
+                            {initials(memberName)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-text text-sm">{memberName}</span>
+                              <Badge tone="cyan">{cleanDisplayDesignation(tm.designation)}</Badge>
+                            </div>
+                            <p className="text-[11px] text-text-dim mt-0.5">
+                              {profile?.email}
+                              {profile?.department ? ` · ${profile.department}` : ""}
+                            </p>
+                            {memberPerms.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {memberPerms.slice(0, 4).map((pk) => {
+                                  const opt = CAMPUS_LEAD_DELEGATION_OPTIONS.find((o) => o.key === pk);
+                                  return (
+                                    <span
+                                      key={pk}
+                                      className="rounded bg-bg px-1.5 py-0.5 text-[10px] font-medium text-text border border-border"
+                                    >
+                                      {opt?.label?.replace(" Tab", "") || pk}
+                                    </span>
+                                  );
+                                })}
+                                {memberPerms.length > 4 && (
+                                  <span className="rounded bg-bg px-1.5 py-0.5 text-[10px] font-medium text-text-mute border border-border">
+                                    +{memberPerms.length - 4} more
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-text-mute italic mt-1">Default sidebar access (no additional tabs)</p>
                             )}
-                          >
-                            <div>
-                              {/* Top Bar: Category & Toggle Switch */}
-                              <div className="flex items-center justify-between gap-2 mb-2">
-                                <span
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          {/* Progress pill */}
+                          <div className="hidden sm:flex items-center gap-2">
+                            <div className="w-24 h-1.5 rounded-full bg-border overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-[var(--accent)] transition-all duration-500"
+                                style={{ width: `${(grantedCount / CAMPUS_LEAD_DELEGATION_OPTIONS.length) * 100}%` }}
+                              />
+                            </div>
+                            <span className={cn(
+                              "text-[11px] font-semibold",
+                              grantedCount > 0 ? "text-[var(--accent)]" : "text-text-mute",
+                            )}>
+                              {grantedCount}/{CAMPUS_LEAD_DELEGATION_OPTIONS.length}
+                            </span>
+                          </div>
+
+                          {canManageDelegations && (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                disabled={isUpdatingMember || grantedCount === CAMPUS_LEAD_DELEGATION_OPTIONS.length}
+                                onClick={() => handleBulkPermissions(tm.id, memberName, true)}
+                                className="text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-lg px-2 py-1 border border-[var(--accent)]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                All
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isUpdatingMember || grantedCount === 0}
+                                onClick={() => handleBulkPermissions(tm.id, memberName, false)}
+                                className="text-[11px] font-medium text-text-mute hover:text-text hover:bg-bg rounded-lg px-2 py-1 border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                None
+                              </button>
+                            </div>
+                          )}
+
+                          <span className="text-text-mute transition-transform duration-200" style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
+                            <ChevronRight size={16} />
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Expanded Permissions */}
+                      {isExpanded && (
+                        <div className="bg-bg/30 border-t border-border px-5 py-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {CAMPUS_LEAD_DELEGATION_OPTIONS.map((opt) => {
+                              const isGranted = memberPerms.includes(opt.key);
+                              const isThisSaving = updatingPermKey === `${tm.id}:${opt.key}`;
+                              const colors = categoryColors[opt.category] ?? categoryColors.Administration;
+
+                              return (
+                                <div
+                                  key={opt.key}
                                   className={cn(
-                                    "rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
-                                    categoryTone,
+                                    "flex items-start gap-3 rounded-xl border p-3 transition-all duration-200",
+                                    isGranted
+                                      ? "border-[var(--accent)]/30 bg-[var(--accent-soft)]/30"
+                                      : "border-border bg-bg/50",
                                   )}
                                 >
-                                  {opt.category}
-                                </span>
+                                  {/* Left: text content */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                      <span className={cn(
+                                        "rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wider uppercase border",
+                                        colors.bg, colors.text, colors.border,
+                                      )}>
+                                        {opt.category}
+                                      </span>
+                                    </div>
+                                    <p className="font-semibold text-xs text-text leading-snug">{opt.label}</p>
+                                    <p className="text-[11px] text-text-dim leading-relaxed mt-0.5">{opt.description}</p>
+                                  </div>
 
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={cn(
-                                      "text-[11px] font-semibold transition-colors",
-                                      isGranted ? "text-[var(--accent)]" : "text-text-mute",
-                                    )}
-                                  >
-                                    {isGranted ? "Granted" : "Disabled"}
-                                  </span>
-
-                                  {/* Toggle Button */}
-                                  <button
-                                    type="button"
-                                    role="switch"
-                                    aria-checked={isGranted}
-                                    disabled={!canManageDelegations || isThisSaving}
-                                    onClick={() => handleTogglePermission(tm.id, memberName, opt.key)}
-                                    title={
-                                      !canManageDelegations
-                                        ? "Only the Campus Lead or Elevates HQ can configure delegations"
-                                        : isGranted
-                                        ? `Revoke ${opt.label}`
-                                        : `Grant ${opt.label}`
-                                    }
-                                    className={cn(
-                                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-50",
-                                      isGranted ? "bg-[var(--accent)]" : "bg-border-strong",
-                                    )}
-                                  >
-                                    <span
-                                      aria-hidden="true"
+                                  {/* Right: Toggle */}
+                                  <div className="flex flex-col items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={isGranted}
+                                      disabled={!canManageDelegations || isThisSaving}
+                                      onClick={() => handleTogglePermission(tm.id, memberName, opt.key)}
+                                      title={
+                                        !canManageDelegations
+                                          ? "Only the Campus Lead or Elevates HQ can configure delegations"
+                                          : isGranted
+                                          ? `Revoke ${opt.label}`
+                                          : `Grant ${opt.label}`
+                                      }
                                       className={cn(
-                                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
-                                        isGranted ? "translate-x-5" : "translate-x-0",
+                                        "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-50",
+                                        isGranted ? "bg-[var(--accent)]" : "bg-border-strong",
                                       )}
-                                    />
-                                  </button>
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        className={cn(
+                                          "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                                          isGranted ? "translate-x-4" : "translate-x-0",
+                                        )}
+                                      />
+                                    </button>
+                                    {isThisSaving ? (
+                                      <span className="text-[9px] text-[var(--accent)] animate-pulse font-medium">…</span>
+                                    ) : (
+                                      <span className={cn(
+                                        "text-[9px] font-semibold",
+                                        isGranted ? "text-[var(--accent)]" : "text-text-mute",
+                                      )}>
+                                        {isGranted ? "ON" : "OFF"}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
-                              {/* Title & Description */}
-                              <p className="font-bold text-xs text-text mb-1 flex items-center gap-1.5">
-                                {opt.label}
+        {/* ── TAB: HISTORY ── */}
+        {activeTab === "history" && (
+          <div>
+            {!pastTerms.length ? (
+              <div className="flex flex-col items-center gap-4 py-20 text-center px-4">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg border-2 border-dashed border-border text-text-mute">
+                  <History size={24} />
+                </span>
+                <div>
+                  <p className="font-bold text-text text-base">No Past Terms</p>
+                  <p className="text-sm text-text-dim mt-1.5">
+                    Archived leadership terms will appear here after the first handover.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {pastTerms.map((term, idx) => {
+                  const leadProfile = store.profiles.find((p) => p.id === term.campusLeadId);
+                  const members = store.termMembers.filter((tm) => tm.termId === term.id);
+                  const isExpanded = expandedPastTerm === term.id;
+
+                  return (
+                    <div key={term.id}>
+                      <button
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-bg/40 transition-colors text-left"
+                        onClick={() => setExpandedPastTerm(isExpanded ? null : term.id)}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          {/* Year badge */}
+                          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-bg border border-border text-[11px] font-bold text-text-mute shrink-0 font-mono">
+                            {String(term.termYear).slice(-2)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-text text-sm">
+                                {term.termYear} Term
+                              </span>
+                              {idx === 0 && <Badge tone="mute">Most Recent</Badge>}
+                              <Badge tone="mute">Closed</Badge>
+                            </div>
+                            <p className="text-[11px] text-text-dim truncate mt-0.5">
+                              Lead: {leadProfile?.fullName ?? "Unknown"}
+                              {" · "}
+                              {formatDate(term.startedAt)}
+                              {term.endedAt ? ` → ${formatDate(term.endedAt)}` : " → Archived"}
+                              {members.length > 0 ? ` · ${members.length} exec${members.length !== 1 ? "s" : ""}` : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        <span
+                          className="text-text-mute shrink-0 transition-transform duration-200"
+                          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+                        >
+                          <ChevronRight size={16} />
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="px-5 pb-5 pt-1 border-t border-border/60 bg-bg/20">
+                          <div className="grid gap-5 sm:grid-cols-2 mt-4">
+                            {/* Lead */}
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute mb-3 flex items-center gap-1.5">
+                                <Crown size={10} className="text-amber-500" />
+                                Campus Lead
                               </p>
-                              <p className="text-[11px] text-text-dim leading-relaxed">
-                                {opt.description}
-                              </p>
+                              {leadProfile ? (
+                                <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-[11px] font-bold text-amber-600 shrink-0">
+                                    {initials(leadProfile.fullName)}
+                                  </span>
+                                  <div>
+                                    <Link
+                                      href={`/profile/${leadProfile.elevatesId || leadProfile.id}`}
+                                      className="font-semibold text-text hover:text-[var(--accent)] text-sm transition-colors"
+                                    >
+                                      {leadProfile.fullName}
+                                    </Link>
+                                    {leadProfile.elevatesId && (
+                                      <p className="font-mono text-[10px] text-text-dim">{leadProfile.elevatesId}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-text-dim">Unknown lead</p>
+                              )}
                             </div>
 
-                            {/* Authority status badge */}
-                            <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between text-[10px]">
-                              {isGranted ? (
-                                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
-                                  <Check size={11} className="shrink-0" />
-                                  Active Authority
-                                </span>
+                            {/* Executive Members */}
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute mb-3 flex items-center gap-1.5">
+                                <Shield size={10} className="text-cyan-500" />
+                                Executive Members ({members.length})
+                              </p>
+                              {members.length > 0 ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {members.map((m) => {
+                                    const p = store.profiles.find((u) => u.id === m.userId);
+                                    return (
+                                      <div
+                                        key={m.id}
+                                        className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5"
+                                      >
+                                        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[9px] font-bold text-[var(--accent)] shrink-0">
+                                          {initials(p?.fullName ?? "?")}
+                                        </span>
+                                        <span className="text-xs font-medium text-text">{p?.fullName || "Member"}</span>
+                                        {m.designation && (
+                                          <span className="text-[10px] text-text-mute ml-auto">{m.designation}</span>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               ) : (
-                                <span className="inline-flex items-center gap-1 text-text-mute">
-                                  <Lock size={10} className="shrink-0" />
-                                  Standard Member Access
-                                </span>
-                              )}
-                              {isThisSaving && (
-                                <span className="text-[var(--accent)] animate-pulse font-medium">
-                                  Saving…
-                                </span>
+                                <p className="text-xs text-text-dim">None listed</p>
                               )}
                             </div>
                           </div>
-                        );
-                      })}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* ── Past Terms ── */}
-      <div className="rounded-2xl bg-bg-panel shadow-[var(--shadow)] overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-border px-5 py-4">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-bg border border-border text-text-mute">
-            <History size={16} />
-          </span>
-          <div>
-            <h2 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
-              Past Terms & Historical Tenures
-            </h2>
-            <p className="text-[12px] text-text-mute">
-              {pastTerms.length} archived {pastTerms.length === 1 ? "term" : "terms"} · Read-only for all members
-            </p>
-          </div>
-        </div>
-
-        {!pastTerms.length ? (
-          <div className="flex flex-col items-center gap-3 py-14 text-center px-4">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
-              <History size={20} />
-            </span>
-            <div>
-              <p className="font-semibold text-text text-sm">No past terms</p>
-              <p className="text-xs text-text-dim mt-1">
-                Archived leadership terms will appear here after the first handover.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {pastTerms.map((term) => {
-              const leadProfile = store.profiles.find((p) => p.id === term.campusLeadId);
-              const members = store.termMembers.filter((tm) => tm.termId === term.id);
-              const isExpanded = expandedPastTerm === term.id;
-
-              return (
-                <div key={term.id}>
-                  {/* Collapsed Row */}
-                  <button
-                    className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-bg/40 transition-colors text-left"
-                    onClick={() => setExpandedPastTerm(isExpanded ? null : term.id)}
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg border border-border text-[11px] font-bold text-text-mute shrink-0">
-                        {term.termYear}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-text text-sm">
-                            {leadProfile?.fullName ?? "Unknown Lead"}
-                          </span>
-                          <Badge tone="mute">Closed</Badge>
-                        </div>
-                        <p className="text-[11px] text-text-dim truncate">
-                          {formatDate(term.startedAt)}
-                          {term.endedAt ? ` → ${formatDate(term.endedAt)}` : " → Archived"}
-                          {members.length > 0 ? ` · ${members.length} executive${members.length !== 1 ? "s" : ""}` : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    <span className="text-text-mute shrink-0 transition-transform duration-200" style={{ transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>
-                      <ChevronDown size={16} />
-                    </span>
-                  </button>
-
-                  {/* Expanded Detail */}
-                  {isExpanded && (
-                    <div className="px-5 pb-5 pt-1 border-t border-border/60 bg-bg/20">
-                      <div className="grid gap-4 sm:grid-cols-2 mt-3">
-                        {/* Lead */}
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute mb-2">
-                            Campus Lead
-                          </p>
-                          {leadProfile ? (
-                            <div className="flex items-center gap-2.5">
-                              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-[11px] font-bold text-amber-600 shrink-0">
-                                {initials(leadProfile.fullName)}
-                              </span>
-                              <div>
-                                <Link
-                                  href={`/profile/${leadProfile.elevatesId || leadProfile.id}`}
-                                  className="font-semibold text-text hover:text-[var(--accent)] text-xs transition-colors"
-                                >
-                                  {leadProfile.fullName}
-                                </Link>
-                                {leadProfile.elevatesId && (
-                                  <p className="font-mono text-[10px] text-text-dim">{leadProfile.elevatesId}</p>
-                                )}
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-text-dim">Unknown lead</p>
-                          )}
-                        </div>
-
-                        {/* Executives */}
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-text-mute mb-2">
-                            Executive Members ({members.length})
-                          </p>
-                          {members.length > 0 ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {members.map((m) => {
-                                const p = store.profiles.find((u) => u.id === m.userId);
-                                return (
-                                  <span
-                                    key={m.id}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2 py-1 text-[11px] text-text"
-                                  >
-                                    {p?.fullName || "Member"}
-                                    {m.designation && (
-                                      <span className="text-text-mute"> · {m.designation}</span>
-                                    )}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-text-dim">None listed</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ── MODAL: START NEW TERM (HANDOVER) — Premium Wizard ── */}
+      {/* ── MODAL: LEADERSHIP HANDOVER WIZARD ── */}
       {handoverModalOpen && (
         <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4">
-          {/* Backdrop */}
           <button
             type="button"
             aria-label="Close dialog"
@@ -1191,14 +1283,13 @@ export default function ChapterLeadershipPage({
             onClick={() => !isSubmittingHandover && setHandoverModalOpen(false)}
           />
 
-          {/* Panel */}
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Leadership Handover Wizard"
             className="relative z-10 flex flex-col w-full max-w-2xl max-h-[92dvh] rounded-2xl border border-border bg-bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.18)] overflow-hidden"
           >
-            {/* ── Header ── */}
+            {/* Header */}
             <div className="relative shrink-0 border-b border-border bg-bg-panel px-6 pt-5 pb-4">
               <button
                 type="button"
@@ -1208,7 +1299,6 @@ export default function ChapterLeadershipPage({
                 <X size={16} />
               </button>
 
-              {/* Title row */}
               <div className="flex items-center gap-3 pr-8">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)] shrink-0">
                   <ArrowRight size={16} />
@@ -1263,10 +1353,8 @@ export default function ChapterLeadershipPage({
               </div>
             </div>
 
-            {/* ── Scrollable Body ── */}
+            {/* Scrollable Body */}
             <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
-
-              {/* Error */}
               {handoverError && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 p-3.5">
                   <AlertTriangle size={15} className="text-red-500 shrink-0 mt-0.5" />
@@ -1274,7 +1362,6 @@ export default function ChapterLeadershipPage({
                 </div>
               )}
 
-              {/* Warning banner */}
               <div className="flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/8 p-4">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/20 text-amber-500 shrink-0">
                   <AlertTriangle size={15} />
@@ -1287,7 +1374,7 @@ export default function ChapterLeadershipPage({
                 </div>
               </div>
 
-              {/* ── Section 1: Term Year ── */}
+              {/* Step 1: Term Year */}
               <div className="rounded-xl border border-border bg-bg/40 p-4 space-y-3">
                 <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-mute">
                   <CalendarDays size={13} className="text-[var(--accent)]" /> Step 1 · Term Year
@@ -1309,7 +1396,7 @@ export default function ChapterLeadershipPage({
                 </div>
               </div>
 
-              {/* ── Section 2: Incoming Campus Lead ── */}
+              {/* Step 2: Incoming Campus Lead */}
               <div className="rounded-xl border border-border bg-bg/40 p-4 space-y-3">
                 <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-mute">
                   <Crown size={13} className="text-amber-500" /> Step 2 · Incoming Campus Lead
@@ -1324,7 +1411,6 @@ export default function ChapterLeadershipPage({
                   ))}
                 </Select>
 
-                {/* Selected Lead Preview */}
                 {nextCampusLeadId && (() => {
                   const p = chapterStudents.find(s => s.id === nextCampusLeadId);
                   return p ? (
@@ -1344,7 +1430,7 @@ export default function ChapterLeadershipPage({
                 })()}
               </div>
 
-              {/* ── Section 3: Executive Team ── */}
+              {/* Step 3: Executive Team */}
               <div className="rounded-xl border border-border bg-bg/40 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-text-mute">
@@ -1375,7 +1461,6 @@ export default function ChapterLeadershipPage({
                         key={idx}
                         className="flex items-center gap-2 rounded-xl border border-border bg-bg p-2"
                       >
-                        {/* Avatar preview */}
                         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--accent)] shrink-0">
                           {member.userId
                             ? initials(chapterStudents.find(s => s.id === member.userId)?.fullName ?? "")
@@ -1423,7 +1508,7 @@ export default function ChapterLeadershipPage({
               </div>
             </div>
 
-            {/* ── Footer ── */}
+            {/* Footer */}
             <div className="shrink-0 border-t border-border bg-bg-panel px-5 py-3.5 flex items-center justify-between gap-3">
               <p className="text-[11px] text-text-dim">
                 Current lead and executives will revert to <strong>Student</strong>.
@@ -1456,131 +1541,271 @@ export default function ChapterLeadershipPage({
         </div>
       )}
 
-      {/* ── MODAL: ASSIGN EXECUTIVE MEMBER ── Premium ── */}
+      {/* ── MODAL: ASSIGN EXECUTIVE MEMBER ── */}
       {assignModalOpen && (
         <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center p-4">
-          <button
-            type="button"
-            aria-label="Close"
-            className="absolute inset-0 bg-[color-mix(in_srgb,var(--charcoal-900)_50%,transparent)] backdrop-blur-[3px]"
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-charcoal-900/40 backdrop-blur-[3px] transition-opacity"
             onClick={() => !isSubmittingAssign && setAssignModalOpen(false)}
           />
 
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Appoint Executive Member"
-            className="relative z-10 flex flex-col w-full max-w-md max-h-[92dvh] rounded-2xl border border-border bg-bg-panel shadow-[0_24px_80px_rgba(0,0,0,0.18)] overflow-hidden"
+            aria-label="Appoint Executive Members"
+            className="relative z-10 flex flex-col w-full max-w-md rounded-[22px] border border-border bg-bg-panel shadow-[0_20px_60px_-15px_rgba(0,0,0,0.18)] overflow-hidden"
           >
             {/* Header */}
-            <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-slate-700 to-slate-900 px-6 pt-5 pb-5">
-              <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/5" />
-              <button
-                type="button"
-                onClick={() => !isSubmittingAssign && setAssignModalOpen(false)}
-                className="absolute right-4 top-4 rounded-full p-1.5 text-white/60 hover:bg-white/15 hover:text-white transition"
-              >
-                <X size={17} />
-              </button>
-
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white">
-                  <UserPlus size={18} />
+            <div className="shrink-0 border-b border-border/80 bg-bg-panel px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] shrink-0 border border-[var(--accent)]/15">
+                  <UserPlus size={17} />
                 </span>
                 <div>
-                  <h2 className="font-[family-name:var(--font-display)] text-[1.1rem] font-bold text-white">
-                    Appoint Executive Member
+                  <h2 className="font-[family-name:var(--font-display)] text-sm font-bold text-text">
+                    Appoint Executive Members
                   </h2>
-                  <p className="text-[11px] text-white/60">
-                    {activeTerm ? `Active Term · ${activeTerm.termYear}` : ""} · {chapter.name}
+                  <p className="text-[11px] text-text-dim">
+                    {activeTerm ? `Term ${activeTerm.termYear}` : ""} · {chapter.name}
                   </p>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => !isSubmittingAssign && setAssignModalOpen(false)}
+                className="rounded-lg p-1.5 text-text-mute hover:bg-bg hover:text-text transition-colors"
+                aria-label="Close dialog"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Compact Body */}
+            <div className="p-5 space-y-3.5">
               {assignError && (
-                <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 p-3">
+                <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-2.5">
                   <AlertTriangle size={14} className="text-red-500 shrink-0 mt-0.5" />
-                  <p className="text-[12px] text-red-500">{assignError}</p>
+                  <p className="text-xs text-red-500 leading-tight">{assignError}</p>
                 </div>
               )}
 
-              {/* Student Picker */}
-              <div>
-                <FieldLabel>Select Student *</FieldLabel>
-                <Select value={assignStudentId} onChange={(e) => setAssignStudentId(e.target.value)}>
-                  <option value="">— Choose a student from {chapter.name} —</option>
-                  {chapterStudents
-                    .filter((s) => s.id !== activeTerm?.campusLeadId)
-                    .map((stu) => (
-                      <option key={stu.id} value={stu.id}>
-                        {stu.fullName} ({stu.department || "No Dept"} · Year {stu.year || "—"})
-                      </option>
-                    ))}
-                </Select>
-              </div>
+              {/* Student Candidate Selection (Single or Bulk) */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <FieldLabel>Select Eligible Students *</FieldLabel>
+                  {filteredCandidates.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allIds = filteredCandidates.map((c) => c.id);
+                        const isAllSelected = allIds.every((id) => assignStudentIds.includes(id));
+                        setAssignStudentIds((prev) =>
+                          isAllSelected
+                            ? prev.filter((id) => !allIds.includes(id))
+                            : Array.from(new Set([...prev, ...allIds])),
+                        );
+                      }}
+                      className="text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                    >
+                      {filteredCandidates.every((c) => assignStudentIds.includes(c.id))
+                        ? "Deselect All"
+                        : "Select All"}
+                    </button>
+                  )}
+                </div>
 
-              {/* Live preview of selected student */}
-              {assignStudentId && (() => {
-                const p = chapterStudents.find(s => s.id === assignStudentId);
-                return p ? (
-                  <div className="flex items-center gap-3 rounded-xl border border-border bg-bg/60 p-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-sm font-bold text-[var(--accent)] shrink-0">
-                      {initials(p.fullName)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-text text-sm truncate">{p.fullName}</p>
-                      <p className="text-[11px] text-text-dim truncate">{p.email}</p>
-                    </div>
-                    <Badge tone="cyan">Selected</Badge>
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-mute pointer-events-none"
+                  />
+                  <Input
+                    value={assignStudentSearch}
+                    onChange={(e) => setAssignStudentSearch(e.target.value)}
+                    placeholder="Search by name, Elevates ID, or department…"
+                    className="pl-8.5 h-8.5 text-xs rounded-xl"
+                  />
+                  {assignStudentSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAssignStudentSearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-mute hover:text-text"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Selected Students Tags (if any) */}
+                {assignStudentIds.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 max-h-16 overflow-y-auto py-0.5">
+                    {assignStudentIds.map((id) => {
+                      const stu = chapterStudents.find((s) => s.id === id);
+                      if (!stu) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--accent)] border border-[var(--accent)]/20"
+                        >
+                          {stu.fullName}
+                          <button
+                            type="button"
+                            onClick={() => setAssignStudentIds((prev) => prev.filter((x) => x !== id))}
+                            className="hover:opacity-70 ml-0.5"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      );
+                    })}
+                    {assignStudentIds.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setAssignStudentIds([])}
+                        className="text-[10px] text-text-mute hover:text-red-500 underline ml-1"
+                      >
+                        Clear
+                      </button>
+                    )}
                   </div>
-                ) : null;
-              })()}
+                )}
 
-              {/* Designation */}
-              <div>
-                <FieldLabel>Designation / Role Title (Optional)</FieldLabel>
-                <Input
-                  value={assignDesignation}
-                  onChange={(e) => setAssignDesignation(e.target.value)}
-                  placeholder="e.g. Vice Chairman, Secretary, Technical Lead"
-                />
+                {/* Candidate List with Checkboxes */}
+                <div className="max-h-36 overflow-y-auto rounded-xl border border-border divide-y divide-border bg-bg/25">
+                  {filteredCandidates.length === 0 ? (
+                    <p className="p-3 text-center text-xs text-text-dim">
+                      {assignStudentSearch
+                        ? "No matching students found."
+                        : "No eligible students available."}
+                    </p>
+                  ) : (
+                    filteredCandidates.map((stu) => {
+                      const isSelected = assignStudentIds.includes(stu.id);
+                      return (
+                        <button
+                          key={stu.id}
+                          type="button"
+                          onClick={() => {
+                            setAssignStudentIds((prev) =>
+                              isSelected
+                                ? prev.filter((x) => x !== stu.id)
+                                : [...prev, stu.id],
+                            );
+                          }}
+                          className={cn(
+                            "w-full flex items-center justify-between gap-2.5 px-3 py-1.5 text-left transition-colors",
+                            isSelected ? "bg-[var(--accent-soft)]/25" : "hover:bg-bg/50",
+                          )}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className={cn(
+                                "flex h-4 w-4 rounded border items-center justify-center shrink-0 transition-colors",
+                                isSelected
+                                  ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                                  : "border-border bg-bg-panel",
+                              )}
+                            >
+                              {isSelected && <Check size={10} strokeWidth={3} />}
+                            </div>
+                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--accent-soft)] text-[10px] font-bold text-[var(--accent)] shrink-0">
+                              {initials(stu.fullName)}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-text truncate leading-tight">
+                                {stu.fullName}
+                              </p>
+                              <p className="text-[10px] text-text-dim truncate leading-tight mt-0.5">
+                                {stu.elevatesId ? `${stu.elevatesId} · ` : ""}
+                                {stu.department || "General"}
+                                {stu.year ? ` · Yr ${stu.year}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span className="text-[10px] font-bold text-[var(--accent)] shrink-0">
+                              Added
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
-              {/* Info note */}
-              <div className="rounded-xl border border-border bg-bg/40 p-3.5 flex items-start gap-2.5">
-                <Shield size={14} className="text-cyan-500 shrink-0 mt-0.5" />
-                <p className="text-[11px] text-text-dim leading-relaxed">
-                  Executive members receive <strong className="text-text">event & attendance</strong> management permissions but cannot execute leadership handovers.
-                </p>
+              {/* Workspace Tab Permissions (Compact Pills, No Designation) */}
+              <div className="space-y-1.5 pt-0.5">
+                <FieldLabel>Workspace Permissions (Optional)</FieldLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {INITIAL_TAB_PERMS.map((tab) => {
+                    const isChecked = assignInitialPermissions.includes(tab.key);
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => {
+                          setAssignInitialPermissions((prev) =>
+                            isChecked ? prev.filter((k) => k !== tab.key) : [...prev, tab.key],
+                          );
+                        }}
+                        className={cn(
+                          "rounded-lg px-2.5 py-1 text-xs font-medium transition-all border inline-flex items-center gap-1",
+                          isChecked
+                            ? "bg-[var(--accent)] border-[var(--accent)] text-white shadow-xs"
+                            : "bg-bg border-border text-text-dim hover:border-border-strong hover:text-text",
+                        )}
+                      >
+                        {isChecked && <Check size={11} strokeWidth={3} />}
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="shrink-0 border-t border-border bg-bg-panel px-5 py-3.5 flex items-center justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setAssignModalOpen(false)}
-                disabled={isSubmittingAssign}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="orange"
-                size="sm"
-                onClick={handleConfirmAssignExecutive}
-                disabled={isSubmittingAssign || !assignStudentId}
-                className="gap-1.5"
-              >
-                {isSubmittingAssign ? (
-                  "Appointing…"
-                ) : (
-                  <><UserPlus size={13} /> Confirm & Appoint</>
-                )}
-              </Button>
+            {/* Compact Footer */}
+            <div className="shrink-0 border-t border-border bg-bg-panel px-5 py-3 flex items-center justify-between gap-3">
+              <span className="text-xs text-text-dim">
+                {assignStudentIds.length === 0
+                  ? "Select students"
+                  : `${assignStudentIds.length} student${assignStudentIds.length === 1 ? "" : "s"} selected`}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAssignModalOpen(false)}
+                  disabled={isSubmittingAssign}
+                  className="h-8 text-xs"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="orange"
+                  size="sm"
+                  onClick={handleConfirmAssignExecutive}
+                  disabled={isSubmittingAssign || assignStudentIds.length === 0}
+                  className="gap-1.5 h-8 text-xs"
+                >
+                  {isSubmittingAssign ? (
+                    <>
+                      <span className="animate-spin">⟳</span> Appointing…
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus size={13} />
+                      {assignStudentIds.length > 1
+                        ? `Appoint (${assignStudentIds.length})`
+                        : "Confirm & Appoint"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

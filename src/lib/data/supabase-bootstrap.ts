@@ -28,7 +28,7 @@ import type {
 } from "@/types";
 import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 import { generateElevatesId } from "@/lib/forms/helpers";
-import { getChapterHandoverStatus } from "@/lib/leadership";
+import { getChapterHandoverStatus, parseDelegations } from "@/lib/leadership";
 
 const defaultBrandKit: BrandKit = {
   logoUrl: "/logo.svg",
@@ -823,7 +823,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         userId: tm.userId ?? tm.user_id,
         role: "executive_member" as const,
         designation: tm.designation ?? null,
-        permissions: Array.isArray(tm.permissions) ? tm.permissions : [],
+        permissions: parseDelegations(tm.permissions, tm.designation),
         addedAt: tm.addedAt ?? tm.added_at ?? new Date().toISOString(),
       }));
 
@@ -1111,35 +1111,29 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
 
         const hasExplicitRoles = assignedKeys.length > 0;
 
+        // Check active terms (Migration 045)
+        const isLeadInActiveTerm = terms.some(
+          (t) => (t.campusLeadId === matchedProfile.id || t.campusLeadId === authUser.id) && t.status === "active",
+        );
+        const isChapterLead = chapters.some(
+          (c) => c.campusLeadId === matchedProfile.id || c.campusLeadId === authUser.id,
+        );
+        if ((isLeadInActiveTerm || isChapterLead) && !assignedKeys.includes("campus_lead")) {
+          assignedKeys.push("campus_lead");
+        }
+
+        // Check active term members (Migration 045)
+        const isExecMember = termMembers.some(
+          (tm) =>
+            (tm.userId === matchedProfile.id || tm.userId === authUser.id) &&
+            terms.some((t) => t.id === tm.termId && t.status === "active"),
+        );
+        if (isExecMember && !assignedKeys.includes("executive_member")) {
+          assignedKeys.push("executive_member");
+        }
+
         // Fallback checks ONLY if no explicit roles found in user_roles
         if (!hasExplicitRoles) {
-          // Check active terms (Migration 045)
-          const isLeadInActiveTerm = terms.some(
-            (t) => (t.campusLeadId === matchedProfile.id || t.campusLeadId === authUser.id) && t.status === "active",
-          );
-          const isChapterLead = chapters.some(
-            (c) => c.campusLeadId === matchedProfile.id || c.campusLeadId === authUser.id,
-          );
-          if ((isLeadInActiveTerm || isChapterLead) && !assignedKeys.includes("campus_lead")) {
-            const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
-            if (profDesig !== "student") {
-              assignedKeys.push("campus_lead");
-            }
-          }
-
-          // Check active term members (Migration 045)
-          const isExecMember = termMembers.some(
-            (tm) =>
-              (tm.userId === matchedProfile.id || tm.userId === authUser.id) &&
-              terms.some((t) => t.id === tm.termId && t.status === "active"),
-          );
-          if (isExecMember && !assignedKeys.includes("executive_member")) {
-            const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
-            if (profDesig !== "student") {
-              assignedKeys.push("executive_member");
-            }
-          }
-
           // Check profile designation / role
           const profDesig = (matchedProfile.designation || "").toLowerCase().trim();
           const profRole = (matchedProfile.role || "").toLowerCase().trim();

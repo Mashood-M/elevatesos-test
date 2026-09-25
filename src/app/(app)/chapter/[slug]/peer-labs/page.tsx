@@ -2,8 +2,9 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentUser, useStore, showToast } from "@/context/store-context";
-import { resolveChapter, isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { resolveChapter, isFacultyRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 import { PeerLabCard } from "@/components/domain/peer-lab-card";
@@ -27,10 +28,15 @@ export default function ChapterPeerLabsPage({
 
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
   const isHq = isHqRole(session.roleKey);
+  const hasPeerLabDelegation = Boolean(
+    chapter && hasExecutiveDelegation(store, session.userId, chapter.id, "manage_peer_labs"),
+  );
   const isLead =
     isHq ||
-    ((isExecutiveRole(session.roleKey) || isFacultyRole(session.roleKey)) &&
-      (!session.chapterId || session.chapterId === chapter?.id));
+    session.roleKey === "campus_lead" ||
+    session.roleKey === "chairman" ||
+    isFacultyRole(session.roleKey) ||
+    hasPeerLabDelegation;
 
   const [labs, setLabs] = useState<PeerLabSeriesItem[]>([]);
   const [loading, setLoading] = useState(true);

@@ -11,6 +11,7 @@ import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { hasPermission } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 
@@ -40,7 +41,8 @@ export default function ChapterClustersPage({
     role === "secretary" ||
     role === "faculty_coordinator" ||
     role === "founder" ||
-    role === "hq_admin";
+    role === "hq_admin" ||
+    hasExecutiveDelegation(store, store.session.userId, chapter.id, "manage_clusters");
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
 
   function handleCreate() {

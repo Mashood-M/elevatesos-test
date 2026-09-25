@@ -44,6 +44,7 @@ import type {
 } from "@/types";
 
 import { ROLE_PRIORITY, roleRank } from "@/lib/permissions";
+import { parseDelegations } from "@/lib/leadership";
 export { ROLE_PRIORITY, roleRank };
 
 // ── TRANSFORMERS (DB Snake_case -> Store CamelCase) ──────────────────────────
@@ -1503,6 +1504,58 @@ export function applyRealtimeChangeToStore(
       };
     }
 
+    case "terms": {
+      if (eventType === "DELETE") {
+        return {
+          ...store,
+          terms: (store.terms ?? []).filter((t) => t.id !== targetId),
+        };
+      }
+      const item: import("@/types").Term = {
+        id: newRow.id,
+        chapterId: newRow.chapterId ?? newRow.chapter_id,
+        termYear: newRow.termYear ?? newRow.term_year,
+        campusLeadId: newRow.campusLeadId ?? newRow.campus_lead_id,
+        status: newRow.status,
+        startedAt: newRow.startedAt ?? newRow.started_at ?? new Date().toISOString(),
+        endedAt: newRow.endedAt ?? newRow.ended_at ?? null,
+      };
+      const list = store.terms ?? [];
+      const exists = list.some((t) => t.id === item.id);
+      return {
+        ...store,
+        terms: exists
+          ? list.map((t) => (t.id === item.id ? item : t))
+          : [item, ...list],
+      };
+    }
+
+    case "term_members": {
+      if (eventType === "DELETE") {
+        return {
+          ...store,
+          termMembers: (store.termMembers ?? []).filter((tm) => tm.id !== targetId),
+        };
+      }
+      const item: import("@/types").TermMember = {
+        id: newRow.id,
+        termId: newRow.termId ?? newRow.term_id,
+        userId: newRow.userId ?? newRow.user_id,
+        role: "executive_member",
+        designation: newRow.designation ?? null,
+        permissions: parseDelegations(newRow.permissions, newRow.designation),
+        addedAt: newRow.addedAt ?? newRow.added_at ?? new Date().toISOString(),
+      };
+      const list = store.termMembers ?? [];
+      const exists = list.some((tm) => tm.id === item.id);
+      return {
+        ...store,
+        termMembers: exists
+          ? list.map((tm) => (tm.id === item.id ? item : tm))
+          : [item, ...list],
+      };
+    }
+
     default:
       return store;
   }
@@ -1586,6 +1639,9 @@ export function mergeStoreData(
   const announcements = mergeEntities(currentStore.announcements, freshStore.announcements, (a, b) => a.chapterId === b.chapterId && a.title?.trim().toLowerCase() === b.title?.trim().toLowerCase());
   const volunteerGroups = mergeEntities(currentStore.volunteerGroups, freshStore.volunteerGroups, (a, b) => a.chapterId === b.chapterId && a.name?.trim().toLowerCase() === b.name?.trim().toLowerCase());
   const volunteerAssignments = mergeEntities(currentStore.volunteerAssignments, freshStore.volunteerAssignments, (a, b) => a.chapterId === b.chapterId && a.userId === b.userId && (a.eventId === b.eventId || !a.eventId));
+  const terms = freshStore.terms?.length ? freshStore.terms : currentStore.terms;
+  const termMembers = freshStore.termMembers?.length ? freshStore.termMembers : currentStore.termMembers;
+  const handoverWindows = freshStore.handoverWindows?.length ? freshStore.handoverWindows : currentStore.handoverWindows;
 
   return {
     ...freshStore,
@@ -1606,6 +1662,9 @@ export function mergeStoreData(
     announcements,
     volunteerGroups,
     volunteerAssignments,
+    terms,
+    termMembers,
+    handoverWindows,
     session: nextSession,
     // Keep outbound messages if they exist locally
     outboundMessages: currentStore.outboundMessages?.length
@@ -1644,6 +1703,9 @@ const MONITORED_TABLES = [
   "activity_logs",
   "volunteer_groups",
   "volunteer_assignments",
+  "terms",
+  "term_members",
+  "handover_windows",
 ];
 
 export function setupRealtimeSync(options: {

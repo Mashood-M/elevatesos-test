@@ -98,7 +98,9 @@ export function navGroupsForRole(
       ...(isSuperAdmin(roleKey)
         ? [{ href: "/hq/users", label: "Users", icon: I.usersAdmin }]
         : []),
-      { href: "/hq/leadership", label: "Leadership", icon: I.leadership },
+      ...(isSuperAdmin(roleKey)
+        ? [{ href: "/hq/leadership", label: "Leadership", icon: I.leadership }]
+        : []),
       // { href: "/hq/permissions", label: "Roles", icon: I.roles }, // hidden — role matrix not exposed in nav
       { href: "/hq/reports", label: "Reports", icon: I.reports },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
@@ -177,56 +179,73 @@ export function navGroupsForRole(
   }
 
   if (isExecutiveRole(roleKey)) {
+    const isLead = roleKey === "campus_lead" || isSuperAdmin(roleKey);
+    const hasPerm = (key: string) => isLead || delegatedPermissions.includes(key);
+
+    const programItems: NavItem[] = [
+      ...(hasPerm("manage_events")
+        ? [{ href: `${base}/events`, label: "Events", icon: I.events }]
+        : []),
+      ...(hasPerm("manage_peer_labs")
+        ? [{ href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook }]
+        : []),
+      ...(hasPerm("manage_volunteers") && roleKey !== "class_representative"
+        ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
+        : []),
+      ...(roleKey !== "class_representative" && (isLead || hasPerm("manage_events") || hasPerm("manage_reports"))
+        ? [{ href: `${base}/forms`, label: "Forms", icon: I.forms }]
+        : []),
+      ...(isLead || hasPerm("manage_attendance") || hasPerm("attendance_override")
+        ? [{ href: `${base}/attendance`, label: "Attendance", icon: I.attendance }]
+        : []),
+      ...(hasPerm("manage_clusters")
+        ? [{ href: `${base}/clusters`, label: "Clusters", icon: I.clusters }]
+        : []),
+      ...(hasPerm("manage_projects")
+        ? [{ href: `${base}/projects`, label: "Projects", icon: I.projects }]
+        : []),
+      ...(roleKey !== "class_representative" && hasPerm("manage_classes")
+        ? [{ href: `${base}/classes`, label: "Classes", icon: I.classes }]
+        : []),
+      ...(roleKey !== "class_representative" && hasPerm("manage_certificates")
+        ? [{ href: `${base}/certificates`, label: "Certificates", icon: I.certificates }]
+        : []),
+    ];
+
+    const peopleItems: NavItem[] = [
+      { href: `${base}/students`, label: "Student Directory", icon: I.students },
+      ...(isLead || hasPerm("manage_terms")
+        ? [{ href: `${base}/leadership`, label: "Leadership", icon: I.leadership }]
+        : []),
+      ...(hasPerm("manage_invites")
+        ? [{ href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms }]
+        : []),
+      { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
+      {
+        href: `${base}/announcements`,
+        label: "Announcements",
+        icon: I.announcements,
+      },
+      ...(hasPerm("manage_reports")
+        ? [{ href: `${base}/reports`, label: "Reports", icon: I.reports }]
+        : []),
+      { href: `${base}/resources`, label: "Resources", icon: I.resources },
+      ...(hasPerm("manage_settings") && slug
+        ? [{ href: `${base}/settings`, label: "Settings", icon: I.settings }]
+        : []),
+    ];
+
     return [
       {
         label: "Home",
         items: [
           { href: base, label: "Chapter Workspace", icon: I.desk },
-          { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
+          ...(isLead ? [{ href: `${base}/analytics`, label: "Analytics", icon: I.analytics }] : []),
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
         ],
       },
-      {
-        label: "Programs",
-        items: [
-          { href: `${base}/events`, label: "Events", icon: I.events },
-          { href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook },
-          ...(roleKey !== "class_representative"
-            ? [{ href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership }]
-            : []),
-          ...(roleKey !== "class_representative"
-            ? [{ href: `${base}/forms`, label: "Forms", icon: I.forms }]
-            : []),
-          { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
-          { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },
-          { href: `${base}/projects`, label: "Projects", icon: I.projects },
-          ...(roleKey !== "class_representative"
-            ? [
-                { href: `${base}/classes`, label: "Classes", icon: I.classes },
-                { href: `${base}/certificates`, label: "Certificates", icon: I.certificates },
-              ]
-            : []),
-        ],
-      },
-      {
-        label: "People & ops",
-        items: [
-          { href: `${base}/students`, label: "Student Directory", icon: I.students },
-          { href: `${base}/leadership`, label: "Leadership", icon: I.leadership },
-          { href: `${base}/invites`, label: "Chapter Invitations", icon: I.forms },
-          { href: `${base}/tasks`, label: "Tasks", icon: I.tasks },
-          {
-            href: `${base}/announcements`,
-            label: "Announcements",
-            icon: I.announcements,
-          },
-          { href: `${base}/reports`, label: "Reports", icon: I.reports },
-          { href: `${base}/resources`, label: "Resources", icon: I.resources },
-          ...((roleKey === "campus_lead" || delegatedPermissions.includes("manage_settings")) && slug
-            ? [{ href: `${base}/settings`, label: "Settings", icon: I.settings }]
-            : []),
-        ],
-      },
+      ...(programItems.length > 0 ? [{ label: "Programs", items: programItems }] : []),
+      { label: "People & ops", items: peopleItems },
       {
         label: "More",
         items: [
@@ -256,7 +275,6 @@ export function navGroupsForRole(
       label: "Explore",
       items: [
         { href: base, label: slug ? "Chapter" : "Student Hub", icon: I.chapter },
-        ...(slug ? [{ href: `${base}/leadership`, label: "Leadership", icon: I.leadership }] : []),
         { href: eventsHref, label: "Events", icon: I.events },
         { href: slug ? `${base}/peer-labs` : "/peer-labs", label: "Peer Labs", icon: I.playbook },
         { href: `${base}/clusters`, label: "Clusters", icon: I.clusters },

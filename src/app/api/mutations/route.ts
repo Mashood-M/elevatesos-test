@@ -15,6 +15,7 @@ import {
   ROLE_PRIORITY,
 } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { parseDelegations, encodeDelegationsToDesignation } from "@/lib/leadership";
 import type { RoleKey } from "@/types";
 
 // Default Root Organization UUID seeded in database migration 001/002
@@ -105,11 +106,12 @@ async function isExecutiveDelegated(
     if (!activeTerm) return false;
     const { data: tm } = await adminClient
       .from("term_members")
-      .select("permissions")
+      .select("permissions, designation")
       .eq("term_id", activeTerm.id)
       .eq("user_id", userId)
       .maybeSingle();
-    return Array.isArray((tm as any)?.permissions) && (tm as any).permissions.includes(powerKey);
+    const perms = parseDelegations((tm as any)?.permissions, (tm as any)?.designation);
+    return perms.includes(powerKey);
   } catch {
     return false;
   }
@@ -471,10 +473,14 @@ export async function GET(req: Request) {
         .from("handover_windows")
         .select("*")
         .order("opened_at", { ascending: false });
+      const cleanTermMembers = (termMembers ?? []).map((tm: any) => ({
+        ...tm,
+        permissions: parseDelegations(tm.permissions, tm.designation),
+      }));
       return NextResponse.json({
         ok: true,
         terms: terms ?? [],
-        termMembers: termMembers ?? [],
+        termMembers: cleanTermMembers,
         handoverWindows: handoverWindows ?? [],
       });
     }
@@ -4887,18 +4893,19 @@ export async function POST(req: Request) {
     }
 
     if (type === "assign_executive_member") {
-      const { chapterId, userId, designation } = data;
+      const { chapterId, userId, designation, permissions } = data;
       if (!chapterId || !userId) {
         return NextResponse.json({ ok: false, error: "chapterId and userId are required" }, { status: 400 });
       }
 
+      const callerIds = [auth.userId, auth.authUserId].filter(Boolean);
       // Restrict this option to users with role 'campus_lead' for their own chapter only (or founder/hq_admin)
       const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
       let isLead = false;
 
       if (!isHqPrivileged) {
         if (
-          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman" || auth.assignedKeys.includes("campus_lead") || auth.assignedKeys.includes("chairman")) &&
           (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
         ) {
           isLead = true;
@@ -4912,7 +4919,7 @@ export async function POST(req: Request) {
             .eq("status", "active")
             .maybeSingle();
 
-          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+          if (termCheck && callerIds.includes(termCheck.campus_lead_id)) {
             isLead = true;
           } else {
             const { data: chapCheck } = await admin
@@ -4920,7 +4927,7 @@ export async function POST(req: Request) {
               .select("id, campus_lead_id")
               .eq("id", chapterId)
               .maybeSingle();
-            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+            if (chapCheck && callerIds.includes(chapCheck.campus_lead_id)) {
               isLead = true;
             }
           }
@@ -4934,27 +4941,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Try stored procedure first
-      const { data: rpcRes, error: rpcErr } = await admin.rpc("assign_chapter_executive_member", {
-        p_chapter_id: chapterId,
-        p_acting_user_id: auth.userId,
-        p_target_user_id: userId,
-        p_designation: designation ? String(designation).trim() : null,
-      });
-
-      if (!rpcErr && rpcRes) {
-        try {
-          await admin.from("profiles").update({
-            role: "Executive Member",
-            designation: "executive_member",
-            chapter_id: chapterId,
-          }).eq("id", userId);
-        } catch {}
-
-        return NextResponse.json({ ok: true, data: rpcRes });
-      }
-
-      // Fallback
+      // Check active term first
       const { data: activeTerm } = await admin
         .from("terms")
         .select("id, campus_lead_id")
@@ -4971,47 +4958,135 @@ export async function POST(req: Request) {
         );
       }
 
-      if (!isLead && !isHqPrivileged && activeTerm.campus_lead_id !== auth.userId) {
-        return NextResponse.json(
-          { ok: false, error: "Only the active campus lead for this chapter can assign executive members" },
-          { status: 403 },
-        );
+      // Fetch student profile to ensure details are accurate and sync to public.users if needed
+      const { data: targetProfile } = await admin
+        .from("profiles")
+        .select("id, full_name, email, phone, chapter_id, role, designation, elevates_id")
+        .eq("id", userId)
+        .maybeSingle();
+
+      // Ensure public.users row exists to satisfy foreign keys on public.term_members(user_id)
+      try {
+        await admin.from("users").upsert({
+          id: userId,
+          full_name: targetProfile?.full_name || "Student",
+          name: targetProfile?.full_name || "Student",
+          email: targetProfile?.email || null,
+          phone: targetProfile?.phone || null,
+          chapter_id: chapterId,
+          role: "executive_member",
+          designation: "executive_member",
+          elevates_id: targetProfile?.elevates_id || null,
+        }, { onConflict: "id" });
+      } catch (userUpsertErr) {
+        console.warn("[assign_executive_member] Note on public.users upsert:", userUpsertErr);
       }
 
-      const termMemberId = genUuid();
-      await admin.from("term_members").insert({
-        id: termMemberId,
-        term_id: activeTerm.id,
-        user_id: userId,
-        role: "executive_member",
-        designation: designation ? String(designation).trim() : null,
-        permissions: [],
-        added_at: new Date().toISOString(),
-      });
+      const initialPerms = Array.isArray(permissions) ? permissions : [];
+      const permsDesignation = encodeDelegationsToDesignation(initialPerms, designation);
 
+      // Try stored procedure first if acting user matches
+      let createdMemberId: string | null = null;
+      for (const actingId of callerIds) {
+        try {
+          const { data: rpcRes, error: rpcErr } = await admin.rpc("assign_chapter_executive_member", {
+            p_chapter_id: chapterId,
+            p_acting_user_id: actingId,
+            p_target_user_id: userId,
+            p_designation: permsDesignation,
+          });
+          if (!rpcErr && rpcRes) {
+            createdMemberId =
+              typeof rpcRes === "object" && rpcRes !== null
+                ? ((rpcRes as any).term_member_id ?? (rpcRes as any).termMemberId ?? String(rpcRes))
+                : String(rpcRes);
+            break;
+          }
+        } catch {}
+      }
+
+      if (!createdMemberId) {
+        // Direct insert fallback
+        const termMemberId = genUuid();
+        let { error: insErr } = await admin.from("term_members").insert({
+          id: termMemberId,
+          term_id: activeTerm.id,
+          user_id: userId,
+          role: "executive_member",
+          designation: permsDesignation,
+          permissions: initialPerms,
+          added_at: new Date().toISOString(),
+        });
+
+        // If insert failed due to missing 'permissions' column (migration 048 not run yet), retry without permissions column
+        if (insErr && (insErr.message?.includes("permissions") || (insErr as any)?.code === "42703")) {
+          const retry = await admin.from("term_members").insert({
+            id: termMemberId,
+            term_id: activeTerm.id,
+            user_id: userId,
+            role: "executive_member",
+            designation: permsDesignation,
+            added_at: new Date().toISOString(),
+          });
+          insErr = retry.error;
+        }
+
+        if (insErr) {
+          console.error("term_members direct insert failed:", insErr);
+          return NextResponse.json(
+            { ok: false, error: `Database error creating executive member: ${insErr.message}` },
+            { status: 500 },
+          );
+        }
+
+        createdMemberId = termMemberId;
+      } else {
+        // Ensure both designation and permissions are updated on RPC created row
+        try {
+          await admin.from("term_members").update({
+            permissions: initialPerms,
+            designation: permsDesignation,
+          }).eq("id", createdMemberId);
+        } catch {
+          try {
+            await admin.from("term_members").update({
+              designation: permsDesignation,
+            }).eq("id", createdMemberId);
+          } catch {}
+        }
+      }
+
+      // Upsert executive_member role into user_roles
       const { data: execRole } = await admin
         .from("roles")
         .select("id")
         .eq("key", "executive_member")
         .maybeSingle();
 
-      await admin.from("user_roles").insert({
+      const { error: urErr } = await admin.from("user_roles").upsert({
         user_id: userId,
         role_key: "executive_member",
         role_id: execRole?.id ?? null,
         chapter_id: chapterId,
         is_permanent: true,
-      });
+      }, { onConflict: "user_id,chapter_id,role_key" });
 
+      if (urErr) {
+        console.warn("user_roles upsert notice:", urErr);
+      }
+
+      // Update profile role and designation
       try {
         await admin.from("profiles").update({
           role: "Executive Member",
           designation: "executive_member",
           chapter_id: chapterId,
         }).eq("id", userId);
-      } catch {}
+      } catch (profErr) {
+        console.warn("profiles update notice:", profErr);
+      }
 
-      return NextResponse.json({ ok: true, termMemberId, termId: activeTerm.id });
+      return NextResponse.json({ ok: true, termMemberId: createdMemberId, termId: activeTerm.id });
     }
 
     // REMOVE EXECUTIVE MEMBER
@@ -5024,13 +5099,14 @@ export async function POST(req: Request) {
         );
       }
 
+      const callerIds = [auth.userId, auth.authUserId].filter(Boolean);
       // Only campus_lead of this chapter or founder/hq_admin can remove
       const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
       let isLead = false;
 
       if (!isHqPrivileged) {
         if (
-          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman" || auth.assignedKeys.includes("campus_lead") || auth.assignedKeys.includes("chairman")) &&
           (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
         ) {
           isLead = true;
@@ -5044,7 +5120,7 @@ export async function POST(req: Request) {
             .eq("status", "active")
             .maybeSingle();
 
-          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+          if (termCheck && callerIds.includes(termCheck.campus_lead_id)) {
             isLead = true;
           } else {
             const { data: chapCheck } = await admin
@@ -5052,7 +5128,7 @@ export async function POST(req: Request) {
               .select("id, campus_lead_id")
               .eq("id", chapterId)
               .maybeSingle();
-            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+            if (chapCheck && callerIds.includes(chapCheck.campus_lead_id)) {
               isLead = true;
             }
           }
@@ -5113,13 +5189,14 @@ export async function POST(req: Request) {
         );
       }
 
+      const callerIds = [auth.userId, auth.authUserId].filter(Boolean);
       // Verify caller is active campus lead for this chapter or founder/hq_admin
       const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
       let isLead = false;
 
       if (!isHqPrivileged) {
         if (
-          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman" || auth.assignedKeys.includes("campus_lead") || auth.assignedKeys.includes("chairman")) &&
           (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
         ) {
           isLead = true;
@@ -5133,7 +5210,7 @@ export async function POST(req: Request) {
             .eq("status", "active")
             .maybeSingle();
 
-          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+          if (termCheck && callerIds.includes(termCheck.campus_lead_id)) {
             isLead = true;
           } else {
             const { data: chapCheck } = await admin
@@ -5141,10 +5218,24 @@ export async function POST(req: Request) {
               .select("id, campus_lead_id")
               .eq("id", chapterId)
               .maybeSingle();
-            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+            if (chapCheck && callerIds.includes(chapCheck.campus_lead_id)) {
               isLead = true;
             }
           }
+        }
+
+        if (!isLead && termMemberId) {
+          try {
+            const { data: tmCheck } = await admin
+              .from("term_members")
+              .select("term_id, terms!inner(campus_lead_id, chapter_id)")
+              .eq("id", termMemberId)
+              .maybeSingle();
+            const leadId = (tmCheck?.terms as any)?.campus_lead_id;
+            if (callerIds.includes(leadId)) {
+              isLead = true;
+            }
+          } catch {}
         }
       }
 
@@ -5155,17 +5246,48 @@ export async function POST(req: Request) {
         );
       }
 
-      const { data: updatedRow, error: updErr } = await admin
+      // Encode delegations into designation for zero-migration Supabase compatibility
+      const permsDesignation = encodeDelegationsToDesignation(permissions);
+      let updatedRow: any = null;
+      let updErr: any = null;
+
+      // 1. Try updating both permissions array and designation text column
+      const tryBoth = await admin
         .from("term_members")
-        .update({ permissions })
+        .update({ permissions, designation: permsDesignation })
         .eq("id", termMemberId)
-        .select("id, permissions, term_id, user_id")
+        .select("id, designation, term_id, user_id")
         .maybeSingle();
+
+      if (tryBoth.error) {
+        const isColMissing =
+          tryBoth.error.message?.includes("permissions") || (tryBoth.error as any)?.code === "42703";
+        if (isColMissing) {
+          const tryDesig = await admin
+            .from("term_members")
+            .update({ designation: permsDesignation })
+            .eq("id", termMemberId)
+            .select("id, designation, term_id, user_id")
+            .maybeSingle();
+          if (tryDesig.error) {
+            updErr = tryDesig.error;
+          } else {
+            updatedRow = { ...tryDesig.data, permissions };
+          }
+        } else {
+          updErr = tryBoth.error;
+        }
+      } else {
+        updatedRow = { ...tryBoth.data, permissions };
+      }
 
       if (updErr) {
         console.error("term_members update permissions error in Supabase:", updErr);
         return NextResponse.json(
-          { ok: false, error: `Database error updating permissions: ${updErr.message}` },
+          {
+            ok: false,
+            error: `Database error updating permissions: ${updErr.message}`,
+          },
           { status: 500 },
         );
       }

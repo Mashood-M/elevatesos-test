@@ -158,6 +158,11 @@ export default function ExecutivePage() {
     session.roleKey === "founder" ||
     session.roleKey === "hq_admin";
 
+  const canManageLeadership =
+    session.roleKey === "campus_lead" ||
+    session.roleKey === "founder" ||
+    session.roleKey === "hq_admin";
+
   const [selectedSubTeam, setSelectedSubTeam] = useState<string>("all");
 
   const score = profile ? executiveScore(store, profile.id) : 0;
@@ -273,9 +278,11 @@ export default function ExecutivePage() {
         actions={
           chapter ? (
             <div className="flex flex-wrap gap-2">
-              <Link href={`/chapter/${chapter.slug}/leadership`}>
-                <Button variant="primary">Manage Leadership</Button>
-              </Link>
+              {canManageLeadership && (
+                <Link href={`/chapter/${chapter.slug}/leadership`}>
+                  <Button variant="primary">Manage Leadership</Button>
+                </Link>
+              )}
               <Link href={`/chapter/${chapter.slug}`}>
                 <Button variant="ghost">Open chapter</Button>
               </Link>
@@ -302,7 +309,7 @@ export default function ExecutivePage() {
       </div>
 
       {/* Chairman Executive Team Sub-Roles Inspector */}
-      {isChairman && chapter ? (
+      {isChairman && canManageLeadership && chapter ? (
         <div className="mt-6">
           <TerminalPanel
             title="Executive Team Hierarchy & Role Inspector"
@@ -617,12 +624,14 @@ export default function ExecutivePage() {
           <div className="mt-4 flex flex-wrap gap-3 text-[12px]">
             {chapter ? (
               <>
-                <Link
-                  href={`/chapter/${chapter.slug}/leadership`}
-                  className="font-medium text-[var(--accent)] hover:underline"
-                >
-                  Executive Leadership →
-                </Link>
+                {canManageLeadership && (
+                  <Link
+                    href={`/chapter/${chapter.slug}/leadership`}
+                    className="font-medium text-[var(--accent)] hover:underline"
+                  >
+                    Executive Leadership →
+                  </Link>
+                )}
                 <Link
                   href={`/chapter/${chapter.slug}/events`}
                   className="font-medium text-[var(--accent)] hover:underline"

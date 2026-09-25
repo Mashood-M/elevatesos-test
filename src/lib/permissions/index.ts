@@ -26,8 +26,7 @@ export function canCreateEvent(roleKey: RoleKey): boolean {
     roleKey === "founder" ||
     roleKey === "hq_admin" ||
     roleKey === "campus_lead" ||
-    roleKey === "chairman" ||
-    roleKey === "executive_member"
+    roleKey === "chairman"
   );
 }
 
@@ -39,8 +38,7 @@ export function canManageClasses(roleKey: RoleKey): boolean {
     roleKey === "chairman" ||
     roleKey === "vice_chairman" ||
     roleKey === "secretary" ||
-    roleKey === "elevates_coordinator" ||
-    roleKey === "executive_member"
+    roleKey === "elevates_coordinator"
   );
 }
 
@@ -84,8 +82,7 @@ export function hasPermission(
     return (
       isSuperAdmin(roleKey) ||
       roleKey === "campus_lead" ||
-      roleKey === "chairman" ||
-      roleKey === "executive_member"
+      roleKey === "chairman"
     );
   }
   if (permission === "class.manage") {
@@ -156,13 +153,12 @@ export function permissionsForRole(store: ElevatesStore, roleKey: RoleKey) {
       (roleKey === "campus_lead" ||
         roleKey === "chairman" ||
         roleKey === "elevates_coordinator" ||
-        roleKey === "faculty_coordinator" ||
-        roleKey === "executive_member")
+        roleKey === "faculty_coordinator")
     ) {
       allowed = true;
     } else if (p.key === "event.create" && canCreateEvent(roleKey)) {
       allowed = true;
-    } else if (p.key === "event.manage" && (roleKey === "campus_lead" || roleKey === "chairman" || roleKey === "executive_member")) {
+    } else if (p.key === "event.manage" && (roleKey === "campus_lead" || roleKey === "chairman")) {
       allowed = true;
     } else if (p.key === "class.manage" && canManageClasses(roleKey)) {
       allowed = true;

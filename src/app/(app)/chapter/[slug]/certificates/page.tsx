@@ -9,8 +9,9 @@ import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { isExecutiveRole, resolveChapter, chapterEyebrow } from "@/lib/access";
+import { resolveChapter, chapterEyebrow } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn } from "@/lib/utils";
 import { ElevatesCertificate } from "@/components/domain/elevates-certificate";
 import { CertificateCanvaEditor } from "@/components/domain/certificate-canva-editor";
@@ -61,7 +62,11 @@ export default function ChapterCertificatesPage({
   const { session } = useCurrentUser();
 
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
-  const canManage = isExecutiveRole(session.roleKey) || isHqRole(session.roleKey);
+  const canManage =
+    isHqRole(session.roleKey) ||
+    session.roleKey === "campus_lead" ||
+    session.roleKey === "chairman" ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_certificates") : false);
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<"attendance" | "ledger" | "designer">("attendance");

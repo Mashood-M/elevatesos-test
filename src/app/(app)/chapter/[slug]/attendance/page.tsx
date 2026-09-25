@@ -66,6 +66,7 @@ export default function ChapterAttendancePage({
     session.roleKey === "hq_admin" ||
     session.roleKey === "elevates_coordinator" ||
     session.roleKey === "faculty_coordinator" ||
+    session.roleKey === "executive_member" ||
     (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "attendance_override") : false);
 
   // Class Representative Scoped Cohort

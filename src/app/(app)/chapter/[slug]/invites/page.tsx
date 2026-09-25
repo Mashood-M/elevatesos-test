@@ -8,6 +8,7 @@ import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-co
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { deriveChapterShortCode } from "@/lib/chapters";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
@@ -27,11 +28,12 @@ export default function ChapterInvitesPage({
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
-  // Access control: Campus Lead, Class Representative, and HQ roles ONLY
+  // Access control: Campus Lead, Class Representative, HQ roles, or delegated Executive Members
   const isAllowedRole =
     session.roleKey === "campus_lead" ||
     session.roleKey === "class_representative" ||
-    isHqRole(session.roleKey);
+    isHqRole(session.roleKey) ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_invites") : false);
 
   const shortCode = useMemo(() => {
     if (chapter?.shortCode) return chapter.shortCode.trim().toUpperCase();
@@ -83,7 +85,7 @@ export default function ChapterInvitesPage({
           Access Restricted
         </h2>
         <p className="mt-2 text-xs text-text-dim">
-          Only Campus Leads and Class Representatives can access the Chapter Invitations module and generate unique chapter invite codes.
+          Only Campus Leads, authorized Executive Members, and Class Representatives can access the Chapter Invitations module and generate unique chapter invite codes.
         </p>
         <div className="mt-6">
           <Link

@@ -26,6 +26,7 @@ import {
   type OfflineCheckInItem,
 } from "@/lib/attendance/offline-queue";
 import { hasPermission } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { cohortRepIds } from "@/lib/forms/helpers";
 import { cn, formatDateTime } from "@/lib/utils";
@@ -64,7 +65,8 @@ export default function ChapterAttendancePage({
     session.roleKey === "founder" ||
     session.roleKey === "hq_admin" ||
     session.roleKey === "elevates_coordinator" ||
-    session.roleKey === "faculty_coordinator";
+    session.roleKey === "faculty_coordinator" ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "attendance_override") : false);
 
   // Class Representative Scoped Cohort
   const myClassCohort = useMemo(() => {

@@ -555,6 +555,11 @@ type StoreContextValue = {
     userId: string;
     chapterId: string;
   }) => Promise<{ ok: boolean; error?: string }>;
+  updateExecutiveMemberPermissions: (input: {
+    termMemberId: string;
+    permissions: string[];
+    chapterId: string;
+  }) => Promise<boolean>;
   createFirstTerm: (input: {
     chapterId: string;
     campusLeadId: string;
@@ -6563,6 +6568,37 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return { ok: true };
         } catch (err: unknown) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
+        }
+      },
+      updateExecutiveMemberPermissions: async (input: {
+        termMemberId: string;
+        permissions: string[];
+        chapterId: string;
+      }) => {
+        setStore((s) => ({
+          ...s,
+          termMembers: s.termMembers.map((tm) =>
+            tm.id === input.termMemberId ? { ...tm, permissions: input.permissions } : tm,
+          ),
+        }));
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "update_executive_member_permissions",
+              data: {
+                termMemberId: input.termMemberId,
+                permissions: input.permissions,
+                chapterId: input.chapterId,
+              },
+            }),
+          });
+          const json = await res.json();
+          return Boolean(json.ok);
+        } catch {
+          return false;
         }
       },
       createFirstTerm: async (input) => {

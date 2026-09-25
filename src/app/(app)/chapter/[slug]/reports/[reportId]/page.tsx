@@ -9,6 +9,7 @@ import { HqReportViewer } from "@/components/domain/reports/hq-report-viewer";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { isUserAppointedVolunteerForEvent } from "@/lib/volunteers";
 import { downloadReportDocx } from "@/lib/reports/docx-export";
 import { formatDateTime } from "@/lib/utils";
@@ -29,8 +30,12 @@ export default function ChapterReportDocumentPage({
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const draftRef = useRef<{ html: string; json: string } | null>(null);
 
-  const canSubmit = hasPermission(store, session.roleKey, "report.submit");
-  const canDownload = hasPermission(store, session.roleKey, "report.download");
+  const hasReportDelegation = Boolean(
+    chapter && hasExecutiveDelegation(store, session.userId, chapter.id, "manage_reports"),
+  );
+
+  const canSubmit = hasPermission(store, session.roleKey, "report.submit") || hasReportDelegation;
+  const canDownload = hasPermission(store, session.roleKey, "report.download") || hasReportDelegation;
   const isFaculty = isFacultyRole(session.roleKey);
   const isHq = isHqRole(session.roleKey);
   const canReview = hasPermission(store, session.roleKey, "report.approve") || isFaculty;

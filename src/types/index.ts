@@ -354,6 +354,7 @@ export interface TermMember {
   userId: string;
   role: "executive_member";
   designation?: string | null;
+  permissions?: string[] | null;
   addedAt: string;
 }
 

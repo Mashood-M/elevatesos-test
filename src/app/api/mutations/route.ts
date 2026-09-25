@@ -78,6 +78,43 @@ async function syncMemberTable(
   return null;
 }
 
+async function isExecutiveDelegated(
+  adminClient: AdminClient,
+  userId: string,
+  chapterIdOrSlug: string,
+  powerKey: string,
+): Promise<boolean> {
+  if (!userId || !chapterIdOrSlug) return false;
+  try {
+    let effectiveChapterId = chapterIdOrSlug;
+    if (!isUuid(chapterIdOrSlug)) {
+      const { data: chap } = await adminClient
+        .from("chapters")
+        .select("id")
+        .eq("slug", chapterIdOrSlug)
+        .maybeSingle();
+      if (chap?.id) effectiveChapterId = chap.id;
+    }
+
+    const { data: activeTerm } = await adminClient
+      .from("terms")
+      .select("id")
+      .eq("chapter_id", effectiveChapterId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!activeTerm) return false;
+    const { data: tm } = await adminClient
+      .from("term_members")
+      .select("permissions")
+      .eq("term_id", activeTerm.id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    return Array.isArray((tm as any)?.permissions) && (tm as any).permissions.includes(powerKey);
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const admin = createServiceClient();
@@ -1534,6 +1571,19 @@ export async function POST(req: Request) {
         chapterId = genUuid();
       }
 
+      if (!auth.isHq) {
+        const isLead =
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId));
+        const isDelegatedSettings = await isExecutiveDelegated(admin, auth.userId, chapterId, "manage_settings");
+        if (!isLead && !isDelegatedSettings) {
+          return NextResponse.json(
+            { ok: false, error: "Permission denied: chapter settings management requires campus lead or delegated executive authority" },
+            { status: 403 },
+          );
+        }
+      }
+
       const chapterElevatesId = getChapterElevatesId({ id: chapterId, elevatesId: chapter.elevatesId });
 
       const basePayload: Record<string, any> = {
@@ -1968,23 +2018,33 @@ export async function POST(req: Request) {
             (nowMs >= startsAtMs && nowMs < endsAtMs && ev.status !== "completed" && ev.status !== "cancelled");
 
           if (!isOngoing && ev.status !== "ongoing") {
-            if (nowMs < startsAtMs) {
-              return NextResponse.json(
-                {
-                  ok: false,
-                  error: "Attendance cannot be taken before the event starts. Please start the event first.",
-                },
-                { status: 400 },
-              );
-            }
-            if (nowMs >= endsAtMs || ev.status === "completed") {
-              return NextResponse.json(
-                {
-                  ok: false,
-                  error: "Attendance cannot be taken after the event has ended.",
-                },
-                { status: 400 },
-              );
+            const isLead =
+              (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+              (auth.chapterId === ev.chapter_id || auth.allowedChapterIds?.includes(ev.chapter_id));
+            const hasAttOverride =
+              auth.isHq ||
+              isLead ||
+              (await isExecutiveDelegated(admin, auth.userId, ev.chapter_id, "attendance_override"));
+
+            if (!hasAttOverride) {
+              if (nowMs < startsAtMs) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    error: "Attendance cannot be taken before the event starts. Please start the event first.",
+                  },
+                  { status: 400 },
+                );
+              }
+              if (nowMs >= endsAtMs || ev.status === "completed") {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    error: "Attendance cannot be taken after the event has ended.",
+                  },
+                  { status: 400 },
+                );
+              }
             }
           }
         }
@@ -2107,13 +2167,23 @@ export async function POST(req: Request) {
               (nowMs >= startsAtMs && nowMs < endsAtMs && ev.status !== "completed" && ev.status !== "cancelled");
 
             if (!isOngoing && ev.status !== "ongoing") {
-              return NextResponse.json(
-                {
-                  ok: false,
-                  error: "Attendance cannot be recorded because this event is not currently ongoing.",
-                },
-                { status: 400 },
-              );
+              const isLead =
+                (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+                (auth.chapterId === ev.chapter_id || auth.allowedChapterIds?.includes(ev.chapter_id));
+              const hasAttOverride =
+                auth.isHq ||
+                isLead ||
+                (await isExecutiveDelegated(admin, auth.userId, ev.chapter_id, "attendance_override"));
+
+              if (!hasAttOverride) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    error: "Attendance cannot be recorded because this event is not currently ongoing.",
+                  },
+                  { status: 400 },
+                );
+              }
             }
           }
         }
@@ -2532,8 +2602,9 @@ export async function POST(req: Request) {
       const isApproving = rep.status === "approved" || rep.status === "verified";
       let approvedBy = null;
       if (isApproving) {
-        if (!auth.isHq && !isFacultyRole(auth.roleKey) && !isCampusLead(auth.roleKey)) {
-          return NextResponse.json({ ok: false, error: "Permission denied: approving reports requires faculty coordinator or campus lead role" }, { status: 403 });
+        const isDelegatedReports = await isExecutiveDelegated(admin, auth.userId, rep.chapterId, "manage_reports");
+        if (!auth.isHq && !isFacultyRole(auth.roleKey) && !isCampusLead(auth.roleKey) && !isDelegatedReports) {
+          return NextResponse.json({ ok: false, error: "Permission denied: approving reports requires faculty coordinator, campus lead, or delegated executive role" }, { status: 403 });
         }
         approvedBy = auth.userId;
       }
@@ -2722,7 +2793,8 @@ export async function POST(req: Request) {
       }
       const chapErr = checkChapterScope(dept.chapterId);
       if (chapErr) return chapErr;
-      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+      const isClassesDelegated = await isExecutiveDelegated(admin, auth.userId, dept.chapterId, "manage_classes");
+      if (!auth.isHq && !canManageClasses(auth.roleKey) && !isClassesDelegated) {
         return NextResponse.json({ ok: false, error: "Permission denied: managing departments requires class.manage permission" }, { status: 403 });
       }
       const deptId = isUuid(dept.id) ? dept.id : genUuid();
@@ -2749,7 +2821,10 @@ export async function POST(req: Request) {
         const chapErr = checkChapterScope(deptRow.chapter_id);
         if (chapErr) return chapErr;
       }
-      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+      const isClassesDelegated = deptRow?.chapter_id
+        ? await isExecutiveDelegated(admin, auth.userId, deptRow.chapter_id, "manage_classes")
+        : false;
+      if (!auth.isHq && !canManageClasses(auth.roleKey) && !isClassesDelegated) {
         return NextResponse.json({ ok: false, error: "Permission denied to delete department" }, { status: 403 });
       }
       const { error: delDeptErr } = await admin.from("departments").delete().eq("id", id);
@@ -2768,7 +2843,8 @@ export async function POST(req: Request) {
       }
       const chapErr = checkChapterScope(cohort.chapterId);
       if (chapErr) return chapErr;
-      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+      const isClassesDelegated = await isExecutiveDelegated(admin, auth.userId, cohort.chapterId, "manage_classes");
+      if (!auth.isHq && !canManageClasses(auth.roleKey) && !isClassesDelegated) {
         return NextResponse.json({ ok: false, error: "Permission denied: managing class cohorts requires class.manage permission" }, { status: 403 });
       }
       const cohortId = isUuid(cohort.id) ? cohort.id : genUuid();
@@ -2815,7 +2891,10 @@ export async function POST(req: Request) {
         const chapErr = checkChapterScope(cohortRow.chapter_id);
         if (chapErr) return chapErr;
       }
-      if (!auth.isHq && !canManageClasses(auth.roleKey)) {
+      const isClassesDelegated = cohortRow?.chapter_id
+        ? await isExecutiveDelegated(admin, auth.userId, cohortRow.chapter_id, "manage_classes")
+        : false;
+      if (!auth.isHq && !canManageClasses(auth.roleKey) && !isClassesDelegated) {
         return NextResponse.json({ ok: false, error: "Permission denied to delete class cohort" }, { status: 403 });
       }
       const { error: delCohortErr } = await admin.from("class_cohorts").delete().eq("id", id);
@@ -4568,10 +4647,11 @@ export async function POST(req: Request) {
         );
       }
 
-      // Only the current active term's campus_lead_id for a chapter can execute the handover action (or HQ)
-      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
+      // Only the current active term's campus_lead_id for a chapter can execute the handover action (or HQ, or delegated executive member)
+      const hasHandoverDelegation = await isExecutiveDelegated(admin, auth.userId, chapterId, "manage_terms");
+      if (activeTerm.campus_lead_id !== auth.userId && !hasHandoverDelegation && auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
         return NextResponse.json(
-          { ok: false, error: "Only the current active term campus lead can execute the handover" },
+          { ok: false, error: "Only the current active term campus lead or authorized executive member can execute the handover" },
           { status: 403 },
         );
       }
@@ -4812,10 +4892,42 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, error: "chapterId and userId are required" }, { status: 400 });
       }
 
-      // Restrict this option to users with role 'campus_lead' for their own chapter only (or founder)
-      const isLead =
-        (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") && auth.chapterId === chapterId;
-      if (!isLead && auth.roleKey !== "founder") {
+      // Restrict this option to users with role 'campus_lead' for their own chapter only (or founder/hq_admin)
+      const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
+      let isLead = false;
+
+      if (!isHqPrivileged) {
+        if (
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
+        ) {
+          isLead = true;
+        }
+
+        if (!isLead && chapterId) {
+          const { data: termCheck } = await admin
+            .from("terms")
+            .select("id, campus_lead_id")
+            .eq("chapter_id", chapterId)
+            .eq("status", "active")
+            .maybeSingle();
+
+          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+            isLead = true;
+          } else {
+            const { data: chapCheck } = await admin
+              .from("chapters")
+              .select("id, campus_lead_id")
+              .eq("id", chapterId)
+              .maybeSingle();
+            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+              isLead = true;
+            }
+          }
+        }
+      }
+
+      if (!isLead && !isHqPrivileged) {
         return NextResponse.json(
           { ok: false, error: "Only Campus Lead for this chapter can assign Executive Members" },
           { status: 403 },
@@ -4859,8 +4971,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Verify caller is active campus lead for this chapter (or founder)
-      if (activeTerm.campus_lead_id !== auth.userId && auth.roleKey !== "founder") {
+      if (!isLead && !isHqPrivileged && activeTerm.campus_lead_id !== auth.userId) {
         return NextResponse.json(
           { ok: false, error: "Only the active campus lead for this chapter can assign executive members" },
           { status: 403 },
@@ -4874,6 +4985,7 @@ export async function POST(req: Request) {
         user_id: userId,
         role: "executive_member",
         designation: designation ? String(designation).trim() : null,
+        permissions: [],
         added_at: new Date().toISOString(),
       });
 
@@ -4913,10 +5025,40 @@ export async function POST(req: Request) {
       }
 
       // Only campus_lead of this chapter or founder/hq_admin can remove
-      const isLead =
-        (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
-        auth.chapterId === chapterId;
-      const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin";
+      const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
+      let isLead = false;
+
+      if (!isHqPrivileged) {
+        if (
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
+        ) {
+          isLead = true;
+        }
+
+        if (!isLead && chapterId) {
+          const { data: termCheck } = await admin
+            .from("terms")
+            .select("id, campus_lead_id")
+            .eq("chapter_id", chapterId)
+            .eq("status", "active")
+            .maybeSingle();
+
+          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+            isLead = true;
+          } else {
+            const { data: chapCheck } = await admin
+              .from("chapters")
+              .select("id, campus_lead_id")
+              .eq("id", chapterId)
+              .maybeSingle();
+            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+              isLead = true;
+            }
+          }
+        }
+      }
+
       if (!isLead && !isHqPrivileged) {
         return NextResponse.json(
           { ok: false, error: "Only the Campus Lead for this chapter can remove Executive Members" },
@@ -4960,6 +5102,88 @@ export async function POST(req: Request) {
       }
 
       return NextResponse.json({ ok: true });
+    }
+
+    if (type === "update_executive_member_permissions") {
+      const { termMemberId, permissions, chapterId } = data;
+      if (!termMemberId || !Array.isArray(permissions)) {
+        return NextResponse.json(
+          { ok: false, error: "termMemberId and permissions array are required" },
+          { status: 400 },
+        );
+      }
+
+      // Verify caller is active campus lead for this chapter or founder/hq_admin
+      const isHqPrivileged = auth.roleKey === "founder" || auth.roleKey === "hq_admin" || auth.isHq;
+      let isLead = false;
+
+      if (!isHqPrivileged) {
+        if (
+          (auth.roleKey === "campus_lead" || auth.roleKey === "chairman") &&
+          (auth.chapterId === chapterId || auth.allowedChapterIds?.includes(chapterId))
+        ) {
+          isLead = true;
+        }
+
+        if (!isLead && chapterId) {
+          const { data: termCheck } = await admin
+            .from("terms")
+            .select("id, campus_lead_id")
+            .eq("chapter_id", chapterId)
+            .eq("status", "active")
+            .maybeSingle();
+
+          if (termCheck && termCheck.campus_lead_id === auth.userId) {
+            isLead = true;
+          } else {
+            const { data: chapCheck } = await admin
+              .from("chapters")
+              .select("id, campus_lead_id")
+              .eq("id", chapterId)
+              .maybeSingle();
+            if (chapCheck && chapCheck.campus_lead_id === auth.userId) {
+              isLead = true;
+            }
+          }
+        }
+      }
+
+      if (!isLead && !isHqPrivileged) {
+        return NextResponse.json(
+          { ok: false, error: "Only the Campus Lead can delegate permissions to executive members" },
+          { status: 403 },
+        );
+      }
+
+      const { data: updatedRow, error: updErr } = await admin
+        .from("term_members")
+        .update({ permissions })
+        .eq("id", termMemberId)
+        .select("id, permissions, term_id, user_id")
+        .maybeSingle();
+
+      if (updErr) {
+        console.error("term_members update permissions error in Supabase:", updErr);
+        return NextResponse.json(
+          { ok: false, error: `Database error updating permissions: ${updErr.message}` },
+          { status: 500 },
+        );
+      }
+
+      // Audit activity log
+      try {
+        await admin.from("activity_logs").insert({
+          id: genUuid(),
+          user_id: auth.userId,
+          action: "update_executive_member_permissions",
+          entity_type: "term_members",
+          entity_id: termMemberId,
+          metadata: { permissions, chapterId },
+          created_at: new Date().toISOString(),
+        });
+      } catch {}
+
+      return NextResponse.json({ ok: true, data: updatedRow });
     }
 
     // 21. CREATE FIRST CHAPTER TERM (FOUNDER ONLY)

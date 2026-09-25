@@ -71,9 +71,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     session.userId && (
       (store.volunteerGroups || []).some((g) => g.memberIds?.includes(session.userId)) ||
       (store.events || []).some((e) => e.volunteerStudentIds?.includes(session.userId))
-    )
+    ),
   );
-  const groups = navGroupsForRole(session.roleKey, chapterSlug, isVolunteer);
+  const activeTerm = chapter
+    ? store.terms.find((t) => t.chapterId === chapter.id && t.status === "active")
+    : null;
+  const myTermMember = activeTerm && session.userId
+    ? store.termMembers.find((tm) => tm.termId === activeTerm.id && tm.userId === session.userId)
+    : null;
+  const myDelegations = Array.isArray(myTermMember?.permissions) ? myTermMember.permissions : [];
+
+  const groups = navGroupsForRole(session.roleKey, chapterSlug, isVolunteer, myDelegations);
   const unread = store.notifications.filter(
     (n) => n.userId === session.userId && !n.read,
   ).length;

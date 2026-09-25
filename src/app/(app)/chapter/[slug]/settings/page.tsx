@@ -38,6 +38,7 @@ import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate, formatDateTime, cn } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { deriveChapterShortCode } from "@/lib/chapters";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import type { Chapter } from "@/types";
 import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-code-manager";
 import { ChapterDepartmentManager } from "@/components/chapter/chapter-department-manager";
@@ -68,9 +69,10 @@ export default function ChapterSettingsPage({
       session.roleKey === "campus_lead" ||
       session.roleKey === "class_representative" ||
       session.roleKey === "chairman" ||
-      session.roleKey === "secretary"
+      session.roleKey === "secretary" ||
+      hasExecutiveDelegation(store, session.userId, chapter.id, "manage_settings")
     );
-  }, [chapter, session.roleKey, store]);
+  }, [chapter, session.roleKey, session.userId, store]);
 
   if (!chapter) {
     return (

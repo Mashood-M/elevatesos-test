@@ -23,6 +23,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { compressImageFile, downloadReportDocx } from "@/lib/reports/docx-export";
 import { extractEventReportAnalytics } from "@/lib/reports/feedback-analytics";
 import {
@@ -76,15 +77,21 @@ export default function ChapterReportsPage({
   const [wizardError, setWizardError] = useState("");
   const [facultyFilter, setFacultyFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
 
-  const canSubmit = hasPermission(store, session.roleKey, "report.submit");
-  const canDownload = hasPermission(store, session.roleKey, "report.download");
+  const hasReportDelegation = Boolean(
+    chapter && hasExecutiveDelegation(store, session.userId, chapter.id, "manage_reports"),
+  );
+
+  const canSubmit = hasPermission(store, session.roleKey, "report.submit") || hasReportDelegation;
+  const canDownload = hasPermission(store, session.roleKey, "report.download") || hasReportDelegation;
   const isFaculty = isFacultyRole(session.roleKey);
   const isStudent =
-    session.roleKey === "student" ||
-    session.roleKey === "class_representative";
+    (session.roleKey === "student" ||
+    session.roleKey === "class_representative") &&
+    !hasReportDelegation;
   const isExecOrHq =
     isHqRole(session.roleKey) ||
-    (!isFaculty && !isStudent && canSubmit);
+    (!isFaculty && !isStudent && canSubmit) ||
+    hasReportDelegation;
 
   const appointedEventIds = useMemo(() => {
     return new Set(

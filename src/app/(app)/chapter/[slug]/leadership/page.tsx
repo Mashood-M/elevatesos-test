@@ -9,22 +9,33 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
-import { getChapterHandoverStatus } from "@/lib/leadership";
+import {
+  CAMPUS_LEAD_DELEGATION_OPTIONS,
+  CampusLeadOptionKey,
+  getChapterHandoverStatus,
+  hasExecutiveDelegation,
+} from "@/lib/leadership";
 import { cn, formatDate, initials } from "@/lib/utils";
 import {
   AlertTriangle,
   ArrowRight,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   Clock,
   Crown,
   History,
+  Key,
   Lock,
   Plus,
   Shield,
+  ShieldCheck,
+  Sliders,
   Sparkles,
   Trash2,
+  UserCheck,
   UserPlus,
   Users,
   X,
@@ -42,7 +53,13 @@ export default function ChapterLeadershipPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const { store, executeTermHandover, assignExecutiveMember, removeExecutiveMember } = useStore();
+  const {
+    store,
+    executeTermHandover,
+    assignExecutiveMember,
+    removeExecutiveMember,
+    updateExecutiveMemberPermissions,
+  } = useStore();
   const { session } = useCurrentUser();
 
   const chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
@@ -94,7 +111,7 @@ export default function ChapterLeadershipPage({
 
   const isWindowOpen = windowStatus.isOpen;
 
-  const isCurrentCampusLead = Boolean(
+  const canManageDelegations = Boolean(
     (session.roleKey === "campus_lead" &&
       (session.chapterId === chapter?.id ||
         session.chapterId === chapter?.slug ||
@@ -102,6 +119,11 @@ export default function ChapterLeadershipPage({
         (activeTerm && session.userId === activeTerm.campusLeadId))) ||
       session.roleKey === "founder" ||
       session.roleKey === "hq_admin",
+  );
+
+  const isCurrentCampusLead = Boolean(
+    canManageDelegations ||
+      (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_terms") : false),
   );
 
   const canAssignExecutive = Boolean(
@@ -114,6 +136,96 @@ export default function ChapterLeadershipPage({
             session.userId === chapter?.campusLeadId ||
             session.userId === activeTerm.campusLeadId))),
   );
+
+  // Delegations State & Handlers
+  const [collapsedMemberIds, setCollapsedMemberIds] = useState<Set<string>>(new Set());
+  const [updatingPermKey, setUpdatingPermKey] = useState<string | null>(null);
+
+  function toggleCollapseMember(id: string) {
+    setCollapsedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleTogglePermission(
+    termMemberId: string,
+    memberName: string,
+    optionKey: CampusLeadOptionKey,
+  ) {
+    if (!chapter) return;
+    const target = store.termMembers.find((m) => m.id === termMemberId);
+    if (!target) return;
+
+    const current = Array.isArray(target.permissions) ? target.permissions : [];
+    const isGranted = current.includes(optionKey);
+    const nextPermissions = isGranted
+      ? current.filter((k) => k !== optionKey)
+      : [...current, optionKey];
+
+    const optDef = CAMPUS_LEAD_DELEGATION_OPTIONS.find((o) => o.key === optionKey);
+    const optLabel = optDef?.label || optionKey;
+    const opKey = `${termMemberId}:${optionKey}`;
+    setUpdatingPermKey(opKey);
+
+    try {
+      const ok = await updateExecutiveMemberPermissions({
+        termMemberId,
+        permissions: nextPermissions,
+        chapterId: chapter.id,
+      });
+      if (ok) {
+        showFlash(
+          isGranted
+            ? `✓ Revoked "${optLabel}" from ${memberName}.`
+            : `✓ Granted "${optLabel}" to ${memberName}.`,
+        );
+      } else {
+        showFlash(`❌ Failed to update delegations for ${memberName}.`);
+      }
+    } catch (err) {
+      showFlash(`❌ ${err instanceof Error ? err.message : "Error updating delegation"}`);
+    } finally {
+      setUpdatingPermKey(null);
+    }
+  }
+
+  async function handleBulkPermissions(
+    termMemberId: string,
+    memberName: string,
+    grantAll: boolean,
+  ) {
+    if (!chapter) return;
+    const nextPermissions = grantAll
+      ? CAMPUS_LEAD_DELEGATION_OPTIONS.map((o) => o.key)
+      : [];
+
+    const opKey = `${termMemberId}:bulk`;
+    setUpdatingPermKey(opKey);
+
+    try {
+      const ok = await updateExecutiveMemberPermissions({
+        termMemberId,
+        permissions: nextPermissions,
+        chapterId: chapter.id,
+      });
+      if (ok) {
+        showFlash(
+          grantAll
+            ? `✓ Granted all Campus Lead powers to ${memberName}.`
+            : `✓ Revoked all delegated powers from ${memberName}.`,
+        );
+      } else {
+        showFlash(`❌ Failed to update delegations for ${memberName}.`);
+      }
+    } catch (err) {
+      showFlash(`❌ ${err instanceof Error ? err.message : "Error updating delegation"}`);
+    } finally {
+      setUpdatingPermKey(null);
+    }
+  }
 
   // Modals
   const [handoverModalOpen, setHandoverModalOpen] = useState(false);
@@ -681,6 +793,256 @@ export default function ChapterLeadershipPage({
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Executive Delegations Section · Campus Lead Authority ── */}
+      <div className="rounded-2xl bg-bg-panel shadow-[var(--shadow)] overflow-hidden">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-[var(--accent)]">
+              <Sliders size={18} />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  Executive Delegations · Campus Lead Authority
+                </h2>
+                <Badge tone="cyan">User-Scoped</Badge>
+              </div>
+              <p className="text-[12px] text-text-mute">
+                Empower individual executive members with exclusive Campus Lead powers on a per-user basis.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-dim">
+              {activeTermMembers.length} {activeTermMembers.length === 1 ? "Executive Member" : "Executive Members"}
+            </span>
+          </div>
+        </div>
+
+        {/* Content */}
+        {!activeTerm ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center px-4">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
+              <Sliders size={20} />
+            </span>
+            <p className="text-xs font-semibold text-text">No Active Term</p>
+            <p className="text-[11px] text-text-dim max-w-sm">
+              An active term is required to appoint executive members and delegate Campus Lead authority.
+            </p>
+          </div>
+        ) : activeTermMembers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center px-4">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-bg border border-dashed border-border text-text-mute">
+              <Users size={20} />
+            </span>
+            <p className="text-xs font-semibold text-text">No Executive Members to Delegate</p>
+            <p className="text-[11px] text-text-dim max-w-sm">
+              Appoint an executive member in the Active Term panel above to selectively grant exclusive Campus Lead capabilities.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {/* Guide notice */}
+            <div className="bg-bg/40 px-5 py-3 border-b border-border/70 flex items-start gap-2.5 text-xs text-text-dim">
+              <Sparkles size={14} className="text-[var(--accent)] shrink-0 mt-0.5" />
+              <p>
+                Each toggle grants full operational capability for that option to that specific executive user. Delegations take effect immediately across all chapter workspaces.
+              </p>
+            </div>
+
+            {/* List of Executive Members and their toggles */}
+            {activeTermMembers.map((tm) => {
+              const profile = store.profiles.find((p) => p.id === tm.userId);
+              const memberName = profile?.fullName ?? "Executive Member";
+              const memberPerms: string[] = Array.isArray(tm.permissions) ? tm.permissions : [];
+              const isCollapsed = collapsedMemberIds.has(tm.id);
+              const grantedCount = memberPerms.length;
+              const isUpdatingMember = Boolean(updatingPermKey && updatingPermKey.startsWith(`${tm.id}:`));
+
+              return (
+                <div key={tm.id} className="p-5 transition-colors">
+                  {/* Member Card Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-soft)] text-sm font-bold text-[var(--accent)] shrink-0">
+                        {initials(memberName)}
+                      </span>
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            href={`/profile/${profile?.elevatesId || tm.userId}`}
+                            className="font-bold text-text hover:text-[var(--accent)] text-sm transition-colors"
+                          >
+                            {memberName}
+                          </Link>
+                          <Badge tone="cyan">{tm.designation || "Executive Member"}</Badge>
+                          <Badge tone={grantedCount > 0 ? "orange" : "mute"}>
+                            {grantedCount} of {CAMPUS_LEAD_DELEGATION_OPTIONS.length} Granted
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-text-dim mt-0.5">
+                          {profile?.email}
+                          {profile?.department ? ` · ${profile.department}` : ""}
+                          {profile?.year ? ` · Year ${profile.year}` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Member Header Actions */}
+                    <div className="flex items-center gap-2 self-start sm:self-center">
+                      {canManageDelegations && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isUpdatingMember || grantedCount === CAMPUS_LEAD_DELEGATION_OPTIONS.length}
+                            onClick={() => handleBulkPermissions(tm.id, memberName, true)}
+                            className="text-[11px] font-semibold text-[var(--accent)] hover:bg-[var(--accent-soft)] rounded-lg px-2.5 py-1 border border-[var(--accent)]/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Grant All
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isUpdatingMember || grantedCount === 0}
+                            onClick={() => handleBulkPermissions(tm.id, memberName, false)}
+                            className="text-[11px] font-medium text-text-mute hover:text-text hover:bg-bg rounded-lg px-2.5 py-1 border border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Revoke All
+                          </button>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapseMember(tm.id)}
+                        className="rounded-lg p-1.5 text-text-mute hover:text-text hover:bg-bg transition-colors"
+                        title={isCollapsed ? "Expand permissions" : "Collapse permissions"}
+                      >
+                        {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Options List / Grid */}
+                  {!isCollapsed && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      {CAMPUS_LEAD_DELEGATION_OPTIONS.map((opt) => {
+                        const isGranted = memberPerms.includes(opt.key);
+                        const isThisSaving = updatingPermKey === `${tm.id}:${opt.key}`;
+
+                        // Category Tone
+                        const categoryTone =
+                          opt.category === "Administration"
+                            ? "border-slate-500/20 bg-slate-500/5 text-slate-400"
+                            : opt.category === "Governance"
+                            ? "border-purple-500/20 bg-purple-500/5 text-purple-400"
+                            : opt.category === "Operations"
+                            ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-500"
+                            : "border-amber-500/20 bg-amber-500/5 text-amber-500";
+
+                        return (
+                          <div
+                            key={opt.key}
+                            className={cn(
+                              "flex flex-col justify-between rounded-xl border p-3.5 transition-all duration-200",
+                              isGranted
+                                ? "border-[var(--accent)]/40 bg-[var(--accent-soft)]/20 shadow-xs"
+                                : "border-border/80 bg-bg/50 hover:bg-bg",
+                            )}
+                          >
+                            <div>
+                              {/* Top Bar: Category & Toggle Switch */}
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <span
+                                  className={cn(
+                                    "rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase",
+                                    categoryTone,
+                                  )}
+                                >
+                                  {opt.category}
+                                </span>
+
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={cn(
+                                      "text-[11px] font-semibold transition-colors",
+                                      isGranted ? "text-[var(--accent)]" : "text-text-mute",
+                                    )}
+                                  >
+                                    {isGranted ? "Granted" : "Disabled"}
+                                  </span>
+
+                                  {/* Toggle Button */}
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={isGranted}
+                                    disabled={!canManageDelegations || isThisSaving}
+                                    onClick={() => handleTogglePermission(tm.id, memberName, opt.key)}
+                                    title={
+                                      !canManageDelegations
+                                        ? "Only the Campus Lead or Elevates HQ can configure delegations"
+                                        : isGranted
+                                        ? `Revoke ${opt.label}`
+                                        : `Grant ${opt.label}`
+                                    }
+                                    className={cn(
+                                      "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-50",
+                                      isGranted ? "bg-[var(--accent)]" : "bg-border-strong",
+                                    )}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className={cn(
+                                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                                        isGranted ? "translate-x-5" : "translate-x-0",
+                                      )}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Title & Description */}
+                              <p className="font-bold text-xs text-text mb-1 flex items-center gap-1.5">
+                                {opt.label}
+                              </p>
+                              <p className="text-[11px] text-text-dim leading-relaxed">
+                                {opt.description}
+                              </p>
+                            </div>
+
+                            {/* Authority status badge */}
+                            <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between text-[10px]">
+                              {isGranted ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                                  <Check size={11} className="shrink-0" />
+                                  Active Authority
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-text-mute">
+                                  <Lock size={10} className="shrink-0" />
+                                  Standard Member Access
+                                </span>
+                              )}
+                              {isThisSaving && (
+                                <span className="text-[var(--accent)] animate-pulse font-medium">
+                                  Saving…
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

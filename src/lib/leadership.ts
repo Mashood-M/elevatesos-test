@@ -167,3 +167,108 @@ export function getChapterHandoverStatus(
   };
 }
 
+export type CampusLeadOptionKey =
+  | "manage_settings"
+  | "manage_classes"
+  | "manage_volunteers"
+  | "manage_events"
+  | "manage_reports"
+  | "manage_invites"
+  | "attendance_override"
+  | "manage_terms";
+
+export interface CampusLeadDelegationOption {
+  key: CampusLeadOptionKey;
+  label: string;
+  category: "Administration" | "Governance" | "Operations" | "Programs";
+  description: string;
+}
+
+export const CAMPUS_LEAD_DELEGATION_OPTIONS: CampusLeadDelegationOption[] = [
+  {
+    key: "manage_settings",
+    label: "Chapter Settings & Profile",
+    category: "Administration",
+    description: "Access chapter settings, configure college details, coordinates, social handles, and branding.",
+  },
+  {
+    key: "manage_classes",
+    label: "Class Representatives & Cohorts",
+    category: "Governance",
+    description: "Appoint and revoke Class Representatives across departments, assign cohorts, and manage class sections.",
+  },
+  {
+    key: "manage_volunteers",
+    label: "Volunteer Team & Powers",
+    category: "Operations",
+    description: "Create and manage volunteer groups, recruit student volunteers, and configure delegated check-in powers.",
+  },
+  {
+    key: "manage_events",
+    label: "Event Approvals & Publishing",
+    category: "Programs",
+    description: "Review pending event drafts, publish official campus events to public calendar, and manage cancellations.",
+  },
+  {
+    key: "manage_reports",
+    label: "Official Reports Sign-off",
+    category: "Operations",
+    description: "Formally review, sign off, and submit event and quarterly compliance reports to Faculty and HQ.",
+  },
+  {
+    key: "manage_invites",
+    label: "Chapter Invitations & Codes",
+    category: "Administration",
+    description: "Generate 3-day join invitation tokens, QR codes, and approve student membership requests.",
+  },
+  {
+    key: "attendance_override",
+    label: "Attendance Window Override",
+    category: "Operations",
+    description: "Take and verify attendance anytime, bypass strict event hours, and finalize post-event attendance records.",
+  },
+  {
+    key: "manage_terms",
+    label: "Term Handover Management",
+    category: "Governance",
+    description: "Configure incoming leadership appointments and execute term transition during an open handover window.",
+  },
+];
+
+/**
+ * Checks whether a given user has been granted an exclusive Campus Lead delegated power in their chapter.
+ * Campus Leads and Founders implicitly possess all capabilities.
+ */
+export function hasExecutiveDelegation(
+  store: { terms?: any[]; termMembers?: any[]; chapters?: any[]; session?: any },
+  userId: string,
+  chapterId: string,
+  optionKey: CampusLeadOptionKey | string,
+): boolean {
+  if (!userId || !chapterId) return false;
+
+  // 1. If user is the active Campus Lead or Founder / HQ, always allowed
+  const isLead =
+    store.terms?.some(
+      (t) => t.chapterId === chapterId && t.status === "active" && t.campusLeadId === userId,
+    ) ||
+    store.chapters?.some((c) => c.id === chapterId && c.campusLeadId === userId);
+
+  if (isLead) return true;
+
+  // 2. Locate active term for the chapter
+  const activeTerm = store.terms?.find(
+    (t) => t.chapterId === chapterId && t.status === "active",
+  );
+  if (!activeTerm) return false;
+
+  // 3. Locate term member entry for this user
+  const member = store.termMembers?.find(
+    (tm) => tm.termId === activeTerm.id && tm.userId === userId,
+  );
+  if (!member || !Array.isArray(member.permissions)) return false;
+
+  return member.permissions.includes(optionKey);
+}
+
+

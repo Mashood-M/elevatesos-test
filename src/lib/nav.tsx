@@ -87,6 +87,7 @@ export function navGroupsForRole(
   roleKey: RoleKey,
   chapterSlug = "",
   isVolunteer = false,
+  delegatedPermissions: string[] = [],
 ): NavGroup[] {
   const slug = chapterSlug || "";
   const base = slug ? `/chapter/${slug}` : "/chapter";
@@ -221,7 +222,7 @@ export function navGroupsForRole(
           },
           { href: `${base}/reports`, label: "Reports", icon: I.reports },
           { href: `${base}/resources`, label: "Resources", icon: I.resources },
-          ...(roleKey === "campus_lead" && slug
+          ...((roleKey === "campus_lead" || delegatedPermissions.includes("manage_settings")) && slug
             ? [{ href: `${base}/settings`, label: "Settings", icon: I.settings }]
             : []),
         ],

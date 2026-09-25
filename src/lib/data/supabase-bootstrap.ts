@@ -823,6 +823,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
         userId: tm.userId ?? tm.user_id,
         role: "executive_member" as const,
         designation: tm.designation ?? null,
+        permissions: Array.isArray(tm.permissions) ? tm.permissions : [],
         addedAt: tm.addedAt ?? tm.added_at ?? new Date().toISOString(),
       }));
 

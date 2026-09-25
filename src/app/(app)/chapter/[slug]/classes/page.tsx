@@ -14,6 +14,7 @@ import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn } from "@/lib/utils";
 import type { ClassCohort, Department } from "@/types";
 import {
@@ -90,7 +91,8 @@ export default function ChapterClassesPage({
 
   const canManage =
     canManageClasses(session.roleKey) ||
-    hasPermission(store, session.roleKey, "class.manage");
+    hasPermission(store, session.roleKey, "class.manage") ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_classes") : false);
 
   // Tab State: "departments" | "classes" | "assign"
   const [activeTab, setActiveTab] = useState<"departments" | "classes" | "assign" | "students">("departments");
@@ -243,8 +245,10 @@ export default function ChapterClassesPage({
 
   const isCampusLeadForThisChapter =
     session.roleKey === "founder" ||
+    session.roleKey === "hq_admin" ||
     (session.roleKey === "campus_lead" &&
-      (session.chapterId === chapter?.id || session.chapterId === chapter?.slug));
+      (session.chapterId === chapter?.id || session.chapterId === chapter?.slug)) ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_classes") : false);
 
   async function executeAssignExecutiveMember() {
     if (!chapter) return;

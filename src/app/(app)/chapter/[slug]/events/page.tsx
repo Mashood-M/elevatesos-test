@@ -23,6 +23,7 @@ import {
 } from "@/lib/events";
 import { defaultFormsForEvent, getEventForm } from "@/lib/forms/helpers";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
@@ -97,13 +98,17 @@ export default function ChapterEventsPage({
   const [search, setSearch] = useState("");
   const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
 
-  const canCreate = hasPermission(store, session.roleKey, "event.create");
-  const canApprove = hasPermission(store, session.roleKey, "registration.approve");
-  const canReview = hasPermission(store, session.roleKey, "registration.review");
+  const hasEventDelegation = Boolean(
+    chapter && hasExecutiveDelegation(store, session.userId, chapter.id, "manage_events"),
+  );
+
+  const canCreate = hasPermission(store, session.roleKey, "event.create") || hasEventDelegation;
+  const canApprove = hasPermission(store, session.roleKey, "registration.approve") || hasEventDelegation;
+  const canReview = hasPermission(store, session.roleKey, "registration.review") || hasEventDelegation;
   const canManage =
-    canCreate || hasPermission(store, session.roleKey, "event.manage");
+    canCreate || hasPermission(store, session.roleKey, "event.manage") || hasEventDelegation;
   const canPublish =
-    canPublishEvent(session.roleKey, undefined, session.userId) || canManage;
+    canPublishEvent(session.roleKey, undefined, session.userId) || canManage || hasEventDelegation;
 
   useEffect(() => {
     if (searchParams.get("create") === "1" && canCreate) {
@@ -488,7 +493,8 @@ export default function ChapterEventsPage({
               (chip) =>
                 chip.key !== "draft" ||
                 session.roleKey === "campus_lead" ||
-                isHqRole(session.roleKey),
+                isHqRole(session.roleKey) ||
+                hasEventDelegation,
             ).map((chip) => {
               const isActive = statusChip === chip.key;
               const count = counts[chip.key];
@@ -716,6 +722,7 @@ export default function ChapterEventsPage({
                         session.roleKey === "chairman" ||
                         session.roleKey === "elevates_coordinator" ||
                         session.roleKey === "hq_admin" ||
+                        hasEventDelegation ||
                         ev.organizerId === session.userId) && (
                         <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
                           {isOngoing ? (

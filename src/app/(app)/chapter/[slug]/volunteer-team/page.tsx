@@ -12,6 +12,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn, formatDate, initials } from "@/lib/utils";
 import {
   ArrowLeftRight,
@@ -59,7 +60,8 @@ export default function ChapterVolunteerTeamPage({
     isHqRole(session.roleKey) ||
     session.roleKey === "campus_lead" ||
     session.roleKey === "chairman" ||
-    hasPermission(store, session.roleKey, "leadership.manage");
+    hasPermission(store, session.roleKey, "leadership.manage") ||
+    (chapter ? hasExecutiveDelegation(store, session.userId, chapter.id, "manage_volunteers") : false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);

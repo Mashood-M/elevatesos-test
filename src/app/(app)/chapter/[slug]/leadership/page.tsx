@@ -20,6 +20,7 @@ import {
   Clock,
   Crown,
   History,
+  Lock,
   Plus,
   Shield,
   Sparkles,
@@ -84,22 +85,34 @@ export default function ChapterLeadershipPage({
     if (!chapter) {
       return { isOpen: false, reason: "no_active_term" as const, label: "No Active Term" };
     }
-    return getChapterHandoverStatus(chapter.id, store.handoverWindows, Boolean(activeTerm));
+    return getChapterHandoverStatus(
+      chapter.id,
+      store.handoverWindows,
+      Boolean(activeTerm || chapter.campusLeadId),
+    );
   }, [chapter, store.handoverWindows, activeTerm]);
 
   const isWindowOpen = windowStatus.isOpen;
 
   const isCurrentCampusLead = Boolean(
-    activeTerm &&
-      (session.userId === activeTerm.campusLeadId || session.roleKey === "founder") &&
-      (session.roleKey === "campus_lead" || session.roleKey === "founder"),
+    (session.roleKey === "campus_lead" &&
+      (session.chapterId === chapter?.id ||
+        session.chapterId === chapter?.slug ||
+        session.userId === chapter?.campusLeadId ||
+        (activeTerm && session.userId === activeTerm.campusLeadId))) ||
+      session.roleKey === "founder" ||
+      session.roleKey === "hq_admin",
   );
 
   const canAssignExecutive = Boolean(
     activeTerm &&
       (session.roleKey === "founder" ||
+        session.roleKey === "hq_admin" ||
         (session.roleKey === "campus_lead" &&
-          (session.chapterId === chapter?.id || session.chapterId === chapter?.slug))),
+          (session.chapterId === chapter?.id ||
+            session.chapterId === chapter?.slug ||
+            session.userId === chapter?.campusLeadId ||
+            session.userId === activeTerm.campusLeadId))),
   );
 
   // Modals
@@ -316,10 +329,42 @@ export default function ChapterLeadershipPage({
                 onClick={handleOpenHandoverModal}
                 className="shrink-0 font-semibold gap-1.5"
               >
-                <ArrowRight size={14} />
-                Start New Term
+                <Plus size={14} />
+                Add New Term
               </Button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Handover Window Closed Banner (Campus Lead view) */}
+      {!isWindowOpen && isCurrentCampusLead && (
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-bg-panel p-5">
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-bg border border-border text-text-mute shrink-0">
+                <Lock size={18} />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <h3 className="text-sm font-bold text-text">Leadership Handover Window is Closed</h3>
+                  <Badge tone="mute">Closed</Badge>
+                </div>
+                <p className="text-xs text-text-dim max-w-lg leading-relaxed">
+                  Leadership transition and term addition is currently locked. Only Elevates HQ can open the handover window for {chapter.name}.
+                </p>
+              </div>
+            </div>
+
+            <Button
+              disabled
+              variant="secondary"
+              className="shrink-0 font-medium opacity-50 cursor-not-allowed gap-1.5"
+              title="Handover window is closed by HQ"
+            >
+              <Lock size={13} />
+              Add Term (Window Closed)
+            </Button>
           </div>
         </div>
       )}
@@ -423,22 +468,49 @@ export default function ChapterLeadershipPage({
             </div>
           </div>
 
-          {canAssignExecutive && activeTerm && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setAssignStudentId("");
-                setAssignDesignation("");
-                setAssignError("");
-                setAssignModalOpen(true);
-              }}
-              className="gap-1.5"
-            >
-              <UserPlus size={13} />
-              Appoint Executive
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {isCurrentCampusLead && (
+              isWindowOpen ? (
+                <Button
+                  variant="orange"
+                  size="sm"
+                  onClick={handleOpenHandoverModal}
+                  className="gap-1.5 font-semibold text-xs"
+                >
+                  <Plus size={13} />
+                  Add New Term
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  variant="secondary"
+                  size="sm"
+                  className="gap-1.5 opacity-50 cursor-not-allowed text-xs"
+                  title="Handover window is closed by Elevates HQ"
+                >
+                  <Lock size={12} />
+                  Add Term (Closed)
+                </Button>
+              )
+            )}
+
+            {canAssignExecutive && activeTerm && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setAssignStudentId("");
+                  setAssignDesignation("");
+                  setAssignError("");
+                  setAssignModalOpen(true);
+                }}
+                className="gap-1.5"
+              >
+                <UserPlus size={13} />
+                Appoint Executive
+              </Button>
+            )}
+          </div>
         </div>
 
         {!activeTerm ? (

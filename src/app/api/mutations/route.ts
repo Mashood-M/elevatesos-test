@@ -4378,9 +4378,10 @@ export async function POST(req: Request) {
       if (auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
         return NextResponse.json({ ok: false, error: "Only HQ Admins and Founders can open handover windows" }, { status: 403 });
       }
-      const { chapterId, year, closedAt } = data;
-      if (!chapterId || !year) {
-        return NextResponse.json({ ok: false, error: "chapterId and year are required" }, { status: 400 });
+      const { chapterId, closedAt } = data;
+      const year = data.year ? String(data.year).trim() : String(new Date().getFullYear() + 1);
+      if (!chapterId) {
+        return NextResponse.json({ ok: false, error: "chapterId is required" }, { status: 400 });
       }
 
       // Close any existing open handover window for this chapter first
@@ -4396,7 +4397,7 @@ export async function POST(req: Request) {
         .insert({
           id: windowId,
           chapter_id: chapterId,
-          year: String(year).trim(),
+          year,
           opened_at: new Date().toISOString(),
           closed_at: closedAt ? new Date(closedAt).toISOString() : null,
           opened_by: auth.userId,
@@ -4420,17 +4421,98 @@ export async function POST(req: Request) {
       if (!chapterId) {
         return NextResponse.json({ ok: false, error: "chapterId is required" }, { status: 400 });
       }
-      const { error: updErr } = await admin
+      const nowIso = new Date().toISOString();
+      const { data: updRows, error: updErr } = await admin
         .from("handover_windows")
-        .update({ status: "closed", closed_at: new Date().toISOString() })
+        .update({ status: "closed", closed_at: nowIso })
         .eq("chapter_id", chapterId)
-        .eq("status", "open");
+        .eq("status", "open")
+        .select();
 
       if (updErr) {
         console.error("close_handover_window error:", updErr);
         return NextResponse.json({ ok: false, error: updErr.message }, { status: 400 });
       }
+
+      // If no open record was updated, insert an explicit closed record so February auto-open is suppressed
+      if (!updRows || updRows.length === 0) {
+        await admin.from("handover_windows").insert({
+          id: genUuid(),
+          chapter_id: chapterId,
+          year: String(new Date().getFullYear()),
+          opened_at: nowIso,
+          closed_at: nowIso,
+          opened_by: auth.userId,
+          status: "closed",
+        });
+      }
+
       return NextResponse.json({ ok: true });
+    }
+
+    if (type === "batch_open_handover_windows") {
+      if (auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only HQ Admins and Founders can open handover windows" }, { status: 403 });
+      }
+      const { chapterIds, closedAt } = data;
+      const year = data.year ? String(data.year).trim() : String(new Date().getFullYear() + 1);
+      if (!Array.isArray(chapterIds) || !chapterIds.length) {
+        return NextResponse.json({ ok: false, error: "chapterIds array is required" }, { status: 400 });
+      }
+      const nowIso = new Date().toISOString();
+
+      await admin
+        .from("handover_windows")
+        .update({ status: "closed", closed_at: nowIso })
+        .in("chapter_id", chapterIds)
+        .eq("status", "open");
+
+      const rows = chapterIds.map((cid: string) => ({
+        id: genUuid(),
+        chapter_id: cid,
+        year,
+        opened_at: nowIso,
+        closed_at: closedAt ? new Date(closedAt).toISOString() : null,
+        opened_by: auth.userId,
+        status: "open",
+      }));
+
+      const { error: insErr } = await admin.from("handover_windows").insert(rows);
+      if (insErr) {
+        console.error("batch_open_handover_windows insert error:", insErr);
+        return NextResponse.json({ ok: false, error: insErr.message }, { status: 400 });
+      }
+      return NextResponse.json({ ok: true, count: rows.length });
+    }
+
+    if (type === "batch_close_handover_windows") {
+      if (auth.roleKey !== "founder" && auth.roleKey !== "hq_admin" && !auth.isHq) {
+        return NextResponse.json({ ok: false, error: "Only HQ Admins and Founders can close handover windows" }, { status: 403 });
+      }
+      const { chapterIds } = data;
+      if (!Array.isArray(chapterIds) || !chapterIds.length) {
+        return NextResponse.json({ ok: false, error: "chapterIds array is required" }, { status: 400 });
+      }
+      const nowIso = new Date().toISOString();
+
+      await admin
+        .from("handover_windows")
+        .update({ status: "closed", closed_at: nowIso })
+        .in("chapter_id", chapterIds)
+        .eq("status", "open");
+
+      const rows = chapterIds.map((cid: string) => ({
+        id: genUuid(),
+        chapter_id: cid,
+        year: String(new Date().getFullYear()),
+        opened_at: nowIso,
+        closed_at: nowIso,
+        opened_by: auth.userId,
+        status: "closed",
+      }));
+      await admin.from("handover_windows").insert(rows);
+
+      return NextResponse.json({ ok: true, count: chapterIds.length });
     }
 
     if (type === "execute_term_handover") {

@@ -529,10 +529,16 @@ type StoreContextValue = {
   removeLeadershipAssignment: (id: string) => boolean;
   openHandoverWindow: (input: {
     chapterId: string;
-    year: string;
+    year?: string;
     closedAt?: string;
   }) => Promise<boolean>;
   closeHandoverWindow: (input: { chapterId: string }) => Promise<boolean>;
+  batchOpenHandoverWindows: (input: {
+    chapterIds: string[];
+    year?: string;
+    closedAt?: string;
+  }) => Promise<boolean>;
+  batchCloseHandoverWindows: (input: { chapterIds: string[] }) => Promise<boolean>;
   executeTermHandover: (input: {
     chapterId: string;
     nextCampusLeadId: string;
@@ -6089,10 +6095,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       openHandoverWindow: async (input) => {
         const id = genUuid();
         const nowIso = new Date().toISOString();
+        const targetYear = input.year ? String(input.year).trim() : String(new Date().getFullYear() + 1);
         const newWindow: import("@/types").HandoverWindow = {
           id,
           chapterId: input.chapterId,
-          year: String(input.year).trim(),
+          year: targetYear,
           openedAt: nowIso,
           closedAt: input.closedAt ? new Date(input.closedAt).toISOString() : null,
           openedBy: store.session.userId,
@@ -6119,7 +6126,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               type: "open_handover_window",
               data: {
                 chapterId: input.chapterId,
-                year: input.year,
+                year: targetYear,
                 closedAt: input.closedAt,
               },
             }),
@@ -6131,15 +6138,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
       closeHandoverWindow: async (input) => {
+        const id = genUuid();
         const nowIso = new Date().toISOString();
-        setStore((s) => ({
-          ...s,
-          handoverWindows: s.handoverWindows.map((w) =>
+        setStore((s) => {
+          const hadOpen = s.handoverWindows.some(
+            (w) => w.chapterId === input.chapterId && w.status === "open",
+          );
+          const updated = s.handoverWindows.map((w) =>
             w.chapterId === input.chapterId && w.status === "open"
               ? { ...w, status: "closed" as const, closedAt: nowIso }
               : w,
-          ),
-        }));
+          );
+          if (!hadOpen) {
+            updated.unshift({
+              id,
+              chapterId: input.chapterId,
+              year: String(new Date().getFullYear()),
+              openedAt: nowIso,
+              closedAt: nowIso,
+              openedBy: store.session.userId,
+              status: "closed",
+            });
+          }
+          return { ...s, handoverWindows: updated };
+        });
 
         try {
           const res = await fetch("/api/mutations", {
@@ -6148,6 +6170,94 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             body: JSON.stringify({
               type: "close_handover_window",
               data: { chapterId: input.chapterId },
+            }),
+          });
+          const json = await res.json();
+          return Boolean(json.ok);
+        } catch {
+          return false;
+        }
+      },
+      batchOpenHandoverWindows: async (input) => {
+        if (!input.chapterIds.length) return true;
+        const nowIso = new Date().toISOString();
+        const targetYear = input.year ? String(input.year).trim() : String(new Date().getFullYear() + 1);
+        const newWindows: import("@/types").HandoverWindow[] = input.chapterIds.map((cid) => ({
+          id: genUuid(),
+          chapterId: cid,
+          year: targetYear,
+          openedAt: nowIso,
+          closedAt: input.closedAt ? new Date(input.closedAt).toISOString() : null,
+          openedBy: store.session.userId,
+          status: "open",
+        }));
+
+        setStore((s) => ({
+          ...s,
+          handoverWindows: [
+            ...newWindows,
+            ...s.handoverWindows.map((w) =>
+              input.chapterIds.includes(w.chapterId) && w.status === "open"
+                ? { ...w, status: "closed" as const, closedAt: nowIso }
+                : w,
+            ),
+          ],
+        }));
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "batch_open_handover_windows",
+              data: {
+                chapterIds: input.chapterIds,
+                year: targetYear,
+                closedAt: input.closedAt,
+              },
+            }),
+          });
+          const json = await res.json();
+          return Boolean(json.ok);
+        } catch {
+          return false;
+        }
+      },
+      batchCloseHandoverWindows: async (input) => {
+        if (!input.chapterIds.length) return true;
+        const nowIso = new Date().toISOString();
+        setStore((s) => {
+          const updated = s.handoverWindows.map((w) =>
+            input.chapterIds.includes(w.chapterId) && w.status === "open"
+              ? { ...w, status: "closed" as const, closedAt: nowIso }
+              : w,
+          );
+          for (const cid of input.chapterIds) {
+            const hasRecord = updated.some(
+              (w) => w.chapterId === cid && w.status === "closed" && w.closedAt?.startsWith(nowIso.slice(0, 10)),
+            );
+            if (!hasRecord) {
+              updated.unshift({
+                id: genUuid(),
+                chapterId: cid,
+                year: String(new Date().getFullYear()),
+                openedAt: nowIso,
+                closedAt: nowIso,
+                openedBy: store.session.userId,
+                status: "closed",
+              });
+            }
+          }
+          return { ...s, handoverWindows: updated };
+        });
+
+        try {
+          const res = await fetch("/api/mutations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "batch_close_handover_windows",
+              data: { chapterIds: input.chapterIds },
             }),
           });
           const json = await res.json();
@@ -6428,7 +6538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             (ur) => !(ur.userId === input.userId && ur.chapterId === input.chapterId && ur.roleKey === "executive_member"),
           );
           const nextProfiles = s.profiles.map((p) =>
-            p.id === input.userId ? { ...p, role: "Student", designation: null } : p,
+            p.id === input.userId ? { ...p, role: "Student", designation: undefined } : p,
           );
           return { ...s, termMembers: nextTermMembers, userRoles: nextUserRoles, profiles: nextProfiles };
         });

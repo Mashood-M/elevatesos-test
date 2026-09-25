@@ -103,14 +103,6 @@ export function getChapterHandoverStatus(
   handoverWindows: HandoverWindow[],
   hasActiveTerm: boolean,
 ): HandoverWindowStatus {
-  if (!hasActiveTerm) {
-    return {
-      isOpen: false,
-      reason: "no_active_term",
-      label: "No Active Term",
-    };
-  }
-
   const chapterWindows = (handoverWindows || [])
     .filter((w) => w.chapterId === chapterId)
     .slice()
@@ -148,7 +140,16 @@ export function getChapterHandoverStatus(
     };
   }
 
-  // 3. February annual auto-open (Month 1 in JavaScript Date)
+  // 3. If no active term and no explicit window, return No Active Term
+  if (!hasActiveTerm) {
+    return {
+      isOpen: false,
+      reason: "no_active_term",
+      label: "No Active Term",
+    };
+  }
+
+  // 4. February annual auto-open (Month 1 in JavaScript Date)
   const isFebruary = new Date().getMonth() === 1;
   if (isFebruary) {
     return {

@@ -26,7 +26,8 @@ export function canCreateEvent(roleKey: RoleKey): boolean {
     roleKey === "founder" ||
     roleKey === "hq_admin" ||
     roleKey === "campus_lead" ||
-    roleKey === "chairman"
+    roleKey === "chairman" ||
+    roleKey === "executive_member"
   );
 }
 
@@ -38,7 +39,8 @@ export function canManageClasses(roleKey: RoleKey): boolean {
     roleKey === "chairman" ||
     roleKey === "vice_chairman" ||
     roleKey === "secretary" ||
-    roleKey === "elevates_coordinator"
+    roleKey === "elevates_coordinator" ||
+    roleKey === "executive_member"
   );
 }
 

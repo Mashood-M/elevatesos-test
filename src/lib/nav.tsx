@@ -153,15 +153,15 @@ export function navGroupsForRole(
         label: "Faculty",
         items: [
           { href: "/faculty", label: "Faculty Desk", icon: I.desk },
-          { href: `${base}/reports`, label: "Report Reviews", icon: I.reports },
           { href: base, label: "Chapter Overview", icon: I.home },
+          { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
           { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
+          { href: `${base}/reports`, label: "Report Reviews", icon: I.reports },
           { href: `${base}/events`, label: "Events", icon: I.events },
           { href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook },
           { href: `${base}/attendance`, label: "Attendance", icon: I.attendance },
           { href: `${base}/students`, label: "Students", icon: I.students },
           { href: `${base}/volunteer-team`, label: "Volunteer Team", icon: I.leadership },
-          { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
           { href: `${base}/forms`, label: "Forms", icon: I.forms },
         ],
       },
@@ -182,12 +182,12 @@ export function navGroupsForRole(
         items: [
           { href: base, label: "Chapter Workspace", icon: I.desk },
           { href: `${base}/analytics`, label: "Analytics", icon: I.analytics },
+          { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
         ],
       },
       {
         label: "Programs",
         items: [
-          { href: `${base}/calendar`, label: "Calendar", icon: I.calendar },
           { href: `${base}/events`, label: "Events", icon: I.events },
           { href: `${base}/peer-labs`, label: "Peer Labs", icon: I.playbook },
           ...(roleKey !== "class_representative"

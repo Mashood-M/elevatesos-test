@@ -183,6 +183,9 @@ Contains migrations `001` through `040` representing the Postgres relational dat
 - **`044_default_student_and_faculty_mutual_exclusion.sql`**: Enforces default student role on signup and mutual exclusion between student/lead/rep and faculty roles.
 - **`045_chapter_terms_and_handover_system.sql`**: Introduces `terms`, `term_members`, and `handover_windows` tables, `executive_member` role, per-chapter handover windows controlled by Founders, and single-transaction term handover procedure executable by active Campus Leads.
 - **`046_allow_null_campus_lead_in_terms.sql`**: Drops NOT NULL constraint on `public.terms(campus_lead_id)` so an active term can have a vacant Campus Lead position when a lead is demoted or removed from HQ User Control.
+- **`047_handover_february_and_hq_admin_permissions.sql`**: Enables February handover windows and HQ Admin permissions across chapter terms.
+- **`048_executive_member_delegations.sql`**: Adds `permissions` array to `term_members`, updates `assign_chapter_executive_member` procedure, and enables realtime for terms/term_members.
+- **`049_discord_link_codes.sql`**: Adds `discord_link_codes` table and `generate_discord_link_code` RPC for reversed OS-to-Discord code generation linking flow.
 - **`FULL_DATABASE_SETUP.sql`**: Consolidated script for bootstrapping a fresh Supabase database in a single run.
 
 #### Migration Execution Order for Existing Databases
@@ -198,6 +201,7 @@ When applying new migrations to an existing database, execute them in this exact
 9. `supabase/migrations/046_allow_null_campus_lead_in_terms.sql`
 10. `supabase/migrations/047_handover_february_and_hq_admin_permissions.sql`
 11. `supabase/migrations/048_executive_member_delegations.sql`
+12. `supabase/migrations/049_discord_link_codes.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

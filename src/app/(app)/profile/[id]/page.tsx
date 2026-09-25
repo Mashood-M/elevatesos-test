@@ -23,6 +23,7 @@ import {
   Plus,
   QrCode,
   ShieldCheck,
+  Timer,
   Sparkles,
   Trash2,
   Unlink,
@@ -102,7 +103,7 @@ export default function ProfilePage({
     store,
     updateProfile,
     deleteUser,
-    verifyDiscordOtp,
+    generateDiscordLinkCode,
     unlinkDiscord,
     sendEmailVerification,
     verifyEmailCode,
@@ -240,65 +241,70 @@ export default function ProfilePage({
   const [editLinkedin, setEditLinkedin] = useState("");
   const [editPortfolio, setEditPortfolio] = useState("");
 
-  // Discord OTP Verification state
-  const [otpInput, setOtpInput] = useState("");
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
-  const [otpSuccess, setOtpSuccess] = useState<string | null>(null);
+  // Discord code-generation state (OS → Discord flow)
+  // The OS generates the code; the user copies it to Discord; the bot completes the link.
+  const [discordCode, setDiscordCode] = useState<string | null>(null);
+  const [discordCodeExpiresAt, setDiscordCodeExpiresAt] = useState<Date | null>(null);
+  const [discordCodeCopied, setDiscordCodeCopied] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [generateCodeError, setGenerateCodeError] = useState<string | null>(null);
+  const [discordCodeExpired, setDiscordCodeExpired] = useState(false);
   const [unlinkConfirmOpen, setUnlinkConfirmOpen] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
-  async function handleVerifyOtp(e?: React.FormEvent) {
-    if (e) e.preventDefault();
+  // Live countdown ticker
+  const [countdown, setCountdown] = useState<string>("");
+  useEffect(() => {
+    if (!discordCodeExpiresAt) { setCountdown(""); return; }
+    const tick = () => {
+      const diffMs = discordCodeExpiresAt.getTime() - Date.now();
+      if (diffMs <= 0) {
+        setCountdown("0:00");
+        setDiscordCodeExpired(true);
+        return;
+      }
+      const totalSec = Math.ceil(diffMs / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      setCountdown(`${m}:${s.toString().padStart(2, "0")}`);
+      setDiscordCodeExpired(false);
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [discordCodeExpiresAt]);
+
+  async function handleGenerateDiscordCode() {
     if (!profile) return;
-    const cleanOtp = otpInput.trim();
-    if (!cleanOtp) {
-      setOtpError("Please enter the 6-character verification code.");
-      return;
-    }
-    if (cleanOtp.length !== 6) {
-      setOtpError("The verification code must be exactly 6 characters.");
-      return;
-    }
-    setOtpError(null);
-    setOtpSuccess(null);
-    setIsVerifyingOtp(true);
+    setIsGeneratingCode(true);
+    setGenerateCodeError(null);
+    setDiscordCodeExpired(false);
     try {
-      const res = await verifyDiscordOtp(profile.id, cleanOtp);
-      if (res.ok) {
-        setOtpSuccess(
-          res.message || "Discord account successfully verified and linked!",
-        );
-        setOtpInput("");
+      const res = await generateDiscordLinkCode(profile.id);
+      if (res.ok && res.code && res.expiresAt) {
+        setDiscordCode(res.code);
+        setDiscordCodeExpiresAt(new Date(res.expiresAt));
+        setDiscordCodeCopied(false);
       } else {
-        if (res.reason === "no_pending_code") {
-          setOtpError(
-            res.message ||
-            "No pending verification code found. Please run the /connect command in the Elevates Discord server first.",
-          );
-        } else if (res.reason === "max_attempts") {
-          setOtpError(
-            res.message ||
-            "Maximum attempts exceeded. Please run /connect in the Elevates Discord server to generate a new code.",
-          );
-        } else if (res.reason === "invalid_code") {
-          const attemptsMsg =
-            typeof res.attemptsLeft === "number"
-              ? ` (${res.attemptsLeft} attempt${res.attemptsLeft === 1 ? "" : "s"} remaining)`
-              : "";
-          setOtpError((res.message || "Incorrect verification code.") + attemptsMsg);
-        } else {
-          setOtpError(res.message || "Failed to verify code. Please check Discord and try again.");
-        }
+        setGenerateCodeError(res.message || "Failed to generate code. Please try again.");
       }
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to verify code. Please try again.";
-      setOtpError(msg);
+      setGenerateCodeError(
+        err instanceof Error ? err.message : "Failed to generate code. Please try again.",
+      );
     } finally {
-      setIsVerifyingOtp(false);
+      setIsGeneratingCode(false);
+    }
+  }
+
+  async function handleCopyDiscordCode() {
+    if (!discordCode) return;
+    try {
+      await navigator.clipboard.writeText(discordCode);
+      setDiscordCodeCopied(true);
+      setTimeout(() => setDiscordCodeCopied(false), 2000);
+    } catch {
+      // Clipboard not available — silently ignore
     }
   }
 
@@ -308,9 +314,12 @@ export default function ProfilePage({
     try {
       await unlinkDiscord(profile.id);
       setUnlinkConfirmOpen(false);
-      setOtpSuccess(null);
-      setOtpError(null);
-      setOtpInput("");
+      // Reset discord code state on unlink
+      setDiscordCode(null);
+      setDiscordCodeExpiresAt(null);
+      setDiscordCodeExpired(false);
+      setDiscordCodeCopied(false);
+      setGenerateCodeError(null);
     } catch (err) {
       console.warn("Failed to unlink discord:", err);
     } finally {
@@ -1248,10 +1257,10 @@ export default function ProfilePage({
                 </div>
                 <div>
                   <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
-                    Discord Account Verification
+                    Discord Account Linking
                   </h3>
                   <p className="text-[12px] text-text-mute">
-                    Link your Discord account to sync verified roles and announcements.
+                    Generate a code here and paste it in the Elevates Discord server to link your account.
                   </p>
                 </div>
               </div>
@@ -1296,54 +1305,104 @@ export default function ProfilePage({
                 </Button>
               </div>
             ) : (
+              /* Not connected — code-generation flow */
               <div className="space-y-4">
-                <p className="text-sm text-text-dim">
-                  Run <code className="font-mono font-bold text-text bg-bg px-2 py-0.5 rounded border border-border">/connect</code> in the Elevates Discord server, then paste the 6-character code below:
-                </p>
-
-                <form onSubmit={handleVerifyOtp} className="flex flex-wrap items-center gap-3 max-w-md">
-                  <Input
-                    type="text"
-                    maxLength={6}
-                    value={otpInput}
-                    onChange={(e) => {
-                      setOtpInput(e.target.value.trim().slice(0, 6));
-                      if (otpError) setOtpError(null);
-                    }}
-                    placeholder="6-character code"
-                    className="w-48 h-10 text-center font-mono font-bold text-base tracking-widest uppercase bg-bg"
-                    disabled={isVerifyingOtp}
-                  />
-
-                  <Button
-                    type="submit"
-                    variant="orange"
-                    disabled={isVerifyingOtp || otpInput.trim().length !== 6}
-                    className="h-10 font-bold text-xs gap-2"
-                  >
-                    {isVerifyingOtp ? (
-                      <>
-                        <Loader2 size={14} className="animate-spin" />
-                        <span>Verifying...</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck size={14} />
-                        <span>Verify</span>
-                      </>
+                {/* Generate button — always visible when not connected */}
+                {(!discordCode || discordCodeExpired) && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-text-dim">
+                      Generate a one-time code and paste it in the{" "}
+                      <span className="font-semibold text-text">#link-server</span>{" "}
+                      channel in the Elevates Discord server to link your account.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="orange"
+                      disabled={isGeneratingCode}
+                      onClick={handleGenerateDiscordCode}
+                      className="h-10 font-bold text-xs gap-2"
+                    >
+                      {isGeneratingCode ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>Generating…</span>
+                        </>
+                      ) : (
+                        <>
+                          <QrCode size={14} />
+                          <span>{discordCodeExpired ? "Generate New Code" : "Generate Discord Code"}</span>
+                        </>
+                      )}
+                    </Button>
+                    {generateCodeError && (
+                      <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 max-w-md">
+                        {generateCodeError}
+                      </p>
                     )}
-                  </Button>
-                </form>
-
-                {otpError && (
-                  <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 max-w-md">
-                    {otpError}
-                  </p>
+                  </div>
                 )}
-                {otpSuccess && (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2.5 max-w-md">
-                    {otpSuccess}
-                  </p>
+
+                {/* Active code display */}
+                {discordCode && !discordCodeExpired && (
+                  <div className="space-y-4">
+                    {/* Code box */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 max-w-md">
+                      <div className="flex-1 rounded-xl border border-[#5865F2]/40 bg-[#5865F2]/5 px-5 py-3.5 flex items-center justify-center">
+                        <span className="font-[family-name:var(--font-mono)] text-3xl font-bold tracking-[0.3em] text-text select-all">
+                          {discordCode}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyDiscordCode}
+                        title="Copy code"
+                        className="flex items-center gap-1.5 h-10 px-3.5 rounded-lg border border-border bg-bg text-xs font-bold text-text-dim hover:text-text hover:border-border/80 transition-colors"
+                      >
+                        {discordCodeCopied ? (
+                          <><Check size={13} className="text-emerald-500" /><span className="text-emerald-600">Copied!</span></>
+                        ) : (
+                          <><Copy size={13} /><span>Copy</span></>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Countdown + instructions */}
+                    <div className="rounded-xl bg-bg border border-border p-4 max-w-md space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-bold text-text">
+                        <Timer size={14} className="text-[#5865F2]" />
+                        <span>Expires in{" "}
+                          <span className={cn(
+                            "font-mono",
+                            parseInt(countdown) === 0 ? "text-rose-500" : "text-[#5865F2]"
+                          )}>
+                            {countdown}
+                          </span>
+                        </span>
+                      </div>
+                      <p className="text-xs text-text-mute leading-relaxed">
+                        Copy this code and paste it in the{" "}
+                        <span className="font-semibold text-text">#link-server</span>{" "}
+                        channel in the Elevates Discord server within 5 minutes to link your account.
+                      </p>
+                    </div>
+
+                    {/* Option to regenerate */}
+                    <button
+                      type="button"
+                      onClick={handleGenerateDiscordCode}
+                      disabled={isGeneratingCode}
+                      className="text-xs text-text-mute hover:text-text underline underline-offset-2 transition-colors disabled:opacity-50"
+                    >
+                      Generate a new code instead
+                    </button>
+                  </div>
+                )}
+
+                {/* Expired state */}
+                {discordCode && discordCodeExpired && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-400 max-w-md">
+                    Code expired. Generate a new one to continue.
+                  </div>
                 )}
               </div>
             )}

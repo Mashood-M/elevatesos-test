@@ -372,6 +372,14 @@ type StoreContextValue = {
   unlinkDiscord: (
     userId: string,
   ) => Promise<{ ok: boolean; message?: string }>;
+  /**
+   * Code-generation flow (OS → Discord).
+   * Generates a 6-character code the user pastes into the Discord server.
+   * Supersedes the old OTP-entry flow where the bot generated the code.
+   */
+  generateDiscordLinkCode: (
+    userId: string,
+  ) => Promise<{ ok: boolean; code?: string; expiresAt?: string; message?: string }>;
   sendEmailVerification: (
     email: string,
     userId?: string,
@@ -3996,6 +4004,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
         return { ok: true, message: "Discord account unlinked." };
+      },
+      /**
+       * Code-generation flow (OS → Discord).
+       * Calls generate_discord_link_code RPC which invalidates any previous
+       * pending code and returns a fresh 6-character code + expiry timestamp.
+       * The Discord bot completes the link on its own by writing directly to
+       * the database — the OS has no "confirm" step.
+       */
+      generateDiscordLinkCode: async (userId: string) => {
+        const supabase = createClient();
+        if (supabase) {
+          try {
+            const { data, error } = await supabase.rpc(
+              "generate_discord_link_code",
+              { p_user_id: userId },
+            );
+            if (error) {
+              console.error("generate_discord_link_code RPC failed:", error.message);
+              return { ok: false, message: error.message || "Failed to generate code." };
+            }
+            if (data?.ok) {
+              return {
+                ok: true,
+                code: data.code as string,
+                expiresAt: data.expires_at as string,
+              };
+            }
+            return { ok: false, message: "Unexpected response from database." };
+          } catch (err: any) {
+            console.error("generate_discord_link_code exception:", err?.message);
+            return { ok: false, message: err?.message || "Failed to generate code." };
+          }
+        }
+        // Offline / demo-mode fallback — generate a fake code locally
+        const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let code = "";
+        for (let i = 0; i < 6; i++) {
+          code += charset[Math.floor(Math.random() * charset.length)];
+        }
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+        return { ok: true, code, expiresAt };
       },
       sendEmailVerification: async (email: string, userId?: string) => {
         const cleanEmail = email.trim().toLowerCase();

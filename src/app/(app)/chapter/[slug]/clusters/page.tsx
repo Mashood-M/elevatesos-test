@@ -128,6 +128,18 @@ export default function ChapterClustersPage({
   const { store, createCluster, joinCluster } = useStore();
   const roleKey = store.session.roleKey;
   const currentUserId = store.session.userId;
+  const currentUserProfile = store.profiles.find((p) => p.id === currentUserId);
+  const isDiscordConnected = Boolean(
+    currentUserProfile?.discordConnected ||
+    (currentUserProfile as Record<string, unknown> | undefined)?.discord_connected ||
+    currentUserProfile?.discordUserId ||
+    (currentUserProfile as Record<string, unknown> | undefined)?.discord_user_id
+  );
+  const profileHref = currentUserProfile?.elevatesId
+    ? `/profile/${currentUserProfile.elevatesId}`
+    : currentUserId
+    ? `/profile/${currentUserId}`
+    : "/profile";
   const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   // Search & Filter state
@@ -144,6 +156,7 @@ export default function ChapterClustersPage({
   const [leaderId, setLeaderId] = useState("");
   const [flash, setFlash] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [discordModalOpen, setDiscordModalOpen] = useState(false);
 
   // Roadmap starter milestones for new cluster
   const [roadmapWeeks, setRoadmapWeeks] = useState([
@@ -279,6 +292,14 @@ export default function ChapterClustersPage({
   }
 
   function handleQuickJoin(cluster: Cluster) {
+    if (!isDiscordConnected) {
+      setDiscordModalOpen(true);
+      showToast(
+        "Join the Elevates Discord server and connect your account first to join this cluster.",
+        "error"
+      );
+      return;
+    }
     joinCluster(cluster.id, currentUserId);
     showToast(`You have joined ${cluster.name}!`, "success");
   }
@@ -901,6 +922,33 @@ export default function ChapterClustersPage({
               You can add more weeks, resources, and tasks inside the track console after creation.
             </p>
           </div>
+        </div>
+      </Dialog>
+
+      {/* Discord Connection Required Modal */}
+      <Dialog
+        open={discordModalOpen}
+        onClose={() => setDiscordModalOpen(false)}
+        title="Discord Connection Required"
+        description="Connect your Discord account to join Elevates clusters."
+        className="max-w-md"
+        footer={
+          <div className="flex items-center justify-end gap-2.5">
+            <Button variant="secondary" onClick={() => setDiscordModalOpen(false)}>
+              Cancel
+            </Button>
+            <Link href={profileHref}>
+              <Button variant="orange">
+                Connect Discord
+              </Button>
+            </Link>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-left">
+          <p className="text-[13px] text-text-dim leading-relaxed">
+            Join the Elevates Discord server and connect your account first to join this cluster.
+          </p>
         </div>
       </Dialog>
     </div>

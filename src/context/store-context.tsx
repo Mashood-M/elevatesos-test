@@ -4838,6 +4838,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       respondClusterInvite: (inviteId, status) => {
         const invite = store.clusterInvites?.find((i) => i.id === inviteId);
         if (!invite || invite.status !== "pending") return false;
+        if (status === "accepted") {
+          const targetProfile = store.profiles.find((p) => p.id === invite.userId);
+          const isConnected = Boolean(
+            targetProfile?.discordConnected ||
+            (targetProfile as Record<string, unknown> | undefined)?.discord_connected ||
+            targetProfile?.discordUserId ||
+            (targetProfile as Record<string, unknown> | undefined)?.discord_user_id
+          );
+          if (!isConnected) {
+            showToast(
+              "Join the Elevates Discord server and connect your account first to join this cluster.",
+              "error"
+            );
+            return false;
+          }
+        }
         let updatedCluster: Cluster | undefined;
         let updatedProfile: Profile | undefined;
         setStore((s) => {
@@ -4888,6 +4904,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const cluster = store.clusters.find((c) => c.id === input.clusterId);
         if (!cluster) return false;
         if ((cluster.accessMode ?? "invite") !== "challenge") return false;
+        const targetProfile = store.profiles.find((p) => p.id === input.userId);
+        const isConnected = Boolean(
+          targetProfile?.discordConnected ||
+          (targetProfile as Record<string, unknown> | undefined)?.discord_connected ||
+          targetProfile?.discordUserId ||
+          (targetProfile as Record<string, unknown> | undefined)?.discord_user_id
+        );
+        if (!isConnected) {
+          showToast(
+            "Join the Elevates Discord server and connect your account first to join this cluster.",
+            "error"
+          );
+          return false;
+        }
         const invite: ClusterInvite = {
           id: `ci-${Date.now()}`,
           clusterId: input.clusterId,
@@ -7539,6 +7569,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!cluster) return;
         const mode = cluster.accessMode ?? "invite";
         if (mode !== "open") return;
+        const targetProfile = store.profiles.find((p) => p.id === userId);
+        const isConnected = Boolean(
+          targetProfile?.discordConnected ||
+          (targetProfile as Record<string, unknown> | undefined)?.discord_connected ||
+          targetProfile?.discordUserId ||
+          (targetProfile as Record<string, unknown> | undefined)?.discord_user_id
+        );
+        if (!isConnected) {
+          showToast(
+            "Join the Elevates Discord server and connect your account first to join this cluster.",
+            "error"
+          );
+          return;
+        }
         const updated = {
           ...cluster,
           memberIds: cluster.memberIds.includes(userId) ? cluster.memberIds : [...cluster.memberIds, userId],

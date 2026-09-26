@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser } from "@/context/store-context";
@@ -45,6 +46,49 @@ export default function ClusterDetailPage({
   const [inviteUserId, setInviteUserId] = useState("");
   const [challengeNote, setChallengeNote] = useState("");
   const [flash, setFlash] = useState("");
+  const [discordGateOpen, setDiscordGateOpen] = useState(false);
+
+  const currentUserProfile = store.profiles.find((p) => p.id === session.userId);
+  const isDiscordConnected = Boolean(
+    currentUserProfile?.discordConnected ||
+    (currentUserProfile as Record<string, unknown> | undefined)?.discord_connected ||
+    currentUserProfile?.discordUserId ||
+    (currentUserProfile as Record<string, unknown> | undefined)?.discord_user_id
+  );
+  const profileHref = currentUserProfile?.elevatesId
+    ? `/profile/${currentUserProfile.elevatesId}`
+    : session.userId
+    ? `/profile/${session.userId}`
+    : "/profile";
+
+  function handleJoinCluster() {
+    if (!isDiscordConnected) {
+      setDiscordGateOpen(true);
+      setFlash("Join the Elevates Discord server and connect your account first to join this cluster.");
+      return;
+    }
+    if (!cluster) return;
+    joinCluster(cluster.id, session.userId);
+  }
+
+  function handleSubmitChallenge() {
+    if (!isDiscordConnected) {
+      setDiscordGateOpen(true);
+      setFlash("Join the Elevates Discord server and connect your account first to join this cluster.");
+      return;
+    }
+    if (!cluster) return;
+    const ok = submitClusterChallenge({
+      clusterId: cluster.id,
+      userId: session.userId,
+      note: challengeNote,
+    });
+    setFlash(
+      ok
+        ? "Challenge submitted — execs will review."
+        : "Could not submit challenge.",
+    );
+  }
 
   if (!chapter || !cluster || cluster.chapterId !== chapter.id) {
     return (
@@ -94,7 +138,7 @@ export default function ClusterDetailPage({
               (cluster.accessMode ?? "invite") === "open" ? (
                 <Button
                   variant="orange"
-                  onClick={() => joinCluster(cluster.id, session.userId)}
+                  onClick={handleJoinCluster}
                 >
                   Join cluster
                 </Button>
@@ -112,7 +156,23 @@ export default function ClusterDetailPage({
       />
 
       {flash ? (
-        <p className="mb-4 text-[13px] text-[var(--accent)]">{flash}</p>
+        <div
+          className={cn(
+            "mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl p-3.5 text-xs",
+            flash.includes("Discord")
+              ? "border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+              : "text-[var(--accent)]",
+          )}
+        >
+          <span>{flash}</span>
+          {flash.includes("Discord") ? (
+            <Link href={profileHref}>
+              <Button variant="orange" size="sm" className="shrink-0 text-xs">
+                Connect Discord
+              </Button>
+            </Link>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="mb-4 flex flex-wrap gap-2">
@@ -142,18 +202,7 @@ export default function ClusterDetailPage({
           <Button
             variant="orange"
             className="mt-3"
-            onClick={() => {
-              const ok = submitClusterChallenge({
-                clusterId: cluster.id,
-                userId: session.userId,
-                note: challengeNote,
-              });
-              setFlash(
-                ok
-                  ? "Challenge submitted — execs will review."
-                  : "Could not submit challenge.",
-              );
-            }}
+            onClick={handleSubmitChallenge}
           >
             Submit challenge
           </Button>
@@ -464,6 +513,33 @@ export default function ClusterDetailPage({
           </TerminalPanel>
         </div>
       </div>
+
+      {/* Discord Connection Required Modal */}
+      <Dialog
+        open={discordGateOpen}
+        onClose={() => setDiscordGateOpen(false)}
+        title="Discord Connection Required"
+        description="Connect your Discord account to join Elevates clusters."
+        className="max-w-md"
+        footer={
+          <div className="flex items-center justify-end gap-2.5">
+            <Button variant="secondary" onClick={() => setDiscordGateOpen(false)}>
+              Cancel
+            </Button>
+            <Link href={profileHref}>
+              <Button variant="orange">
+                Connect Discord
+              </Button>
+            </Link>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-left">
+          <p className="text-[13px] text-text-dim leading-relaxed">
+            Join the Elevates Discord server and connect your account first to join this cluster.
+          </p>
+        </div>
+      </Dialog>
     </div>
   );
 }

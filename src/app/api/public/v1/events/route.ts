@@ -23,7 +23,7 @@ export async function GET(req: Request) {
       const { data: ch, error: chErr } = await admin
         .from("chapters")
         .select("id")
-        .eq("slug", chapterSlug)
+        .or(`slug.eq.${chapterSlug},elevates_id.eq.${chapterSlug},id.eq.${chapterSlug}`)
         .maybeSingle();
 
       if (chErr) {

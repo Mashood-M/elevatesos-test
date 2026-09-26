@@ -11,6 +11,7 @@ import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn, formatDate, initials } from "@/lib/utils";
@@ -54,7 +55,7 @@ export default function ChapterVolunteerTeamPage({
     updateEvent,
   } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const canManage =
     isHqRole(session.roleKey) ||

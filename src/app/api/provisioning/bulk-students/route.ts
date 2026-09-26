@@ -136,17 +136,37 @@ export async function POST(req: Request) {
 
       const userId = existing?.id || genRandomUuid();
 
-      const { error: profErr } = await admin.from("profiles").upsert({
-        id: userId,
-        email: email.toLowerCase(),
-        full_name: name,
-        phone: phone || null,
-        department,
-        year,
-        chapter_id: chapterId,
-        skills: skillsArr,
-        status: "active",
-      });
+      let profErr;
+      if (existing) {
+        const { error } = await admin
+          .from("profiles")
+          .update({
+            full_name: name,
+            phone: phone || null,
+            department,
+            year,
+            chapter_id: chapterId,
+            skills: skillsArr,
+            status: "active",
+          })
+          .eq("id", userId);
+        profErr = error;
+      } else {
+        const { error } = await admin
+          .from("profiles")
+          .insert({
+            id: userId,
+            email: email.toLowerCase(),
+            full_name: name,
+            phone: phone || null,
+            department,
+            year,
+            chapter_id: chapterId,
+            skills: skillsArr,
+            status: "active",
+          });
+        profErr = error;
+      }
 
       if (profErr) {
         results.push({

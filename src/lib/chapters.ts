@@ -156,19 +156,19 @@ export function deriveChapterShortCode(name: string): string {
 
 /**
  * Formats a sequence number into the official sequential Chapter Elevates ID:
- * - 1 to 999: "CHP-0001" to "CHP-0999"
- * - 1,000 to 26,999: "CHP-A000" to "CHP-Z999"
- * - 27,000+: "CHP-AA00" to "CHP-ZZ99"
+ * - 1 to 999: "CHP-0001" to "CHP-0999" (Sequential 4 digits)
+ * - 1,000 to 26,999: "CHP-A000" to "CHP-Z999" (First char letter A-Z, followed by 3 digits)
+ * - 27,000 to 94,599: "CHP-AA00" to "CHP-ZZ99" (Two letters AA-ZZ, followed by 2 digits)
  */
 export function formatChapterElevatesId(n: number): string {
   if (n < 1000) {
-    return `CHP-${String(n).padStart(4, "0")}`;
+    return `CHP-${String(Math.max(1, n)).padStart(4, "0")}`;
   } else if (n < 27000) {
     const letterIdx = Math.floor((n - 1000) / 1000);
     const letter = String.fromCharCode(65 + letterIdx);
     const rem = (n - 1000) % 1000;
     return `CHP-${letter}${String(rem).padStart(3, "0")}`;
-  } else if (n < 703000) {
+  } else if (n < 94600) {
     const twoLetterOffset = Math.floor((n - 27000) / 100);
     const firstLetter = String.fromCharCode(65 + Math.floor(twoLetterOffset / 26));
     const secondLetter = String.fromCharCode(65 + (twoLetterOffset % 26));
@@ -179,26 +179,127 @@ export function formatChapterElevatesId(n: number): string {
 }
 
 /**
- * Deterministically generates a valid Chapter Elevates ID from a chapter UUID/string.
+ * Validates whether a string matches the official sequential Chapter Elevates ID format:
+ * - CHP-0001 to CHP-0999
+ * - CHP-A000 to CHP-Z999
+ * - CHP-AA00 to CHP-ZZ99
  */
-export function generateChapterElevatesId(id: string): string {
-  if (!id) return "CHP-0001";
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash << 5) - hash + id.charCodeAt(i);
-    hash |= 0;
-  }
-  const n = (Math.abs(hash) % 999) + 1;
-  return formatChapterElevatesId(n);
+export function isValidChapterElevatesId(id?: string | null): boolean {
+  if (!id) return false;
+  return /^CHP-([0-9]{4}|[A-Z][0-9]{3}|[A-Z]{2}[0-9]{2})$/i.test(id.trim());
 }
 
 /**
- * Returns the chapter's official Elevates ID, guaranteeing a valid "CHP-XXXX" string
- * even if the database record had a null or empty elevates_id.
+ * Parses a sequential Chapter Elevates ID back to its chronological sequence number.
+ * Returns null if the format does not conform.
  */
-export function getChapterElevatesId(chapter?: { id?: string; elevatesId?: string } | null): string {
+export function parseChapterElevatesId(elevatesId?: string | null): number | null {
+  if (!elevatesId) return null;
+  const clean = elevatesId.trim().toUpperCase();
+
+  // 1 to 999: CHP-0001 to CHP-0999
+  const m1 = clean.match(/^CHP-([0-9]{4})$/);
+  if (m1) {
+    const val = parseInt(m1[1], 10);
+    return val > 0 ? val : null;
+  }
+
+  // 1,000 to 26,999: CHP-A000 to CHP-Z999
+  const m2 = clean.match(/^CHP-([A-Z])([0-9]{3})$/);
+  if (m2) {
+    const letterIdx = m2[1].charCodeAt(0) - 65;
+    const rem = parseInt(m2[2], 10);
+    if (letterIdx >= 0 && letterIdx < 26) {
+      return 1000 + letterIdx * 1000 + rem;
+    }
+  }
+
+  // 27,000 to 94,599: CHP-AA00 to CHP-ZZ99
+  const m3 = clean.match(/^CHP-([A-Z])([A-Z])([0-9]{2})$/);
+  if (m3) {
+    const firstIdx = m3[1].charCodeAt(0) - 65;
+    const secondIdx = m3[2].charCodeAt(0) - 65;
+    const rem = parseInt(m3[3], 10);
+    if (firstIdx >= 0 && firstIdx < 26 && secondIdx >= 0 && secondIdx < 26) {
+      const twoLetterOffset = firstIdx * 26 + secondIdx;
+      return 27000 + twoLetterOffset * 100 + rem;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calculates the next sequential Chapter Elevates ID by analyzing existing chapters in state.
+ */
+export function getNextSequentialChapterElevatesId(
+  chapters: Array<{ elevatesId?: string; elevates_id?: string }> = [],
+): string {
+  let maxSeq = 0;
+  for (const c of chapters) {
+    const raw = c.elevatesId || c.elevates_id;
+    const num = parseChapterElevatesId(raw);
+    if (num !== null && num > maxSeq) {
+      maxSeq = num;
+    }
+  }
+  return formatChapterElevatesId(maxSeq + 1);
+}
+
+/**
+ * @deprecated Deprecated for the chapter creation path. The database sequence/trigger automatically
+ * assigns sequential elevates_id (CHP-XXXX). Do not use this when building creation payloads.
+ * Keep for backward compatibility or local sequence prediction.
+ */
+export function generateChapterElevatesId(
+  context?: string | number | Array<{ elevatesId?: string; elevates_id?: string }>,
+): string {
+  if (Array.isArray(context)) {
+    return getNextSequentialChapterElevatesId(context);
+  }
+  if (typeof context === "number") {
+    return formatChapterElevatesId(context);
+  }
+  if (typeof context === "string") {
+    const parsed = parseChapterElevatesId(context);
+    if (parsed !== null) return formatChapterElevatesId(parsed + 1);
+  }
+  return "CHP-0001";
+}
+
+/**
+ * @deprecated Deprecated for the chapter creation path. Use DB-assigned sequential elevates_id.
+ * Keep for backward compatibility, display, and resolving existing records.
+ */
+export function getChapterElevatesId(
+  chapter?: { id?: string; elevatesId?: string; elevates_id?: string } | null,
+  fallbackIndex?: number,
+): string {
   if (!chapter) return "CHP-0001";
-  if (chapter.elevatesId && chapter.elevatesId.trim()) return chapter.elevatesId.trim();
-  return generateChapterElevatesId(chapter.id || "0");
+  const id = chapter.elevatesId || chapter.elevates_id;
+  if (id && isValidChapterElevatesId(id)) return id.trim().toUpperCase();
+  if (id && id.trim()) return id.trim();
+  if (typeof fallbackIndex === "number" && fallbackIndex > 0) {
+    return formatChapterElevatesId(fallbackIndex);
+  }
+  return "CHP-0001";
+}
+
+/**
+ * Resolves a chapter from a collection by its slug, its UUID, or its sequential Elevates ID (e.g. CHP-0001).
+ * Case-insensitive lookup.
+ */
+export function findChapterBySlugOrId(
+  chapters: Chapter[] = [],
+  identifier?: string | null,
+): Chapter | undefined {
+  if (!identifier || !chapters.length) return undefined;
+  const s = identifier.trim().toLowerCase();
+  return chapters.find(
+    (c) =>
+      c.slug.toLowerCase() === s ||
+      c.id.toLowerCase() === s ||
+      (c.elevatesId && c.elevatesId.toLowerCase() === s),
+  );
 }
 

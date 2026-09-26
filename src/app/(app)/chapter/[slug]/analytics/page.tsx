@@ -24,6 +24,7 @@ import {
   monthlyEngagementFromStore,
 } from "@/lib/analytics";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { deriveEngagementTier } from "@/lib/eos/progression";
 import { healthLabel } from "@/lib/permissions";
 
@@ -36,7 +37,7 @@ export default function ChapterAnalyticsPage({
 }) {
   const { slug } = use(params);
   const { store } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   if (!chapter) return <p className="text-orange">// Chapter not found</p>;
 

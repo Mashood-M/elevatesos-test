@@ -18,6 +18,7 @@ import { PageFrame } from "@/components/layout/page-frame";
 import { RoleSwitcher } from "@/components/layout/role-switcher";
 import { ChapterSelectorModal } from "@/components/layout/chapter-selector-modal";
 import { roleKeyLabel, parseDelegations } from "@/lib/leadership";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
@@ -62,7 +63,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [alreadyInChapterOpen, setAlreadyInChapterOpen] = useState(false);
 
   const pathChapterSlug = pathname.match(/^\/chapter\/([^/]+)/)?.[1] ?? "";
-  const chapter = (pathChapterSlug ? store.chapters.find((c) => c.slug === pathChapterSlug) : null)
+  const chapter = (pathChapterSlug ? findChapterBySlugOrId(store.chapters, pathChapterSlug) : null)
     || (session.chapterId ? store.chapters.find((c) => c.id === session.chapterId) : null);
   const chapterSlug = chapter?.slug ?? (session.chapterId
     ? (chapter?.slug ?? "")

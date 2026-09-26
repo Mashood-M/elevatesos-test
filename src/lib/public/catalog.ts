@@ -72,7 +72,7 @@ export async function getPublicChapter(slug: string) {
   const { data: chapter, error } = await admin
     .from("chapters")
     .select("*")
-    .eq("slug", slug)
+    .or(`slug.eq.${slug},elevates_id.eq.${slug},id.eq.${slug}`)
     .eq("published", true)
     .eq("status", "active")
     .maybeSingle();

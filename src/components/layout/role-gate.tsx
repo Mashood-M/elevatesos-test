@@ -6,6 +6,7 @@ import { useStore } from "@/context/store-context";
 import { canAccessPath, homeForRole } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
 import { parseDelegations } from "@/lib/leadership";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { createClient } from "@/lib/supabase/client";
 import { WorkspaceSkeleton } from "@/components/layout/workspace-skeleton";
 
@@ -15,13 +16,11 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
   const { store, hydrated, refreshStore } = useStore();
   const { userId, roleKey, chapterId } = store.session;
   const pathChapterSlug = pathname.match(/^\/chapter\/([^/]+)/)?.[1] ?? "";
-  const chapter = (pathChapterSlug ? store.chapters.find((c) => c.slug === pathChapterSlug) : null)
-    || (chapterId ? store.chapters.find((c) => c.id === chapterId) : null);
-  const chapterSlug = chapter?.slug ?? (chapterId
-    ? (store.chapters.find((c) => c.id === chapterId)?.slug ?? "")
-    : isHqRole(roleKey)
-      ? (store.chapters[0]?.slug ?? "")
-      : "");
+  const currentChapter = pathChapterSlug ? findChapterBySlugOrId(store.chapters, pathChapterSlug) : null;
+  const userAssignedChapter = chapterId ? store.chapters.find((c) => c.id === chapterId) : null;
+  const chapter = currentChapter || userAssignedChapter;
+  const chapterSlug = userAssignedChapter?.slug ?? chapter?.slug ?? (isHqRole(roleKey) ? (store.chapters[0]?.slug ?? "") : "");
+  const chapterElevatesId = userAssignedChapter?.elevatesId ?? chapter?.elevatesId ?? "";
 
   const isVolunteer = Boolean(
     userId && (
@@ -115,10 +114,10 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
     }
 
     // User is logged in but doesn't have permission for this path
-    if (!canAccessPath(pathname, effectiveRoleKey, chapterSlug, store.session.authRoleKey, isVolunteer, myDelegations)) {
+    if (!canAccessPath(pathname, effectiveRoleKey, chapterSlug, store.session.authRoleKey, isVolunteer, myDelegations, chapterElevatesId)) {
       router.replace(homeForRole(effectiveRoleKey, chapterSlug));
     }
-  }, [pathname, userId, effectiveRoleKey, chapterSlug, router, hydrated, store.session.authRoleKey, isVolunteer, myDelegations, refreshStore]);
+  }, [pathname, userId, effectiveRoleKey, chapterSlug, chapterElevatesId, router, hydrated, store.session.authRoleKey, isVolunteer, myDelegations, refreshStore]);
 
   // While store is hydrating from Supabase, render full modern ERP workspace skeleton
   if (!hydrated) {
@@ -126,7 +125,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
   }
 
   // Once hydrated, if no session userId exists or user doesn't have path access, show clean skeleton while redirecting
-  if (!userId || !canAccessPath(pathname, effectiveRoleKey, chapterSlug, store.session.authRoleKey, isVolunteer, myDelegations)) {
+  if (!userId || !canAccessPath(pathname, effectiveRoleKey, chapterSlug, store.session.authRoleKey, isVolunteer, myDelegations, chapterElevatesId)) {
     return <WorkspaceSkeleton />;
   }
 

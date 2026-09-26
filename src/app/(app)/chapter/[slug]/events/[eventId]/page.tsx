@@ -15,6 +15,7 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { TicketCard } from "@/components/ui/ticket-card";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { isFacultyRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   canRegisterNow,
   isEventVisibleToUser,
@@ -165,9 +166,7 @@ export default function EventDetailPage({
   } = useStore();
   const { session } = useCurrentUser();
 
-  const chapter = store.chapters.find(
-    (c) => c.slug === slug || c.id === slug,
-  ) ?? store.chapters[0];
+  const chapter = findChapterBySlugOrId(store.chapters, slug) ?? store.chapters[0];
 
   const event = store.events.find(
     (e) =>

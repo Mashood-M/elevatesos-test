@@ -1,4 +1,5 @@
 import { isHqRole, isSuperAdmin } from "@/lib/permissions";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import type { Chapter, RoleKey } from "@/types";
 
 export function resolveChapter(
@@ -10,13 +11,7 @@ export function resolveChapter(
   if (!store.chapters?.length) return undefined;
   let chapter: Chapter | undefined;
   if (slug) {
-    const s = slug.toLowerCase();
-    chapter = store.chapters.find(
-      (c) =>
-        c.slug.toLowerCase() === s ||
-        c.id.toLowerCase() === s ||
-        (c.elevatesId && c.elevatesId.toLowerCase() === s),
-    );
+    chapter = findChapterBySlugOrId(store.chapters, slug);
   } else if (userChapterId) {
     chapter = store.chapters.find((c) => c.id === userChapterId);
   } else if (roleKey && isHqRole(roleKey)) {
@@ -33,13 +28,17 @@ export function resolveChapter(
   if (roleKey && !isHqRole(roleKey) && !isAuthHq) {
     if (userChapterId) {
       const assignedChapter = store.chapters.find((c) => c.id === userChapterId);
-      if (
-        assignedChapter &&
-        chapter.id !== assignedChapter.id &&
-        chapter.slug !== assignedChapter.slug &&
-        (!chapter.elevatesId || chapter.elevatesId !== assignedChapter.elevatesId)
-      ) {
-        return undefined;
+      if (assignedChapter) {
+        const isSameId = chapter.id === assignedChapter.id;
+        const isSameSlug = chapter.slug.toLowerCase() === assignedChapter.slug.toLowerCase();
+        const isSameElevatesId = Boolean(
+          chapter.elevatesId &&
+          assignedChapter.elevatesId &&
+          chapter.elevatesId.toLowerCase() === assignedChapter.elevatesId.toLowerCase()
+        );
+        if (!isSameId && !isSameSlug && !isSameElevatesId) {
+          return undefined;
+        }
       }
     }
   }
@@ -112,6 +111,7 @@ export function canAccessPath(
   authRoleKey?: RoleKey,
   isVolunteer?: boolean,
   delegatedPermissions: string[] = [],
+  chapterElevatesId?: string,
 ): boolean {
   // If the authenticated user is an HQ founder or admin testing a role, grant full access
   if (authRoleKey && isHqRole(authRoleKey)) {
@@ -159,9 +159,15 @@ export function canAccessPath(
     const rest = chapterMatch[2] ?? "";
     if (isHqRole(roleKey)) return true;
     const effectiveSlug = chapterSlug ?? "";
+    const effectiveElevatesId = chapterElevatesId ?? "";
     // Allow viewing event details across chapters (for open-to-all events)
     const isEventDetail = rest.startsWith("events/");
-    if (!isEventDetail && effectiveSlug && slug !== effectiveSlug) return false;
+    const slugLower = slug.toLowerCase();
+    const isMatchingChapter =
+      (effectiveSlug && slugLower === effectiveSlug.toLowerCase()) ||
+      (effectiveElevatesId && slugLower === effectiveElevatesId.toLowerCase());
+
+    if (!isEventDetail && (effectiveSlug || effectiveElevatesId) && !isMatchingChapter) return false;
 
     // Reports & Peer Labs — students + exec + faculty
     const firstSeg = rest.split("/")[0] ?? "";

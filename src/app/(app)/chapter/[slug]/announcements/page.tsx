@@ -10,6 +10,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { hasPermission } from "@/lib/permissions";
 import { formatDateTime, initials } from "@/lib/utils";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
@@ -46,7 +47,7 @@ export default function ChapterAnnouncementsPage({
 }) {
   const { slug } = use(params);
   const { store, createAnnouncement } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");

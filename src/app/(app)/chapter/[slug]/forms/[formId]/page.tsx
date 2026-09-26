@@ -14,6 +14,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { migrateForm } from "@/lib/forms/helpers";
 import { isHqRole } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
@@ -56,7 +57,7 @@ export default function FormWorkspacePage({
     };
   }, [fullscreen]);
 
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const raw = store.forms?.find((f) => f.id === formId);
   const form = raw ? migrateForm(raw) : null;
 

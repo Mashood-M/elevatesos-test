@@ -34,6 +34,7 @@ import { Stat } from "@/components/ui/stat";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, resolveChapter } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { isSuperAdmin } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
 import { cn, formatDateTime, initials } from "@/lib/utils";
@@ -121,7 +122,7 @@ export default function ChapterStudentsPage({
   const { store, createUser, approveJoinRequests, rejectJoinRequests } = useStore();
   const { session } = useCurrentUser();
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
-  const targetChapter = chapter || store.chapters.find((c) => c.slug === slug);
+  const targetChapter = chapter || findChapterBySlugOrId(store.chapters, slug);
 
   const isCampusLead = session.roleKey === "campus_lead";
   const canDelete = !isCampusLead && isSuperAdmin(session.roleKey);

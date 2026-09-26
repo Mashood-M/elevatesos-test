@@ -18,7 +18,7 @@ export async function GET(
       const { data: chapter, error } = await admin
         .from("chapters")
         .select("*")
-        .or(`slug.eq.${slug},id.eq.${slug}`)
+        .or(`slug.eq.${slug},elevates_id.eq.${slug},id.eq.${slug}`)
         .maybeSingle();
 
       if (!error && chapter) {

@@ -77,7 +77,7 @@ BEGIN
     letter := chr(65 + letter_idx);
     rem := (n - 1000) % 1000;
     RETURN 'CHP-' || letter || LPAD(rem::TEXT, 3, '0');
-  ELSIF n < 703000 THEN
+  ELSIF n < 94600 THEN
     two_letter_offset := (n - 27000) / 100;
     first_letter := chr(65 + (two_letter_offset / 26));
     second_letter := chr(65 + (two_letter_offset % 26));
@@ -104,11 +104,13 @@ BEGIN
 END;
 $$;
 
--- Trigger: auto-assign elevates_id on INSERT if not supplied
+-- Trigger: auto-assign elevates_id on INSERT if not supplied or invalid
 CREATE OR REPLACE FUNCTION public.assign_chapter_elevates_id()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN
-  IF NEW.elevates_id IS NULL OR NEW.elevates_id = '' THEN
+  IF NEW.elevates_id IS NULL
+     OR NEW.elevates_id = ''
+     OR (NOT NEW.elevates_id ~ '^CHP-([0-9]{4}|[A-Z][0-9]{3}|[A-Z]{2}[0-9]{2})$') THEN
     NEW.elevates_id := public.generate_chapter_elevates_id();
   END IF;
   RETURN NEW;

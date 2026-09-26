@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { formatDate } from "@/lib/utils";
 import type { TaskStatus } from "@/types";
 
@@ -24,7 +25,7 @@ export default function ChapterTasksPage({
 }) {
   const { slug } = use(params);
   const { store, updateTaskStatus } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   if (!chapter) return <p className="text-orange">// Chapter not found</p>;
 

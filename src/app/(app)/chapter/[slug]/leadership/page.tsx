@@ -8,6 +8,7 @@ import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   CAMPUS_LEAD_DELEGATION_OPTIONS,
   CampusLeadOptionKey,
@@ -71,7 +72,7 @@ export default function ChapterLeadershipPage({
   } = useStore();
   const { session } = useCurrentUser();
 
-  const chapter = store.chapters.find((c) => c.slug === slug || c.id === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const chapterTerms = useMemo(() => {
     if (!chapter) return [];

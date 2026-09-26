@@ -12,6 +12,7 @@ import { QrScanner } from "@/components/domain/qr-scanner";
 import { Check, CheckCircle2, ChevronDown, Play, Plus, Users, X, XCircle, Crown, Mic, Sparkles, Search } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   isAttendanceTakeable,
   isEventOngoing,
@@ -57,7 +58,7 @@ export default function ChapterAttendancePage({
     applyVolunteerPresetToEvent,
   } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const isCampusLead =
     session.roleKey === "campus_lead" ||

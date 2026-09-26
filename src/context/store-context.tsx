@@ -27,7 +27,11 @@ import {
   recalculateUserSession,
   ROLE_PRIORITY,
 } from "@/lib/data/realtime-sync";
-import { deriveChapterShortCode, getChapterElevatesId } from "@/lib/chapters";
+import {
+  deriveChapterShortCode,
+  getChapterElevatesId,
+  getNextSequentialChapterElevatesId,
+} from "@/lib/chapters";
 import { encodeDelegationsToDesignation } from "@/lib/leadership";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { remoteMutate } from "@/lib/data/mutations";
@@ -3539,7 +3543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
         const chapterId = genUuid();
         const chapterElevatesId =
-          input.elevatesId?.trim() || getChapterElevatesId({ id: chapterId });
+          input.elevatesId?.trim() || getNextSequentialChapterElevatesId(store.chapters);
         const chapter: Chapter = {
           id: chapterId,
           elevatesId: chapterElevatesId,
@@ -3602,15 +3606,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ],
         }));
         if (!isDemoMode()) {
-          void runPersist(persistChapter(chapter), {
-            errorMessage: `Failed to create chapter "${chapter.name}"`,
-            rollback: () => {
-              setStore((s) => ({
-                ...s,
-                chapters: s.chapters.filter((c) => c.id !== chapterId),
-              }));
+          void runPersist(
+            (async () => {
+              // For a new chapter insert, do not send client-calculated elevatesId so DB trigger assigns the authoritative sequence ID
+              const { elevatesId: _omit, ...chapterPayload } = chapter;
+              const res = await persistChapter(chapterPayload as Chapter);
+              const confirmedId = (res as any)?.elevatesId || (res as any)?.data?.elevatesId || (res as any)?.data?.elevates_id;
+              if (confirmedId && confirmedId !== chapterElevatesId) {
+                setStore((s) => ({
+                  ...s,
+                  chapters: s.chapters.map((c) =>
+                    c.id === chapterId ? { ...c, elevatesId: confirmedId } : c
+                  ),
+                }));
+              }
+              return res;
+            })(),
+            {
+              errorMessage: `Failed to create chapter "${chapter.name}"`,
+              rollback: () => {
+                setStore((s) => ({
+                  ...s,
+                  chapters: s.chapters.filter((c) => c.id !== chapterId),
+                }));
+              },
             },
-          });
+          );
         }
         return chapter;
       },

@@ -5,7 +5,7 @@ import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { embedLocationInNotes } from "@/lib/slug";
-import { getChapterElevatesId } from "@/lib/chapters";
+import { isValidChapterElevatesId } from "@/lib/chapters";
 import { requireUser, canAuthUserCreateEvent } from "@/lib/api/require-user";
 import {
   canManageClasses,
@@ -92,7 +92,7 @@ async function isExecutiveDelegated(
       const { data: chap } = await adminClient
         .from("chapters")
         .select("id")
-        .eq("slug", chapterIdOrSlug)
+        .or(`slug.eq.${chapterIdOrSlug},elevates_id.eq.${chapterIdOrSlug}`)
         .maybeSingle();
       if (chap?.id) effectiveChapterId = chap.id;
     }
@@ -1567,7 +1567,7 @@ export async function POST(req: Request) {
         const { data: existingBySlug } = await admin
           .from("chapters")
           .select("id")
-          .eq("slug", chapter.slug)
+          .or(`slug.eq.${chapter.slug},elevates_id.eq.${chapter.slug}`)
           .maybeSingle();
         if (existingBySlug?.id) {
           chapterId = existingBySlug.id;
@@ -1590,11 +1590,29 @@ export async function POST(req: Request) {
         }
       }
 
-      const chapterElevatesId = getChapterElevatesId({ id: chapterId, elevatesId: chapter.elevatesId });
+      // Check if chapter already exists in Supabase
+      const { data: existingChapterRecord } = await admin
+        .from("chapters")
+        .select("id, elevates_id")
+        .eq("id", chapterId)
+        .maybeSingle();
+
+      const isNewChapter = !existingChapterRecord;
+
+      // Determine elevates_id:
+      // New chapter (no existing row matches chapterId): Do NOT include elevates_id in the upsert payload at all.
+      // Let the DB trigger assign the next sequential value automatically.
+      // Existing chapter being edited: Fetch the chapter's current elevates_id from the DB first, and explicitly include
+      // that same unchanged value in the upsert payload. This ensures the trigger's null-check fails and it does NOT
+      // call nextval() again (which would otherwise burn a sequence value pointlessly on every edit).
+      let chapterElevatesId: string | undefined = undefined;
+      if (!isNewChapter) {
+        chapterElevatesId = existingChapterRecord?.elevates_id || (chapter.elevatesId ? String(chapter.elevatesId) : undefined);
+      }
 
       const basePayload: Record<string, any> = {
         id: chapterId,
-        elevates_id: chapterElevatesId,
+        ...(chapterElevatesId ? { elevates_id: chapterElevatesId } : {}),
         organization_id: isUuid(chapter.organizationId) ? chapter.organizationId : DEFAULT_ORG_ID,
         name: chapter.name,
         slug: chapter.slug,
@@ -1838,15 +1856,24 @@ export async function POST(req: Request) {
         console.warn("Could not record chapter system_ui_state:", uiErr);
       }
 
+      // Fetch authoritative saved chapter to get exact sequential elevates_id assigned by Supabase sequence/trigger
+      const { data: savedDbChapter } = await admin
+        .from("chapters")
+        .select("id, elevates_id")
+        .eq("id", chapterId)
+        .maybeSingle();
+
+      const finalElevatesId = savedDbChapter?.elevates_id || chapterElevatesId || "CHP-0001";
+
       await revalidateWeb(["chapters", `chapter:${chapter.slug}`]);
       return NextResponse.json({
         ok: true,
         id: chapterId,
-        elevatesId: chapterElevatesId,
+        elevatesId: finalElevatesId,
         data: {
           ...chapter,
           id: chapterId,
-          elevatesId: chapterElevatesId,
+          elevatesId: finalElevatesId,
         },
       });
     }
@@ -3994,7 +4021,7 @@ export async function POST(req: Request) {
         const { data: chapBySlug } = await admin
           .from("chapters")
           .select("id")
-          .eq("slug", chapterId)
+          .or(`slug.eq.${chapterId},elevates_id.eq.${chapterId}`)
           .maybeSingle();
         if (chapBySlug) validChapterId = chapBySlug.id;
       }

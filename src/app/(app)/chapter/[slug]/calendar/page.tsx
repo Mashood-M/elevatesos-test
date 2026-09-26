@@ -24,6 +24,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   dateKeyInTz,
   eventSpansDate,
@@ -51,7 +52,7 @@ export default function ChapterCalendarPage({
   const { slug } = use(params);
   const { store } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const [month, setMonth] = useState<YearMonth>(() => nowYearMonth());
   const [status, setStatus] = useState<StatusFilter>("all");

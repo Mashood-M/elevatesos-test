@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Stat } from "@/components/ui/stat";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   createFormFromTemplate,
   FORM_TEMPLATES,
@@ -46,7 +47,7 @@ export default function ChapterFormsPage({
   const { store, createForm, deleteForm, duplicateForm } = useStore();
   const { session } = useCurrentUser();
   const { confirm } = useAppDialogs();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [pickerOpen, setPickerOpen] = useState(false);

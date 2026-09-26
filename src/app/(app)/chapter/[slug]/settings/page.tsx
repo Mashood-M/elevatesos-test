@@ -37,7 +37,7 @@ import { hasPermission, isHqRole } from "@/lib/permissions";
 import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate, formatDateTime, cn } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
-import { deriveChapterShortCode } from "@/lib/chapters";
+import { deriveChapterShortCode, findChapterBySlugOrId } from "@/lib/chapters";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import type { Chapter } from "@/types";
 import { ChapterInviteCodeManager } from "@/components/chapter/chapter-invite-code-manager";
@@ -55,7 +55,7 @@ export default function ChapterSettingsPage({
   const router = useRouter();
   const { store, updateChapter } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const [flash, setFlash] = useState("");
   const [joinCopied, setJoinCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"general" | "access" | "onboarding" | "activity">("general");

@@ -1,5 +1,12 @@
 import { ensureOrganizationBrandKit } from "@/lib/brand/kit";
-import { ensureTestChapter } from "@/lib/chapters";
+import {
+  ensureTestChapter,
+  formatChapterElevatesId,
+  generateChapterElevatesId,
+  parseChapterElevatesId,
+  isValidChapterElevatesId,
+  getNextSequentialChapterElevatesId,
+} from "@/lib/chapters";
 import {
   DEFAULT_RESOURCE_CATEGORIES,
   humanizeCategoryKey,
@@ -624,33 +631,13 @@ export function generateElevatesId(id: string): string {
   return formatElevatesId(n);
 }
 
-export function formatChapterElevatesId(n: number): string {
-  if (n < 1000) {
-    return `CHP-${String(n).padStart(4, "0")}`;
-  } else if (n < 27000) {
-    const letterIdx = Math.floor((n - 1000) / 1000);
-    const letter = String.fromCharCode(65 + letterIdx);
-    const rem = (n - 1000) % 1000;
-    return `CHP-${letter}${String(rem).padStart(3, "0")}`;
-  } else if (n < 703000) {
-    const twoLetterOffset = Math.floor((n - 27000) / 100);
-    const firstLetter = String.fromCharCode(65 + Math.floor(twoLetterOffset / 26));
-    const secondLetter = String.fromCharCode(65 + (twoLetterOffset % 26));
-    const rem = (n - 27000) % 100;
-    return `CHP-${firstLetter}${secondLetter}${String(rem).padStart(2, "0")}`;
-  }
-  return `CHP-${String(n).padStart(6, "0")}`;
-}
-
-export function generateChapterElevatesId(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash << 5) - hash + id.charCodeAt(i);
-    hash |= 0;
-  }
-  const n = (Math.abs(hash) % 999) + 1;
-  return formatChapterElevatesId(n);
-}
+export {
+  formatChapterElevatesId,
+  generateChapterElevatesId,
+  parseChapterElevatesId,
+  isValidChapterElevatesId,
+  getNextSequentialChapterElevatesId,
+};
 
 export function normalizeStore(store: ElevatesStore): ElevatesStore {
   const organization = ensureOrganizationBrandKit(store.organization);

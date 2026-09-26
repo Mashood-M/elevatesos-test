@@ -12,6 +12,7 @@ import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
@@ -87,7 +88,7 @@ export default function ChapterClassesPage({
   } = useStore();
   const { session } = useCurrentUser();
   const { confirm } = useAppDialogs();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const canManage =
     canManageClasses(session.roleKey) ||

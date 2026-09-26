@@ -211,16 +211,34 @@ export async function POST(req: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { error: profileUpsertError } = await admin
+    // 5. handle_new_user() DB trigger already created the profile row on createUser above.
+    // Update the existing profile row with the user fields — do not upsert so BEFORE INSERT trigger does not burn nextval().
+    const { data: updatedProfile, error: profileUpdateError } = await admin
       .from("profiles")
-      .upsert(profilePayload, { onConflict: "id" });
+      .update(profilePayload)
+      .eq("id", finalUserId)
+      .select("id");
 
-    if (profileUpsertError) {
-      console.error("Profile upsert error:", profileUpsertError);
+    if (profileUpdateError) {
+      console.error("Profile update error:", profileUpdateError);
       return NextResponse.json(
-        { ok: false, error: profileUpsertError.message },
+        { ok: false, error: profileUpdateError.message },
         { status: 400 },
       );
+    }
+
+    if (!updatedProfile || updatedProfile.length === 0) {
+      // Fallback: If handle_new_user() trigger did not create the row, insert it
+      const { error: profileInsertError } = await admin
+        .from("profiles")
+        .insert(profilePayload);
+      if (profileInsertError) {
+        console.error("Profile insert fallback error:", profileInsertError);
+        return NextResponse.json(
+          { ok: false, error: profileInsertError.message },
+          { status: 400 },
+        );
+      }
     }
 
     // 6. Assign User Role

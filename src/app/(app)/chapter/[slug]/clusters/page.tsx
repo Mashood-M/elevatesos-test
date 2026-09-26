@@ -36,6 +36,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, showToast } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { hasPermission } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
@@ -127,7 +128,7 @@ export default function ChapterClustersPage({
   const { store, createCluster, joinCluster } = useStore();
   const roleKey = store.session.roleKey;
   const currentUserId = store.session.userId;
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");

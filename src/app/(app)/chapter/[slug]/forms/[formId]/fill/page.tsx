@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useStore } from "@/context/store-context";
 import { migrateForm } from "@/lib/forms/helpers";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 
 export default function FormFillPage({
   params,
@@ -15,7 +16,7 @@ export default function FormFillPage({
 }) {
   const { slug, formId } = use(params);
   const { store } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const raw = store.forms?.find((f) => f.id === formId);
   const form = raw ? migrateForm(raw) : null;
 

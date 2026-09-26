@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { resourceCategoryLabel } from "@/lib/resources/categories";
 import { formatDateTime } from "@/lib/utils";
 
@@ -17,7 +18,7 @@ export default function ChapterResourcesPage({
 }) {
   const { slug } = use(params);
   const { store } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   if (!chapter) return <p className="text-orange">// Chapter not found</p>;
 

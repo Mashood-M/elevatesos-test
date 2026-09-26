@@ -252,36 +252,25 @@ export default function InviteSignUpPage({
         return;
       }
 
-      // 2. Create profile row (Unassigned independent student initially)
-      const { data: profileData, error: profileError } = await supabase
+      // 2. handle_new_user() DB trigger already created the profile row on signUp() above.
+      // Just update it with the invite-form fields — no insert needed here.
+      const { error: profileError } = await supabase
         .from("profiles")
-        .insert({
-          id: authUser.id,
-          email: cleanEmail,
-          full_name: name,
+        .update({
           phone: phoneDigits,
+          full_name: name,
           status: "active",
           chapter_id: null,
         })
+        .eq("id", authUser.id)
         .select("id, elevates_id")
         .single();
 
       if (profileError) {
-        // If profile already exists (e.g. upsert on auth trigger), update phone and name, ensure chapter is null
-        console.warn("Profile insert error (may be a trigger duplicate):", profileError.message);
-        await supabase
-          .from("profiles")
-          .update({ phone: phoneDigits, full_name: name, chapter_id: null })
-          .eq("id", authUser.id);
+        console.error("Profile update error after signup:", profileError.message);
       }
 
-      const profileId = profileData?.id ?? authUser.id;
-
-      // Ensure phone and independent student state (chapter_id = null) is saved in profiles
-      await supabase
-        .from("profiles")
-        .update({ phone: phoneDigits, chapter_id: null })
-        .eq("id", profileId);
+      const profileId = authUser.id;
 
       // 3. Assign student role (without chapter assignment until invite code entered)
       const { data: roleRow } = await supabase

@@ -23,6 +23,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { useStore } from "@/context/store-context";
 import { chapterEyebrow, isExecutiveRole } from "@/lib/access";
 import { isCampusLead, isSuperAdmin } from "@/lib/permissions";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import {
   CaseStudyEditor,
@@ -51,7 +52,7 @@ export default function ChapterProjectsPage({
 }) {
   const { slug } = use(params);
   const { store, createProject, updateProject, deleteProject } = useStore();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   const [search, setSearch] = useState("");
   const [selectedStage, setSelectedStage] = useState<string>("all");

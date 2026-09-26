@@ -11,6 +11,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { isHqRole } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { findChapterBySlugOrId } from "@/lib/chapters";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, cn } from "@/lib/utils";
@@ -36,7 +37,7 @@ export default function ClusterDetailPage({
     submitClusterChallenge,
   } = useStore();
   const { session } = useCurrentUser();
-  const chapter = store.chapters.find((c) => c.slug === slug);
+  const chapter = findChapterBySlugOrId(store.chapters, slug);
   const cluster = store.clusters.find((c) => c.id === clusterId);
   const [weekTitle, setWeekTitle] = useState("");
   const [addMemberId, setAddMemberId] = useState("");

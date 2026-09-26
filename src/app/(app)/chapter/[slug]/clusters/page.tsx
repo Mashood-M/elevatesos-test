@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
   ArrowRight,
   UserCheck,
+  UserPlus,
   GraduationCap,
   Calendar,
   X,
@@ -158,18 +159,30 @@ export default function ChapterClustersPage({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
 
-  // Roadmap starter milestones for new cluster
-  const [roadmapWeeks, setRoadmapWeeks] = useState([
-    "Foundations, Environment & Kickoff",
-    "Core Skill Acceleration & Labs",
-    "Hands-on Build Sprint & Review",
-    "Demo Day, Pitch & Project Launch",
-  ]);
-
   if (!chapter) return <ChapterNotFound />;
 
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
-  const members = store.profiles.filter((p) => p.chapterId === chapter.id);
+
+  const chapterUserRoleIds = useMemo(() => {
+    return new Set(
+      (store.userRoles ?? [])
+        .filter((ur) => ur.chapterId === chapter.id || (chapter.slug && ur.chapterId === chapter.slug))
+        .map((ur) => ur.userId)
+    );
+  }, [store.userRoles, chapter.id, chapter.slug]);
+
+  const members = useMemo(() => {
+    const list = (store.profiles ?? []).filter(
+      (p) =>
+        p.chapterId === chapter.id ||
+        (p as unknown as Record<string, unknown>).chapter_id === chapter.id ||
+        (chapter.slug && p.chapterId === chapter.slug) ||
+        chapterUserRoleIds.has(p.id)
+    );
+    if (list.length > 0) return list;
+    return store.profiles ?? [];
+  }, [store.profiles, chapter.id, chapter.slug, chapterUserRoleIds]);
+
   const projects = store.projects.filter((p) => p.chapterId === chapter.id);
 
   const canCreate =
@@ -182,6 +195,8 @@ export default function ChapterClustersPage({
     roleKey === "campus_lead" ||
     roleKey === "chairman" ||
     hasExecutiveDelegation(store, currentUserId, chapter.id, "manage_clusters");
+
+  const canManage = canCreate;
 
   // Summary statistics
   const totalClusters = clusters.length;
@@ -727,13 +742,27 @@ export default function ChapterClustersPage({
                         size="sm"
                         className="w-full justify-between gap-1 group/btn text-[12px]"
                       >
-                        <span>{isLead ? "Manage Track" : "Explore Track"}</span>
+                        <span>{isLead || canManage ? "Manage Track" : "Explore Track"}</span>
                         <ArrowRight
                           size={13}
                           className="transition-transform group-hover/btn:translate-x-0.5 text-text-mute"
                         />
                       </Button>
                     </Link>
+
+                    {canManage || isLead ? (
+                      <Link href={`/chapter/${slug}/clusters/${cluster.id}?addMember=true`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-[12px] h-8 px-2.5 text-[var(--accent)] hover:bg-orange-50 shrink-0 gap-1 border border-[var(--accent)]/30"
+                          title="Add students to cluster"
+                        >
+                          <UserPlus size={12} />
+                          <span>Add Students</span>
+                        </Button>
+                      </Link>
+                    ) : null}
 
                     {!isMember && mode === "open" ? (
                       <Button
@@ -818,7 +847,7 @@ export default function ChapterClustersPage({
           {/* Access Mode Selector */}
           <div>
             <FieldLabel>Enrollment Access Mode</FieldLabel>
-            <div className="grid grid-cols-3 gap-2.5 mt-1">
+            <div className="grid grid-cols-2 gap-2.5 mt-1">
               <button
                 type="button"
                 onClick={() => setAccessMode("invite")}
@@ -847,21 +876,6 @@ export default function ChapterClustersPage({
                 <Unlock size={18} className="mb-1 text-emerald-600" />
                 <span className="text-[12px] font-bold block">Open to All</span>
                 <span className="text-[10px] text-text-mute">Instant student join</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAccessMode("challenge")}
-                className={cn(
-                  "flex flex-col items-center justify-center p-3 rounded-2xl border text-center transition",
-                  accessMode === "challenge"
-                    ? "bg-violet-50/70 border-violet-300 text-violet-900 shadow-sm"
-                    : "bg-bg border-border text-text-mute hover:bg-bg-hover hover:text-text"
-                )}
-              >
-                <Trophy size={18} className="mb-1 text-violet-600" />
-                <span className="text-[12px] font-bold block">Challenge</span>
-                <span className="text-[10px] text-text-mute">Proof of build required</span>
               </button>
             </div>
           </div>
@@ -893,33 +907,6 @@ export default function ChapterClustersPage({
             </Select>
             <p className="mt-1 text-[11px] text-text-mute">
               The assigned student lead will have delegation to manage milestones and review submissions.
-            </p>
-          </div>
-
-          {/* Starter Roadmap Milestones */}
-          <div>
-            <FieldLabel>Default 4-Week Roadmap Starter</FieldLabel>
-            <div className="space-y-2 mt-1">
-              {roadmapWeeks.map((weekTitle, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-text-mute w-8 shrink-0">
-                    W{idx + 1}:
-                  </span>
-                  <Input
-                    value={weekTitle}
-                    onChange={(e) => {
-                      const updated = [...roadmapWeeks];
-                      updated[idx] = e.target.value;
-                      setRoadmapWeeks(updated);
-                    }}
-                    placeholder={`Week ${idx + 1} milestone`}
-                    className="h-8 text-[12px]"
-                  />
-                </div>
-              ))}
-            </div>
-            <p className="mt-1 text-[10.5px] text-text-mute">
-              You can add more weeks, resources, and tasks inside the track console after creation.
             </p>
           </div>
         </div>

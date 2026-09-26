@@ -2,6 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Plus, UserPlus, Users, Search, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress";
-import { useStore, useCurrentUser } from "@/context/store-context";
-import { isHqRole } from "@/lib/permissions";
+import { useStore, useCurrentUser, showToast } from "@/context/store-context";
+import { isHqRole, hasPermission } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { hasExecutiveDelegation } from "@/lib/leadership";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { createClient } from "@/lib/supabase/client";
@@ -47,6 +49,17 @@ export default function ClusterDetailPage({
   const [challengeNote, setChallengeNote] = useState("");
   const [flash, setFlash] = useState("");
   const [discordGateOpen, setDiscordGateOpen] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [studentModalSearch, setStudentModalSearch] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get("addMember") === "true" || urlParams.get("addStudent") === "true") {
+        setShowAddMemberModal(true);
+      }
+    }
+  }, []);
 
   const currentUserProfile = store.profiles.find((p) => p.id === session.userId);
   const isDiscordConnected = Boolean(
@@ -90,6 +103,96 @@ export default function ClusterDetailPage({
     );
   }
 
+  const chapterUserRoleIds = useMemo(() => {
+    return new Set(
+      (store.userRoles ?? [])
+        .filter((ur) => ur.chapterId === chapter?.id || (chapter?.slug && ur.chapterId === chapter.slug))
+        .map((ur) => ur.userId)
+    );
+  }, [store.userRoles, chapter?.id, chapter?.slug]);
+
+  const chapterStudents = useMemo(() => {
+    if (!chapter) return [];
+    const list = (store.profiles ?? []).filter((p) => {
+      if (p.role === "faculty_coordinator") return false;
+      const isFaculty = (store.userRoles ?? []).some(
+        (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator"
+      );
+      if (isFaculty) return false;
+
+      return (
+        p.chapterId === chapter.id ||
+        (p as unknown as Record<string, unknown>).chapter_id === chapter.id ||
+        (chapter.slug && p.chapterId === chapter.slug) ||
+        chapterUserRoleIds.has(p.id)
+      );
+    });
+
+    if (list.length > 0) return list;
+
+    // Fallback if profiles don't have explicit chapterId in demo or isolated test env
+    return (store.profiles ?? []).filter(
+      (p) =>
+        p.role !== "faculty_coordinator" &&
+        !(store.userRoles ?? []).some(
+          (ur) => ur.userId === p.id && ur.roleKey === "faculty_coordinator"
+        )
+    );
+  }, [store.profiles, store.userRoles, chapter, chapterUserRoleIds]);
+
+  const members = useMemo(() => {
+    if (!chapter) return [];
+    const list = (store.profiles ?? []).filter(
+      (p) =>
+        p.chapterId === chapter.id ||
+        (p as unknown as Record<string, unknown>).chapter_id === chapter.id ||
+        (chapter.slug && p.chapterId === chapter.slug) ||
+        chapterUserRoleIds.has(p.id)
+    );
+    if (list.length > 0) return list;
+    return store.profiles ?? [];
+  }, [store.profiles, chapter, chapterUserRoleIds]);
+
+  const canManage = Boolean(
+    isHqRole(session.roleKey) ||
+    isFacultyRole(session.roleKey) ||
+    isExecutiveRole(session.roleKey) ||
+    (cluster && cluster.leaderId === session.userId) ||
+    hasPermission(store, session.roleKey, "chapter.manage") ||
+    (chapter && hasExecutiveDelegation(store, session.userId, chapter.id, "manage_clusters"))
+  );
+
+  const isMember = Boolean(cluster && cluster.memberIds.includes(session.userId));
+
+  const nonMembers = useMemo(() => {
+    if (!cluster) return [];
+    return chapterStudents.filter((p) => !cluster.memberIds.includes(p.id));
+  }, [chapterStudents, cluster]);
+
+  const filteredNonMembers = useMemo(() => {
+    if (!memberSearch.trim()) return nonMembers;
+    const q = memberSearch.toLowerCase().trim();
+    return nonMembers.filter(
+      (m) =>
+        m.fullName.toLowerCase().includes(q) ||
+        (m.email && m.email.toLowerCase().includes(q)) ||
+        (m.elevatesId && m.elevatesId.toLowerCase().includes(q)),
+    );
+  }, [nonMembers, memberSearch]);
+
+  const filteredModalStudents = useMemo(() => {
+    if (!studentModalSearch.trim()) return chapterStudents;
+    const q = studentModalSearch.toLowerCase().trim();
+    return chapterStudents.filter(
+      (m) =>
+        m.fullName.toLowerCase().includes(q) ||
+        (m.email && m.email.toLowerCase().includes(q)) ||
+        (m.elevatesId && m.elevatesId.toLowerCase().includes(q)) ||
+        (m.department && m.department.toLowerCase().includes(q)) ||
+        (m.year && m.year.toLowerCase().includes(q))
+    );
+  }, [chapterStudents, studentModalSearch]);
+
   if (!chapter || !cluster || cluster.chapterId !== chapter.id) {
     return (
       <div className="py-16 text-center">
@@ -101,23 +204,6 @@ export default function ClusterDetailPage({
     );
   }
 
-  const canManage =
-    isHqRole(session.roleKey) ||
-    isFacultyRole(session.roleKey) ||
-    isExecutiveRole(session.roleKey);
-  const isMember = cluster.memberIds.includes(session.userId);
-  const members = store.profiles.filter((p) => p.chapterId === chapter.id);
-  const nonMembers = members.filter((p) => !cluster.memberIds.includes(p.id));
-  const filteredNonMembers = useMemo(() => {
-    if (!memberSearch.trim()) return nonMembers;
-    const q = memberSearch.toLowerCase().trim();
-    return nonMembers.filter(
-      (m) =>
-        m.fullName.toLowerCase().includes(q) ||
-        (m.email && m.email.toLowerCase().includes(q)) ||
-        (m.elevatesId && m.elevatesId.toLowerCase().includes(q)),
-    );
-  }, [nonMembers, memberSearch]);
   const projects = store.projects.filter((p) => p.clusterId === cluster.id);
   const doneWeeks = cluster.roadmap.filter((r) => r.done).length;
   const progress = cluster.roadmap.length
@@ -229,15 +315,11 @@ export default function ClusterDetailPage({
                     value={cluster.accessMode ?? "invite"}
                     onChange={(e) =>
                       updateCluster(cluster.id, {
-                        accessMode: e.target.value as
-                          | "open"
-                          | "invite"
-                          | "challenge",
+                        accessMode: e.target.value as "open" | "invite",
                       })
                     }
                   >
                     <option value="invite">Invite</option>
-                    <option value="challenge">Challenge</option>
                     <option value="open">Open (discouraged)</option>
                   </Select>
                 </div>
@@ -411,81 +493,141 @@ export default function ClusterDetailPage({
         </div>
 
         <div className="space-y-4">
-          <TerminalPanel title="Members" meta={`${cluster.memberIds.length}`}>
-            <ul className="space-y-2">
-              {cluster.memberIds.map((id) => {
-                const m = store.profiles.find((p) => p.id === id);
-                if (!m) return null;
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center justify-between gap-2 text-[13px]"
-                  >
-                    <Link
-                      href={`/profile/${m.elevatesId || id}`}
-                      className="font-medium hover:text-[var(--accent)]"
-                    >
-                      {m.fullName}
-                      {cluster.leaderId === id ? (
-                        <Badge tone="magenta" className="ml-2">
-                          Lead
-                        </Badge>
-                      ) : null}
-                    </Link>
-                    {canManage ? (
-                      <button
-                        type="button"
-                        className="text-[11px] text-text-mute hover:text-[var(--danger)]"
-                        onClick={() => removeClusterMember(cluster.id, id)}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-            {canManage && nonMembers.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {nonMembers.length > 3 && (
-                  <Input
-                    value={memberSearch}
-                    onChange={(e) => setMemberSearch(e.target.value)}
-                    placeholder="Search students to add..."
-                    className="text-xs h-8 w-full"
-                  />
-                )}
-                <div className="flex gap-2">
-                  <Select
-                    value={addMemberId}
-                    onChange={(e) => setAddMemberId(e.target.value)}
-                    className="text-xs"
-                  >
-                    <option value="">
-                      {filteredNonMembers.length === 0
-                        ? "No students match search…"
-                        : "Select member to add…"}
-                    </option>
-                    {filteredNonMembers.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.fullName} ({m.elevatesId || m.email})
-                      </option>
-                    ))}
-                  </Select>
+          <TerminalPanel
+            title="Members"
+            meta={`${cluster.memberIds.length}`}
+            action={
+              canManage ? (
+                <Button
+                  size="sm"
+                  variant="orange"
+                  onClick={() => setShowAddMemberModal(true)}
+                  className="text-xs h-8 gap-1.5 px-3"
+                >
+                  <UserPlus size={13} />
+                  <span>Add Student</span>
+                </Button>
+              ) : null
+            }
+          >
+            {cluster.memberIds.length === 0 ? (
+              <div className="py-6 text-center border border-dashed border-border rounded-xl p-4 my-2">
+                <Users className="mx-auto h-7 w-7 text-text-mute mb-2 opacity-50" />
+                <p className="text-[13px] font-medium text-text">No students enrolled yet</p>
+                <p className="text-[11.5px] text-text-mute mt-0.5 mb-3">
+                  Add students from the chapter to kick off learning milestones together.
+                </p>
+                {canManage ? (
                   <Button
-                    variant="ghost"
-                    className="text-xs shrink-0"
-                    disabled={!addMemberId}
-                    onClick={() => {
-                      if (!addMemberId) return;
-                      addClusterMember(cluster.id, addMemberId);
-                      setAddMemberId("");
-                      setMemberSearch("");
-                    }}
+                    size="sm"
+                    variant="orange"
+                    onClick={() => setShowAddMemberModal(true)}
+                    className="text-xs gap-1.5"
                   >
-                    Add
+                    <UserPlus size={13} />
+                    <span>Add Student</span>
                   </Button>
-                </div>
+                ) : null}
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {cluster.memberIds.map((id) => {
+                  const m = store.profiles.find((p) => p.id === id);
+                  if (!m) return null;
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-center justify-between gap-2 text-[13px] py-1 px-1 rounded-lg hover:bg-bg/50 transition"
+                    >
+                      <Link
+                        href={`/profile/${m.elevatesId || id}`}
+                        className="font-medium hover:text-[var(--accent)] flex items-center gap-2"
+                      >
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700">
+                          {m.fullName ? m.fullName[0] : "?"}
+                        </div>
+                        <span>{m.fullName}</span>
+                        {cluster.leaderId === id ? (
+                          <Badge tone="magenta" className="text-[10px] py-0 px-1.5">
+                            Lead
+                          </Badge>
+                        ) : null}
+                      </Link>
+                      {canManage ? (
+                        <button
+                          type="button"
+                          className="text-[11px] text-text-mute hover:text-[var(--danger)]"
+                          onClick={() => {
+                            removeClusterMember(cluster.id, id);
+                            showToast(`Removed ${m.fullName} from cluster`, "info");
+                          }}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {canManage ? (
+              <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowAddMemberModal(true)}
+                  className="w-full text-xs gap-1.5 justify-center"
+                >
+                  <UserPlus size={13} />
+                  <span>Browse Student List</span>
+                </Button>
+
+                {nonMembers.length > 0 ? (
+                  <div className="space-y-2 pt-1">
+                    {nonMembers.length > 3 && (
+                      <Input
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        placeholder="Search students to quick add..."
+                        className="text-xs h-8 w-full"
+                      />
+                    )}
+                    <div className="flex gap-2">
+                      <Select
+                        value={addMemberId}
+                        onChange={(e) => setAddMemberId(e.target.value)}
+                        className="text-xs"
+                      >
+                        <option value="">
+                          {filteredNonMembers.length === 0
+                            ? "No students match search…"
+                            : "Quick select student to add…"}
+                        </option>
+                        {filteredNonMembers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.fullName} {m.elevatesId ? `(${m.elevatesId})` : m.email ? `(${m.email})` : ""}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        className="text-xs shrink-0"
+                        disabled={!addMemberId}
+                        onClick={() => {
+                          if (!addMemberId) return;
+                          addClusterMember(cluster.id, addMemberId);
+                          const addedProf = store.profiles.find((p) => p.id === addMemberId);
+                          showToast(`Added ${addedProf?.fullName || "student"} to cluster!`, "success");
+                          setAddMemberId("");
+                          setMemberSearch("");
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </TerminalPanel>
@@ -513,6 +655,140 @@ export default function ClusterDetailPage({
           </TerminalPanel>
         </div>
       </div>
+
+      {/* Add Students to Cluster Modal */}
+      <Dialog
+        open={showAddMemberModal}
+        onClose={() => setShowAddMemberModal(false)}
+        title={`Add Students to ${cluster.name}`}
+        description="Select students from your chapter to enroll them into this learning cluster."
+        className="max-w-xl"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <span className="text-[12px] text-text-mute">
+              {cluster.memberIds.length} {cluster.memberIds.length === 1 ? "student" : "students"} currently enrolled
+            </span>
+            <Button variant="secondary" onClick={() => setShowAddMemberModal(false)}>
+              Done
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-left">
+          {/* Search Box */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-mute h-4 w-4" />
+            <Input
+              value={studentModalSearch}
+              onChange={(e) => setStudentModalSearch(e.target.value)}
+              placeholder="Search by student name, Elevates ID, email, or department..."
+              className="pl-9 text-xs h-9"
+              autoFocus
+            />
+          </div>
+
+          {/* Student List */}
+          <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+            {filteredModalStudents.length === 0 ? (
+              <div className="py-8 text-center border border-dashed border-border rounded-xl">
+                <Users className="mx-auto h-7 w-7 text-text-mute mb-2 opacity-50" />
+                <p className="text-[13px] font-medium text-text">No students found</p>
+                <p className="text-[11.5px] text-text-mute mt-0.5">
+                  {studentModalSearch.trim()
+                    ? `No students matching "${studentModalSearch}"`
+                    : "No students registered in this chapter yet."}
+                </p>
+              </div>
+            ) : (
+              filteredModalStudents.map((student) => {
+                const isEnrolled = cluster.memberIds.includes(student.id);
+                const isLead = cluster.leaderId === student.id;
+
+                return (
+                  <div
+                    key={student.id}
+                    className={cn(
+                      "flex items-center justify-between gap-3 p-2.5 rounded-xl border transition",
+                      isEnrolled
+                        ? "bg-emerald-50/40 border-emerald-200/60"
+                        : "bg-bg border-border/70 hover:border-border hover:bg-bg-hover/50"
+                    )}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-700 font-bold text-xs uppercase border border-orange-200">
+                        {student.fullName ? student.fullName[0] : "?"}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[13px] font-semibold text-text truncate">
+                            {student.fullName}
+                          </span>
+                          {isLead ? (
+                            <Badge tone="magenta" className="text-[10px] py-0 px-1.5">
+                              Lead
+                            </Badge>
+                          ) : null}
+                          {student.elevatesId ? (
+                            <span className="font-[family-name:var(--font-mono)] text-[10px] text-text-mute bg-bg-panel px-1.5 py-0.5 rounded border border-border/50">
+                              {student.elevatesId}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-text-mute mt-0.5 truncate">
+                          {student.department ? (
+                            <span>{student.department}</span>
+                          ) : null}
+                          {student.department && student.year ? <span>•</span> : null}
+                          {student.year ? <span>{student.year}</span> : null}
+                          {!student.department && !student.year && student.email ? (
+                            <span className="truncate">{student.email}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      {isEnrolled ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100/70 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 border border-emerald-300">
+                            <Check size={12} className="text-emerald-700" />
+                            Enrolled
+                          </span>
+                          {canManage ? (
+                            <button
+                              type="button"
+                              className="text-[11px] text-text-mute hover:text-[var(--danger)] px-1 transition"
+                              onClick={() => {
+                                removeClusterMember(cluster.id, student.id);
+                                showToast(`Removed ${student.fullName} from cluster`, "info");
+                              }}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="orange"
+                          className="text-xs h-7 px-3 gap-1 shadow-sm"
+                          onClick={() => {
+                            addClusterMember(cluster.id, student.id);
+                            showToast(`Added ${student.fullName} to cluster!`, "success");
+                          }}
+                        >
+                          <Plus size={12} />
+                          <span>Add</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Dialog>
 
       {/* Discord Connection Required Modal */}
       <Dialog

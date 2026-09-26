@@ -38,10 +38,10 @@ export function isTestChapter(chapter: { id?: string; slug?: string; name?: stri
 export function ensureTestChapter(chapters: Chapter[] = []): Chapter[] {
   const existingTest = chapters.find(isTestChapter);
   if (existingTest) {
-    // Return with test chapter pinned at index 0, followed by all other chapters
-    return [existingTest, ...chapters.filter((c) => c.id !== existingTest.id)];
+    // Keep real campus chapters first, test chapter at the end
+    return [...chapters.filter((c) => c.id !== existingTest.id), existingTest];
   }
-  return [TEST_CHAPTER_DEFAULT, ...chapters];
+  return [...chapters, TEST_CHAPTER_DEFAULT];
 }
 
 /**

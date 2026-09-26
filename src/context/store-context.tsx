@@ -31,6 +31,7 @@ import {
   deriveChapterShortCode,
   getChapterElevatesId,
   getNextSequentialChapterElevatesId,
+  isTestChapter,
 } from "@/lib/chapters";
 import { encodeDelegationsToDesignation } from "@/lib/leadership";
 import { isUuid, genUuid } from "@/lib/uuid";
@@ -5092,7 +5093,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               section: input.section,
               skills: input.skills,
               interests: input.interests,
-              chapterId: input.chapterId || store.chapters[0]?.id || "c1000000-0000-4000-8000-000000000001",
+              chapterId: input.chapterId || store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "",
               roleKey: input.roleKey,
             },
           }),
@@ -5237,7 +5238,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         } else {
           // Student role is default for all non-faculty accounts; cannot be removed
           if (!effectiveAssignments.some((a) => a.roleKey === "student")) {
-            const chapId = effectiveAssignments[0]?.chapterId || profile.chapterId || store.chapters[0]?.id || "";
+            const chapId = effectiveAssignments.find((a) => a.chapterId)?.chapterId ||
+              (profile.chapterId && store.chapters.some((c) => c.id === profile.chapterId) ? profile.chapterId : undefined);
             effectiveAssignments = [
               ...effectiveAssignments,
               { roleKey: "student", chapterId: chapId },
@@ -5269,7 +5271,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               organizationId: a.organizationId ?? store.organization.id,
             });
           } else {
-            const chapId = a.chapterId || profile.chapterId || store.chapters[0]?.id || "";
+            const chapId = a.chapterId ||
+              (profile.chapterId && store.chapters.some((c) => c.id === profile.chapterId) ? profile.chapterId : undefined);
             if (chapId) assignedChapId = chapId;
             built.push({
               id: genUuid(),

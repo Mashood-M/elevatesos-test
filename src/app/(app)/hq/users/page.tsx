@@ -15,6 +15,7 @@ import { isSuperAdmin, isFounder } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { CheckSquare, Square, ShieldCheck, Mail, ArrowUpDown, ChevronDown, Check } from "lucide-react";
 import { persistSystemUiState } from "@/lib/data/mutations";
+import { isTestChapter } from "@/lib/chapters";
 
 import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
 
@@ -630,7 +631,10 @@ export default function HqUsersPage() {
                     const existingKeys = urs
                       .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
                       .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
-                    const defaultChap = matched.chapterId || store.chapters[0]?.id || "";
+                    const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
+                    const defaultChap = (matched.chapterId && store.chapters.some((c) => c.id === matched.chapterId))
+                      ? matched.chapterId
+                      : realCampusChap;
                     const chaptersMap: Record<string, string> = {};
                     urs.forEach((ur) => {
                       const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
@@ -1123,9 +1127,12 @@ export default function HqUsersPage() {
                           .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
                           .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
                         // Campus lead: always force their own chapter
+                        const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
                         const defaultChap = isCampusLead
                           ? campusLeadChapterId
-                          : (profile.chapterId || store.chapters[0]?.id || "");
+                          : ((profile.chapterId && store.chapters.some((c) => c.id === profile.chapterId))
+                              ? profile.chapterId
+                              : realCampusChap);
                         const chaptersMap: Record<string, string> = {};
                         if (isCampusLead) {
                           // Lock all chapter-scoped role slots to campus lead's chapter
@@ -1290,9 +1297,12 @@ export default function HqUsersPage() {
         const lockedChapter = isCampusLead
           ? store.chapters.find((c) => c.id === campusLeadChapterId)
           : undefined;
+        const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
         const defaultChap = isCampusLead
           ? campusLeadChapterId
-          : (roleModalUser.chapterId || store.chapters[0]?.id || "");
+          : ((roleModalUser.chapterId && store.chapters.some((c) => c.id === roleModalUser.chapterId))
+              ? roleModalUser.chapterId
+              : realCampusChap);
         const canSave =
           chapterNeeded.every((k: RoleKey) => Boolean(roleModalChapters[k] || defaultChap));
         return (
@@ -1452,8 +1462,12 @@ export default function HqUsersPage() {
                           : { roleKey: "faculty_coordinator", chapterId: chap },
                       ];
                     } else if (roleModalSelected.length === 0) {
-                      assignments = [{ roleKey: "student", chapterId: defaultChap || undefined }];
+                      const studentChap = (roleModalUser.chapterId && store.chapters.some((c) => c.id === roleModalUser.chapterId))
+                        ? roleModalUser.chapterId
+                        : (defaultChap || undefined);
+                      assignments = [{ roleKey: "student", chapterId: studentChap }];
                     } else {
+                      const hasHqOnly = roleModalSelected.every((rk) => SIX_ROLES.find((r) => r.key === rk)?.scope === "hq");
                       assignments = roleModalSelected.map((rk) => {
                         const isHq = SIX_ROLES.find((r) => r.key === rk)?.scope === "hq";
                         const chap = roleModalChapters[rk] || defaultChap;
@@ -1461,7 +1475,8 @@ export default function HqUsersPage() {
                           ? { roleKey: rk }
                           : { roleKey: rk, chapterId: chap };
                       });
-                      assignments.push({ roleKey: "student", chapterId: defaultChap || undefined });
+                      const studentChap = hasHqOnly && !roleModalUser.chapterId ? undefined : (defaultChap || undefined);
+                      assignments.push({ roleKey: "student", chapterId: studentChap });
                     }
                     const res = setUserRoles(roleModalUser.id, assignments);
                     if (res) {

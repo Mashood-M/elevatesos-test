@@ -243,6 +243,19 @@ export async function POST(req: Request) {
 
     // 6. Assign User Role
     let warning: string | undefined;
+    const isHqRoleReq = ["founder", "hq_admin"].includes(requestedRole);
+    let resolvedChapId: string | null = null;
+    if (!isHqRoleReq && targetUser.chapterId) {
+      const { data: dbChap } = await admin
+        .from("chapters")
+        .select("id")
+        .eq("id", targetUser.chapterId)
+        .maybeSingle();
+      if (dbChap?.id) {
+        resolvedChapId = dbChap.id;
+      }
+    }
+
     if (requestedRole === "faculty_coordinator") {
       // Faculty replaces all roles (including student); only faculty remains
       await admin
@@ -254,7 +267,7 @@ export async function POST(req: Request) {
         user_id: finalUserId,
         role_id: roleData.id,
         role_key: "faculty_coordinator",
-        chapter_id: targetUser.chapterId,
+        chapter_id: resolvedChapId,
       });
 
       if (roleAssignError) {
@@ -262,18 +275,21 @@ export async function POST(req: Request) {
         warning = `User profile created, but role assignment failed: ${roleAssignError.message}`;
       }
     } else {
-      await admin
+      const delQuery = admin
         .from("user_roles")
         .delete()
-        .eq("user_id", finalUserId)
-        .eq("chapter_id", targetUser.chapterId);
+        .eq("user_id", finalUserId);
+      if (resolvedChapId) {
+        delQuery.eq("chapter_id", resolvedChapId);
+      }
+      await delQuery;
 
       const rolesToInsert: any[] = [
         {
           user_id: finalUserId,
           role_id: roleData.id,
           role_key: requestedRole,
-          chapter_id: targetUser.chapterId,
+          chapter_id: resolvedChapId,
         },
       ];
 
@@ -289,7 +305,7 @@ export async function POST(req: Request) {
             user_id: finalUserId,
             role_id: studentRole.id,
             role_key: "student",
-            chapter_id: targetUser.chapterId,
+            chapter_id: resolvedChapId,
           });
         }
       }

@@ -5,13 +5,14 @@ import { slugify } from "@/lib/public/http";
 import { revalidateWeb } from "@/lib/public/catalog";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { embedLocationInNotes } from "@/lib/slug";
-import { isValidChapterElevatesId } from "@/lib/chapters";
+import { isValidChapterElevatesId, TEST_CHAPTER_ID } from "@/lib/chapters";
 import { requireUser, canAuthUserCreateEvent } from "@/lib/api/require-user";
 import {
   canManageClasses,
   canVerifyAttendance,
   isCampusLead,
   isFounder,
+  isHqRole,
   ROLE_PRIORITY,
 } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
@@ -3433,6 +3434,76 @@ export async function POST(req: Request) {
         }
       }
 
+      // 2. Fetch all chapters from database to ensure foreign key constraint integrity
+      const { data: dbChapters } = await admin.from("chapters").select("id, slug");
+      const validChapterIds = new Set<string>();
+      const slugToChapterId = new Map<string, string>();
+      let dbTestChapId: string | null = null;
+      if (dbChapters) {
+        for (const c of dbChapters) {
+          if (c.id) {
+            validChapterIds.add(c.id);
+            if (c.id === TEST_CHAPTER_ID || c.slug === "test-chapter") {
+              dbTestChapId = c.id;
+            }
+          }
+          if (c.slug && c.id) {
+            slugToChapterId.set(c.slug.toLowerCase(), c.id);
+          }
+        }
+      }
+
+      // Safe auto-seed of the sandbox test chapter if referenced and missing from database
+      const referencesTestChap = assignments.some(
+        (a: any) => a?.chapterId === TEST_CHAPTER_ID || a?.chapterId === "test-chapter"
+      );
+      if (referencesTestChap && !dbTestChapId) {
+        try {
+          const { data: seededChap, error: seedErr } = await admin
+            .from("chapters")
+            .insert({
+              id: TEST_CHAPTER_ID,
+              elevates_id: "CHP-TEST01",
+              organization_id: isUuid(organizationId) ? organizationId : DEFAULT_ORG_ID,
+              name: "Elevates Test Chapter",
+              slug: "test-chapter",
+              college: "Elevates Sandbox Institute of Technology",
+              city: "HQ Sandbox Campus",
+              status: "active",
+              published: true,
+              health_score: 98,
+              member_count: 32,
+              event_count: 8,
+              project_count: 6,
+              founded_at: "2026-01-01T00:00:00.000Z",
+              notes: "Pinned test sandbox chapter for testing all chapter-wise features, roles, attendance, and forms in isolation.",
+            })
+            .select("id")
+            .maybeSingle();
+
+          if (seededChap?.id) {
+            validChapterIds.add(seededChap.id);
+            slugToChapterId.set("test-chapter", seededChap.id);
+            dbTestChapId = seededChap.id;
+          } else if (seedErr) {
+            console.warn("Notice: test chapter auto-seed notice:", seedErr.message);
+          }
+        } catch (seedErr) {
+          console.warn("Notice: test chapter auto-seed exception:", seedErr);
+        }
+      }
+
+      const resolveChapterId = (candidate: any): string | null => {
+        if (!candidate || typeof candidate !== "string") return null;
+        const trimmed = candidate.trim();
+        if (validChapterIds.has(trimmed)) return trimmed;
+        if (slugToChapterId.has(trimmed.toLowerCase())) return slugToChapterId.get(trimmed.toLowerCase())!;
+        if ((trimmed === TEST_CHAPTER_ID || trimmed === "test-chapter") && dbTestChapId) {
+          return dbTestChapId;
+        }
+        return null;
+      };
+
       const hasFaculty = assignments.some((a: any) => a.roleKey === "faculty_coordinator");
       const hasRestrictedRoles = assignments.some((a: any) =>
         ["campus_lead", "class_representative", "chairman"].includes(a.roleKey),
@@ -3494,10 +3565,11 @@ export async function POST(req: Request) {
         // Student role is default for all non-faculty accounts: ensure student is included
         if (!effectiveAssignments.some((a: any) => a.roleKey === "student")) {
           const { data: prof } = await admin.from("profiles").select("chapter_id").eq("id", userId).maybeSingle();
-          const primaryChap = effectiveAssignments.find((a: any) => a.chapterId)?.chapterId || prof?.chapter_id || null;
+          const candidateChap = effectiveAssignments.find((a: any) => a.chapterId)?.chapterId || prof?.chapter_id || null;
+          const resolvedStudentChap = resolveChapterId(candidateChap);
           effectiveAssignments = [
             ...effectiveAssignments,
-            { roleKey: "student", chapterId: primaryChap },
+            { roleKey: "student", chapterId: resolvedStudentChap },
           ];
         }
 
@@ -3539,8 +3611,10 @@ export async function POST(req: Request) {
       let primaryChapterId: string | null = null;
 
       const rows = effectiveAssignments.map((a: any) => {
-        const chapId = isUuid(a.chapterId) ? a.chapterId : null;
-        if (chapId && !primaryChapterId) {
+        const isHq = isHqRole(a.roleKey);
+        // HQ roles are global and never scoped to a chapter; chapter roles require verified FK in chapters table
+        const chapId = isHq ? null : resolveChapterId(a.chapterId);
+        if (chapId && !primaryChapterId && validChapterIds.has(chapId)) {
           primaryChapterId = chapId;
         }
 
@@ -3600,7 +3674,7 @@ export async function POST(req: Request) {
         designation: topRole,
         role: roleDisplayName,
       };
-      if (primaryChapterId) {
+      if (primaryChapterId && validChapterIds.has(primaryChapterId)) {
         profileUpdates.chapter_id = primaryChapterId;
       }
 

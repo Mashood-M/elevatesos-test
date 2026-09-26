@@ -205,6 +205,7 @@ When applying new migrations to an existing database, execute them in this exact
 13. `supabase/migrations/050_sequential_chapter_elevates_id.sql`
 14. `supabase/migrations/051_renumber_users_and_chapters_sequentially.sql`
 15. `supabase/migrations/052_seed_test_chapter_if_missing.sql`
+16. `supabase/migrations/053_clean_cluster_roadmaps_and_access_modes.sql`
 
 *(Note: `038_discord_bot_restructure_sync_and_otp_fix.sql` was already merged/applied in the sequence. `039_fix_missing_tables_and_peer_labs.sql` **must** run before `040_lock_down_rls.sql` because migration 040 locks down tables that migration 039 creates or references, such as `peer_labs`, `peer_lab_phases`, `peer_lab_facilitators`, `peer_lab_enrollments`, and `discord_integrations`.)*
 

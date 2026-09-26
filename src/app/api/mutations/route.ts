@@ -1453,23 +1453,67 @@ export async function POST(req: Request) {
       }
       const chapErr = checkChapterScope(c.chapterId);
       if (chapErr) return chapErr;
-      if (!auth.isHq && !isCampusLead(auth.roleKey) && !isExecutiveRole(auth.roleKey)) {
-        return NextResponse.json({ ok: false, error: "Permission denied: only campus leads or executives can manage clusters" }, { status: 403 });
+
+      const clusterId = isUuid(c.id) ? c.id : genUuid();
+      const slug = c.slug ?? slugify(c.title || c.name || "cluster");
+      const memberIds: string[] = Array.isArray(c.memberIds) ? c.memberIds.filter(isUuid) : [];
+
+      const { data: existingCluster } = await admin
+        .from("clusters")
+        .select("id, chapter_id, access_mode, leader_id, faculty_id, member_ids")
+        .eq("id", clusterId)
+        .maybeSingle();
+
+      const isLeader = existingCluster?.leader_id === auth.userId || c.leaderId === auth.userId;
+      const isSelfJoinOrLeave =
+        existingCluster &&
+        (existingCluster.access_mode === "open" || existingCluster.member_ids?.includes(auth.userId)) &&
+        memberIds.filter((id) => id !== auth.userId).sort().join(",") ===
+        (existingCluster.member_ids || []).filter((id: string) => id !== auth.userId).sort().join(",");
+
+      const canManage =
+        auth.isHq ||
+        isCampusLead(auth.roleKey) ||
+        isExecutiveRole(auth.roleKey) ||
+        isLeader ||
+        isSelfJoinOrLeave;
+
+      if (!canManage) {
+        return NextResponse.json({ ok: false, error: "Permission denied: only campus leads, executives, or cluster leaders can manage clusters" }, { status: 403 });
       }
 
-      const slug = c.slug ?? slugify(c.title || c.name || "cluster");
-      const clusterId = isUuid(c.id) ? c.id : genUuid();
-      const memberIds: string[] = Array.isArray(c.memberIds) ? c.memberIds.filter(isUuid) : [];
-      const { error } = await admin.from("clusters").upsert({
+      const upsertPayload: Record<string, any> = {
         id: clusterId,
         chapter_id: c.chapterId,
         name: c.name ?? c.title,
         slug,
-        description: c.description ?? c.subtitle,
-        access_mode: c.accessMode ?? "open",
-        roadmap: c.roadmap || [],
+        description: c.description ?? c.subtitle ?? null,
+        access_mode: c.accessMode ?? existingCluster?.access_mode ?? "invite",
+        roadmap: Array.isArray(c.roadmap) ? c.roadmap : [],
         member_ids: memberIds,
-      });
+      };
+
+      if (isUuid(c.leaderId)) {
+        upsertPayload.leader_id = c.leaderId;
+      } else if (c.leaderId === null || c.leaderId === "") {
+        upsertPayload.leader_id = null;
+      } else if (existingCluster?.leader_id) {
+        upsertPayload.leader_id = existingCluster.leader_id;
+      }
+
+      if (isUuid(c.facultyId)) {
+        upsertPayload.faculty_id = c.facultyId;
+      } else if (c.facultyId === null || c.facultyId === "") {
+        upsertPayload.faculty_id = null;
+      } else if (existingCluster?.faculty_id) {
+        upsertPayload.faculty_id = existingCluster.faculty_id;
+      }
+
+      if (Array.isArray(c.responsibilities)) {
+        upsertPayload.responsibilities = c.responsibilities;
+      }
+
+      const { error } = await admin.from("clusters").upsert(upsertPayload);
 
       if (error) {
         console.error("Mutation error (cluster):", error);

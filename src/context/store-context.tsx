@@ -622,6 +622,7 @@ type StoreContextValue = {
   createCluster: (
     input: Pick<Cluster, "chapterId" | "name" | "slug" | "description"> & {
       leaderId?: string;
+      accessMode?: Cluster["accessMode"];
     },
   ) => Cluster;
   updateCluster: (
@@ -7518,14 +7519,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           description: input.description,
           leaderId: input.leaderId,
           memberIds: input.leaderId ? [input.leaderId] : [],
-          accessMode: "invite",
+          accessMode: input.accessMode ?? "invite",
           responsibilities: [],
-          roadmap: [
-            { week: 1, title: "Kickoff & setup", done: false },
-            { week: 2, title: "Core skills", done: false },
-            { week: 3, title: "Build sprint", done: false },
-            { week: 4, title: "Demo day", done: false },
-          ],
+          roadmap: [],
         };
         setStore((s) => ({
           ...s,

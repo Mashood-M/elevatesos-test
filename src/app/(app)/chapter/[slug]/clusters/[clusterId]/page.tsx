@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
-import { ProgressBar } from "@/components/ui/progress";
 import { useStore, useCurrentUser, showToast } from "@/context/store-context";
 import { isHqRole, hasPermission } from "@/lib/permissions";
 import { isExecutiveRole, isFacultyRole } from "@/lib/access";
@@ -33,20 +32,14 @@ export default function ClusterDetailPage({
     leaveCluster,
     addClusterMember,
     removeClusterMember,
-    toggleRoadmapWeek,
-    addRoadmapWeek,
-    removeRoadmapWeek,
     inviteToCluster,
-    submitClusterChallenge,
   } = useStore();
   const { session } = useCurrentUser();
   const chapter = findChapterBySlugOrId(store.chapters, slug);
   const cluster = store.clusters.find((c) => c.id === clusterId);
-  const [weekTitle, setWeekTitle] = useState("");
   const [addMemberId, setAddMemberId] = useState("");
   const [memberSearch, setMemberSearch] = useState("");
   const [inviteUserId, setInviteUserId] = useState("");
-  const [challengeNote, setChallengeNote] = useState("");
   const [flash, setFlash] = useState("");
   const [discordGateOpen, setDiscordGateOpen] = useState(false);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -82,25 +75,6 @@ export default function ClusterDetailPage({
     }
     if (!cluster) return;
     joinCluster(cluster.id, session.userId);
-  }
-
-  function handleSubmitChallenge() {
-    if (!isDiscordConnected) {
-      setDiscordGateOpen(true);
-      setFlash("Join the Elevates Discord server and connect your account first to join this cluster.");
-      return;
-    }
-    if (!cluster) return;
-    const ok = submitClusterChallenge({
-      clusterId: cluster.id,
-      userId: session.userId,
-      note: challengeNote,
-    });
-    setFlash(
-      ok
-        ? "Challenge submitted — execs will review."
-        : "Could not submit challenge.",
-    );
   }
 
   const chapterUserRoleIds = useMemo(() => {
@@ -205,10 +179,6 @@ export default function ClusterDetailPage({
   }
 
   const projects = store.projects.filter((p) => p.clusterId === cluster.id);
-  const doneWeeks = cluster.roadmap.filter((r) => r.done).length;
-  const progress = cluster.roadmap.length
-    ? (doneWeeks / cluster.roadmap.length) * 100
-    : 0;
 
   return (
     <div>
@@ -269,31 +239,6 @@ export default function ClusterDetailPage({
           </Badge>
         ))}
       </div>
-
-      {!isMember && (cluster.accessMode ?? "invite") === "challenge" ? (
-        <TerminalPanel title="challenge.path" accent="orange" className="mb-4">
-          <p className="text-[13px] text-text-dim">
-            {cluster.challengePrompt ??
-              "Complete a challenge to request cluster access."}
-          </p>
-          <div className="mt-3">
-            <FieldLabel>Your submission note</FieldLabel>
-            <TextArea
-              rows={2}
-              value={challengeNote}
-              onChange={(e) => setChallengeNote(e.target.value)}
-              placeholder="What you built / learned…"
-            />
-          </div>
-          <Button
-            variant="orange"
-            className="mt-3"
-            onClick={handleSubmitChallenge}
-          >
-            Submit challenge
-          </Button>
-        </TerminalPanel>
-      ) : null}
 
       {!isMember && (cluster.accessMode ?? "invite") === "invite" ? (
         <TerminalPanel title="invite.only" className="mb-4">
@@ -436,60 +381,6 @@ export default function ClusterDetailPage({
             memberIds={cluster.memberIds}
             profiles={store.profiles}
           />
-
-          <TerminalPanel title="Roadmap" meta={`${doneWeeks}/${cluster.roadmap.length} done`}>
-            <ProgressBar value={progress} label="Progress" />
-            <ul className="mt-4 space-y-2">
-              {cluster.roadmap.map((week) => (
-                <li
-                  key={week.week}
-                  className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] rounded-[14px] bg-bg shadow-[var(--shadow-sm)] px-3 py-2"
-                >
-                  <button
-                    type="button"
-                    disabled={!canManage}
-                    onClick={() => toggleRoadmapWeek(cluster.id, week.week)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left text-[13px] disabled:cursor-default"
-                  >
-                    <span className={week.done ? "text-[var(--success)]" : "text-text-mute"}>
-                      {week.done ? "✓" : "○"}
-                    </span>
-                    <span>
-                      W{week.week}: {week.title}
-                    </span>
-                  </button>
-                  {canManage ? (
-                    <button
-                      type="button"
-                      className="text-[11px] text-text-mute hover:text-[var(--danger)]"
-                      onClick={() => removeRoadmapWeek(cluster.id, week.week)}
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-            {canManage ? (
-              <div className="mt-3 flex gap-2">
-                <Input
-                  value={weekTitle}
-                  onChange={(e) => setWeekTitle(e.target.value)}
-                  placeholder="New week title"
-                />
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    if (!weekTitle.trim()) return;
-                    addRoadmapWeek(cluster.id, weekTitle.trim());
-                    setWeekTitle("");
-                  }}
-                >
-                  Add week
-                </Button>
-              </div>
-            ) : null}
-          </TerminalPanel>
         </div>
 
         <div className="space-y-4">

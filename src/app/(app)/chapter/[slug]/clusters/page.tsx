@@ -145,8 +145,8 @@ export default function ChapterClustersPage({
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterMode, setFilterMode] = useState<"all" | "mine" | "open" | "invite" | "challenge">("all");
-  const [sortBy, setSortBy] = useState<"name" | "members" | "progress">("name");
+  const [filterMode, setFilterMode] = useState<"all" | "mine" | "open" | "invite">("all");
+  const [sortBy, setSortBy] = useState<"name" | "members">("name");
 
   // Create Cluster modal state
   const [openModal, setOpenModal] = useState(false);
@@ -202,11 +202,6 @@ export default function ChapterClustersPage({
   const totalClusters = clusters.length;
   const uniqueEnrolledIds = new Set(clusters.flatMap((c) => c.memberIds));
   const totalEnrolled = uniqueEnrolledIds.size;
-  const allRoadmapItems = clusters.flatMap((c) => c.roadmap);
-  const doneRoadmapItems = allRoadmapItems.filter((r) => r.done).length;
-  const avgMilestoneProgress = allRoadmapItems.length
-    ? Math.round((doneRoadmapItems / allRoadmapItems.length) * 100)
-    : 0;
   const clusterProjectsCount = projects.filter((p) => p.clusterId).length;
 
   // Filtered & sorted clusters
@@ -233,8 +228,6 @@ export default function ChapterClustersPage({
           if ((c.accessMode ?? "invite") !== "open") return false;
         } else if (filterMode === "invite") {
           if ((c.accessMode ?? "invite") !== "invite") return false;
-        } else if (filterMode === "challenge") {
-          if ((c.accessMode ?? "invite") !== "challenge") return false;
         }
 
         return true;
@@ -245,15 +238,6 @@ export default function ChapterClustersPage({
         }
         if (sortBy === "members") {
           return b.memberIds.length - a.memberIds.length;
-        }
-        if (sortBy === "progress") {
-          const progA = a.roadmap.length
-            ? a.roadmap.filter((r) => r.done).length / a.roadmap.length
-            : 0;
-          const progB = b.roadmap.length
-            ? b.roadmap.filter((r) => r.done).length / b.roadmap.length
-            : 0;
-          return progB - progA;
         }
         return 0;
       });
@@ -282,14 +266,8 @@ export default function ChapterClustersPage({
         slug: nextSlug,
         description: description.trim() || `Specialized ${name.trim()} learning track.`,
         leaderId: leaderId || undefined,
+        accessMode,
       });
-
-      // Update access mode if not default
-      if (accessMode !== "invite") {
-        store.clusters = store.clusters.map((c) =>
-          c.id === cluster.id ? { ...c, accessMode } : c
-        );
-      }
 
       setName("");
       setSlugInput("");
@@ -344,7 +322,7 @@ export default function ChapterClustersPage({
       />
 
       {/* 2. Sleek Metrics / Stat Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
           <div className="flex items-center justify-between">
             <span className="text-[12px] font-medium text-text-mute">Active Clusters</span>
@@ -369,21 +347,6 @@ export default function ChapterClustersPage({
             {totalEnrolled}
           </p>
           <p className="mt-1 text-[11px] text-text-mute">Across all tracks</p>
-        </div>
-
-        <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Milestones Progress</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
-              <CheckCircle2 size={17} />
-            </div>
-          </div>
-          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text tabular-nums">
-            {avgMilestoneProgress}%
-          </p>
-          <p className="mt-1 text-[11px] text-text-mute">
-            {doneRoadmapItems} of {allRoadmapItems.length || 0} completed
-          </p>
         </div>
 
         <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
@@ -482,7 +445,6 @@ export default function ChapterClustersPage({
             >
               <option value="name">Name (A-Z)</option>
               <option value="members">Most Members</option>
-              <option value="progress">Highest Progress</option>
             </select>
           </div>
         </div>
@@ -539,10 +501,6 @@ export default function ChapterClustersPage({
             const isMember = cluster.memberIds.includes(currentUserId);
             const isLead = cluster.leaderId === currentUserId;
             const clusterProjects = projects.filter((p) => p.clusterId === cluster.id);
-
-            const doneWeeks = cluster.roadmap.filter((r) => r.done).length;
-            const totalWeeks = cluster.roadmap.length;
-            const progress = totalWeeks ? Math.round((doneWeeks / totalWeeks) * 100) : 0;
             const mode = cluster.accessMode ?? "invite";
 
             // Member profiles for avatar display
@@ -581,10 +539,6 @@ export default function ChapterClustersPage({
                       {mode === "open" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-100">
                           <Unlock size={11} /> Open
-                        </span>
-                      ) : mode === "challenge" ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-700 border border-violet-100">
-                          <Trophy size={11} /> Challenge
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-100">
@@ -646,56 +600,6 @@ export default function ChapterClustersPage({
                         </span>
                       </div>
                     ) : null}
-                  </div>
-
-                  {/* Roadmap Milestones Progress */}
-                  <div className="mt-5 rounded-xl bg-bg/70 p-3.5 border border-border/40">
-                    <div className="flex items-center justify-between text-[11.5px] font-medium mb-1.5">
-                      <span className="text-text font-semibold flex items-center gap-1.5">
-                        <Calendar size={13} className="text-text-mute" />
-                        Roadmap
-                      </span>
-                      <span className="text-[var(--accent)] font-bold">
-                        {progress}% ({doneWeeks}/{totalWeeks || 0} done)
-                      </span>
-                    </div>
-
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-border">
-                      <div
-                        className="h-full bg-[var(--accent)] transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-
-                    {/* Milestones checklist preview */}
-                    {cluster.roadmap.length > 0 ? (
-                      <div className="mt-2.5 space-y-1">
-                        {cluster.roadmap.slice(0, 3).map((week) => (
-                          <div
-                            key={week.week}
-                            className="flex items-center gap-2 text-[11px] text-text-dim truncate"
-                          >
-                            {week.done ? (
-                              <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
-                            ) : (
-                              <Circle size={11} className="text-text-mute shrink-0" />
-                            )}
-                            <span className={cn("truncate", week.done && "line-through text-text-mute")}>
-                              W{week.week}: {week.title}
-                            </span>
-                          </div>
-                        ))}
-                        {cluster.roadmap.length > 3 ? (
-                          <p className="text-[10px] text-text-mute pl-5">
-                            +{cluster.roadmap.length - 3} more milestones
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-[11px] text-text-mute italic">
-                        Curriculum roadmap being finalized
-                      </p>
-                    )}
                   </div>
                 </div>
 

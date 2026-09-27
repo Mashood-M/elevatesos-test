@@ -104,6 +104,9 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
         }
 
         if (isMounted) {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("elevates_skip_splash", "1");
+          }
           window.location.replace("/login");
         }
       })();

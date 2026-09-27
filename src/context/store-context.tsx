@@ -1611,9 +1611,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               if ((d === "class_rep" || r.includes("class representative")) && !assignedRoleKeys.includes("class_representative")) {
                 assignedRoleKeys.push("class_representative");
               }
+              if ((d === "faculty_coordinator" || r.includes("faculty")) && !assignedRoleKeys.includes("faculty_coordinator")) {
+                assignedRoleKeys.push("faculty_coordinator");
+              }
             }
 
-            if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(effectiveRoleKey)) {
+            if (origAuthRoleKey && origAuthRoleKey !== "volunteer" && !assignedRoleKeys.includes(origAuthRoleKey)) {
+              assignedRoleKeys.push(origAuthRoleKey);
+            }
+
+            // In Elevates OS, every user except faculty is inherently a student (student role is a baseline tag)
+            const isFaculty =
+              assignedRoleKeys.includes("faculty_coordinator") ||
+              Boolean(
+                prof &&
+                  ((prof.designation || "").toLowerCase().includes("faculty") ||
+                    (prof.role || "").toLowerCase().includes("faculty")),
+              );
+
+            if (isFaculty) {
+              const sIdx = assignedRoleKeys.indexOf("student");
+              if (sIdx !== -1) assignedRoleKeys.splice(sIdx, 1);
+            } else if (!assignedRoleKeys.includes("student")) {
+              assignedRoleKeys.push("student");
+            }
+
+            // Every non-faculty user is always permitted to switch to "student"
+            if (effectiveRoleKey === "student" && !isFaculty) {
+              // Always permitted
+            } else if (assignedRoleKeys.length > 0 && !assignedRoleKeys.includes(effectiveRoleKey)) {
               console.warn(`Permission denied: User ${userId} cannot switch to unassigned role '${effectiveRoleKey}'`);
               return s;
             }

@@ -143,6 +143,9 @@ export function RoleSwitcher() {
         if ((d === "class_rep" || r.includes("class representative")) && !keys.includes("class_representative")) {
           keys.push("class_representative");
         }
+        if ((d === "faculty_coordinator" || r.includes("faculty")) && !keys.includes("faculty_coordinator")) {
+          keys.push("faculty_coordinator");
+        }
       }
     }
 
@@ -335,14 +338,11 @@ export function RoleSwitcher() {
     return actualRoleKeys.some((k) => k !== "student" && k !== "volunteer");
   }, [isHqUser, actualRoleKeys]);
 
-  // If the user has no appointed role and is not HQ, do not render RoleSwitcher
-  if (!isHqUser && (!hasAppointedRole || availableRoles.length <= 1)) {
-    return null;
-  }
+  const isSingleRoleStudent = !isHqUser && (!hasAppointedRole || availableRoles.length <= 1);
 
   return (
     <div className="relative w-full" ref={dropdownRef}>
-      {/* Trigger button */}
+      {/* Trigger button: Styled to match Image 2 "Board team / email ⌵" capsule */}
       <button
         type="button"
         id="role-switcher-trigger"
@@ -350,47 +350,89 @@ export function RoleSwitcher() {
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-[12px] border px-3 py-2 text-left text-[13px] font-medium transition-all duration-150",
-          "border-[var(--rail-border)] bg-[var(--rail-hover)] text-[var(--rail-fg)]",
-          "hover:border-[var(--accent)]/40 hover:bg-[var(--rail-active)]",
-          isOpen && "border-[var(--accent)]/50 bg-[var(--rail-active)] ring-1 ring-[var(--accent)]/20",
+          "flex w-full items-center justify-between gap-2.5 rounded-[16px] border border-neutral-200/80 bg-[#f9fafb] hover:bg-[#f3f4f6] hover:border-neutral-300/80 p-2 text-left transition-all duration-150 shadow-[0_1px_2px_rgba(0,0,0,0.02)] group cursor-pointer",
+          isOpen && "border-[var(--accent)]/50 ring-1 ring-[var(--accent)]/20",
         )}
       >
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] bg-[var(--accent)] text-[9px] font-extrabold text-white shadow-sm">
-            {activeInfo.label.slice(0, 2).toUpperCase()}
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#f26430] to-[#e05522] text-white shadow-[0_2px_6px_rgba(242,100,48,0.22)] font-[family-name:var(--font-display)] text-[14px] font-black">
+            E
           </span>
           <div className="min-w-0">
-            <span className="block truncate text-[12px] font-semibold leading-tight">
-              {activeInfo.label}
-            </span>
-            <span className="block truncate text-[10px] text-[var(--rail-fg)]/60 leading-tight">
+            <span className="block truncate text-[13px] font-bold text-[#1f2937] group-hover:text-black leading-tight">
               {activeInfo.isChapterScoped
-                ? (selectedChapter ? selectedChapter.name : "No chapter joined")
-                : isHqUser
-                  ? "HQ Network"
-                  : "Switch role"}
+                ? (selectedChapter ? selectedChapter.name : "Elevates Chapter")
+                : "Elevates HQ"}
+            </span>
+            <span className="block truncate text-[11px] font-medium text-[#6b7280] leading-tight mt-0.5">
+              {currentProfile?.email || activeInfo.label}
             </span>
           </div>
         </div>
-        <ChevronUp
-          size={13}
-          className={cn(
-            "shrink-0 opacity-50 transition-transform duration-200",
-            isOpen && "rotate-180",
-          )}
-        />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] bg-white border border-neutral-200/90 shadow-[0_1px_2px_rgba(0,0,0,0.03)] text-neutral-400 group-hover:text-neutral-700 transition-all">
+          <ChevronDown
+            size={12}
+            strokeWidth={2.2}
+            className={cn(
+              "transition-transform duration-200",
+              isOpen && "rotate-180",
+            )}
+          />
+        </span>
       </button>
 
-      {/* Upward dropdown panel */}
-      {isOpen && (
+      {/* Upward info panel for single-role students */}
+      {isOpen && isSingleRoleStudent && (
+        <div
+          className={cn(
+            "absolute bottom-full left-0 right-0 z-[200] mb-2",
+            "w-[270px] -left-1 sm:left-0 sm:w-full overflow-hidden rounded-[20px] border border-neutral-200/80 bg-white p-3.5",
+            "shadow-[0_-12px_36px_rgba(0,0,0,0.1),0_4px_12px_rgba(0,0,0,0.04)] ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150",
+          )}
+        >
+          <div className="flex items-center gap-2.5 pb-2.5 border-b border-neutral-100">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-gradient-to-br from-[#f26430] to-[#e05522] text-white font-bold text-[12px] shadow-2xs">
+              E
+            </span>
+            <div className="min-w-0">
+              <p className="text-[13px] font-bold text-[#1f2937] truncate">
+                {selectedChapter ? selectedChapter.name : "Elevates Community"}
+              </p>
+              <p className="text-[11px] text-[#6b7280] truncate font-medium">
+                {activeInfo.label}
+              </p>
+            </div>
+          </div>
+          <div className="pt-2 text-[12px] space-y-1.5 text-[#4b5563]">
+            {currentProfile?.elevatesId && (
+              <p className="flex justify-between items-center text-[11px]">
+                <span className="text-[#9ca3af]">Elevates ID</span>
+                <span className="font-mono font-semibold text-[#1f2937] bg-[#f4f5f7] px-1.5 py-0.5 rounded-[5px] border border-neutral-200/60">
+                  {currentProfile.elevatesId}
+                </span>
+              </p>
+            )}
+            {selectedChapter && (
+              <p className="flex justify-between items-center text-[11px]">
+                <span className="text-[#9ca3af]">Campus</span>
+                <span className="font-semibold text-[#1f2937] truncate max-w-[140px]">
+                  {selectedChapter.city || selectedChapter.name}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Upward dropdown panel for multi-role / HQ users */}
+      {isOpen && !isSingleRoleStudent && (
         <div
           role="listbox"
           aria-label="Switch role"
           className={cn(
-            "absolute bottom-full left-0 right-0 z-[200] mb-1.5",
-            "w-[270px] -left-1 sm:left-0 sm:w-full overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--bg-panel)]",
-            "shadow-[0_-8px_32px_-4px_rgba(0,0,0,0.2)] ring-1 ring-black/10",
+            "absolute bottom-full left-0 right-0 z-[200] mb-2",
+            "w-[270px] -left-1 sm:left-0 sm:w-full overflow-hidden rounded-[20px] border border-neutral-200/80 bg-white p-2",
+            "shadow-[0_-12px_36px_rgba(0,0,0,0.1),0_4px_12px_rgba(0,0,0,0.04)] ring-1 ring-black/5",
           )}
         >
           {/* Header */}

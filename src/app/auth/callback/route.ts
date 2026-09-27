@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = searchParams.get("next") ?? "/chapter";
+  const rawNext = searchParams.get("next") ?? "/chapter";
+  const next = rawNext === "/join" ? "/chapter" : rawNext;
 
   const supabase = await createClient();
   if (supabase) {

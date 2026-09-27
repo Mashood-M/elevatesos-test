@@ -37,7 +37,9 @@ import {
   UserCheck,
   Compass,
   FileText,
+  Eye,
 } from "lucide-react";
+import { StudentChapterView } from "@/components/chapter/student-chapter-view";
 
 export default function ChapterDashboardPage({
   params,
@@ -59,7 +61,8 @@ export default function ChapterDashboardPage({
   }, [slug, router]);
 
   const { store } = useStore();
-  const { session } = useCurrentUser();
+  const { session, profile } = useCurrentUser();
+  const [viewMode, setViewMode] = useState<"ops" | "student">("ops");
   const chapter = resolveChapter(store, slug, session.roleKey, session.chapterId);
 
   if (!mounted) {
@@ -140,6 +143,42 @@ export default function ChapterDashboardPage({
   );
   const faculty = store.profiles.find((p) => p.id === chapter.facultyId);
 
+  const isViewingAsStudent = !showOps || viewMode === "student";
+
+  if (isViewingAsStudent) {
+    return (
+      <div className="space-y-4">
+        {showOps && (
+          <div className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-900 shadow-2xs">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-amber-700 shrink-0" />
+              <span className="font-semibold">Executive Preview:</span>
+              <span>You are previewing this chapter through a student's eyes.</span>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 text-xs font-semibold bg-white hover:bg-amber-100/80 border-amber-200"
+              onClick={() => setViewMode("ops")}
+            >
+              Back to Executive View
+            </Button>
+          </div>
+        )}
+        <StudentChapterView
+          chapter={chapter}
+          chapterElevatesId={chapterElevatesId}
+          slug={slug}
+          session={session}
+          profile={profile ?? null}
+          store={store}
+          campusLead={campusLead}
+          faculty={faculty}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* ── 1. CHAPTER HERO & IDENTITY CARD ─────────────────────────────────── */}
@@ -181,8 +220,17 @@ export default function ChapterDashboardPage({
 
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
-            {showOps ? (
+            {showOps && (
               <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="flex items-center gap-1.5 font-semibold text-text-dim hover:text-text"
+                  onClick={() => setViewMode("student")}
+                >
+                  <Eye className="w-4 h-4" />
+                  Preview Student View
+                </Button>
                 <Link href={`/chapter/${slug}/attendance`}>
                   <Button variant="orange" size="sm" className="shadow-xs flex items-center gap-1.5 font-semibold">
                     <QrCode className="w-4 h-4" />
@@ -199,27 +247,6 @@ export default function ChapterDashboardPage({
                   <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
                     <GraduationCap className="w-4 h-4" />
                     Cohorts
-                  </Button>
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/my-qr">
-                  <Button variant="orange" size="sm" className="shadow-xs flex items-center gap-1.5 font-semibold">
-                    <QrCode className="w-4 h-4" />
-                    My QR Pass
-                  </Button>
-                </Link>
-                <Link href={`/chapter/${slug}/events`}>
-                  <Button variant="secondary" size="sm" className="flex items-center gap-1.5 font-semibold">
-                    <Calendar className="w-4 h-4" />
-                    Browse Events
-                  </Button>
-                </Link>
-                <Link href={`/chapter/${slug}/clusters`}>
-                  <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
-                    <Layers className="w-4 h-4" />
-                    Clusters
                   </Button>
                 </Link>
               </>

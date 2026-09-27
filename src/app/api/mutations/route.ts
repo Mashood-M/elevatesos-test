@@ -4013,12 +4013,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, id: insRow?.id || id });
     }
 
-    if (type === "record_referral_use" || type === "referral_invite_join") {
-      const { tokenId, token, referrerId, studentName, studentEmail } = data || {};
-      const targetUserId = auth.userId;
+    if (type === "record_referral_use" || type === "referral_invite_join" || type === "record_student_join") {
+      const { tokenId, token, referrerId, studentName, studentEmail, userId, phone } = data || {};
+      const targetUserId = auth.userId || userId;
       const cleanToken = (token || "").trim();
 
-      // 1. Fetch the token row
+      // 1. Ensure user profile is saved as a normal student (chapter_id = null, active status)
+      if (targetUserId && isUuid(targetUserId)) {
+        const profileUpdates: Record<string, any> = {
+          status: "active",
+          chapter_id: null, // Normal student, not chapter-bound
+        };
+        if (studentName) profileUpdates.full_name = studentName.trim();
+        if (phone) profileUpdates.phone = String(phone).replace(/\D/g, "");
+
+        await admin
+          .from("profiles")
+          .update(profileUpdates)
+          .eq("id", targetUserId);
+
+        // Ensure default student role exists
+        const { data: existingRole } = await admin
+          .from("user_roles")
+          .select("id")
+          .eq("user_id", targetUserId)
+          .eq("role_key", "student")
+          .maybeSingle();
+
+        if (!existingRole) {
+          const { data: studentRole } = await admin
+            .from("roles")
+            .select("id")
+            .eq("key", "student")
+            .maybeSingle();
+
+          await admin.from("user_roles").insert({
+            user_id: targetUserId,
+            role_key: "student",
+            role_id: studentRole?.id || null,
+            chapter_id: null,
+            organization_id: DEFAULT_ORG_ID,
+            is_permanent: true,
+          });
+        }
+      }
+
+      // 2. If an invite token was provided, update its usage count gracefully
+      let nextUses = 1;
       let tokenRow: any = null;
       if (isUuid(tokenId)) {
         const { data: byId } = await admin
@@ -4039,80 +4080,36 @@ export async function POST(req: Request) {
 
       const effectiveId = tokenRow?.id || tokenId;
       const effectiveToken = tokenRow?.token || cleanToken;
-      const effectiveReferrer = tokenRow?.created_by || referrerId;
 
-      // Calculate distinct users who have joined with this token
-      const { data: priorLogs } = await admin
-        .from("activity_logs")
-        .select("actor_id, meta")
-        .eq("action", "referral_invite_used")
-        .eq("entity_id", effectiveToken);
-
-      const distinctUsers = new Set<string>();
-      if (priorLogs) {
-        for (const log of priorLogs) {
-          if (log.actor_id) distinctUsers.add(log.actor_id);
-          try {
-            const m = typeof log.meta === "string" ? JSON.parse(log.meta) : (log.meta || {});
-            if (m?.newUserId) distinctUsers.add(m.newUserId);
-            if (m?.studentEmail) distinctUsers.add(m.studentEmail.toLowerCase());
-          } catch {}
-        }
-      }
-      if (targetUserId) distinctUsers.add(targetUserId);
-      if (studentEmail) distinctUsers.add(studentEmail.toLowerCase());
-
-      const nextUses = Math.max(1, distinctUsers.size);
-
-      // 2. Check if the 24-hour expiration has passed
-      const isExpired = tokenRow?.expires_at && new Date(tokenRow.expires_at) < new Date();
-      if (isExpired) {
-        return NextResponse.json({ ok: false, error: "Referral invite link has expired (24h validity reached)." }, { status: 400 });
-      }
-      if (tokenRow && tokenRow.is_active === false) {
-        return NextResponse.json({ ok: false, error: "Referral invite link has been revoked." }, { status: 400 });
-      }
-
-      // 3. Update token: increment uses_count, set used_at and latest used_by, keep is_active = true!
       if (effectiveId && isUuid(effectiveId)) {
-        const updatePayload: Record<string, any> = {
+        nextUses = Math.max(1, Number(tokenRow?.uses_count ?? 0) + 1);
+        await admin.from("invite_tokens").update({
           uses_count: nextUses,
           used_at: new Date().toISOString(),
           is_active: true,
           used_by: targetUserId,
-        };
-        let { error: updErr } = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
-        if (updErr && updErr.message?.includes("uses_count")) {
-          delete updatePayload.uses_count;
-          const retry = await admin.from("invite_tokens").update(updatePayload).eq("id", effectiveId);
-          updErr = retry.error;
-        }
-        if (updErr) {
-          console.error("Mutation error (record_referral_use):", updErr);
-          return NextResponse.json({ ok: false, error: updErr.message }, { status: 400 });
-        }
+        }).eq("id", effectiveId);
       }
 
-      // 4. Record permanent log entry in activity_logs
+      // 3. Record permanent log entry in activity_logs (student signup)
       try {
         await admin.from("activity_logs").insert({
           actor_id: targetUserId,
-          action: "referral_invite_used",
-          entity: "referral_invite",
-          entity_id: effectiveToken || effectiveId || "UNKNOWN",
+          action: "student_signup",
+          entity: "student",
+          entity_id: targetUserId || effectiveToken || "UNKNOWN",
           meta: JSON.stringify({
-            tokenId: effectiveId,
-            token: effectiveToken,
-            referrerId: effectiveReferrer,
-            newUserId: targetUserId,
+            userId: targetUserId,
             studentName: studentName || null,
             studentEmail: studentEmail || null,
+            phone: phone || null,
+            role: "student",
+            chapterId: null,
             joinedAt: new Date().toISOString(),
-            usesCount: nextUses,
           }),
         });
       } catch (logErr) {
-        console.warn("Notice: activity_logs insert in record_referral_use:", logErr);
+        console.warn("Notice: activity_logs insert in student join mutation:", logErr);
       }
 
       return NextResponse.json({ ok: true, usesCount: nextUses });

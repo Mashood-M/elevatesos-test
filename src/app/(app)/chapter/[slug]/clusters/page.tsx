@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Layers,
@@ -28,6 +28,11 @@ import {
   Calendar,
   X,
   Compass,
+  Copy,
+  Check,
+  ExternalLink,
+  Timer,
+  Loader2,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +49,14 @@ import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import { cn } from "@/lib/utils";
 import type { Cluster, ClusterAccessMode } from "@/types";
+
+function DiscordIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+    </svg>
+  );
+}
 
 // Helper to determine track theme & styling based on name or slug
 function getClusterTheme(name: string, slug: string) {
@@ -126,7 +139,7 @@ export default function ChapterClustersPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const { store, createCluster, joinCluster } = useStore();
+  const { store, createCluster, joinCluster, generateDiscordLinkCode } = useStore();
   const roleKey = store.session.roleKey;
   const currentUserId = store.session.userId;
   const currentUserProfile = store.profiles.find((p) => p.id === currentUserId);
@@ -157,7 +170,68 @@ export default function ChapterClustersPage({
   const [leaderId, setLeaderId] = useState("");
   const [flash, setFlash] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [discordModalOpen, setDiscordModalOpen] = useState(false);
+
+  // Inline Discord linking state for cluster gate
+  const [discordCode, setDiscordCode] = useState<string | null>(null);
+  const [discordCodeExpiresAt, setDiscordCodeExpiresAt] = useState<Date | null>(null);
+  const [discordCodeExpired, setDiscordCodeExpired] = useState(false);
+  const [discordCodeCopied, setDiscordCodeCopied] = useState(false);
+  const [isGeneratingCode, setIsGeneratingCode] = useState(false);
+  const [generateCodeError, setGenerateCodeError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState<string>("5:00");
+
+  useEffect(() => {
+    if (!discordCodeExpiresAt) return;
+    const tick = () => {
+      const now = Date.now();
+      const diff = Math.max(0, discordCodeExpiresAt.getTime() - now);
+      if (diff === 0) {
+        setDiscordCodeExpired(true);
+        setCountdown("0:00");
+        return;
+      }
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${mins}:${secs.toString().padStart(2, "0")}`);
+      setDiscordCodeExpired(false);
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [discordCodeExpiresAt]);
+
+  async function handleGenerateDiscordCode() {
+    setIsGeneratingCode(true);
+    setGenerateCodeError(null);
+    setDiscordCodeExpired(false);
+    try {
+      const res = await generateDiscordLinkCode(currentUserId);
+      if (res.ok && res.code && res.expiresAt) {
+        setDiscordCode(res.code);
+        setDiscordCodeExpiresAt(new Date(res.expiresAt));
+        setDiscordCodeCopied(false);
+      } else {
+        setGenerateCodeError(res.message || "Failed to generate code. Please try again.");
+      }
+    } catch (err: unknown) {
+      setGenerateCodeError(
+        err instanceof Error ? err.message : "Failed to generate code. Please try again.",
+      );
+    } finally {
+      setIsGeneratingCode(false);
+    }
+  }
+
+  async function handleCopyDiscordCode() {
+    if (!discordCode) return;
+    try {
+      await navigator.clipboard.writeText(discordCode);
+      setDiscordCodeCopied(true);
+      setTimeout(() => setDiscordCodeCopied(false), 2000);
+    } catch {
+      // Ignore clipboard error
+    }
+  }
 
   if (!chapter) return <ChapterNotFound />;
 
@@ -286,11 +360,14 @@ export default function ChapterClustersPage({
 
   function handleQuickJoin(cluster: Cluster) {
     if (!isDiscordConnected) {
-      setDiscordModalOpen(true);
       showToast(
-        "Join the Elevates Discord server and connect your account first to join this cluster.",
-        "error"
+        "Discord connection required to join clusters. See the connection guide above.",
+        "info"
       );
+      const el = document.getElementById("discord-connect-card");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      }
       return;
     }
     joinCluster(cluster.id, currentUserId);
@@ -320,6 +397,171 @@ export default function ChapterClustersPage({
           ) : null
         }
       />
+
+      {/* Inline Discord Account Linking Guide (Shown when user is not connected) */}
+      {!isDiscordConnected && (
+        <div
+          id="discord-connect-card"
+          className="relative overflow-hidden rounded-[24px] bg-white p-6 sm:p-7 shadow-[var(--shadow)] border border-[#5865F2]/25"
+        >
+          {/* Subtle decorative glow */}
+          <div className="absolute top-0 right-0 -mr-16 -mt-16 h-56 w-56 rounded-full bg-[#5865F2]/10 blur-3xl pointer-events-none" />
+
+          <div className="relative space-y-5">
+            {/* Top Banner Row */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#5865F2] text-white shadow-sm shadow-[#5865F2]/20">
+                  <DiscordIcon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h3 className="font-[family-name:var(--font-display)] text-[17px] font-bold text-text">
+                      Connect Discord to Join Learning Clusters
+                    </h3>
+                    <span className="rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-700 text-[11px] font-bold px-2.5 py-0.5">
+                      Discord Link Required
+                    </span>
+                  </div>
+                  <p className="text-[13px] text-text-dim max-w-2xl leading-relaxed">
+                    Elevates clusters are specialized builder tracks where cohort discussions, weekly roadmaps, and project reviews take place directly in our Discord server. Link your Discord account below to unlock cluster memberships.
+                  </p>
+                </div>
+              </div>
+
+              {/* Server join CTA */}
+              <a
+                href="https://discord.gg/elevates"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#5865F2]/10 hover:bg-[#5865F2]/15 text-[#5865F2] text-[12px] font-bold border border-[#5865F2]/20 transition"
+              >
+                <DiscordIcon className="w-4 h-4" />
+                <span>Join Server</span>
+                <ExternalLink size={13} />
+              </a>
+            </div>
+
+            {/* 3 Step Interactive Card */}
+            <div className="grid gap-3 sm:grid-cols-3 pt-2">
+              {/* Step 1 */}
+              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--charcoal-900)] text-white text-[11px] font-bold">
+                      1
+                    </span>
+                    <span className="text-[13px] font-bold text-text">Join Discord</span>
+                  </div>
+                  <p className="text-[12px] text-text-mute leading-relaxed">
+                    Join the official Elevates Discord server with your active Discord account.
+                  </p>
+                </div>
+                <div className="mt-3 pt-2">
+                  <a
+                    href="https://discord.gg/elevates"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11.5px] font-semibold text-[#5865F2] hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>discord.gg/elevates</span>
+                    <ExternalLink size={11} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Step 2: Code Generator */}
+              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#5865F2] text-white text-[11px] font-bold">
+                      2
+                    </span>
+                    <span className="text-[13px] font-bold text-text">Generate Code</span>
+                  </div>
+                  <p className="text-[12px] text-text-mute leading-relaxed">
+                    Generate a unique 6-character code linked to your student Elevates ID.
+                  </p>
+                </div>
+
+                <div className="mt-3">
+                  {!discordCode || discordCodeExpired ? (
+                    <Button
+                      type="button"
+                      variant="orange"
+                      size="sm"
+                      disabled={isGeneratingCode}
+                      onClick={handleGenerateDiscordCode}
+                      className="w-full h-8 text-[11px] font-bold gap-1.5"
+                    >
+                      {isGeneratingCode ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin" />
+                          <span>Generating…</span>
+                        </>
+                      ) : (
+                        <span>{discordCodeExpired ? "Generate New Code" : "Get Linking Code"}</span>
+                      )}
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 rounded-lg border border-[#5865F2]/40 bg-[#5865F2]/10 px-2.5 py-1 text-center font-mono text-[15px] font-black text-text tracking-wider">
+                        {discordCode}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleCopyDiscordCode}
+                        className="h-8 px-2.5 rounded-lg border border-border bg-white text-[11px] font-bold text-text hover:bg-bg transition flex items-center gap-1"
+                      >
+                        {discordCodeCopied ? (
+                          <>
+                            <Check size={12} className="text-emerald-600" />
+                            <span className="text-emerald-600">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={12} />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  {discordCode && !discordCodeExpired && (
+                    <p className="mt-1.5 text-[10px] text-text-mute flex items-center gap-1">
+                      <Timer size={11} className="text-[#5865F2]" />
+                      <span>Expires in <span className="font-mono font-bold text-[#5865F2]">{countdown}</span></span>
+                    </p>
+                  )}
+                  {generateCodeError && (
+                    <p className="mt-1 text-[11px] text-rose-600">{generateCodeError}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--charcoal-900)] text-white text-[11px] font-bold">
+                      3
+                    </span>
+                    <span className="text-[13px] font-bold text-text">Verify in Discord</span>
+                  </div>
+                  <p className="text-[12px] text-text-mute leading-relaxed">
+                    Go to the <span className="font-bold text-text">#link-server</span> channel and paste your code:
+                  </p>
+                </div>
+                <div className="mt-3">
+                  <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-border/70 px-2.5 py-1.5 font-mono text-[11px] font-bold text-text select-all">
+                    /link {discordCode || "<code>"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. Sleek Metrics / Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
@@ -670,12 +912,22 @@ export default function ChapterClustersPage({
 
                     {!isMember && mode === "open" ? (
                       <Button
-                        variant="orange"
+                        variant={isDiscordConnected ? "orange" : "secondary"}
                         size="sm"
                         onClick={() => handleQuickJoin(cluster)}
-                        className="text-[12px] px-3.5 shrink-0"
+                        className={cn(
+                          "text-[12px] px-3.5 shrink-0",
+                          !isDiscordConnected && "text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10"
+                        )}
                       >
-                        Join
+                        {!isDiscordConnected ? (
+                          <span className="flex items-center gap-1.5">
+                            <DiscordIcon className="w-3.5 h-3.5" />
+                            <span>Link to Join</span>
+                          </span>
+                        ) : (
+                          "Join"
+                        )}
                       </Button>
                     ) : null}
                   </div>
@@ -816,32 +1068,6 @@ export default function ChapterClustersPage({
         </div>
       </Dialog>
 
-      {/* Discord Connection Required Modal */}
-      <Dialog
-        open={discordModalOpen}
-        onClose={() => setDiscordModalOpen(false)}
-        title="Discord Connection Required"
-        description="Connect your Discord account to join Elevates clusters."
-        className="max-w-md"
-        footer={
-          <div className="flex items-center justify-end gap-2.5">
-            <Button variant="secondary" onClick={() => setDiscordModalOpen(false)}>
-              Cancel
-            </Button>
-            <Link href={profileHref}>
-              <Button variant="orange">
-                Connect Discord
-              </Button>
-            </Link>
-          </div>
-        }
-      >
-        <div className="space-y-4 text-left">
-          <p className="text-[13px] text-text-dim leading-relaxed">
-            Join the Elevates Discord server and connect your account first to join this cluster.
-          </p>
-        </div>
-      </Dialog>
     </div>
   );
 }

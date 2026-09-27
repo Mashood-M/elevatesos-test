@@ -280,10 +280,12 @@ export function serializeCaseStudyToProject(
   const description = embedCaseStudyInDescription(cleanSummary, cs);
   const slug = finalizeSlug(cs.slug || cs.title || "project");
 
-  let stage: ProjectStage = "showcase";
-  if (cs.status === "paused") stage = "building";
-  else if (cs.status === "archived") stage = "demo";
-  else if (cs.status === "never-launched") stage = "idea";
+  let stage: ProjectStage = current?.stage || "showcase";
+  if (!current?.stage) {
+    if (cs.status === "paused") stage = "building";
+    else if (cs.status === "archived") stage = "demo";
+    else if (cs.status === "never-launched") stage = "idea";
+  }
 
   let projectType: ProjectType = "campus";
   if (cs.type === "open-tool") projectType = "open_source";
@@ -302,9 +304,11 @@ export function serializeCaseStudyToProject(
     mentorId: current?.mentorId,
     repositoryUrl: cs.repo || cs.stackAndCode?.repoUrl || undefined,
     demoUrl: cs.live || undefined,
-    progress: cs.status === "live" ? 100 : 75,
+    progress: current?.progress ?? (cs.status === "live" ? 100 : 75),
     awards: cs.whatWeBuilt.filter(Boolean),
     isShowcased: true,
+    priority: current?.priority,
+    createdAt: current?.createdAt,
   };
 }
 

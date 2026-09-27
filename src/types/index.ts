@@ -820,6 +820,8 @@ export interface Project {
   awards: string[];
   slug?: string;
   isShowcased?: boolean;
+  priority?: "low" | "medium" | "high" | "urgent";
+  createdAt?: string;
 }
 
 export interface LeadershipApplication {

@@ -219,3 +219,21 @@ textarea:focus-visible {
 .cursor-blink::after {
   content: none;
 }
+
+/* Kinetic indeterminate progress animation for loading states */
+@keyframes indeterminate-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(60%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.animate-indeterminate {
+  animation: indeterminate-bar 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+

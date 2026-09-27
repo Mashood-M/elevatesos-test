@@ -104,7 +104,6 @@ export function navGroupsForRole(
       // { href: "/hq/permissions", label: "Roles", icon: I.roles }, // hidden — role matrix not exposed in nav
       { href: "/hq/reports", label: "Reports", icon: I.reports },
       { href: `/chapter/${chapterSlug}/clusters`, label: "Clusters", icon: I.clusters },
-      { href: "/referrals", label: "Referrals", icon: I.referrals },
     ];
 
     return [
@@ -172,7 +171,6 @@ export function navGroupsForRole(
         label: "More",
         items: [
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/referrals", label: "Referrals", icon: I.referrals },
         ],
       },
     ];
@@ -251,7 +249,6 @@ export function navGroupsForRole(
         items: [
           { href: "/my-qr", label: "My QR Code", icon: I.myQr },
           { href: "/notifications", label: "Notifications", icon: I.alerts },
-          { href: "/referrals", label: "Referrals", icon: I.referrals },
         ],
       },
     ];
@@ -291,7 +288,6 @@ export function navGroupsForRole(
       label: "My Account",
       items: [
         { href: "/my-qr", label: "My QR Code", icon: I.myQr },
-        { href: "/referrals", label: "Referrals", icon: I.referrals },
       ],
     },
   ];

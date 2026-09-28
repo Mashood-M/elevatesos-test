@@ -16,9 +16,9 @@ import {
   Mail,
   Phone,
   Lock,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EntryLoadingScreen } from "@/components/layout/entry-loading-screen";
 import type { RoleKey } from "@/types";
 
 // RFC 5322 compliant email regex
@@ -63,8 +63,9 @@ function LoginForm() {
           }
           if (typeof window !== "undefined") {
             sessionStorage.setItem("elevates_skip_splash", "1");
+            document.cookie = `elevates_active_role_key=${activeRole}; path=/; max-age=2592000; SameSite=Lax;`;
           }
-          window.location.href = dest;
+          window.location.replace(dest);
           return;
         }
       } catch {
@@ -239,13 +240,14 @@ function LoginForm() {
 
       resetStoreBootstrapCache();
 
-      // If active session created, take user straight to Student Hub without entry splash
+      // If active session created, take user straight to Student Hub
       if (!signInError) {
         if (typeof window !== "undefined") {
           sessionStorage.setItem("elevates_skip_splash", "1");
+          document.cookie = "elevates_active_role_key=student; path=/; max-age=2592000; SameSite=Lax;";
         }
         const dest = (next && next !== "/join") ? next : "/chapter";
-        window.location.href = dest;
+        window.location.replace(dest);
         return;
       }
 
@@ -427,6 +429,7 @@ function LoginForm() {
         if (roleKey) {
           localStorage.setItem("elevates_active_role_key", roleKey);
           localStorage.setItem("elevates_known_top_role", roleKey);
+          document.cookie = `elevates_active_role_key=${roleKey}; path=/; max-age=2592000; SameSite=Lax;`;
         }
         if (chapterId) {
           localStorage.setItem("elevates_active_chapter_id", chapterId);
@@ -452,7 +455,7 @@ function LoginForm() {
       // Small tick to ensure browser cookie jar has flushed document.cookie before full navigation
       await new Promise((resolve) => setTimeout(resolve, 80));
 
-      window.location.href = destination;
+      window.location.replace(destination);
     } catch (err: unknown) {
       console.error("Login error:", err);
       setError("An unexpected error occurred. Please try again.");
@@ -543,8 +546,17 @@ function LoginForm() {
             className="mt-2 h-10 w-full !rounded-xl flex items-center justify-center gap-2 font-semibold text-[13px] shadow-xs hover:opacity-95 active:scale-[0.99] transition duration-150 cursor-pointer"
             disabled={loading}
           >
-            {loading ? "Authenticating…" : "Sign in to workspace"}
-            {!loading && <ArrowRight size={15} />}
+            {loading ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                <span>Authenticating…</span>
+              </>
+            ) : (
+              <>
+                <span>Sign in to workspace</span>
+                <ArrowRight size={15} />
+              </>
+            )}
           </Button>
 
           <div className="mt-4 pt-4 border-t border-gray-100 text-center">
@@ -709,8 +721,17 @@ function LoginForm() {
             className="mt-2 h-10 w-full !rounded-xl flex items-center justify-center gap-2 font-semibold text-[13px] shadow-xs hover:opacity-95 active:scale-[0.99] transition duration-150 cursor-pointer"
             disabled={loading}
           >
-            {loading ? "Creating account…" : "Create account"}
-            {!loading && <ArrowRight size={15} />}
+            {loading ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                <span>Creating account…</span>
+              </>
+            ) : (
+              <>
+                <span>Create account</span>
+                <ArrowRight size={15} />
+              </>
+            )}
           </Button>
 
 
@@ -804,7 +825,13 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<EntryLoadingScreen message="Loading workspace…" />}>
+    <Suspense
+      fallback={
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#f8fafc]">
+          <Loader2 size={26} className="animate-spin text-[var(--accent)]" />
+        </div>
+      }
+    >
       <LoginInner />
     </Suspense>
   );

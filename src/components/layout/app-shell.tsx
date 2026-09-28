@@ -6,11 +6,15 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useMemo, useRef, useEffect } from "react";
 import {
   Bell,
+  Building2,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
+  ChevronUp,
   ChevronsUpDown,
+  ExternalLink,
+  FlaskConical,
   LogOut,
   Menu,
   Search,
@@ -28,10 +32,9 @@ import { isHqRole } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { PageFrame } from "@/components/layout/page-frame";
-import { ChapterSelectorModal } from "@/components/layout/chapter-selector-modal";
 import { roleKeyLabel, parseDelegations } from "@/lib/leadership";
-import { findChapterBySlugOrId } from "@/lib/chapters";
-import type { RoleKey } from "@/types";
+import { findChapterBySlugOrId, filterAndSortChapters, isTestChapter, ensureTestChapter } from "@/lib/chapters";
+import type { RoleKey, Chapter } from "@/types";
 
 function isNavActive(pathname: string, href: string) {
   const roots = new Set([
@@ -72,7 +75,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, role, session } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [chapterModalOpen, setChapterModalOpen] = useState(false);
+  const [chapterSearchQuery, setChapterSearchQuery] = useState("");
+  const [chapterListExpanded, setChapterListExpanded] = useState(false);
+  const [selectedChapterIdState, setSelectedChapterIdState] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("elevates_locked_chapter_id") || localStorage.getItem("elevates_active_chapter_id");
+    }
+    return null;
+  });
+  const chapterSearchInputRef = useRef<HTMLInputElement>(null);
   const [alreadyInChapterOpen, setAlreadyInChapterOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -171,6 +182,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : chapter
       ? chapter.name
       : null;
+
+  const isHqUser = useMemo(() => {
+    const uid = session.authUserId ?? session.userId;
+    if (!uid) return false;
+    if (session.authRoleKey && isHqRole(session.authRoleKey)) return true;
+    if (session.roleKey && isHqRole(session.roleKey)) return true;
+    const userRoleEntries = store.userRoles.filter((ur) => ur.userId === uid);
+    return userRoleEntries.some((ur) => {
+      if (ur.roleKey && isHqRole(ur.roleKey as RoleKey)) return true;
+      const roleObj = store.roles.find((r) => r.id === ur.roleId);
+      return roleObj && isHqRole(roleObj.key);
+    });
+  }, [session, store.userRoles, store.roles]);
 
   /**
    * Highest-priority role the user actually holds across all their Supabase
@@ -383,6 +407,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }));
   }, [session, store.userRoles, store.roles, store.terms, store.chapters, store.termMembers, store.profiles]);
 
+  const hqRoles = useMemo(() => {
+    return switchableRoles.filter((r) => !r.isChapterScoped);
+  }, [switchableRoles]);
+
+  const chapterRoles = useMemo(() => {
+    return switchableRoles.filter((r) => r.isChapterScoped);
+  }, [switchableRoles]);
+
+  const selectedChapter = useMemo<Chapter | null>(() => {
+    const allChapters = ensureTestChapter(store.chapters);
+    const targetId = session.chapterId || selectedChapterIdState;
+    if (targetId) {
+      const match = allChapters.find((c) => c.id === targetId);
+      if (match) return match;
+    }
+    if (chapter) return chapter;
+    return allChapters.find((c) => !isTestChapter(c)) || allChapters[0] || null;
+  }, [session.chapterId, selectedChapterIdState, chapter, store.chapters]);
+
+  const filteredChapters = useMemo(() => {
+    return filterAndSortChapters(store.chapters, chapterSearchQuery);
+  }, [store.chapters, chapterSearchQuery]);
+
+  useEffect(() => {
+    if (chapterListExpanded) {
+      setTimeout(() => {
+        chapterSearchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [chapterListExpanded]);
+
+  function handleSelectChapter(targetCh: Chapter) {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("elevates_locked_chapter_id", targetCh.id);
+      localStorage.setItem("elevates_active_chapter_id", targetCh.id);
+    }
+    setSelectedChapterIdState(targetCh.id);
+    setChapterListExpanded(false);
+    setChapterSearchQuery("");
+
+    // If currently in a chapter-scoped role, update session and navigate directly to target chapter!
+    if (!isHqRole(session.roleKey)) {
+      setProfileMenuOpen(false);
+      setRoleMenuOpen(false);
+      const loggedUserId = session.authUserId || session.userId;
+      setSession(loggedUserId, session.roleKey, targetCh.id);
+      router.push(homeForRole(session.roleKey, targetCh.slug));
+    }
+  }
+
   function handleSelectRole(targetRoleKey: RoleKey, isChapterScoped: boolean) {
     setProfileMenuOpen(false);
     setRoleMenuOpen(false);
@@ -403,12 +477,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    let targetChapterId = session.chapterId || profile?.chapterId;
-    if (!targetChapterId) {
-      const leadTerm = store.terms.find((t) => t.campusLeadId === loggedUserId && t.status === "active");
-      if (leadTerm) targetChapterId = leadTerm.chapterId;
+    // Chapter-scoped role: Use selectedChapter for HQ users, or assigned chapter for normal members
+    let targetChapter: Chapter | null = null;
+    if (isHqUser) {
+      targetChapter = selectedChapter;
+    } else {
+      let targetChapterId = session.chapterId || profile?.chapterId;
+      if (!targetChapterId) {
+        const leadTerm = store.terms.find((t) => t.campusLeadId === loggedUserId && t.status === "active");
+        if (leadTerm) targetChapterId = leadTerm.chapterId;
+      }
+      targetChapter = targetChapterId ? store.chapters.find((c) => c.id === targetChapterId) ?? null : null;
     }
-    const targetChapter = targetChapterId ? store.chapters.find((c) => c.id === targetChapterId) : null;
+
+    if (!targetChapter) {
+      targetChapter = store.chapters[0] ?? null;
+    }
 
     setSession(loggedUserId, targetRoleKey, targetChapter?.id);
     if (typeof window !== "undefined") {
@@ -416,6 +500,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       localStorage.setItem("elevates_user_selected_role", targetRoleKey);
       if (targetChapter?.id) {
         localStorage.setItem("elevates_active_chapter_id", targetChapter.id);
+        localStorage.setItem("elevates_locked_chapter_id", targetChapter.id);
       }
       localStorage.removeItem("elevates_store_cache_v2");
       sessionStorage.removeItem("elevates_store_cache_v2");
@@ -611,6 +696,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="relative flex h-dvh w-full flex-col min-w-0 overflow-hidden">
         {/* Floating Utility Controls (Search, Notifications, Profile) — blend seamlessly into background */}
         <div className="absolute top-3.5 right-4 md:right-8 z-30 flex shrink-0 items-center gap-2 pointer-events-auto">
+
           {/* Compact Search Icon Button */}
           <button
             type="button"
@@ -719,32 +805,205 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
                       {/* Role List Flying Out to the Left Side */}
                       {roleMenuOpen && (
-                        <div className="absolute sm:right-full sm:top-0 sm:mr-2 right-0 top-full mt-1.5 z-50 w-52 rounded-2xl bg-white p-1.5 shadow-xl border border-border/80 animate-in fade-in zoom-in-95 duration-150">
-                          <div className="px-2.5 py-1.5 border-b border-border/60">
+                        <div className="absolute sm:right-full sm:top-0 sm:mr-2 right-0 top-full mt-1.5 z-50 w-64 rounded-2xl bg-white p-2 shadow-xl border border-border/80 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="px-2 py-1.5 border-b border-border/60 flex items-center justify-between">
                             <p className="text-[10px] font-bold text-text-dim uppercase tracking-wider">
                               Select Role
                             </p>
+                            {isHqUser && (
+                              <span className="text-[9px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded-full border border-[var(--accent)]/20">
+                                HQ Access
+                              </span>
+                            )}
                           </div>
-                          <div className="py-1 space-y-0.5 max-h-60 overflow-y-auto scrollbar-thin">
-                            {switchableRoles.map((r) => {
-                              const isActive = r.roleKey === session.roleKey;
-                              return (
-                                <button
-                                  key={r.roleKey}
-                                  type="button"
-                                  onClick={() => handleSelectRole(r.roleKey, r.isChapterScoped)}
-                                  className={cn(
-                                    "flex w-full items-center justify-between px-2.5 py-1.5 text-[12.5px] rounded-lg transition text-left cursor-pointer",
-                                    isActive
-                                      ? "bg-[var(--accent-soft)] text-[var(--accent)] font-bold border border-[var(--accent)]/15"
-                                      : "text-text font-medium hover:bg-bg-hover"
+
+                          <div className="py-1 space-y-1 max-h-[75vh] overflow-y-auto scrollbar-thin">
+                            {/* 1. HQ ROLES */}
+                            <div className="space-y-0.5">
+                              {hqRoles.map((r) => {
+                                const isActive = r.roleKey === session.roleKey;
+                                return (
+                                  <button
+                                    key={r.roleKey}
+                                    type="button"
+                                    onClick={() => handleSelectRole(r.roleKey, false)}
+                                    className={cn(
+                                      "flex w-full items-center justify-between px-2.5 py-1.5 text-[12.5px] rounded-lg transition text-left cursor-pointer",
+                                      isActive
+                                        ? "bg-[var(--accent-soft)] text-[var(--accent)] font-bold border border-[var(--accent)]/15"
+                                        : "text-text font-medium hover:bg-bg-hover"
+                                    )}
+                                  >
+                                    <span>{r.label}</span>
+                                    {isActive && <Check size={14} className="text-[var(--accent)] shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* 2. CHAPTER SELECTOR (Between HQ Admin and Campus Lead) */}
+                            {isHqUser && (
+                              <div className="my-1.5 pt-1.5 border-t border-border/60">
+                                <div className="px-1 mb-1 flex items-center justify-between">
+                                  <span className="text-[9.5px] font-bold uppercase tracking-wider text-text-mute">
+                                    Target Chapter
+                                  </span>
+                                  {selectedChapter && (
+                                    <span className="text-[9px] font-bold text-[var(--accent)] max-w-[120px] truncate">
+                                      {selectedChapter.name}
+                                    </span>
                                   )}
-                                >
-                                  <span>{r.label}</span>
-                                  {isActive && <Check size={14} className="text-[var(--accent)] shrink-0" />}
-                                </button>
-                              );
-                            })}
+                                </div>
+
+                                <div className="rounded-xl border border-border/70 bg-bg/50 p-1.5 space-y-1.5">
+                                  {/* Clickable Header showing current chapter + toggle button */}
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setChapterListExpanded((prev) => !prev)}
+                                      className="flex flex-1 min-w-0 items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg bg-white border border-border/60 hover:border-[var(--accent)]/40 transition text-left cursor-pointer shadow-2xs group"
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        {selectedChapter && isTestChapter(selectedChapter) ? (
+                                          <FlaskConical size={12} className="text-amber-600 shrink-0" />
+                                        ) : (
+                                          <Building2 size={12} className="text-[var(--accent)] shrink-0" />
+                                        )}
+                                        <span className="text-[11.5px] font-semibold text-text truncate">
+                                          {selectedChapter?.name || "Choose Chapter"}
+                                        </span>
+                                      </div>
+                                      <ChevronDown
+                                        size={12}
+                                        className={cn(
+                                          "text-text-mute group-hover:text-text transition-transform duration-150 shrink-0",
+                                          chapterListExpanded && "rotate-180"
+                                        )}
+                                      />
+                                    </button>
+
+                                    {/* Direct jump to chapter link */}
+                                    {selectedChapter?.slug && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProfileMenuOpen(false);
+                                          setRoleMenuOpen(false);
+                                          router.push(`/chapter/${selectedChapter.slug}`);
+                                        }}
+                                        title={`Go to ${selectedChapter.name}`}
+                                        className="h-7 w-7 flex items-center justify-center rounded-lg bg-white border border-border/60 text-text-mute hover:text-[var(--accent)] hover:border-[var(--accent)]/40 transition shrink-0 cursor-pointer shadow-2xs"
+                                      >
+                                        <ExternalLink size={11} />
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Search & Chapter List (when expanded) */}
+                                  {chapterListExpanded && (
+                                    <div className="space-y-1 pt-1 animate-in fade-in duration-100">
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white border border-border/70">
+                                        <Search size={11} className="text-text-mute shrink-0" />
+                                        <input
+                                          ref={chapterSearchInputRef}
+                                          type="text"
+                                          value={chapterSearchQuery}
+                                          onChange={(e) => setChapterSearchQuery(e.target.value)}
+                                          placeholder="Search chapters..."
+                                          className="w-full bg-transparent text-[11px] text-text placeholder:text-text-mute focus:outline-none"
+                                        />
+                                        {chapterSearchQuery && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setChapterSearchQuery("")}
+                                            className="text-text-mute hover:text-text p-0.5"
+                                          >
+                                            <X size={10} />
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      <div className="max-h-36 overflow-y-auto space-y-0.5 scrollbar-thin pt-0.5">
+                                        {filteredChapters.testChapter && (() => {
+                                          const tc = filteredChapters.testChapter;
+                                          const isSelected = selectedChapter?.id === tc.id;
+                                          return (
+                                            <button
+                                              key={tc.id}
+                                              type="button"
+                                              onClick={() => handleSelectChapter(tc)}
+                                              className={cn(
+                                                "flex w-full items-center justify-between px-2 py-1 text-[11px] rounded-md transition text-left cursor-pointer",
+                                                isSelected
+                                                  ? "bg-[var(--accent-soft)] text-[var(--accent)] font-bold"
+                                                  : "text-text hover:bg-white bg-amber-500/10"
+                                              )}
+                                            >
+                                              <span className="flex items-center gap-1.5 truncate">
+                                                <FlaskConical size={10} className="text-amber-600 shrink-0" />
+                                                <span className="truncate">{tc.name}</span>
+                                              </span>
+                                              <span className="text-[8px] font-bold uppercase text-amber-700 bg-amber-200/60 px-1 py-0.2 rounded shrink-0">
+                                                Test
+                                              </span>
+                                            </button>
+                                          );
+                                        })()}
+
+                                        {filteredChapters.otherChapters.map((c) => {
+                                          const isSelected = selectedChapter?.id === c.id;
+                                          return (
+                                            <button
+                                              key={c.id}
+                                              type="button"
+                                              onClick={() => handleSelectChapter(c)}
+                                              className={cn(
+                                                "flex w-full items-center justify-between px-2 py-1 text-[11px] rounded-md transition text-left cursor-pointer",
+                                                isSelected
+                                                  ? "bg-[var(--accent-soft)] text-[var(--accent)] font-bold"
+                                                  : "text-text hover:bg-white"
+                                              )}
+                                            >
+                                              <span className="truncate">{c.name}</span>
+                                              {isSelected && <Check size={11} className="text-[var(--accent)] shrink-0 ml-1" />}
+                                            </button>
+                                          );
+                                        })}
+
+                                        {filteredChapters.otherChapters.length === 0 && !filteredChapters.testChapter && (
+                                          <p className="text-[10px] text-text-mute py-1.5 text-center">
+                                            No matching chapters
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 3. CHAPTER-SCOPED ROLES */}
+                            <div className="space-y-0.5 pt-0.5">
+                              {chapterRoles.map((r) => {
+                                const isActive = r.roleKey === session.roleKey;
+                                return (
+                                  <button
+                                    key={r.roleKey}
+                                    type="button"
+                                    onClick={() => handleSelectRole(r.roleKey, true)}
+                                    className={cn(
+                                      "flex w-full items-center justify-between px-2.5 py-1.5 text-[12.5px] rounded-lg transition text-left cursor-pointer",
+                                      isActive
+                                        ? "bg-[var(--accent-soft)] text-[var(--accent)] font-bold border border-[var(--accent)]/15"
+                                        : "text-text font-medium hover:bg-bg-hover"
+                                    )}
+                                  >
+                                    <span>{r.label}</span>
+                                    {isActive && <Check size={14} className="text-[var(--accent)] shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -796,11 +1055,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-      <ChapterSelectorModal
-        isOpen={chapterModalOpen}
-        onClose={() => setChapterModalOpen(false)}
-        targetRoleKey={session.roleKey}
-      />
+
       {alreadyInChapterOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-[18px] bg-bg-panel p-6 shadow-2xl border border-border text-center space-y-4">

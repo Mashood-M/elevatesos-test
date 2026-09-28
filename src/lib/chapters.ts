@@ -295,11 +295,23 @@ export function findChapterBySlugOrId(
 ): Chapter | undefined {
   if (!identifier || !chapters.length) return undefined;
   const s = identifier.trim().toLowerCase();
-  return chapters.find(
+  const direct = chapters.find(
     (c) =>
       c.slug.toLowerCase() === s ||
       c.id.toLowerCase() === s ||
       (c.elevatesId && c.elevatesId.toLowerCase() === s),
   );
+  if (direct) return direct;
+
+  const normId = s.replace(/[^a-z0-9]/g, "");
+  return chapters.find((c) => {
+    const normSlug = c.slug.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normSlug === normId) return true;
+    if (c.shortCode && c.shortCode.toLowerCase() === s) return true;
+    const normName = c.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (normName.includes(normId) || normId.includes(normName)) return true;
+    if (normId.includes("eranad") && (normName.includes("eranad") || normSlug.includes("ekc"))) return true;
+    return false;
+  });
 }
 

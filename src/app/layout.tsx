@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { StoreProvider } from "@/context/store-context";
 import { OfflineIndicator } from "@/components/ui/offline-indicator";
-import { SiteEntrySplash } from "@/components/layout/site-entry-splash";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -26,7 +25,6 @@ export default function RootLayout({
       <body className="min-h-full antialiased">
         <StoreProvider>
           <OfflineIndicator />
-          <SiteEntrySplash />
           {children}
         </StoreProvider>
       </body>

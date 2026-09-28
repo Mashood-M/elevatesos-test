@@ -126,6 +126,25 @@ export async function middleware(request: NextRequest) {
 
   const path = request.nextUrl.pathname;
 
+  const isAuthPage = path === "/login";
+
+  if (isAuthPage) {
+    const { user } = await getUserWithRetryAndTimeout(supabase, 2000, 0);
+    if (user) {
+      const activeRole = request.cookies.get("elevates_active_role_key")?.value;
+      const dest = ["founder", "hq_admin"].includes(activeRole || "") ? "/hq" : "/chapter";
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = dest;
+      redirectUrl.search = "";
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
+    }
+    return supabaseResponse;
+  }
+
   const isProtectedApp =
     path.startsWith("/hq") ||
     path.startsWith("/chapter") ||
@@ -180,6 +199,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/login",
     "/hq/:path*",
     "/chapter/:path*",
     "/executive/:path*",

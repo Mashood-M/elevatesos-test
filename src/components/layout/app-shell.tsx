@@ -604,6 +604,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 width={20}
                 height={20}
                 className="object-contain"
+                style={{ width: "auto", height: "auto" }}
                 priority
               />
             </span>

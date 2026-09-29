@@ -12,17 +12,32 @@ import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import { roleKeyLabel } from "@/lib/leadership";
 import { isSuperAdmin, isFounder } from "@/lib/permissions";
-import { formatDateTime } from "@/lib/utils";
-import { CheckSquare, Square, ShieldCheck, Mail, ArrowUpDown, ChevronDown, Check } from "lucide-react";
+import { formatDateTime, initials } from "@/lib/utils";
+import {
+  CheckSquare,
+  Square,
+  ShieldCheck,
+  Mail,
+  ArrowUpDown,
+  ChevronDown,
+  Check,
+  X,
+  ExternalLink,
+  Phone,
+  Building,
+  Calendar,
+  Trash2,
+} from "lucide-react";
 import { persistSystemUiState } from "@/lib/data/mutations";
 import { isTestChapter } from "@/lib/chapters";
 
-import type { Profile, RoleKey, UserRoleAssignmentInput } from "@/types";
+import type { Profile, Role, RoleKey, UserRoleAssignmentInput } from "@/types";
 
-type UserSortOption = "recent" | "name_asc" | "oldest" | "elevates_id" | "name_desc";
+type UserSortOption = "recent" | "not_joined_chapter" | "name_asc" | "oldest" | "elevates_id" | "name_desc";
 
 const SORT_OPTIONS: { key: UserSortOption; label: string }[] = [
   { key: "recent", label: "Recently added" },
+  { key: "not_joined_chapter", label: "Not joined chapter first" },
   { key: "name_asc", label: "A – Z (Alphabetical)" },
   { key: "oldest", label: "Oldest" },
   { key: "elevates_id", label: "Elevates ID" },
@@ -156,19 +171,27 @@ export default function HqUsersPage() {
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
 
+  const [chapterDropdownOpen, setChapterDropdownOpen] = useState(false);
+  const [chapterSearchQuery, setChapterSearchQuery] = useState("");
+  const chapterDropdownRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
         setSortOpen(false);
       }
+      if (chapterDropdownRef.current && !chapterDropdownRef.current.contains(event.target as Node)) {
+        setChapterDropdownOpen(false);
+        setChapterSearchQuery("");
+      }
     }
-    if (sortOpen) {
+    if (sortOpen || chapterDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [sortOpen]);
+  }, [sortOpen, chapterDropdownOpen]);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreate);
@@ -184,6 +207,16 @@ export default function HqUsersPage() {
   const [roleModalSelected, setRoleModalSelected] = useState<RoleKey[]>([]);
   // per-role chapter id map: { [roleKey]: chapterId }
   const [roleModalChapters, setRoleModalChapters] = useState<Record<string, string>>({});
+
+  // Profile detail popover state (anchored near clicked name)
+  const [popUser, setPopUser] = useState<{
+    profile: Profile;
+    roles: typeof store.roles;
+    status: "active" | "disabled";
+    chapter?: (typeof store.chapters)[0];
+    urs: typeof store.userRoles;
+    anchorRect?: { top: number; left: number; bottom: number; right: number } | null;
+  } | null>(null);
 
   const allowedRoleKeys: RoleKey[] = [
     "founder",
@@ -205,7 +238,24 @@ export default function HqUsersPage() {
 
   const canAssign = useMemo(() => assignableRoles(session.roleKey), [session.roleKey]);
 
+  const filteredChapters = useMemo(() => {
+    const query = chapterSearchQuery.trim().toLowerCase();
+    if (!query) return store.chapters;
+    return store.chapters.filter((c) =>
+      c.name.toLowerCase().includes(query) ||
+      (c.city && c.city.toLowerCase().includes(query)) ||
+      (c.college && c.college.toLowerCase().includes(query)) ||
+      (c.shortCode && c.shortCode.toLowerCase().includes(query)) ||
+      (c.slug && c.slug.toLowerCase().includes(query))
+    );
+  }, [store.chapters, chapterSearchQuery]);
 
+  const selectedChapterLabel = useMemo(() => {
+    if (!filterChapter) return "All Chapters";
+    if (filterChapter === "unassigned") return "⚠️ Not joined yet";
+    const found = store.chapters.find((c) => c.id === filterChapter);
+    return found ? found.name : "Unknown Chapter";
+  }, [filterChapter, store.chapters]);
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return store.profiles
@@ -233,14 +283,14 @@ export default function HqUsersPage() {
         ) || store.chapters.some((c) => c.campusLeadId === p.id);
 
         if (isActiveCampusLead && !roles.some((r) => r.key === "campus_lead")) {
-          const leadRoleObj = store.roles.find((r) => r.key === "campus_lead") || {
+          const leadRoleObj: Role = store.roles.find((r) => r.key === "campus_lead") || {
             id: "role-campus_lead",
             key: "campus_lead",
             name: "Campus Lead",
             scope: "chapter",
             description: "Appointed chapter leader.",
           };
-          roles = [leadRoleObj as any, ...roles];
+          roles = [leadRoleObj, ...roles];
         }
 
         // Check if user is active Executive Member in any active term
@@ -248,27 +298,27 @@ export default function HqUsersPage() {
           (tm) => tm.userId === p.id && store.terms.some((t) => t.id === tm.termId && t.status === "active"),
         );
         if (isActiveExecMember && !roles.some((r) => r.key === "executive_member" || r.key === "campus_lead")) {
-          const execRoleObj = store.roles.find((r) => r.key === "executive_member") || {
+          const execRoleObj: Role = store.roles.find((r) => r.key === "executive_member") || {
             id: "role-executive_member",
             key: "executive_member",
             name: "Executive Member",
             scope: "chapter",
             description: "Active term executive member.",
           };
-          roles = [execRoleObj as any, ...roles];
+          roles = [execRoleObj, ...roles];
         }
 
         if (!hasFaculty) {
           const hasStudent = roles.some((r) => r.key === "student");
           if (!hasStudent) {
-            const studentRoleObj = store.roles.find((r) => r.key === "student") || {
+            const studentRoleObj: Role = store.roles.find((r) => r.key === "student") || {
               id: "role-student",
               key: "student",
               name: "Student Member",
               scope: "chapter",
               description: "Active chapter student member.",
             };
-            roles = [...roles, studentRoleObj as any];
+            roles = [...roles, studentRoleObj];
           }
         }
         const status = p.status ?? "active";
@@ -278,9 +328,14 @@ export default function HqUsersPage() {
       .filter((row) => {
         if (filterStatus !== "all" && row.status !== filterStatus) return false;
         if (filterChapter) {
-          const homeMatch = row.profile.chapterId === filterChapter;
-          const roleMatch = row.urs.some((ur) => ur.chapterId === filterChapter);
-          if (!homeMatch && !roleMatch) return false;
+          if (filterChapter === "unassigned") {
+            const hasChapter = Boolean(row.profile.chapterId) || row.urs.some((ur) => Boolean(ur.chapterId));
+            if (hasChapter) return false;
+          } else {
+            const homeMatch = row.profile.chapterId === filterChapter;
+            const roleMatch = row.urs.some((ur) => ur.chapterId === filterChapter);
+            if (!homeMatch && !roleMatch) return false;
+          }
         }
         if (filterRole) {
           if (!row.roles.some((r) => r?.key === filterRole)) return false;
@@ -293,6 +348,13 @@ export default function HqUsersPage() {
         );
       })
       .sort((a, b) => {
+        if (sortBy === "not_joined_chapter") {
+          const hasA = Boolean(a.profile.chapterId) || a.urs.some((ur) => Boolean(ur.chapterId));
+          const hasB = Boolean(b.profile.chapterId) || b.urs.some((ur) => Boolean(ur.chapterId));
+          if (!hasA && hasB) return -1;
+          if (hasA && !hasB) return 1;
+          return a.profile.fullName.localeCompare(b.profile.fullName);
+        }
         if (sortBy === "recent") {
           const timeA = new Date(a.profile.createdAt || a.profile.joinedAt || 0).getTime();
           const timeB = new Date(b.profile.createdAt || b.profile.joinedAt || 0).getTime();
@@ -360,6 +422,8 @@ export default function HqUsersPage() {
   function clearFilters() {
     setQ("");
     setFilterChapter("");
+    setChapterSearchQuery("");
+    setChapterDropdownOpen(false);
     setFilterRole("");
     setFilterStatus("all");
     setSortBy("recent");
@@ -448,6 +512,40 @@ export default function HqUsersPage() {
       leadershipLabels,
     });
     setEditError("");
+  }
+
+  function openRoleModal(profile: Profile) {
+    const urs = store.userRoles.filter((ur) => ur.userId === profile.id);
+    const existingKeys = urs
+      .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
+      .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
+    const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
+    const defaultChap = isCampusLead
+      ? campusLeadChapterId
+      : ((profile.chapterId && store.chapters.some((c) => c.id === profile.chapterId))
+          ? profile.chapterId
+          : realCampusChap);
+    const chaptersMap: Record<string, string> = {};
+    if (isCampusLead) {
+      SIX_ROLES.forEach((r) => { chaptersMap[r.key] = campusLeadChapterId; });
+    } else {
+      urs.forEach((ur) => {
+        const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
+        if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
+      });
+      SIX_ROLES.forEach((r) => {
+        if (!chaptersMap[r.key] && defaultChap) {
+          chaptersMap[r.key] = defaultChap;
+        }
+      });
+    }
+    const isFaculty = existingKeys.includes("faculty_coordinator");
+    const initialSelected = isFaculty
+      ? ["faculty_coordinator" as RoleKey]
+      : existingKeys.filter((k) => k !== "student");
+    setRoleModalSelected(initialSelected);
+    setRoleModalChapters(chaptersMap);
+    setRoleModalUser(profile);
   }
 
   function submitEdit(e: FormEvent) {
@@ -584,7 +682,7 @@ export default function HqUsersPage() {
       <PageHeader
         eyebrow="Network"
         title="Users"
-        description="Assign roles by email or manage the full user directory."
+        description="Manage directory members, filter by chapter, and update roles."
         actions={
           <div className="flex flex-wrap gap-2">
             {flash ? (
@@ -593,78 +691,13 @@ export default function HqUsersPage() {
               </span>
             ) : null}
             {isSuperAdmin(session.roleKey) && (
-              <Button variant="primary" onClick={openCreate}>
+              <Button variant="orange" onClick={openCreate}>
                 Create user
               </Button>
             )}
           </div>
         }
       />
-
-      {/* ── EMAIL-BASED ROLE ASSIGN ─────────────────────────────── */}
-      {canAssign.length > 0 && (
-        <TerminalPanel title="assign.role.by.email" className="mb-6">
-          <p className="mb-3 text-[12px] text-text-dim">
-            Type the user&apos;s email address to find their account and open the role assignment panel.
-          </p>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <Input
-                type="email"
-                placeholder="student@college.edu"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                id="email-role-assign-input"
-              />
-            </div>
-            {(() => {
-              const matched = q.trim()
-                ? store.profiles.find(
-                    (p) => p.email.toLowerCase() === q.trim().toLowerCase(),
-                  )
-                : undefined;
-              return matched ? (
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    const urs = store.userRoles.filter((ur) => ur.userId === matched.id);
-                    const existingKeys = urs
-                      .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
-                      .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
-                    const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
-                    const defaultChap = (matched.chapterId && store.chapters.some((c) => c.id === matched.chapterId))
-                      ? matched.chapterId
-                      : realCampusChap;
-                    const chaptersMap: Record<string, string> = {};
-                    urs.forEach((ur) => {
-                      const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
-                      if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
-                    });
-                    SIX_ROLES.forEach((r) => {
-                      if (!chaptersMap[r.key] && defaultChap) chaptersMap[r.key] = defaultChap;
-                    });
-                    const isFaculty = existingKeys.includes("faculty_coordinator");
-                    const initialSelected = isFaculty
-                      ? ["faculty_coordinator" as RoleKey]
-                      : existingKeys.filter((k) => k !== "student");
-                    setRoleModalSelected(initialSelected);
-                    setRoleModalChapters(chaptersMap);
-                    setRoleModalUser(matched);
-                  }}
-                  className="flex items-center gap-1.5"
-                >
-                  <ShieldCheck size={14} />
-                  Assign Role to {matched.fullName}
-                </Button>
-              ) : q.trim() && looksLikeEmail(q.trim()) ? (
-                <span className="self-center text-[12px] text-text-mute">
-                  No user found with that email
-                </span>
-              ) : null;
-            })()}
-          </div>
-        </TerminalPanel>
-      )}
 
       <TerminalPanel title="filters" className="mb-6">
         <div className="grid gap-3 md:grid-cols-4">
@@ -678,17 +711,162 @@ export default function HqUsersPage() {
           </div>
           <div>
             <FieldLabel>Chapter</FieldLabel>
-            <Select
-              value={filterChapter}
-              onChange={(e) => setFilterChapter(e.target.value)}
-            >
-              <option value="">All</option>
-              {store.chapters.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <div className="relative" ref={chapterDropdownRef}>
+              <div className="relative">
+                <Building
+                  size={15}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute pointer-events-none z-10"
+                />
+                <input
+                  type="text"
+                  placeholder="All Chapters (type to search…)"
+                  value={
+                    chapterDropdownOpen
+                      ? chapterSearchQuery
+                      : filterChapter
+                      ? selectedChapterLabel
+                      : ""
+                  }
+                  onFocus={() => {
+                    if (filterChapter && filterChapter !== "unassigned") {
+                      const chap = store.chapters.find((c) => c.id === filterChapter);
+                      setChapterSearchQuery(chap?.name || "");
+                    } else {
+                      setChapterSearchQuery("");
+                    }
+                    setChapterDropdownOpen(true);
+                  }}
+                  onChange={(e) => {
+                    setChapterSearchQuery(e.target.value);
+                    if (!chapterDropdownOpen) setChapterDropdownOpen(true);
+                  }}
+                  className={`w-full h-11 rounded-full border-0 bg-bg pl-10 pr-12 text-[13px] text-text outline-none shadow-[var(--shadow-sm)] placeholder:text-text-mute focus:ring-2 focus:ring-[var(--accent-soft)] transition-all ${
+                    chapterDropdownOpen ? "ring-2 ring-[var(--accent-soft)]" : ""
+                  }`}
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 z-10">
+                  {(filterChapter || (chapterDropdownOpen && chapterSearchQuery)) ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFilterChapter("");
+                        setChapterSearchQuery("");
+                      }}
+                      className="rounded-full p-0.5 text-text-mute hover:bg-bg-panel hover:text-text cursor-pointer transition-colors"
+                      title="Clear chapter filter"
+                    >
+                      <X size={13} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChapterDropdownOpen((prev) => !prev);
+                    }}
+                    className="p-0.5 text-text-mute hover:text-text cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform duration-150 ${
+                        chapterDropdownOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {chapterDropdownOpen && (
+                <div className="absolute left-0 top-full z-40 mt-1.5 w-full min-w-[280px] rounded-2xl border border-border/80 bg-bg-panel p-1.5 shadow-[var(--shadow)] ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100">
+                  {/* List of Chapters directly with small scroll indicator */}
+                  <div className="max-h-60 overflow-y-auto space-y-0.5 pr-1 [scrollbar-width:thin] [scrollbar-color:rgba(156,163,175,0.4)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-mute/50">
+                    {/* Option: All Chapters */}
+                    {(!chapterSearchQuery || "all chapters".includes(chapterSearchQuery.toLowerCase())) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterChapter("");
+                          setChapterSearchQuery("");
+                          setChapterDropdownOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs transition-colors ${
+                          !filterChapter
+                            ? "bg-[var(--accent)]/10 font-semibold text-[var(--accent)]"
+                            : "text-text hover:bg-bg"
+                        }`}
+                      >
+                        <span className="font-medium">All Chapters</span>
+                        {!filterChapter && <Check size={14} className="text-[var(--accent)] shrink-0" />}
+                      </button>
+                    )}
+
+                    {/* Option: Not joined yet */}
+                    {(!chapterSearchQuery ||
+                      "not joined yet no chapter unassigned".includes(chapterSearchQuery.toLowerCase())) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterChapter("unassigned");
+                          setChapterSearchQuery("");
+                          setChapterDropdownOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs transition-colors ${
+                          filterChapter === "unassigned"
+                            ? "bg-amber-500/10 font-semibold text-amber-700"
+                            : "text-text hover:bg-bg"
+                        }`}
+                      >
+                        <span className="truncate font-medium">⚠️ Not joined yet (No chapter)</span>
+                        {filterChapter === "unassigned" && (
+                          <Check size={14} className="text-amber-600 shrink-0" />
+                        )}
+                      </button>
+                    )}
+
+                    <div className="my-1 border-t border-border/60" />
+
+                    {filteredChapters.length > 0 ? (
+                      filteredChapters.map((c) => {
+                        const isSelected = filterChapter === c.id;
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setFilterChapter(c.id);
+                              setChapterSearchQuery("");
+                              setChapterDropdownOpen(false);
+                            }}
+                            className={`flex w-full items-center justify-between gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs transition-colors ${
+                              isSelected
+                                ? "bg-[var(--accent)]/10 font-semibold text-[var(--accent)]"
+                                : "text-text hover:bg-bg"
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{c.name}</div>
+                              {c.city ? (
+                                <div className="text-[10px] text-text-mute truncate">{c.city}</div>
+                              ) : null}
+                            </div>
+                            {isSelected && (
+                              <Check size={14} className="text-[var(--accent)] shrink-0" />
+                            )}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      chapterSearchQuery && (
+                        <div className="py-4 text-center text-xs text-text-mute">
+                          No chapters match &quot;{chapterSearchQuery}&quot;
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <FieldLabel>Role</FieldLabel>
@@ -939,7 +1117,7 @@ export default function HqUsersPage() {
               <p className="mt-3 text-sm text-[var(--accent)]">{editError}</p>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="submit" variant="primary">
+              <Button type="submit" variant="orange">
                 Save user
               </Button>
               {isFounder(session.roleKey) && editProfile && editProfile.id !== session.userId && (
@@ -1029,173 +1207,415 @@ export default function HqUsersPage() {
         }
       >
 
+
         {!rows.length ? (
-          <div className="py-6 text-center">
+          <div className="py-8 text-center space-y-3">
             <p className="text-sm text-text-dim">
               {filtersActive
                 ? "No users match these filters."
                 : "No users in the directory yet."}
             </p>
             {filtersActive ? (
-              <Button variant="ghost" className="mt-3" onClick={clearFilters}>
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear filters
               </Button>
             ) : (
-              <Button variant="primary" className="mt-3" onClick={openCreate}>
+              <Button variant="orange" size="sm" onClick={openCreate}>
                 Create user
               </Button>
             )}
           </div>
         ) : (
-          <ul className="divide-y divide-border">
-            {rows.map(({ profile, roles, status, chapter, urs }) => (
-              <li
-                key={profile.id}
-                className="flex items-start justify-between gap-3 sm:gap-4 py-3.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Link
-                      href={`/profile/${profile.elevatesId || profile.id}`}
-                      className="font-semibold text-cyan hover:text-green"
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border/80 text-[11px] font-semibold text-text-dim uppercase tracking-wider bg-bg/40">
+                  <th className="py-3 px-3.5">User</th>
+                  <th className="py-3 px-3">Elevates ID</th>
+                  <th className="py-3 px-3">Email</th>
+                  <th className="py-3 px-3">Chapter</th>
+                  <th className="py-3 px-3">Joined Date & Time</th>
+                  <th className="py-3 px-3">Status</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {rows.map(({ profile, roles, status, chapter, urs }) => {
+                  const hasChapter = Boolean(profile.chapterId) || urs.some((ur) => Boolean(ur.chapterId));
+                  return (
+                    <tr
+                      key={profile.id}
+                      className="hover:bg-neutral-50/70 transition-colors group"
                     >
-                      {profile.fullName}
-                    </Link>
-                    {profile.elevatesId && (
-                      <span className="font-mono text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-1.5 py-0.5 rounded-[4px]">
-                        {profile.elevatesId}
-                      </span>
-                    )}
-                    <Badge tone={status === "active" ? "green" : "mute"}>
-                      {status}
+                      {/* 1. Name & Avatar - Tapping opens Pop Window */}
+                      <td className="py-3 px-3.5 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setPopUser({
+                              profile,
+                              roles,
+                              status,
+                              chapter,
+                              urs,
+                              anchorRect: {
+                                top: rect.top,
+                                left: rect.left,
+                                bottom: rect.bottom,
+                                right: rect.right,
+                              },
+                            });
+                          }}
+                          className="flex items-center gap-2.5 text-left group/btn cursor-pointer focus:outline-none"
+                          title="Click to view profile details"
+                        >
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)]/10 text-[var(--accent)] font-bold text-xs border border-[var(--accent)]/20 shadow-2xs group-hover/btn:bg-[var(--accent)] group-hover/btn:text-white transition-all">
+                            {initials(profile.fullName || "User")}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-text group-hover/btn:text-[var(--accent)] group-hover/btn:underline transition-colors flex items-center gap-1.5">
+                              {profile.fullName}
+                            </span>
+                            <span className="text-[10px] text-text-mute block font-mono">
+                              Tap for details
+                            </span>
+                          </div>
+                        </button>
+                      </td>
+
+                      {/* 2. Elevates ID */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {profile.elevatesId ? (
+                          <span className="font-mono text-[11px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-2 py-0.5 rounded-md border border-[var(--accent)]/20 shadow-2xs">
+                            {profile.elevatesId}
+                          </span>
+                        ) : (
+                          <span className="text-text-mute font-mono text-[11px]">—</span>
+                        )}
+                      </td>
+
+                      {/* 3. Mail */}
+                      <td className="py-3 px-3 whitespace-nowrap text-text-dim">
+                        <a
+                          href={`mailto:${profile.email}`}
+                          className="hover:text-text hover:underline transition-colors truncate max-w-[200px] inline-block"
+                          title={profile.email}
+                        >
+                          {profile.email}
+                        </a>
+                      </td>
+
+                      {/* 4. Chapter */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {hasChapter ? (
+                          <span className="font-medium text-text">
+                            {chapter ? chapter.name : "HQ"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+                             Not joined yet
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 5. Joined Date & Time */}
+                      <td className="py-3 px-3 whitespace-nowrap text-text-dim font-mono text-[11px]">
+                        {profile.createdAt || profile.joinedAt
+                          ? formatDateTime((profile.createdAt || profile.joinedAt)!)
+                          : "—"}
+                      </td>
+
+                      {/* 6. Active / Status */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <Badge tone={status === "active" ? "green" : "mute"}>
+                          {status === "active" ? "Active" : "Disabled"}
+                        </Badge>
+                      </td>
+
+                      {/* 7. Actions */}
+                      <td className="py-3 px-3 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {canAssign.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openRoleModal(profile)}
+                              title="Assign Roles"
+                              className="text-cyan h-7 px-2 text-xs flex items-center gap-1"
+                            >
+                              <ShieldCheck size={12} />
+                              <span className="hidden lg:inline">Roles</span>
+                            </Button>
+                          )}
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleStatus(profile)}
+                            className={`h-7 px-2 text-xs font-medium cursor-pointer ${
+                              status === "active"
+                                ? "text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                            }`}
+                            title={status === "active" ? "Disable user access" : "Enable user access"}
+                          >
+                            {status === "active" ? "Disable" : "Enable"}
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEdit(profile)}
+                            className="h-7 px-2 text-xs"
+                          >
+                            Edit
+                          </Button>
+
+                          {isFounder(session.roleKey) && profile.id !== session.userId && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2 text-xs"
+                              onClick={() => setDeleteTarget(profile)}
+                              title="Delete user"
+                            >
+                              <Trash2 size={12} />
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </TerminalPanel>
+
+
+      {/* ── PROFILE DETAIL POP WINDOW (Anchored near clicked name) ── */}
+      {popUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-0 sm:block">
+          {/* Backdrop to dismiss on click outside */}
+          <div
+            className="fixed inset-0 bg-black/20 backdrop-blur-[1px] transition-opacity"
+            onClick={() => setPopUser(null)}
+          />
+
+          {/* Pop Window Card */}
+          <div
+            style={
+              typeof window !== "undefined" && window.innerWidth >= 640 && popUser.anchorRect
+                ? {
+                    position: "fixed",
+                    top: Math.min(Math.max(16, popUser.anchorRect.bottom + 6), window.innerHeight - 490),
+                    left: Math.min(Math.max(16, popUser.anchorRect.left), window.innerWidth - 390),
+                    zIndex: 60,
+                  }
+                : {
+                    position: "relative",
+                    zIndex: 60,
+                  }
+            }
+            className="w-full max-w-sm rounded-2xl border border-border/80 bg-bg-panel p-4.5 shadow-2xl ring-1 ring-black/10 animate-in fade-in zoom-in-95 duration-150 space-y-4 text-xs"
+          >
+            {/* Pop Window Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent)] text-white font-bold text-sm shadow-sm">
+                  {initials(popUser.profile.fullName || "User")}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-[family-name:var(--font-display)] font-bold text-sm text-text truncate">
+                      {popUser.profile.fullName}
+                    </h3>
+                    <Badge tone={popUser.status === "active" ? "green" : "mute"}>
+                      {popUser.status === "active" ? "Active" : "Disabled"}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-[12px] text-text-dim flex flex-wrap items-center gap-x-2">
-                    <span>{profile.email}</span>
-                    <span>·</span>
-                    <span>{chapter ? chapter.name : "HQ"}</span>
-                    {(profile.createdAt || profile.joinedAt) ? (
-                      <>
-                        <span>·</span>
-                        <span className="font-mono text-[11px] text-text-mute">
-                          Joined {formatDateTime((profile.createdAt || profile.joinedAt)!)}
-                        </span>
-                      </>
-                    ) : null}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {roles.length ? (
-                      roles.map((r, idx) => {
-                        if (!r) return null;
-                        const matchingUr = urs.find(
-                          (u) => u.roleId === r.id || u.roleKey === r.key,
-                        );
-                        return (
-                          <span
-                            key={`${profile.id}-${r.id}-${r.key}-${idx}`}
-                            title={
-                              matchingUr?.createdAt
-                                ? `Assigned ${formatDateTime(matchingUr.createdAt)}`
-                                : undefined
+                  {popUser.profile.elevatesId ? (
+                    <span className="font-mono text-[10px] font-semibold text-[var(--accent)] bg-[var(--accent)]/10 px-1.5 py-0.5 rounded border border-[var(--accent)]/20 mt-0.5 inline-block">
+                      {popUser.profile.elevatesId}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-text-mute font-mono">No Elevates ID</span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPopUser(null)}
+                className="text-text-dim hover:text-text p-1 rounded-lg hover:bg-bg transition-colors"
+                title="Close"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Profile Fields List */}
+            <div className="space-y-2.5">
+              {/* Email */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-text-dim flex items-center gap-1.5">
+                  <Mail size={13} className="text-text-mute" /> Email
+                </span>
+                <a
+                  href={`mailto:${popUser.profile.email}`}
+                  className="font-medium text-text hover:text-[var(--accent)] hover:underline truncate max-w-[200px]"
+                >
+                  {popUser.profile.email}
+                </a>
+              </div>
+
+              {/* Phone (if available) */}
+              {popUser.profile.phone && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-text-dim flex items-center gap-1.5">
+                    <Phone size={13} className="text-text-mute" /> Phone
+                  </span>
+                  <span className="font-medium text-text font-mono">
+                    {popUser.profile.phone}
+                  </span>
+                </div>
+              )}
+
+              {/* Chapter */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-text-dim flex items-center gap-1.5">
+                  <Building size={13} className="text-text-mute" /> Chapter
+                </span>
+                <span className="font-medium text-text">
+                  {popUser.chapter ? (
+                    popUser.chapter.name
+                  ) : popUser.profile.chapterId ? (
+                    popUser.profile.chapterId
+                  ) : (
+                    <span className="text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Not Joined Yet
+                    </span>
+                  )}
+                </span>
+              </div>
+
+              {/* Academic info if present */}
+              {(popUser.profile.department || popUser.profile.academicYear || popUser.profile.year) && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-text-dim">Academic</span>
+                  <span className="font-medium text-text text-right truncate max-w-[200px]">
+                    {[popUser.profile.department, popUser.profile.academicYear || popUser.profile.year, popUser.profile.section ? `Sec ${popUser.profile.section}` : ""]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </div>
+              )}
+
+              {/* Joined Date */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-text-dim flex items-center gap-1.5">
+                  <Calendar size={13} className="text-text-mute" /> Joined
+                </span>
+                <span className="font-mono text-text-dim">
+                  {popUser.profile.createdAt || popUser.profile.joinedAt
+                    ? formatDateTime((popUser.profile.createdAt || popUser.profile.joinedAt)!)
+                    : "—"}
+                </span>
+              </div>
+
+              {/* Roles Section */}
+              <div className="pt-2 border-t border-border/60">
+                <span className="text-text-dim block mb-1.5 font-semibold text-[11px]">
+                  Assigned Roles ({popUser.roles.length}):
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {popUser.roles.length ? (
+                    popUser.roles.map((r, idx) => {
+                      if (!r) return null;
+                      const matchingUr = popUser.urs.find(
+                        (u) => u.roleId === r.id || u.roleKey === r.key,
+                      );
+                      return (
+                        <span
+                          key={`pop-${popUser.profile.id}-${r.id}-${r.key}-${idx}`}
+                          title={
+                            matchingUr?.createdAt
+                              ? `Assigned ${formatDateTime(matchingUr.createdAt)}`
+                              : undefined
+                          }
+                        >
+                          <Badge
+                            tone={
+                              r.key === "faculty_coordinator"
+                                ? "magenta"
+                                : r.key === "student"
+                                ? "mute"
+                                : r.key === "campus_lead"
+                                ? "orange"
+                                : "cyan"
                             }
                           >
-                            <Badge tone={r.key === "faculty_coordinator" ? "magenta" : r.key === "student" ? "mute" : r.key === "campus_lead" ? "orange" : "cyan"}>
-                              {roleKeyLabel(r.key)}
-                              {matchingUr?.createdAt && (
-                                <span className="ml-1 text-[10px] opacity-75 font-mono">
-                                  · {formatDateTime(matchingUr.createdAt)}
-                                </span>
-                              )}
-                            </Badge>
-                          </span>
-                        );
-                      })
-                    ) : (
-                      <Badge tone="mute">Student</Badge>
-                    )}
-                  </div>
+                            {roleKeyLabel(r.key)}
+                            {matchingUr?.createdAt && (
+                              <span className="ml-1 text-[9px] opacity-75 font-mono">
+                                · {formatDateTime(matchingUr.createdAt)}
+                              </span>
+                            )}
+                          </Badge>
+                        </span>
+                      );
+                    })
+                  ) : (
+                    <Badge tone="mute">Student</Badge>
+                  )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
-                  {canAssign.length > 0 ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        // Pre-populate existing roles & chapter assignments
-                        const urs = store.userRoles.filter((ur) => ur.userId === profile.id);
-                        const existingKeys = urs
-                          .map((ur) => store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey)
-                          .filter((k): k is RoleKey => Boolean(k) && canAssign.includes(k as RoleKey));
-                        // Campus lead: always force their own chapter
-                        const realCampusChap = store.chapters.find((c) => !isTestChapter(c))?.id || store.chapters[0]?.id || "";
-                        const defaultChap = isCampusLead
-                          ? campusLeadChapterId
-                          : ((profile.chapterId && store.chapters.some((c) => c.id === profile.chapterId))
-                              ? profile.chapterId
-                              : realCampusChap);
-                        const chaptersMap: Record<string, string> = {};
-                        if (isCampusLead) {
-                          // Lock all chapter-scoped role slots to campus lead's chapter
-                          SIX_ROLES.forEach((r) => { chaptersMap[r.key] = campusLeadChapterId; });
-                        } else {
-                          urs.forEach((ur) => {
-                            const rkey = store.roles.find((r) => r.id === ur.roleId)?.key || ur.roleKey;
-                            if (rkey) chaptersMap[rkey] = ur.chapterId || defaultChap;
-                          });
-                          SIX_ROLES.forEach((r) => {
-                            if (!chaptersMap[r.key] && defaultChap) {
-                              chaptersMap[r.key] = defaultChap;
-                            }
-                          });
-                        }
-                        const isFaculty = existingKeys.includes("faculty_coordinator");
-                        const initialSelected = isFaculty
-                          ? ["faculty_coordinator" as RoleKey]
-                          : existingKeys.filter((k) => k !== "student");
-                        setRoleModalSelected(initialSelected);
-                        setRoleModalChapters(chaptersMap);
-                        setRoleModalUser(profile);
-                      }}
-                      title="Assign roles"
-                      className="text-cyan flex items-center gap-1"
-                    >
-                      <ShieldCheck size={13} />
-                      Roles
-                    </Button>
-                  ) : null}
+              </div>
+            </div>
+
+            {/* Quick Actions Footer */}
+            <div className="pt-3 border-t border-border/70 flex flex-wrap items-center justify-between gap-2">
+              <Link
+                href={`/profile/${popUser.profile.elevatesId || popUser.profile.id}`}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline"
+                onClick={() => setPopUser(null)}
+              >
+                Full Profile <ExternalLink size={11} />
+              </Link>
+
+              <div className="flex items-center gap-1.5">
+                {canAssign.length > 0 && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => toggleStatus(profile)}
-                    className={`font-medium cursor-pointer transition-colors ${
-                      status === "active"
-                        ? "text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
-                        : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
-                    }`}
-                    title={status === "active" ? "Disable user access" : "Enable user access"}
+                    className="h-7 text-xs px-2 text-cyan flex items-center gap-1"
+                    onClick={() => {
+                      const user = popUser.profile;
+                      setPopUser(null);
+                      openRoleModal(user);
+                    }}
                   >
-                    {status === "active" ? "Disable" : "Enable"}
+                    <ShieldCheck size={12} />
+                    Roles
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => startEdit(profile)}>
-                    Edit
-                  </Button>
-                  {isFounder(session.roleKey) && profile.id !== session.userId && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      onClick={() => setDeleteTarget(profile)}
-                    >
-                      Delete
-                    </Button>
-                  )}
-                </div>
-
-              </li>
-            ))}
-          </ul>
-        )}
-      </TerminalPanel>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs px-2"
+                  onClick={() => {
+                    const user = popUser.profile;
+                    setPopUser(null);
+                    startEdit(user);
+                  }}
+                >
+                  Edit
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Dialog
         open={createOpen}
@@ -1281,7 +1701,7 @@ export default function HqUsersPage() {
             <Button type="button" variant="ghost" onClick={closeCreate}>
               Cancel
             </Button>
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="orange">
               Create user
             </Button>
           </div>
@@ -1448,7 +1868,7 @@ export default function HqUsersPage() {
               <div className="flex justify-end gap-2 pt-3 border-t border-border">
                 <Button variant="ghost" onClick={() => setRoleModalUser(null)}>Cancel</Button>
                 <Button
-                  variant="primary"
+                  variant="orange"
                   disabled={!canSave}
                   onClick={() => {
                     if (!roleModalUser || !canSave) return;

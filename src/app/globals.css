@@ -205,6 +205,15 @@ textarea:focus-visible {
   background: var(--text-dim, #6b7280);
 }
 
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Soft card utility for ad-hoc page chrome */
 .erp-card {
   border-radius: var(--radius);

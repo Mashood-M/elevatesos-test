@@ -487,6 +487,7 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
               : (cs.campus_lead_id ?? cs.campusLeadId ?? undefined),
           published: Boolean(c.published),
           logoUrl: c.logo_url ?? undefined,
+          imageUrl: cs.imageUrl ?? cs.image_url ?? c.image_url ?? c.logo_url ?? undefined,
           district,
           state,
           coordinates: coords,

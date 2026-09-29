@@ -1,15 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QRCode from "react-qr-code";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, showToast } from "@/context/store-context";
-import { formatDate, formatDateTime, initials, cn } from "@/lib/utils";
+import { formatDateTime, cn } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { isEventOngoing, isEventEnded } from "@/lib/events";
 import type {
@@ -20,30 +19,74 @@ import type {
   DemoUserSession,
   ElevatesStore,
   EventRegistration,
-  AttendanceRecord,
-  Announcement,
+  Project,
 } from "@/types";
 import {
   QrCode,
   Calendar,
   Layers,
-  Trophy,
   Clock,
   MapPin,
   Building2,
-  ChevronRight,
   UserPlus,
   ArrowRight,
-  Shield,
   Copy,
   Check,
   Ticket,
-  Compass,
-  Megaphone,
-  Radio,
   X,
-  Sparkles,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  Award,
 } from "lucide-react";
+
+const DEFAULT_CHAPTER_IMAGES: Record<string, string> = {
+  ekc: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=600&auto=format&fit=crop&q=80",
+  mes: "https://images.unsplash.com/photo-1562774053-701939374585?w=600&auto=format&fit=crop&q=80",
+  cusat: "https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=600&auto=format&fit=crop&q=80",
+  calicut: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=600&auto=format&fit=crop&q=80",
+};
+
+function getChapterCover(ch: {
+  name: string;
+  slug: string;
+  college?: string;
+  imageUrl?: string;
+  logoUrl?: string;
+  customSettings?: Record<string, unknown>;
+}) {
+  if (ch.imageUrl?.trim()) return ch.imageUrl.trim();
+  if (ch.logoUrl?.trim()) return ch.logoUrl.trim();
+  const cs = ch.customSettings;
+  if (cs?.imageUrl && typeof cs.imageUrl === "string" && cs.imageUrl.trim()) return cs.imageUrl.trim();
+  if (cs?.image_url && typeof cs.image_url === "string" && cs.image_url.trim()) return cs.image_url.trim();
+
+  const text = `${ch.name} ${ch.slug} ${ch.college || ""}`.toLowerCase();
+  for (const [key, url] of Object.entries(DEFAULT_CHAPTER_IMAGES)) {
+    if (text.includes(key)) return url;
+  }
+  return "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop&q=80";
+}
+
+function getEventCover(ev: EventItem) {
+  if (ev.posterUrl) return ev.posterUrl;
+  if (ev.bannerUrl) return ev.bannerUrl;
+  if (ev.thumbnailUrl) return ev.thumbnailUrl;
+  const lower = `${ev.title} ${ev.category || ""}`.toLowerCase();
+  if (lower.includes("hack") || lower.includes("build")) {
+    return "https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=600&auto=format&fit=crop&q=80";
+  }
+  if (lower.includes("summit") || lower.includes("talk") || lower.includes("tech")) {
+    return "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&auto=format&fit=crop&q=80";
+  }
+  if (lower.includes("design") || lower.includes("ui") || lower.includes("ux")) {
+    return "https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=600&auto=format&fit=crop&q=80";
+  }
+  if (lower.includes("cyber") || lower.includes("security") || lower.includes("code")) {
+    return "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=600&auto=format&fit=crop&q=80";
+  }
+  return "https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=600&auto=format&fit=crop&q=80";
+}
 
 interface StudentChapterViewProps {
   chapter: Chapter;
@@ -109,16 +152,13 @@ export function StudentChapterView({
   session,
   profile,
   store,
-  campusLead,
-  faculty,
 }: StudentChapterViewProps) {
   const { joinCluster } = useStore();
 
   // Modal & state management
+  const router = useRouter();
   const [showPassModal, setShowPassModal] = useState(false);
   const [selectedEventForModal, setSelectedEventForModal] = useState<EventItem | null>(null);
-  const router = useRouter();
-  const [eventsFilter, setEventsFilter] = useState<"all" | "registered">("all");
   const [copiedId, setCopiedId] = useState(false);
   const [joiningClusterId, setJoiningClusterId] = useState<string | null>(null);
 
@@ -137,17 +177,22 @@ export function StudentChapterView({
   const studentDept = profile?.department ? `${profile.department}` : "";
   const studentYear = profile?.academicYear || profile?.year || "";
   const studentTagline = [studentDept, studentYear].filter(Boolean).join(" · ") || "Active Student Member";
-  const points = profile?.points ?? 0;
-  const badges = profile?.badges ?? [];
+
+  const deptStr = profile?.department || "";
+  const matchParen = deptStr.match(/\(([^)]+)\)/);
+  const shortDept = matchParen && matchParen[1]
+    ? matchParen[1]
+    : deptStr.length > 20
+    ? deptStr.split(" ").filter((w) => w.length > 2).map((w) => w[0]).join("").toUpperCase()
+    : deptStr;
+  const yearStr = profile?.academicYear || profile?.year || "";
+  const shortYear = yearStr.replace(/Year/i, "Yr").trim();
+  const compactStudentTag = [shortDept, shortYear].filter(Boolean).join(" · ") || "Student Member";
 
   // Filter chapter events
   const chapterEvents = useMemo(() => {
     return store.events.filter((e: EventItem) => e.chapterId === chapter.id);
   }, [store.events, chapter.id]);
-
-  const ongoingEvents = useMemo(() => {
-    return chapterEvents.filter((e: EventItem) => isEventOngoing(e));
-  }, [chapterEvents]);
 
   const upcomingEvents = useMemo(() => {
     return chapterEvents
@@ -161,7 +206,7 @@ export function StudentChapterView({
       });
   }, [chapterEvents]);
 
-  // Student registrations & attendance
+  // Student registrations
   const myRegistrations = useMemo(() => {
     return store.registrations.filter(
       (r: EventRegistration) => r.userId === session.userId && r.status !== "rejected",
@@ -171,25 +216,6 @@ export function StudentChapterView({
   const myRegisteredEventIds = useMemo(() => {
     return new Set(myRegistrations.map((r: EventRegistration) => r.eventId));
   }, [myRegistrations]);
-
-  const myAttendance = useMemo(() => {
-    return store.attendance.filter(
-      (a: AttendanceRecord) => a.userId === session.userId && a.status === "present",
-    );
-  }, [store.attendance, session.userId]);
-
-  // Upcoming passes that student holds
-  const myUpcomingPasses = useMemo(() => {
-    return upcomingEvents.filter((e: EventItem) => myRegisteredEventIds.has(e.id));
-  }, [upcomingEvents, myRegisteredEventIds]);
-
-  // Filtered events display
-  const displayedEvents = useMemo(() => {
-    if (eventsFilter === "registered") {
-      return upcomingEvents.filter((e: EventItem) => myRegisteredEventIds.has(e.id));
-    }
-    return upcomingEvents;
-  }, [upcomingEvents, eventsFilter, myRegisteredEventIds]);
 
   // Clusters
   const chapterClusters = useMemo(() => {
@@ -202,18 +228,27 @@ export function StudentChapterView({
     );
   }, [chapterClusters, session.userId]);
 
-  // Announcements
-  const chapterAnnouncements = useMemo(() => {
-    return store.announcements
-      .filter(
-        (a: Announcement) =>
-          a.chapterId === chapter.id ||
-          a.audience === "global" ||
-          a.audience === "chapter",
-      )
-      .sort((a: Announcement, b: Announcement) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 3);
-  }, [store.announcements, chapter.id]);
+  // Student active projects
+  const myProjects = useMemo(() => {
+    return store.projects.filter(
+      (p: Project) =>
+        (p.chapterId === chapter.id || !p.chapterId) &&
+        (p.teamIds?.includes(session.userId) || p.mentorId === session.userId)
+    );
+  }, [store.projects, chapter.id, session.userId]);
+
+  const activeProject = myProjects[0] || null;
+
+  // Next registered event pass
+  const nextRegisteredEvent = useMemo(() => {
+    if (myRegistrations.length === 0) return null;
+    const regEventIds = new Set(myRegistrations.map((r) => r.eventId));
+    return (
+      upcomingEvents.find((e) => regEventIds.has(e.id)) ||
+      chapterEvents.find((e) => regEventIds.has(e.id)) ||
+      null
+    );
+  }, [myRegistrations, upcomingEvents, chapterEvents]);
 
   // Handle copy student ID
   function handleCopyId() {
@@ -245,794 +280,630 @@ export function StudentChapterView({
     }
   }
 
+  // Dynamic greeting based on current local hour
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning,";
+    if (hour < 18) return "Good afternoon,";
+    return "Good evening,";
+  }, []);
+
+  const networkChapters = useMemo(() => {
+    const active = store.chapters.filter((c) => c.status === "active" || c.status === "onboarding");
+    if (active.length >= 4) return active;
+
+    const standardCampuses = [
+      { id: "ekc-preview", name: "EKC", slug: "ekc", college: "EKC College of Engineering", memberCount: 248 },
+      { id: "mes-preview", name: "MES College", slug: "mes", college: "MES College", memberCount: 180 },
+      { id: "cusat-preview", name: "CUSAT", slug: "cusat", college: "Cochin University of Science and Technology", memberCount: 312 },
+      { id: "calicut-preview", name: "University of Calicut", slug: "calicut", college: "University of Calicut Campus", memberCount: 430 },
+    ];
+
+    const existingSlugs = new Set(store.chapters.map((c) => c.slug));
+    const fallbackCampuses = standardCampuses.filter((sc) => !existingSlugs.has(sc.slug));
+
+    return [...store.chapters, ...fallbackCampuses];
+  }, [store.chapters]);
+
+  const eventsToDisplay = useMemo(() => {
+    if (upcomingEvents.length > 0) return upcomingEvents;
+    const openEvents = store.events
+      .filter((e) => !isEventEnded(e))
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+    return openEvents.slice(0, 8);
+  }, [upcomingEvents, store.events]);
+
+  const eventsScrollRef = useRef<HTMLDivElement>(null);
+  const clustersScrollRef = useRef<HTMLDivElement>(null);
+  const chaptersScrollRef = useRef<HTMLDivElement>(null);
+
+  const [eventsScrollState, setEventsScrollState] = useState({ canLeft: false, canRight: false });
+  const [clustersScrollState, setClustersScrollState] = useState({ canLeft: false, canRight: false });
+  const [chaptersScrollState, setChaptersScrollState] = useState({ canLeft: false, canRight: false });
+
+  const scrollSection = (ref: React.RefObject<HTMLDivElement | null>, direction: "left" | "right") => {
+    if (ref.current) {
+      const scrollAmount = 350;
+      ref.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  useEffect(() => {
+    const bindTrack = (
+      el: HTMLDivElement | null,
+      setter: React.Dispatch<React.SetStateAction<{ canLeft: boolean; canRight: boolean }>>
+    ) => {
+      if (!el) return () => {};
+
+      const updateState = () => {
+        const maxScroll = el.scrollWidth - el.clientWidth;
+        const canLeft = el.scrollLeft > 8;
+        const canRight = maxScroll > 8 && el.scrollLeft < maxScroll - 8;
+        setter((prev) => {
+          if (prev.canLeft === canLeft && prev.canRight === canRight) return prev;
+          return { canLeft, canRight };
+        });
+      };
+
+      const onWheel = (e: WheelEvent) => {
+        if (e.ctrlKey || e.altKey) return;
+
+        const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+        if (delta === 0) return;
+
+        const maxScroll = el.scrollWidth - el.clientWidth;
+        if (maxScroll <= 1) return;
+
+        // Allow natural page scroll if already at the boundary
+        if (delta < 0 && el.scrollLeft <= 2) return;
+        if (delta > 0 && el.scrollLeft >= maxScroll - 2) return;
+
+        e.preventDefault();
+
+        // Normalize delta across mice drivers & line modes
+        const step = e.deltaMode === 1 ? delta * 35 : delta;
+        el.scrollLeft += step;
+        updateState();
+      };
+
+      el.addEventListener("wheel", onWheel, { passive: false });
+      el.addEventListener("scroll", updateState, { passive: true });
+      window.addEventListener("resize", updateState);
+
+      updateState();
+      const timer = setTimeout(updateState, 150);
+
+      return () => {
+        el.removeEventListener("wheel", onWheel);
+        el.removeEventListener("scroll", updateState);
+        window.removeEventListener("resize", updateState);
+        clearTimeout(timer);
+      };
+    };
+
+    const cleanupEvents = bindTrack(eventsScrollRef.current, setEventsScrollState);
+    const cleanupClusters = bindTrack(clustersScrollRef.current, setClustersScrollState);
+    const cleanupChapters = bindTrack(chaptersScrollRef.current, setChaptersScrollState);
+
+    return () => {
+      cleanupEvents();
+      cleanupClusters();
+      cleanupChapters();
+    };
+  }, [eventsToDisplay.length, chapterClusters.length, networkChapters.length]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-7">
       {/* ── 1. STUDENT IDENTITY HERO ───────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-6 sm:p-8 shadow-xs">
-        {/* Subtle decorative brand glow in the background */}
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 h-56 w-56 rounded-full bg-[var(--accent)]/5 blur-3xl pointer-events-none" />
+      <div className="relative overflow-hidden rounded-[24px] border border-border/70 bg-gradient-to-br from-white via-[#faf9f6] to-[#f4f1ea] p-6 sm:p-8 md:p-10 shadow-xs">
+        {/* Background Campus Photo with seamless blend from right to left */}
+        <div
+          className="absolute top-0 right-0 bottom-0 w-full sm:w-3/5 lg:w-[55%] pointer-events-none overflow-hidden select-none z-0"
+          style={{
+            maskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
+            WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
+          }}
+        >
+          <img
+            src={getChapterCover(chapter)}
+            alt={chapter.name}
+            className="w-full h-full object-cover object-center"
+          />
+          {/* Subtle gradient overlays to match hero card canvas */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#faf9f6] via-transparent to-black/15" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent hidden sm:block" />
+          <div className="absolute bottom-4 right-6 text-right hidden sm:block">
+            <p className="text-xs font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] tracking-wide">{chapter.college || chapter.name}</p>
+            <p className="text-[10px] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] font-medium">{chapter.city ? `${chapter.city} Campus` : "Innovation Hub"}</p>
+          </div>
+        </div>
 
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3 max-w-2xl">
-            {/* Badges / Eyebrow */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1 rounded-md border border-[var(--accent)]/20 shadow-2xs">
-                {chapterElevatesId}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-bg text-text-dim border border-border/80">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                {chapter.status.replaceAll("_", " ")}
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium bg-[var(--accent-soft)]/50 text-[var(--accent)] border border-[var(--accent)]/15">
-                <Shield className="w-3 h-3" />
-                Student Portal
-              </span>
-            </div>
 
-            {/* Title & Personalized Greeting */}
-            <div>
-              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-                Welcome back, {firstName}! 👋
-              </h1>
-              <p className="mt-1 text-[13px] text-text-dim leading-relaxed">
-                Your campus gateway to tech events, domain tracks, and peer builder communities at{" "}
-                <span className="font-semibold text-text">{chapter.name}</span>.
-              </p>
-            </div>
 
-            {/* Campus details chip */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-text-dim">
-              <span className="flex items-center gap-1.5 font-medium text-text">
-                <Building2 className="w-3.5 h-3.5 text-text-mute" />
-                {chapter.college}
-              </span>
-              {chapter.city && (
-                <span className="flex items-center gap-1">
-                  <MapPin className="w-3.5 h-3.5 text-text-mute" />
-                  {chapter.city}
-                </span>
-              )}
-              <span className="flex items-center gap-1 text-text-mute">
-                <Clock className="w-3.5 h-3.5" />
-                Est. {chapter.createdAt ? formatDate(chapter.createdAt) : formatDate(chapter.foundedAt)}
-              </span>
-            </div>
+        {/* Left Column Content: Greeting, Headline, Subtitle, Actions */}
+        <div className="relative z-10 space-y-4 max-w-xl">
+          <div>
+            <p className="text-sm font-medium text-text-dim">{greeting}</p>
+            <h2 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+              {firstName} 👋
+            </h2>
           </div>
 
-          {/* Student Pass Capsule & Quick Actions */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 lg:pt-0 shrink-0">
-            {/* Digital Pass Quick Launch Card */}
-            <div
-              onClick={() => setShowPassModal(true)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setShowPassModal(true); }}
-              className="group flex items-center gap-3.5 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-soft)]/30 p-3 px-4 shadow-2xs hover:bg-[var(--accent-soft)]/60 hover:border-[var(--accent)]/50 transition cursor-pointer"
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white border border-[var(--accent)]/20 shadow-2xs text-[var(--accent)] group-hover:scale-105 transition-transform">
-                <QrCode className="w-6 h-6" />
-              </div>
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-xs font-bold text-text">
-                    {studentElevatesId}
-                  </span>
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-                <p className="text-[11px] font-medium text-[var(--accent)] group-hover:underline flex items-center gap-0.5">
-                  Show My Digital Pass
-                  <ChevronRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-                </p>
-              </div>
-            </div>
+          <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-text leading-[1.08]">
+            Same campus. <br />
+            Bigger <span className="italic font-serif text-[var(--accent)]">possibilities.</span>
+          </h1>
 
-            {/* Quick action buttons */}
-            <div className="flex items-center gap-2">
-              <Link href="/events" className="flex-1 sm:flex-none">
-                <Button variant="secondary" size="sm" className="w-full font-semibold flex items-center gap-1.5 h-10">
-                  <Calendar className="w-4 h-4" />
-                  <span>Browse Events</span>
-                </Button>
-              </Link>
-              <Link href={`/chapter/${slug}/clusters`} className="flex-1 sm:flex-none">
-                <Button variant="secondary" size="sm" className="w-full font-semibold flex items-center gap-1.5 h-10">
-                  <Layers className="w-4 h-4" />
-                  <span>Clusters</span>
-                </Button>
-              </Link>
-            </div>
+          <p className="text-sm sm:text-base text-text-dim font-medium">
+             Learning.  Building.  Growing.
+          </p>
+
+          {/* Quick Identity Pills */}
+          <div className="pt-2 flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowPassModal(true)}
+              className="group inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-text shadow-2xs hover:bg-[var(--accent-soft)]/50 hover:border-[var(--accent)] transition cursor-pointer"
+            >
+              <QrCode className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Digital Pass</span>
+              <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded">
+                {studentElevatesId}
+              </span>
+            </button>
+
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-white border border-border/80 text-text-dim shadow-2xs">
+              <Building2 className="w-3.5 h-3.5 text-text-mute" />
+              <span>{chapter.college || chapter.name}</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ── 2. STUDENT STATS BAR (4 FOCUSED STUDENT CARDS) ──────────────────── */}
-      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        {/* Card 1: My Elevates ID */}
-        <div
-          onClick={() => setShowPassModal(true)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setShowPassModal(true); }}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm cursor-pointer"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Campus ID & Pass</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)] group-hover:scale-110 transition-transform">
+      {/* ── 2. STUDENT STATUS & SHORTCUTS ───────────────────────────────── */}
+      <div className="rounded-2xl border border-border/80 bg-white shadow-2xs overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60">
+          {/* Segment 1: Digital Pass */}
+          <button
+            type="button"
+            onClick={() => setShowPassModal(true)}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-[var(--accent)]/10 group-hover:text-[var(--accent)] transition-colors">
               <QrCode className="w-4 h-4" />
             </div>
-          </div>
-          <p className="mt-3 font-mono text-xl sm:text-2xl font-extrabold tracking-tight text-text truncate">
-            {studentElevatesId}
-          </p>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
-            <span>Tap to open QR pass</span>
-            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </div>
-
-        {/* Card 2: My Event Passes */}
-        <Link
-          href="/my-qr"
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">My Passes & RSVPs</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
-              <Ticket className="w-4 h-4" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-text-dim flex items-center gap-1.5 leading-none mb-1">
+                <span>Digital Pass</span>
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" title="Active pass" />
+              </p>
+              <p className="text-xs font-semibold text-text truncate group-hover:text-[var(--accent)] transition-colors font-mono">
+                {studentElevatesId} <span className="font-sans font-normal text-text-mute text-[11px]">· View pass</span>
+              </p>
             </div>
-          </div>
-          <p className="mt-3 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-            {myRegistrations.length}
-          </p>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
-            <span>{myUpcomingPasses.length} upcoming · {myAttendance.length} attended</span>
-            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </Link>
+          </button>
 
-        {/* Card 3: Joined Clusters */}
-        <Link
-          href={`/chapter/${slug}/clusters`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Domain Tracks</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
+          {/* Segment 2: Active Project */}
+          <Link
+            href={`/chapter/${slug}/projects`}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
               <Layers className="w-4 h-4" />
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-              {myClusters.length}
-            </span>
-            <span className="text-xs text-text-mute font-medium">
-              of {chapterClusters.length} active
-            </span>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
-            <span>Explore cohorts</span>
-            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </Link>
-
-        {/* Card 4: Builder Points & XP */}
-        <Link
-          href={`/profile/${session.userId}`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Campus Standing</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
-              <Trophy className="w-4 h-4 text-amber-500" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
+                {activeProject ? "Active Project" : "Campus Projects"}
+              </p>
+              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
+                {activeProject ? (
+                  <span>
+                    {activeProject.title}{" "}
+                    <span className="text-[11px] font-normal text-text-mute capitalize">({activeProject.stage})</span>
+                  </span>
+                ) : (
+                  <span>{chapter.projectCount || 4} projects · Browse</span>
+                )}
+              </p>
             </div>
-          </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-              {points}
-            </span>
-            <span className="text-xs text-amber-600 font-bold uppercase tracking-wider">
-              XP
-            </span>
-          </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
-            <span>{badges.length} badges · View portfolio</span>
-            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </Link>
+          </Link>
+
+          {/* Segment 3: Events & Passes */}
+          <button
+            type="button"
+            onClick={() => {
+              if (myRegistrations.length > 0) {
+                setShowPassModal(true);
+              } else {
+                eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }
+            }}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
+              <Ticket className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
+                {myRegistrations.length > 0 ? "My Passes" : "Events"}
+              </p>
+              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
+                {nextRegisteredEvent ? (
+                  <span>{nextRegisteredEvent.title} · Registered</span>
+                ) : myRegistrations.length > 0 ? (
+                  <span>{myRegistrations.length} pass{myRegistrations.length > 1 ? "es" : ""} ready</span>
+                ) : (
+                  <span>{upcomingEvents.length} upcoming events</span>
+                )}
+              </p>
+            </div>
+          </button>
+
+          {/* Segment 4: Campus Standing */}
+          <Link
+            href={`/chapter/${slug}/clusters`}
+            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
+              <Award className="w-4 h-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-text-dim leading-none mb-1 flex items-center gap-1">
+                <span>Verified Student</span>
+                <Check className="w-3 h-3 text-emerald-600 stroke-[2.5]" />
+              </p>
+              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
+                {myClusters.length > 0 ? `${myClusters[0].name} · ${compactStudentTag}` : compactStudentTag}
+              </p>
+            </div>
+          </Link>
+        </div>
       </div>
 
-      {/* ── 3. ONGOING EVENT LIVE ALERT (If any) ────────────────────────────── */}
-      {ongoingEvents.length > 0 && (
-        <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent)]/30 bg-white p-4 sm:p-5 shadow-xs">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent)]" />
-              </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <Badge tone="orange" className="text-[10px] font-bold">
-                    HAPPENING NOW
-                  </Badge>
-                  <p className="text-[13px] font-bold text-text">
-                    {ongoingEvents[0].title}
-                  </p>
-                </div>
-                <p className="text-[12px] text-text-dim mt-0.5">
-                  Venue: {ongoingEvents[0].venue || "Campus Venue"} · Door check-in and attendance verification is active.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="orange"
-                className="font-semibold text-xs h-8 shadow-xs flex items-center gap-1.5"
-                onClick={() => setSelectedEventForModal(ongoingEvents[0])}
-              >
-                <QrCode className="w-3.5 h-3.5" />
-                <span>Show Entry Pass</span>
-              </Button>
-              <Link href={`/chapter/${slug}/events/${ongoingEvents[0].id}`}>
-                <Button size="sm" variant="secondary" className="font-semibold text-xs h-8">
-                  View Details
-                </Button>
-              </Link>
-            </div>
-          </div>
+      {/* ── 3. UPCOMING EVENTS (HORIZONTAL SIDE-SCROLL) ──────────────────────── */}
+      <section className="space-y-3.5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
+            Upcoming Events
+          </h2>
         </div>
-      )}
 
-      {/* ── 4. TWO-COLUMN WORKSPACE ─────────────────────────────────────────── */}
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        {/* LEFT COLUMN: Campus Events & My Passes */}
-        <div className="space-y-6">
-          {/* Active Passes Banner (if registered for upcoming) */}
-          {myUpcomingPasses.length > 0 && (
-            <div className="rounded-[var(--radius-lg)] border border-emerald-200 bg-emerald-50/40 p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Ticket className="w-4 h-4 text-emerald-600" />
-                  <h2 className="font-bold text-[14px] text-text">Your Confirmed Event Passes</h2>
-                  <Badge tone="green" className="text-[10px]">
-                    {myUpcomingPasses.length} Active
-                  </Badge>
-                </div>
-                <Link
-                  href="/my-qr"
-                  className="text-[12px] font-semibold text-emerald-700 hover:underline flex items-center gap-1"
+        {eventsToDisplay.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border p-8 text-center bg-white">
+            <Calendar className="w-8 h-8 mx-auto text-text-mute mb-2" />
+            <p className="text-sm font-semibold text-text">No upcoming events scheduled right now</p>
+            <p className="text-xs text-text-dim mt-1">Check back soon for workshops, hackathons, and tech talks!</p>
+          </div>
+        ) : (
+          <div className="relative group/carousel">
+            {eventsScrollState.canLeft && (
+              <button
+                type="button"
+                onClick={() => scrollSection(eventsScrollRef, "left")}
+                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                aria-label="Previous events"
+              >
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              </button>
+            )}
+            {eventsScrollState.canRight && (
+              <button
+                type="button"
+                onClick={() => scrollSection(eventsScrollRef, "right")}
+                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                aria-label="Next events"
+              >
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              </button>
+            )}
+
+            <div
+              ref={eventsScrollRef}
+              className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            >
+            {eventsToDisplay.map((ev) => {
+              const isRegistered = myRegisteredEventIds.has(ev.id);
+              const ongoing = isEventOngoing(ev);
+              const coverImg = getEventCover(ev);
+
+              return (
+                <div
+                  key={ev.id}
+                  className="w-[295px] sm:w-[325px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group"
                 >
-                  <span>All Passes</span>
-                  <ChevronRight className="w-3 h-3" />
-                </Link>
-              </div>
-              <p className="text-[12px] text-text-dim mb-3">
-                You are registered for the following upcoming sessions. Tap to open your scan ticket at the venue.
-              </p>
-              <div className="space-y-2.5">
-                {myUpcomingPasses.map((ev: EventItem) => (
-                  <div
-                    key={ev.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-white border border-emerald-200/80 shadow-2xs"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-bold text-text truncate">
-                        {ev.title}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-text-dim mt-0.5">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-text-mute" />
-                          {formatDateTime(ev.startsAt)}
+                  <div>
+                    {/* Event Cover / Visual Banner */}
+                    <div className="relative aspect-[16/9] w-full bg-neutral-900 overflow-hidden">
+                      <img
+                        src={coverImg}
+                        alt={ev.title}
+                        className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+
+                      {/* Overlaid Badges */}
+                      <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full bg-white/95 text-text backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-white/60">
+                          {ev.category || "Workshop"}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-text-mute" />
-                          {ev.venue || "Campus Venue"}
-                        </span>
+                        {ongoing ? (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white animate-pulse shadow-[0_4px_12px_rgba(242,100,48,0.4)]">
+                            Happening Now
+                          </span>
+                        ) : isRegistered ? (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500 text-white shadow-[0_4px_12px_rgba(16,185,129,0.35)]">
+                            Registered
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {/* Overlaid Title on bottom of cover */}
+                      <div className="absolute bottom-3 left-3 right-3">
+                        <p className="font-[family-name:var(--font-display)] text-base font-bold text-white line-clamp-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                          {ev.title}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+
+                    {/* Event Meta Details */}
+                    <div className="p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-xs text-text-dim">
+                        <Clock className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                        <span className="truncate">{formatDateTime(ev.startsAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-text-dim">
+                        <MapPin className="w-3.5 h-3.5 text-text-mute shrink-0" />
+                        <span className="truncate">{ev.venue || chapter.college || chapter.name}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Bar */}
+                  <div className="px-4 pb-4 pt-2 flex items-center justify-between gap-2 border-t border-border/60 bg-gradient-to-b from-white to-neutral-50/50">
+                    {isRegistered ? (
                       <Button
                         size="sm"
                         variant="orange"
-                        className="text-xs h-8 font-semibold flex items-center gap-1.5"
+                        className="h-8.5 text-xs font-semibold flex-1 flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(242,100,48,0.3)] hover:shadow-[0_6px_18px_rgba(242,100,48,0.45)] active:translate-y-0.5 transition-all cursor-pointer"
                         onClick={() => setSelectedEventForModal(ev)}
                       >
                         <QrCode className="w-3.5 h-3.5" />
-                        <span>Ticket Pass</span>
+                        <span>Show Pass</span>
                       </Button>
-                      <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                        <Button size="sm" variant="secondary" className="text-xs h-8">
-                          Details
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Campus Events Section */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-              <div className="flex items-center gap-2.5">
-                <Calendar className="w-4 h-4 text-[var(--accent)]" />
-                <h2 className="font-bold text-[14px] text-text">Campus Events & Workshops</h2>
-                <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
-                  {upcomingEvents.length}
-                </span>
-              </div>
-
-              {/* Filter Tabs */}
-              <div className="flex items-center gap-1 rounded-lg bg-bg p-0.5 border border-border/60">
-                <button
-                  type="button"
-                  onClick={() => setEventsFilter("all")}
-                  className={cn(
-                    "px-2.5 py-1 text-[11px] font-semibold rounded-md transition",
-                    eventsFilter === "all"
-                      ? "bg-white text-text shadow-2xs"
-                      : "text-text-dim hover:text-text",
-                  )}
-                >
-                  All ({upcomingEvents.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEventsFilter("registered")}
-                  className={cn(
-                    "px-2.5 py-1 text-[11px] font-semibold rounded-md transition",
-                    eventsFilter === "registered"
-                      ? "bg-white text-text shadow-2xs"
-                      : "text-text-dim hover:text-text",
-                  )}
-                >
-                  My Passes ({myUpcomingPasses.length})
-                </button>
-              </div>
-            </div>
-
-            <div className="p-5">
-              {displayedEvents.length === 0 ? (
-                <div className="py-10 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bg text-text-mute mb-3">
-                    <Calendar className="w-6 h-6" />
-                  </div>
-                  <p className="text-[14px] font-semibold text-text">
-                    {eventsFilter === "registered"
-                      ? "No active registrations yet"
-                      : "No upcoming events scheduled right now"}
-                  </p>
-                  <p className="text-[12px] text-text-dim max-w-sm mx-auto mt-1">
-                    {eventsFilter === "registered"
-                      ? "Browse upcoming workshops and hackathons below to get your confirmed QR ticket."
-                      : "Your chapter leads are preparing upcoming workshops, hackathons, and guest sessions. Stay tuned!"}
-                  </p>
-                  {eventsFilter === "registered" && upcomingEvents.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="orange"
-                      className="mt-3 text-xs"
-                      onClick={() => setEventsFilter("all")}
-                    >
-                      Browse Upcoming Events
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-3.5">
-                  {displayedEvents.map((ev: EventItem) => {
-                    const isRegistered = myRegisteredEventIds.has(ev.id);
-                    const isLive = isEventOngoing(ev);
-                    const eventDate = new Date(ev.startsAt);
-                    const month = eventDate.toLocaleDateString("en-US", { month: "short" });
-                    const day = eventDate.getDate();
-
-                    return (
-                      <div
-                        key={ev.id}
-                        className={cn(
-                          "flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-xl border transition",
-                          isRegistered
-                            ? "bg-emerald-50/20 border-emerald-200/80 hover:border-emerald-300"
-                            : "bg-white border-border/70 hover:border-[var(--accent)]/40 hover:shadow-2xs",
-                        )}
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="orange"
+                        className="h-8.5 text-xs font-semibold flex-1 flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(242,100,48,0.3)] hover:shadow-[0_6px_18px_rgba(242,100,48,0.45)] active:translate-y-0.5 transition-all cursor-pointer"
+                        onClick={() => setSelectedEventForModal(ev)}
                       >
-                        {/* Date badge & Event Info */}
-                        <div className="flex items-start gap-3.5 min-w-0">
-                          {/* Compact Date Box */}
-                          <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-bg border border-border/80 text-center font-mono">
-                            <span className="text-[10px] font-bold uppercase text-[var(--accent)] leading-none">
-                              {month}
-                            </span>
-                            <span className="text-base font-extrabold text-text leading-none mt-0.5">
-                              {day}
-                            </span>
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              {isLive && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 text-[9px] font-extrabold">
-                                  <Radio className="w-2.5 h-2.5 animate-pulse" />
-                                  LIVE
-                                </span>
-                              )}
-                              {isRegistered ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold">
-                                  <Check className="w-3 h-3" />
-                                  Registered
-                                </span>
-                              ) : (
-                                <Badge tone="mute" className="text-[10px]">
-                                  {ev.category?.replaceAll("_", " ") || "Workshop"}
-                                </Badge>
-                              )}
-                            </div>
-
-                            <Link
-                              href={`/chapter/${slug}/events/${ev.id}`}
-                              className="block mt-1 text-[14px] font-bold text-text hover:text-[var(--accent)] transition truncate"
-                            >
-                              {ev.title}
-                            </Link>
-
-                            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-text-dim">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-text-mute" />
-                                {formatDateTime(ev.startsAt)}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-3 h-3 text-text-mute" />
-                                {ev.venue || "Campus Venue"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-border/40">
-                          {isRegistered ? (
-                            <Button
-                              size="sm"
-                              variant="orange"
-                              className="text-xs h-8 font-semibold flex items-center gap-1.5 shadow-2xs"
-                              onClick={() => setSelectedEventForModal(ev)}
-                            >
-                              <QrCode className="w-3.5 h-3.5" />
-                              <span>View Ticket</span>
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="orange"
-                              className="text-xs h-8 font-semibold flex items-center gap-1.5 shadow-2xs"
-                              onClick={() => setSelectedEventForModal(ev)}
-                            >
-                              <span>Register</span>
-                            </Button>
-                          )}
-                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                            <Button size="sm" variant="secondary" className="text-xs h-8 font-medium">
-                              Details
-                            </Button>
-                          </Link>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        <Ticket className="w-3.5 h-3.5" />
+                        <span>Register</span>
+                      </Button>
+                    )}
+                    <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-8.5 text-xs font-semibold px-3.5 bg-white border border-border/80 hover:bg-neutral-50 hover:border-neutral-300 shadow-2xs active:translate-y-0.5 transition-all cursor-pointer"
+                      >
+                        Details
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {upcomingEvents.length > 0 && (
-              <div className="border-t border-border/70 px-5 py-3 text-center bg-bg/30">
-                <Link
-                  href={`/chapter/${slug}/events`}
-                  className="text-[12px] font-semibold text-[var(--accent)] hover:underline inline-flex items-center gap-1"
-                >
-                  <span>Browse full chapter event calendar</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Student Journey / Experience Highlights */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs">
-            <div className="flex items-center gap-2 mb-2">
-              <Compass className="w-4 h-4 text-[var(--accent)]" />
-              <h2 className="font-bold text-[14px] text-text">Your Campus Journey</h2>
-            </div>
-            <p className="text-[12px] text-text-dim mb-4">
-              Get the most out of Elevates by building skills, collaborating in tracks, and earning verified certificates.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Link
-                href={`/chapter/${slug}/events`}
-                className="group rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)] font-bold text-xs mb-2">
-                  01
-                </div>
-                <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                  Hands-on Sessions
-                </p>
-                <p className="text-[11px] text-text-dim mt-0.5">
-                  Attend expert-led workshops and scan your QR pass to verify attendance.
-                </p>
-              </Link>
-
-              <Link
-                href={`/chapter/${slug}/clusters`}
-                className="group rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition font-bold text-xs mb-2">
-                  02
-                </div>
-                <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                  Interest Clusters
-                </p>
-                <p className="text-[11px] text-text-dim mt-0.5">
-                  Join focused builder tracks in AI, Fullstack, Cloud, or UI/UX Design.
-                </p>
-              </Link>
-
-              <Link
-                href={`/profile/${session.userId}`}
-                className="group rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition font-bold text-xs mb-2">
-                  03
-                </div>
-                <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                  Earn Verified Proof
-                </p>
-                <p className="text-[11px] text-text-dim mt-0.5">
-                  Build your verified portfolio, level up XP, and gain shareable certificates.
-                </p>
-              </Link>
-            </div>
+              );
+            })}
           </div>
         </div>
+      )}
+      </section>
 
-        {/* RIGHT COLUMN: Domain Clusters, Campus Updates & Leadership */}
-        <div className="space-y-6">
-          {/* Active Clusters Card */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-[var(--accent)]" />
-                <h3 className="font-bold text-[14px] text-text">Campus Clusters</h3>
-                <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
-                  {chapterClusters.length}
-                </span>
-              </div>
-              <Link
-                href={`/chapter/${slug}/clusters`}
-                className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
-              >
-                <span>View all</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            <div className="p-5">
-              {!isDiscordConnected && (
-                <div className="mb-3.5 rounded-xl bg-[#5865F2]/10 border border-[#5865F2]/20 p-3 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-lg bg-[#5865F2] text-white shrink-0">
-                      <DiscordIcon className="w-3 h-3" />
-                    </span>
-                    <p className="text-[11px] font-medium text-text">
-                      <span className="font-bold">Discord Required:</span> Link Discord to join tracks.
-                    </p>
-                  </div>
-                  <Link
-                    href={`/chapter/${slug}/clusters`}
-                    className="text-[11px] font-bold text-[#5865F2] hover:underline shrink-0"
-                  >
-                    View Guide →
-                  </Link>
-                </div>
-              )}
-
-              {chapterClusters.length === 0 ? (
-                <div className="py-6 text-center text-text-dim text-[13px]">
-                  <Layers className="w-6 h-6 text-text-mute mx-auto mb-2 opacity-60" />
-                  No clusters created yet. Check back soon for new domain tracks!
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {chapterClusters.slice(0, 4).map((cluster: Cluster) => {
-                    const isMember = cluster.memberIds.includes(session.userId);
-                    const theme = getClusterTheme(cluster.name, cluster.slug);
-
-                    return (
-                      <div
-                        key={cluster.id}
-                        className={cn(
-                          "p-3.5 rounded-xl border transition",
-                          isMember
-                            ? "bg-bg/50 border-[var(--accent)]/30"
-                            : "border-border/60 hover:border-border hover:bg-bg/20",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span
-                                className={cn(
-                                  "text-[10px] font-semibold px-2 py-0.5 rounded-md border",
-                                  theme.badgeColor,
-                                )}
-                              >
-                                {theme.category}
-                              </span>
-                              {isMember && (
-                                <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
-                                  <Check className="w-2.5 h-2.5" /> Joined
-                                </span>
-                              )}
-                            </div>
-                            <Link
-                              href={`/chapter/${slug}/clusters`}
-                              className="text-[13px] font-bold text-text hover:text-[var(--accent)] transition truncate block"
-                            >
-                              {cluster.name}
-                            </Link>
-                            <p className="text-[11px] text-text-dim line-clamp-2 mt-0.5 leading-relaxed">
-                              {cluster.description || "Domain community track for hands-on campus building."}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 pt-2.5 border-t border-border/50 flex items-center justify-between">
-                          <span className="font-mono text-[11px] font-medium text-text-dim">
-                            {cluster.memberIds.length} {cluster.memberIds.length === 1 ? "builder" : "builders"}
-                          </span>
-
-                          {isMember ? (
-                            <Link
-                              href={`/chapter/${slug}/clusters`}
-                              className="text-[11px] font-semibold text-[var(--accent)] hover:underline inline-flex items-center gap-0.5"
-                            >
-                              <span>Open Track</span>
-                              <ChevronRight className="w-3 h-3" />
-                            </Link>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className={cn(
-                                "h-7 text-[11px] px-2.5 font-semibold",
-                                !isDiscordConnected
-                                  ? "text-[#5865F2] hover:bg-[#5865F2]/10"
-                                  : "text-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                              )}
-                              disabled={joiningClusterId === cluster.id}
-                              onClick={() => handleJoinCluster(cluster)}
-                            >
-                              {!isDiscordConnected ? (
-                                <>
-                                  <DiscordIcon className="w-3 h-3 mr-1" />
-                                  Link to Join
-                                </>
-                              ) : (
-                                <>
-                                  <UserPlus className="w-3 h-3 mr-1" />
-                                  Join Track
-                                </>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+      {/* ── 4. YOUR LEARNING / CLUSTERS (HORIZONTAL SIDE-SCROLL, HIDDEN IF NO CLUSTERS) ─ */}
+      {chapterClusters.length > 0 && (
+        <section className="space-y-3.5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
+              Your Learning
+            </h2>
           </div>
 
-          {/* Chapter Announcements Card */}
-          {chapterAnnouncements.length > 0 && (
-            <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-              <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <Megaphone className="w-4 h-4 text-[var(--accent)]" />
-                  <h3 className="font-bold text-[14px] text-text">Campus Updates</h3>
-                </div>
-                <Link
-                  href="/announcements"
-                  className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
-                >
-                  <span>All</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
+          <div className="relative group/carousel">
+            {clustersScrollState.canLeft && (
+              <button
+                type="button"
+                onClick={() => scrollSection(clustersScrollRef, "left")}
+                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                aria-label="Previous clusters"
+              >
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              </button>
+            )}
+            {clustersScrollState.canRight && (
+              <button
+                type="button"
+                onClick={() => scrollSection(clustersScrollRef, "right")}
+                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                aria-label="Next clusters"
+              >
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              </button>
+            )}
 
-              <div className="p-5">
-                <div className="space-y-3">
-                  {chapterAnnouncements.map((ann: Announcement) => (
-                    <div
-                      key={ann.id}
-                      className="p-3 rounded-xl bg-bg/50 border border-border/60"
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[12px] font-bold text-text truncate">
-                          {ann.title}
+            <div
+              ref={clustersScrollRef}
+              className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            >
+            {chapterClusters.map((cluster) => {
+              const theme = getClusterTheme(cluster.name, cluster.slug);
+              const isJoined = cluster.memberIds.includes(session.userId) || cluster.leaderId === session.userId;
+
+              return (
+                <div
+                  key={cluster.id}
+                  className="w-[270px] sm:w-[300px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold px-2.5 py-1 rounded-md border tracking-wide",
+                          theme.badgeColor,
+                        )}
+                      >
+                        {theme.category}
+                      </span>
+                      {isJoined && (
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <Check className="w-3 h-3" />
+                          Enrolled
                         </span>
-                        <span className="font-mono text-[10px] text-text-mute shrink-0">
-                          {formatDate(ann.createdAt)}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-text-dim line-clamp-2 leading-relaxed">
-                        {ann.body}
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-text group-hover:text-[var(--accent)] transition-colors">
+                        {cluster.name}
+                      </h3>
+                      <p className="text-xs text-text-dim mt-1 line-clamp-2 leading-relaxed">
+                        {cluster.description || `${cluster.memberIds.length} campus builders collaborating on open source & domain projects.`}
                       </p>
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Chapter Leadership & Campus Advisors */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs">
-            <div className="flex items-center gap-2 mb-3">
-              <Shield className="w-4 h-4 text-[var(--accent)]" />
-              <h3 className="font-bold text-[14px] text-text">Chapter Leadership</h3>
-            </div>
-            <p className="text-[11px] text-text-dim mb-3">
-              Have questions, need event support, or want to launch a project? Reach out to your appointed chapter team.
-            </p>
+                    <div className="flex items-center gap-2 text-[11px] text-text-mute">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{cluster.memberIds.length} builders enrolled</span>
+                    </div>
+                  </div>
 
-            <div className="space-y-3">
-              {/* Campus Lead */}
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-bg/60 border border-border/60">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[12px] font-bold text-[var(--accent)]">
-                    {campusLead ? initials(campusLead.fullName) : "CL"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-text truncate">
-                      {campusLead?.fullName || "Campus Lead"}
-                    </p>
-                    <p className="text-[11px] text-text-dim truncate">
-                      {campusLead?.email || "Campus Lead"}
-                    </p>
-                  </div>
-                </div>
-                <Badge tone={campusLead ? "orange" : "mute"} className="text-[10px] shrink-0 font-semibold">
-                  Campus Lead
-                </Badge>
-              </div>
-
-              {/* Faculty Coordinator */}
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-bg/60 border border-border/60">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg border border-border text-[12px] font-bold text-text-dim">
-                    {faculty ? initials(faculty.fullName) : "FA"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-text truncate">
-                      {faculty?.fullName || "Faculty Advisor"}
-                    </p>
-                    <p className="text-[11px] text-text-dim truncate">
-                      {faculty?.department || "Institutional Coordinator"}
-                    </p>
+                  <div className="pt-4 border-t border-border/50 flex items-center justify-between">
+                    {isJoined ? (
+                      <Link
+                        href={`/chapter/${slug}/clusters`}
+                        className="text-xs font-semibold text-[var(--accent)] hover:underline inline-flex items-center gap-1 w-full justify-between"
+                      >
+                        <span>Open Track</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className={cn(
+                          "h-8 text-xs font-semibold w-full",
+                          !isDiscordConnected
+                            ? "text-[#5865F2] hover:bg-[#5865F2]/10"
+                            : "text-[var(--accent)] hover:bg-[var(--accent-soft)]",
+                        )}
+                        disabled={joiningClusterId === cluster.id}
+                        onClick={() => handleJoinCluster(cluster)}
+                      >
+                        {!isDiscordConnected ? (
+                          <>
+                            <DiscordIcon className="w-3.5 h-3.5 mr-1" />
+                            Link to Join
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="w-3.5 h-3.5 mr-1" />
+                            Join Track
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
-                <Badge tone="mute" className="text-[10px] shrink-0 font-medium">
-                  Faculty Advisor
-                </Badge>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
+        </section>
+      )}
+
+      {/* ── 5. EXPLORE CHAPTERS (CURRENT CHAPTERS NETWORK) ────────────────────── */}
+      <section className="space-y-3.5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
+            Explore Chapters
+          </h2>
+        </div>
+
+        <div className="relative group/carousel">
+          {chaptersScrollState.canLeft && (
+            <button
+              type="button"
+              onClick={() => scrollSection(chaptersScrollRef, "left")}
+              className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              aria-label="Previous chapters"
+            >
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+            </button>
+          )}
+          {chaptersScrollState.canRight && (
+            <button
+              type="button"
+              onClick={() => scrollSection(chaptersScrollRef, "right")}
+              className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              aria-label="Next chapters"
+            >
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+            </button>
+          )}
+
+          <div
+            ref={chaptersScrollRef}
+            className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+          >
+          {networkChapters.map((ch) => {
+            const cover = getChapterCover(ch);
+            const isCurrentChapter = ch.slug === slug || ch.id === chapter.id;
+            const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
+
+            return (
+              <Link
+                key={ch.id}
+                href={`/chapter/${ch.slug}`}
+                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer"
+              >
+                {/* Top Campus Photo */}
+                <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
+                  <img
+                    src={cover}
+                    alt={ch.name}
+                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                  {isCurrentChapter && (
+                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white shadow-[0_4px_12px_rgba(242,100,48,0.4)]">
+                      Your Campus
+                    </span>
+                  )}
+                </div>
+
+                {/* Chapter Details & Arrow */}
+                <div className="p-4 flex items-center justify-between gap-2 border-t border-border/50 bg-gradient-to-b from-white to-neutral-50/40">
+                  <div className="min-w-0">
+                    <h3 className="font-[family-name:var(--font-display)] text-sm font-bold text-text truncate group-hover:text-[var(--accent)] transition-colors">
+                      {ch.name}
+                    </h3>
+                    <p className="text-[11px] text-text-dim mt-0.5">
+                      {memCount} members
+                    </p>
+                  </div>
+
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-border/80 shadow-xs text-text-mute group-hover:bg-[var(--accent)] group-hover:text-white group-hover:border-[var(--accent)] group-hover:shadow-[0_4px_12px_rgba(242,100,48,0.35)] transition-all">
+                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       </div>
+      </section>
 
       {/* ── 5. STUDENT DIGITAL PASS MODAL ───────────────────────────────────── */}
       <Dialog

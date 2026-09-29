@@ -194,6 +194,7 @@ export interface Chapter {
   notes?: string;
   published?: boolean;
   logoUrl?: string;
+  imageUrl?: string;
   district?: string;
   state?: string;
   coordinates?: string;

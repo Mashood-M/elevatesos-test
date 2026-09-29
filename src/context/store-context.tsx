@@ -303,6 +303,8 @@ type StoreContextValue = {
           | "mapUrl"
           | "campusLeadId"
           | "published"
+          | "logoUrl"
+          | "imageUrl"
           | "customSettings"
         >
       >,
@@ -330,6 +332,8 @@ type StoreContextValue = {
         | "location"
         | "mapUrl"
         | "published"
+        | "logoUrl"
+        | "imageUrl"
         | "customSettings"
       >
     >,
@@ -3564,6 +3568,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               : undefined,
           location: input.location?.trim() || undefined,
           mapUrl: input.mapUrl?.trim() || undefined,
+          imageUrl: input.imageUrl?.trim() || input.logoUrl?.trim() || undefined,
+          logoUrl: input.logoUrl?.trim() || input.imageUrl?.trim() || undefined,
         };
         const shortCode = (
           input.shortCode?.trim() || deriveChapterShortCode(trimmed.name)
@@ -3594,6 +3600,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           longitude: trimmed.longitude,
           location: trimmed.location,
           mapUrl: trimmed.mapUrl,
+          imageUrl: trimmed.imageUrl,
+          logoUrl: trimmed.logoUrl,
           customSettings: {
             ...(input.customSettings || {}),
             short_code: shortCode,
@@ -3602,6 +3610,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             longitude: trimmed.longitude,
             location: trimmed.location,
             map_url: trimmed.mapUrl,
+            imageUrl: trimmed.imageUrl,
+            image_url: trimmed.imageUrl,
           },
         };
         setStore((s) => ({
@@ -3671,14 +3681,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             ? patch.shortCode.trim().toUpperCase().slice(0, 4)
             : prevChapter.shortCode;
 
+        const effectiveImageUrl =
+          patch.imageUrl !== undefined
+            ? patch.imageUrl.trim() || undefined
+            : patch.logoUrl !== undefined
+            ? patch.logoUrl.trim() || undefined
+            : prevChapter.imageUrl;
+
+        const effectiveLogoUrl =
+          patch.logoUrl !== undefined
+            ? patch.logoUrl.trim() || undefined
+            : patch.imageUrl !== undefined
+            ? patch.imageUrl.trim() || undefined
+            : prevChapter.logoUrl;
+
         const updated: Chapter = {
           ...prevChapter,
           ...patch,
           shortCode: effectiveShort,
+          imageUrl: effectiveImageUrl,
+          logoUrl: effectiveLogoUrl,
           id: prevChapter.id,
           customSettings: {
             ...(prevChapter.customSettings || {}),
             ...(patch.customSettings || {}),
+            ...(effectiveImageUrl !== undefined
+              ? { imageUrl: effectiveImageUrl, image_url: effectiveImageUrl }
+              : {}),
             ...(patch.shortCode !== undefined
               ? { short_code: effectiveShort, shortCode: effectiveShort }
               : {}),

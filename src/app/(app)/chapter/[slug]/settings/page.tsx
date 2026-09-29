@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/rules-of-hooks, react-hooks/set-state-in-effect */
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -173,6 +174,12 @@ export default function ChapterSettingsPage({
       longitude: ch.longitude,
       location: ch.location,
       mapUrl: ch.mapUrl,
+      imageUrl:
+        ch.imageUrl ||
+        ch.logoUrl ||
+        (ch.customSettings?.imageUrl as string) ||
+        (ch.customSettings?.image_url as string) ||
+        "",
       notes: ch.notes ?? "",
     }),
     [ch, currentCampusLeadId],
@@ -258,6 +265,8 @@ export default function ChapterSettingsPage({
         college: formData.name.trim(),
         shortCode: cleanShortCode,
         slug: cleanSlug,
+        imageUrl: formData.imageUrl?.trim() || undefined,
+        logoUrl: formData.imageUrl?.trim() || undefined,
         status: formData.status,
         campusLeadId: formData.campusLeadId,
         facultyId: formData.facultyId,
@@ -689,6 +698,33 @@ export default function ChapterSettingsPage({
                     <option value="active">Active — Live on network & accepting registrations</option>
                     <option value="inactive">Disabled / Inactive</option>
                   </Select>
+                </div>
+
+                <div>
+                  <FieldLabel>College / Campus Image URL</FieldLabel>
+                  <Input
+                    value={formData.imageUrl || ""}
+                    disabled={!isEditing || !canManage}
+                    placeholder="https://images.unsplash.com/... or college website image link"
+                    onChange={(e) =>
+                      setFormData((prev) => ({ ...prev, imageUrl: e.target.value }))
+                    }
+                  />
+                  <p className="mt-1 text-[11px] text-text-dim">
+                    Custom image or photograph for this college campus. Displayed on the student home header and chapter cards.
+                  </p>
+                  {formData.imageUrl && formData.imageUrl.trim() ? (
+                    <div className="mt-2.5 relative w-full h-36 rounded-xl overflow-hidden border border-border/80 bg-muted/40 shadow-2xs">
+                      <img
+                        src={formData.imageUrl.trim()}
+                        alt="Campus preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).style.display = "none";
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </TerminalPanel>

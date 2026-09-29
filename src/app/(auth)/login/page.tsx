@@ -779,6 +779,7 @@ function LoginInner() {
             width={28}
             height={28}
             className="object-contain"
+            style={{ width: "auto", height: "auto" }}
             priority
           />
           <span>Elevates OS</span>

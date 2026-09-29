@@ -311,6 +311,7 @@ export function transformChapterRow(c: Record<string, any>): Chapter {
     notes,
     published: c.published != null ? Boolean(c.published) : Boolean(c.published),
     logoUrl: c.logoUrl ?? c.logo_url ?? undefined,
+    imageUrl: c.imageUrl ?? c.image_url ?? cs.imageUrl ?? cs.image_url ?? c.logoUrl ?? c.logo_url ?? undefined,
     district,
     state,
     coordinates: coords,

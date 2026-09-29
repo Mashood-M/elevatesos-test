@@ -1667,7 +1667,7 @@ export async function POST(req: Request) {
         health_score: chapter.healthScore ?? 0,
         published: chapter.published !== undefined ? Boolean(chapter.published) : (chapter.status === "active"),
         district: chapter.district,
-        logo_url: chapter.logoUrl,
+        logo_url: chapter.imageUrl || chapter.logoUrl || null,
         member_count: chapter.memberCount ?? 0,
         event_count: chapter.eventCount ?? 0,
         project_count: chapter.projectCount ?? 0,
@@ -1713,6 +1713,9 @@ export async function POST(req: Request) {
 
       const customSettingsPayload = {
         ...(chapter.customSettings || {}),
+        ...(chapter.imageUrl
+          ? { imageUrl: chapter.imageUrl, image_url: chapter.imageUrl }
+          : {}),
         ...(chapter.shortCode
           ? { short_code: chapter.shortCode.trim().toUpperCase(), shortCode: chapter.shortCode.trim().toUpperCase() }
           : {}),

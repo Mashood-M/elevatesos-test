@@ -34,6 +34,7 @@ type DraftChapter = {
   latitude?: number;
   longitude?: number;
   location?: string;
+  imageUrl?: string;
 };
 
 type StatusFilter = "all" | "active" | "inactive" | "onboarding" | "disabled";
@@ -50,6 +51,7 @@ const emptyDraft = (): DraftChapter => ({
   latitude: undefined,
   longitude: undefined,
   location: "",
+  imageUrl: "",
 });
 
 function slugify(name: string) {
@@ -174,6 +176,8 @@ export default function HqChaptersPage() {
       latitude: draft.latitude,
       longitude: draft.longitude,
       location: loc || undefined,
+      imageUrl: draft.imageUrl?.trim() || undefined,
+      logoUrl: draft.imageUrl?.trim() || undefined,
     });
     setCreateOpen(false);
     setDraft(emptyDraft());
@@ -518,6 +522,35 @@ export default function HqChaptersPage() {
               }));
             }}
           />
+
+          <div>
+            <FieldLabel>College / Campus Image URL</FieldLabel>
+            <Input
+              value={draft.imageUrl || ""}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  imageUrl: e.target.value,
+                }))
+              }
+              placeholder="https://images.unsplash.com/... or college website image link"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Paste an image link representing the college/campus. Displayed on the student home & chapter cards.
+            </p>
+            {draft.imageUrl && draft.imageUrl.trim() ? (
+              <div className="mt-2.5 relative w-full h-32 rounded-xl overflow-hidden border border-border bg-muted/40 shadow-2xs">
+                <img
+                  src={draft.imageUrl.trim()}
+                  alt="College Campus Preview"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
 
           <div>
             <FieldLabel>Initial status</FieldLabel>

@@ -13,7 +13,7 @@ import {
   type SetStateAction,
 } from "react";
 
-import { X } from "lucide-react";
+import { X, AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   insertChapterRemote,
@@ -8682,6 +8682,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider value={value}>
       {children}
+      {/* ── Global Floating Toast Notifications ─────────────────────────── */}
+      {toasts.length > 0 && (
+        <div
+          className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none max-w-sm w-full px-3 sm:px-0"
+          aria-live="polite"
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              role="status"
+              className="pointer-events-auto flex items-start gap-3 p-3.5 rounded-2xl shadow-[0_12px_32px_-4px_rgba(0,0,0,0.22)] border text-xs font-medium backdrop-blur-md transition-all duration-300 animate-in slide-in-from-top-3 fade-in bg-neutral-900 text-white border-neutral-800"
+            >
+              <div className="shrink-0 mt-0.5">
+                {toast.type === "error" && (
+                  <AlertCircle className="w-4 h-4 text-red-400" />
+                )}
+                {toast.type === "success" && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                )}
+                {toast.type === "info" && (
+                  <Info className="w-4 h-4 text-[var(--accent)]" />
+                )}
+              </div>
+              <p className="flex-1 leading-snug">{toast.message}</p>
+              <button
+                type="button"
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="text-white/50 hover:text-white transition-colors shrink-0 -mr-1 -mt-1 p-1 cursor-pointer"
+                aria-label="Dismiss notification"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </StoreContext.Provider>
   );
 }

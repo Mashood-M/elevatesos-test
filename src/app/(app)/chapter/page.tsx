@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { useCurrentUser, useStore } from "@/context/store-context";
-import { isOpenToAllEvent, isEventVisibleToUser, isEventOngoing } from "@/lib/events";
+import { Dialog } from "@/components/ui/dialog";
+import { useCurrentUser, useStore, showToast } from "@/context/store-context";
+import { isOpenToAllEvent, isEventVisibleToUser, isEventOngoing, isEventEnded } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
 import { formatDateTime } from "@/lib/utils";
 import { ChapterJoinModal } from "@/components/chapter/chapter-join-modal";
@@ -101,6 +102,31 @@ export default function ChapterIndexPage() {
         left: direction === "left" ? -scrollAmount : scrollAmount,
         behavior: "smooth",
       });
+    }
+  };
+
+  const handleChapterClick = (ch: {
+    id: string;
+    name: string;
+    slug: string;
+    college?: string;
+  }) => {
+    const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+    const targetChapterId = realCh?.id || ch.id;
+
+    const chOpenEvents = store.events.filter((e: EventItem) => {
+      const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+      if (!isMatch) return false;
+      const isNotEnded = !isEventEnded(e);
+      const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+      const isPublished = e.status !== "draft" && e.status !== "cancelled";
+      return isNotEnded && isOngoingOrUpcoming && isPublished;
+    });
+
+    if (chOpenEvents.length > 0) {
+      router.push(`/chapter/${ch.slug}`);
+    } else {
+      showToast(`No open events currently at ${ch.name}`, "info");
     }
   };
 
@@ -545,11 +571,31 @@ export default function ChapterIndexPage() {
             const cover = getChapterCover(ch);
             const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
 
+            const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+            const targetChapterId = realCh?.id || ch.id;
+
+            const chOpenEvents = store.events.filter((e: EventItem) => {
+              const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+              if (!isMatch) return false;
+              const isNotEnded = !isEventEnded(e);
+              const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+              const isPublished = e.status !== "draft" && e.status !== "cancelled";
+              return isNotEnded && isOngoingOrUpcoming && isPublished;
+            });
+
             return (
-              <Link
+              <div
                 key={ch.id}
-                href={`/chapter/${ch.slug}`}
-                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleChapterClick(ch)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleChapterClick(ch);
+                  }
+                }}
+                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer text-left select-none"
               >
                 {/* Top Campus Photo */}
                 <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
@@ -559,6 +605,11 @@ export default function ChapterIndexPage() {
                     className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                  {chOpenEvents.length > 0 && (
+                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+                      {chOpenEvents.length} open
+                    </span>
+                  )}
                 </div>
 
                 {/* Chapter Details & Arrow */}
@@ -568,7 +619,7 @@ export default function ChapterIndexPage() {
                       {ch.name}
                     </h3>
                     <p className="text-[11px] text-text-dim mt-0.5">
-                      {memCount} members
+                      {memCount} members {chOpenEvents.length === 0 ? "· No open events" : ""}
                     </p>
                   </div>
 
@@ -576,7 +627,7 @@ export default function ChapterIndexPage() {
                     <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>
@@ -594,6 +645,8 @@ export default function ChapterIndexPage() {
         onClose={() => setSelectedEventForReg(null)}
         event={selectedEventForReg}
       />
+
+
     </div>
   );
 }

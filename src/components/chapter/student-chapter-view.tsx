@@ -10,7 +10,7 @@ import { EventRegistrationDialog } from "@/components/domain/event-registration-
 import { useStore, showToast } from "@/context/store-context";
 import { formatDateTime, cn } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
-import { isEventOngoing, isEventEnded } from "@/lib/events";
+import { isEventOngoing, isEventEnded, isOpenToAllEvent } from "@/lib/events";
 import type {
   Chapter,
   Cluster,
@@ -307,11 +307,19 @@ export function StudentChapterView({
 
   const eventsToDisplay = useMemo(() => {
     if (upcomingEvents.length > 0) return upcomingEvents;
+    // Fallback: show only this chapter's events OR open-to-all events from other chapters
     const openEvents = store.events
-      .filter((e) => !isEventEnded(e))
+      .filter((e) => {
+        if (isEventEnded(e)) return false;
+        // Allow events from the student's own chapter
+        if (e.chapterId === chapter.id) return true;
+        // Allow events explicitly marked open to all
+        if (isOpenToAllEvent(e)) return true;
+        return false;
+      })
       .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
     return openEvents.slice(0, 8);
-  }, [upcomingEvents, store.events]);
+  }, [upcomingEvents, store.events, chapter.id]);
 
   const eventsScrollRef = useRef<HTMLDivElement>(null);
   const clustersScrollRef = useRef<HTMLDivElement>(null);
@@ -328,6 +336,36 @@ export function StudentChapterView({
         left: direction === "left" ? -scrollAmount : scrollAmount,
         behavior: "smooth",
       });
+    }
+  };
+
+  const handleChapterClick = (ch: {
+    id: string;
+    name: string;
+    slug: string;
+    college?: string;
+  }) => {
+    const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+    const targetChapterId = realCh?.id || ch.id;
+
+    const chOpenEvents = store.events.filter((e: EventItem) => {
+      const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+      if (!isMatch) return false;
+      const isNotEnded = !isEventEnded(e);
+      const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+      const isPublished = e.status !== "draft" && e.status !== "cancelled";
+      return isNotEnded && isOngoingOrUpcoming && isPublished;
+    });
+
+    if (chOpenEvents.length > 0) {
+      if (ch.slug === slug || ch.id === chapter.id) {
+        eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        showToast(`Showing ${chOpenEvents.length} open event${chOpenEvents.length > 1 ? "s" : ""} at ${ch.name}`, "info");
+      } else {
+        router.push(`/chapter/${ch.slug}`);
+      }
+    } else {
+      showToast(`No open events currently at ${ch.name}`, "info");
     }
   };
 
@@ -862,11 +900,31 @@ export function StudentChapterView({
             const isCurrentChapter = ch.slug === slug || ch.id === chapter.id;
             const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
 
+            const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+            const targetChapterId = realCh?.id || ch.id;
+
+            const chOpenEvents = store.events.filter((e: EventItem) => {
+              const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+              if (!isMatch) return false;
+              const isNotEnded = !isEventEnded(e);
+              const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+              const isPublished = e.status !== "draft" && e.status !== "cancelled";
+              return isNotEnded && isOngoingOrUpcoming && isPublished;
+            });
+
             return (
-              <Link
+              <div
                 key={ch.id}
-                href={`/chapter/${ch.slug}`}
-                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleChapterClick(ch)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleChapterClick(ch);
+                  }
+                }}
+                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer text-left select-none"
               >
                 {/* Top Campus Photo */}
                 <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
@@ -881,6 +939,11 @@ export function StudentChapterView({
                       Your Campus
                     </span>
                   )}
+                  {chOpenEvents.length > 0 && !isCurrentChapter && (
+                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+                      {chOpenEvents.length} open
+                    </span>
+                  )}
                 </div>
 
                 {/* Chapter Details & Arrow */}
@@ -890,7 +953,7 @@ export function StudentChapterView({
                       {ch.name}
                     </h3>
                     <p className="text-[11px] text-text-dim mt-0.5">
-                      {memCount} members
+                      {memCount} members {chOpenEvents.length === 0 ? "· No open events" : ""}
                     </p>
                   </div>
 
@@ -898,7 +961,7 @@ export function StudentChapterView({
                     <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
-              </Link>
+              </div>
             );
           })}
         </div>
@@ -999,6 +1062,8 @@ export function StudentChapterView({
           event={selectedEventForModal}
         />
       )}
+
+
     </div>
   );
 }

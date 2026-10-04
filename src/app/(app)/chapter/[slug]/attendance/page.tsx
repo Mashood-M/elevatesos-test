@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
 import { Check, CheckCircle2, ChevronDown, Play, Plus, Users, X, XCircle, Crown, Mic, Sparkles, Search, QrCode, ArrowRight, Activity } from "lucide-react";

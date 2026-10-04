@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_VOLUNTEER_POWERS } from "@/lib/volunteers";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { getChapterHandoverStatus, parseDelegations } from "@/lib/leadership";
+import { INITIAL_FOUNDERS, INITIAL_ADVISORS } from "@/lib/data/founders-team";
 
 const defaultBrandKit: BrandKit = {
   logoUrl: "/logo.svg",
@@ -70,8 +71,8 @@ function emptyStore(): ElevatesStore {
     academicYears: [],
     academicDivisions: [],
     executiveSubTeams: [],
-    founders: [],
-    advisors: [],
+    founders: INITIAL_FOUNDERS,
+    advisors: INITIAL_ADVISORS,
     formTemplates: [],
     doctrine: {},
     developerScopes: [],
@@ -384,13 +385,15 @@ async function executeLoadStoreFromSupabase(): Promise<StoreLoadResult> {
       ? (orgSettings.executive_sub_teams as ExecutiveSubTeam[])
       : [];
 
-    const founders: Founder[] = Array.isArray(orgSettings.founders)
-      ? (orgSettings.founders as Founder[])
-      : [];
+    const founders: Founder[] =
+      Array.isArray(orgSettings.founders) && orgSettings.founders.length > 0
+        ? (orgSettings.founders as Founder[])
+        : INITIAL_FOUNDERS;
 
-    const advisors: Advisor[] = Array.isArray(orgSettings.advisors)
-      ? (orgSettings.advisors as Advisor[])
-      : [];
+    const advisors: Advisor[] =
+      Array.isArray(orgSettings.advisors) && orgSettings.advisors.length > 0
+        ? (orgSettings.advisors as Advisor[])
+        : INITIAL_ADVISORS;
 
     const formTemplates: FormTemplate[] = Array.isArray(orgSettings.form_templates)
       ? (orgSettings.form_templates as FormTemplate[])

@@ -34,6 +34,7 @@ import {
   isTestChapter,
 } from "@/lib/chapters";
 import { encodeDelegationsToDesignation } from "@/lib/leadership";
+import { INITIAL_FOUNDERS, INITIAL_ADVISORS } from "@/lib/data/founders-team";
 import { isUuid, genUuid } from "@/lib/uuid";
 import { remoteMutate } from "@/lib/data/mutations";
 import {
@@ -1284,8 +1285,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     academicYears: [],
     academicDivisions: [],
     executiveSubTeams: [],
-    founders: [],
-    advisors: [],
+    founders: INITIAL_FOUNDERS,
+    advisors: INITIAL_ADVISORS,
     formTemplates: [],
     doctrine: {},
     developerScopes: [],

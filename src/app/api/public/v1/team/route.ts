@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { corsOptions, jsonError, jsonOk } from "@/lib/api/public";
 import { resolveMediaUrl } from "@/lib/data/media";
-import { FOUNDING_TEAM_IMAGE } from "@/lib/data/founders-team";
+import { FOUNDING_TEAM_IMAGE, INITIAL_FOUNDERS, INITIAL_ADVISORS } from "@/lib/data/founders-team";
 
 export function OPTIONS() {
   return corsOptions();
@@ -34,8 +34,14 @@ export async function GET() {
     }
 
     const orgSettings = (orgRes?.data?.settings as Record<string, any>) ?? {};
-    const foundersList: any[] = Array.isArray(orgSettings.founders) ? orgSettings.founders : [];
-    const advisorsList: any[] = Array.isArray(orgSettings.advisors) ? orgSettings.advisors : [];
+    const foundersList: any[] =
+      Array.isArray(orgSettings.founders) && orgSettings.founders.length > 0
+        ? orgSettings.founders
+        : INITIAL_FOUNDERS;
+    const advisorsList: any[] =
+      Array.isArray(orgSettings.advisors) && orgSettings.advisors.length > 0
+        ? orgSettings.advisors
+        : INITIAL_ADVISORS;
     const teamImage = orgSettings.founding_team_image || FOUNDING_TEAM_IMAGE;
 
     return jsonOk({

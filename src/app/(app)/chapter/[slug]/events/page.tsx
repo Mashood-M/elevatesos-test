@@ -2,22 +2,15 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
-import { TicketCard } from "@/components/ui/ticket-card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useSearchParams } from "next/navigation";
+import { BauhausEventCard } from "@/components/domain/bauhaus-event-card";
 import { EventManagerCreateDialog } from "@/components/domain/event-manager-dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow, resolveChapter, isFacultyRole } from "@/lib/access";
+import { resolveChapter } from "@/lib/access";
 import {
-  canRegisterNow,
   isEventVisibleToUser,
   getEventRegistrationState,
-  canPublishEvent,
   isEventOngoing,
   isEventEnded,
 } from "@/lib/events";
@@ -28,16 +21,11 @@ import { cn } from "@/lib/utils";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
 import {
-  CheckCircle2,
-  Play,
   Search,
   X,
   Plus,
-  Clock,
   Calendar,
-  AlertCircle,
   QrCode,
-  Users,
 } from "lucide-react";
 import type { EventItem, EventRegistration, EventStatus } from "@/types";
 
@@ -65,15 +53,14 @@ export default function ChapterEventsPage({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
   const { slug } = use(params);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const {
     store,
-    createEvent,
     updateEvent,
     startEvent,
     endEvent,
@@ -104,14 +91,12 @@ export default function ChapterEventsPage({
 
   const canCreate = hasPermission(store, session.roleKey, "event.create") || hasEventDelegation;
   const canApprove = hasPermission(store, session.roleKey, "registration.approve") || hasEventDelegation;
-  const canReview = hasPermission(store, session.roleKey, "registration.review") || hasEventDelegation;
   const canManage =
     canCreate || hasPermission(store, session.roleKey, "event.manage") || hasEventDelegation;
-  const canPublish =
-    canPublishEvent(session.roleKey, undefined, session.userId) || canManage || hasEventDelegation;
 
   useEffect(() => {
     if (searchParams.get("create") === "1" && canCreate) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowForm(true);
     }
   }, [searchParams, canCreate]);
@@ -127,7 +112,7 @@ export default function ChapterEventsPage({
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
-  }, [store.registrations, store.events, chapter?.id]);
+  }, [store.registrations, store.events, chapter]);
 
   if (!mounted) {
     return <ContentSkeleton />;
@@ -222,85 +207,196 @@ export default function ChapterEventsPage({
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Events & Programs"
-        description="Discover upcoming workshops, hackathons, and sessions, or coordinate chapter registrations and live schedules."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {session.roleKey !== "class_representative" && (
-              <Link href={`/chapter/${slug}/forms`}>
-                <Button variant="ghost" className="border border-border/70 hover:bg-bg-panel text-xs sm:text-sm">
-                  Forms Hub
-                </Button>
+    <div className="space-y-6 pb-12">
+      {/* ─── 01. MINIMAL BAUHAUS ARCHITECTURAL HERO ─────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[3px_3px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Decorative Bauhaus shapes */}
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-10 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-2 right-36 h-16 w-16 bg-[#f59e0b] opacity-15 rounded-full pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="max-w-2xl">
+            {/* Bauhaus Eyebrow */}
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {chapter.shortCode || chapter.slug.toUpperCase()} {"//"} EVENTS
+              </span>
+              <span className="hidden sm:inline-block font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                CHAPTER · {chapter.name}
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              Program Architecture &
+              <span className="block text-[#f26430] text-xl sm:text-2xl font-bold mt-0.5">
+                EVENTS
+              </span>
+            </h1>
+
+           
+            {/* Actions */}
+            <div className="mt-4 flex flex-wrap items-center gap-2.5">
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={() => setShowForm(true)}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  Create Event
+                </button>
+              )}
+
+              <Link href={`/chapter/${slug}/attendance`}>
+                <button
+                  type="button"
+                  className="h-9 px-3.5 rounded-[8px] bg-white text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34] hover:bg-[#2d2d34] hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <QrCode size={13} />
+                  Attendance Desk
+                </button>
               </Link>
-            )}
-            {canCreate ? (
-              <Button
-                variant="primary"
-                onClick={() => setShowForm(true)}
-                className="gap-1.5 shadow-sm text-xs sm:text-sm"
-              >
-                <Plus size={15} />
-                Create Event
-              </Button>
-            ) : null}
+
+              {session.roleKey !== "class_representative" && (
+                <Link href={`/chapter/${slug}/forms`}>
+                  <button
+                    type="button"
+                    className="h-9 px-3.5 rounded-[8px] bg-white text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34] hover:bg-[#2d2d34] hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    Forms Hub
+                  </button>
+                </Link>
+              )}
+            </div>
           </div>
-        }
-      />
 
-      {/* Metric Summary Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Total Events"
-          value={events.length}
-          hint="All programs scheduled"
-        />
-        <Stat
-          label="Active & Ongoing"
-          value={counts.ongoing + counts.registration_open}
-          hint="Live or registering"
-          accent="orange"
-        />
-        <Stat
-          label="Confirmed Seats"
-          value={totalConfirmedSeats}
-          hint="Approved registrations"
-        />
-        <Stat
-          label="Tracks & Disciplines"
-          value={totalCategories}
-          hint="Distinct domains"
-        />
-      </div>
+          {/* Right Status Badge: Chapter Stats Minimal Architecture */}
+          <div className="hidden lg:flex flex-col items-center justify-center p-4 bg-[#faf9f6] border border-[#2d2d34]/20 rounded-[12px] shadow-[2px_2px_0px_#2d2d34] select-none shrink-0 w-56 text-center">
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="h-6 w-6 rounded-full bg-[#f26430] border border-[#2d2d34] flex items-center justify-center text-white font-mono font-bold text-[10px]">
+                E
+              </span>
+              <span className="h-6 w-6 bg-[#414066] border border-[#2d2d34] flex items-center justify-center text-white font-mono font-bold text-[10px]">
+                O
+              </span>
+              <span className="h-6 w-6 bg-[#f59e0b] border border-[#2d2d34] rotate-45 flex items-center justify-center text-[#2d2d34] font-mono font-bold text-[10px]">
+                S
+              </span>
+            </div>
+            <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#2d2d34]">
+              {chapter.shortCode || "CHAPTER"} STATUS
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase tracking-widest mt-0.5">
+              ACTIVE TERM
+            </p>
+            <div className="mt-2.5 w-full border-t border-[#2d2d34]/15 pt-2 flex items-center justify-between font-mono text-[9.5px] text-[#52525b]">
+              <span>PROGRAMS</span>
+              <span className="font-bold text-[#2d2d34]">{events.length} RECORDED</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      {/* Waitlist Queue Banner / Drawer */}
+      {/* ─── 02. MINIMAL BAUHAUS METRIC STRIP ──────────────────────── */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Metric 1: Total Events */}
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-[#71717a] font-mono text-[9.5px] uppercase font-bold">
+            <span>01 {"//"} TOTAL</span>
+            <span className="h-1.5 w-1.5 bg-[#2d2d34]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] font-black text-2xl sm:text-3xl text-[#2d2d34] tracking-tight">
+            {events.length}
+          </p>
+          <p className="text-[10.5px] font-mono text-[#52525b] mt-0.5 uppercase">
+            All Programs
+          </p>
+        </div>
+
+        {/* Metric 2: Active & Live */}
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-[#f26430] font-mono text-[9.5px] uppercase font-bold">
+            <span className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#f26430] animate-ping" />
+              02 {"//"} ACTIVE
+            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] font-black text-2xl sm:text-3xl text-[#f26430] tracking-tight">
+            {counts.ongoing + counts.registration_open}
+          </p>
+          <p className="text-[10.5px] font-mono text-[#52525b] mt-0.5 uppercase">
+            Live or Registering
+          </p>
+        </div>
+
+        {/* Metric 3: Confirmed Seats */}
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-[#414066] font-mono text-[9.5px] uppercase font-bold">
+            <span>03 {"//"} SEATS</span>
+            <span className="h-1.5 w-1.5 bg-[#414066]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] font-black text-2xl sm:text-3xl text-[#2d2d34] tracking-tight">
+            {totalConfirmedSeats}
+          </p>
+          <p className="text-[10.5px] font-mono text-[#52525b] mt-0.5 uppercase">
+            Confirmed Attendees
+          </p>
+        </div>
+
+        {/* Metric 4: Tracks / Disciplines */}
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all">
+          <div className="flex items-center justify-between text-[#5f7560] font-mono text-[9.5px] uppercase font-bold">
+            <span>04 {"//"} TRACKS</span>
+            <span className="h-1.5 w-1.5 bg-[#5f7560] rotate-45" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] font-black text-2xl sm:text-3xl text-[#2d2d34] tracking-tight">
+            {totalCategories}
+          </p>
+          <p className="text-[10.5px] font-mono text-[#52525b] mt-0.5 uppercase">
+            Distinct Domains
+          </p>
+        </div>
+      </section>
+
+      {/* ─── 03. WAITLIST QUEUE BANNER (WHEN ACTIVE) ─────────────────── */}
       {waitlistRegistrations.length > 0 && (
-        <div className="rounded-[var(--radius)] border border-amber-500/30 bg-amber-500/[0.04] p-4 sm:p-5 shadow-[var(--shadow-sm)]">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-b border-amber-500/20 pb-4">
+        <div className="rounded-[14px] border border-[#f59e0b]/40 bg-[#fef3c7]/20 p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-b border-[#f59e0b]/20 pb-3.5">
             <div>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#f59e0b]"></span>
                 </span>
-                <h3 className="font-[family-name:var(--font-display)] text-sm sm:text-[15px] font-bold text-text">
-                  Waitlist Queue
+                <h3 className="font-[family-name:var(--font-display)] text-sm sm:text-[15px] font-bold text-[#2d2d34]">
+                  Waitlist Priority Queue
                 </h3>
-                <Badge tone="orange" className="font-semibold">
+                <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-[#fef3c7] text-[#92400e] border border-[#f59e0b]/30">
                   {waitlistRegistrations.length} student{waitlistRegistrations.length === 1 ? "" : "s"} waiting
-                </Badge>
+                </span>
               </div>
-              <p className="mt-1 text-xs text-text-dim max-w-xl">
-                Seats can be approved in first-come priority order (FIFO) or individually. Approved students immediately receive confirmed QR passes.
+              <p className="mt-1 text-xs text-[#52525b] max-w-xl">
+                Seats can be approved in FIFO sequence or individually. Approved students immediately receive verified QR passes.
               </p>
             </div>
 
             {canApprove && (
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-amber-500/30 bg-bg px-2.5 py-1 shadow-2xs">
-                  <span className="text-[11px] font-medium text-text-dim">Admit FIFO:</span>
+                <div className="flex items-center gap-1.5 rounded-[7px] border border-[#2d2d34]/20 bg-white px-2.5 py-1 shadow-[1px_1px_0px_#2d2d34]">
+                  <span className="text-[11px] font-mono font-medium text-[#71717a]">Admit FIFO:</span>
                   <input
                     type="number"
                     min={1}
@@ -317,11 +413,11 @@ export default function ChapterEventsPage({
                         ),
                       )
                     }
-                    className="h-7 w-12 rounded border border-border bg-bg-panel text-center font-mono text-xs font-semibold text-text"
+                    className="h-6 w-12 rounded border border-[#2d2d34]/20 bg-[#faf9f6] text-center font-mono text-xs font-semibold text-[#2d2d34]"
                   />
-                  <Button
-                    variant="orange"
-                    className="h-7 px-3 text-[11px] font-bold"
+                  <button
+                    type="button"
+                    className="h-6 px-2.5 rounded bg-[#f26430] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider hover:bg-[#e05320] transition cursor-pointer"
                     onClick={() => {
                       const count = Math.min(admitCount, waitlistRegistrations.length);
                       const targetIds = waitlistRegistrations
@@ -335,14 +431,14 @@ export default function ChapterEventsPage({
                     }}
                   >
                     Approve Next {Math.min(admitCount, waitlistRegistrations.length)} → QR
-                  </Button>
+                  </button>
                 </div>
 
                 {selectedRegIds.length > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <Button
-                      variant="ghost"
-                      className="h-8 px-2.5 text-xs text-red-500 hover:bg-red-500/10"
+                    <button
+                      type="button"
+                      className="h-7 px-2.5 rounded text-xs font-mono font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition cursor-pointer"
                       onClick={() => {
                         batchUpdateRegistrationStatus(
                           selectedRegIds,
@@ -353,10 +449,10 @@ export default function ChapterEventsPage({
                       }}
                     >
                       Decline ({selectedRegIds.length})
-                    </Button>
-                    <Button
-                      variant="green"
-                      className="h-8 px-3 text-xs font-semibold"
+                    </button>
+                    <button
+                      type="button"
+                      className="h-7 px-3 rounded text-xs font-mono font-bold text-white bg-[#5f7560] hover:bg-[#4d604e] border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition cursor-pointer"
                       onClick={() => {
                         batchUpdateRegistrationStatus(
                           selectedRegIds,
@@ -367,14 +463,14 @@ export default function ChapterEventsPage({
                       }}
                     >
                       Approve Selected ({selectedRegIds.length})
-                    </Button>
+                    </button>
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <div className="mt-3 max-h-64 overflow-y-auto divide-y divide-border/50 pr-1">
+          <div className="mt-3 max-h-64 overflow-y-auto divide-y divide-[#2d2d34]/10 pr-1">
             {waitlistRegistrations.map((reg, idx) => {
               const user = store.profiles.find((p) => p.id === reg.userId);
               const ev = store.events.find((e) => e.id === reg.eventId);
@@ -392,7 +488,7 @@ export default function ChapterEventsPage({
               return (
                 <div
                   key={reg.id}
-                  className="flex flex-wrap items-center justify-between gap-3 py-2.5 transition-colors hover:bg-bg/40 px-2 rounded-[var(--radius-sm)]"
+                  className="flex flex-wrap items-center justify-between gap-3 py-2 transition-colors hover:bg-white/60 px-2 rounded-[6px]"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     {canApproveThisReg && (
@@ -400,20 +496,20 @@ export default function ChapterEventsPage({
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleSelectReg(reg.id)}
-                        className="rounded border-border text-[var(--accent)] focus:ring-0"
+                        className="rounded border-[#2d2d34]/20 text-[#f26430] focus:ring-0"
                       />
                     )}
-                    <span className="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                    <span className="font-mono text-[10px] font-bold text-[#92400e] bg-amber-500/10 px-1.5 py-0.5 rounded">
                       #{idx + 1}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-xs sm:text-[13px] font-semibold text-text truncate">
+                      <p className="text-xs sm:text-[13px] font-semibold text-[#2d2d34] truncate">
                         {user?.fullName || reg.guestName || "Student"}
-                        <span className="font-normal text-text-dim text-xs">
+                        <span className="font-normal text-[#71717a] text-xs">
                           {" "}· {ev?.title}
                         </span>
                       </p>
-                      <p className="text-[10px] text-text-dim">
+                      <p className="text-[10px] font-mono text-[#71717a]">
                         Registered {new Date(reg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     </div>
@@ -422,9 +518,9 @@ export default function ChapterEventsPage({
                   <div className="flex items-center gap-2">
                     {canApproveThisReg ? (
                       <>
-                        <Button
-                          variant="green"
-                          className="h-7 px-2.5 text-[11px] font-semibold"
+                        <button
+                          type="button"
+                          className="h-6.5 px-2.5 rounded text-[10.5px] font-mono font-bold text-white bg-[#5f7560] hover:bg-[#4d604e] border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition cursor-pointer"
                           onClick={() =>
                             updateRegistrationStatus(
                               reg.id,
@@ -434,10 +530,10 @@ export default function ChapterEventsPage({
                           }
                         >
                           Approve → QR
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-7 px-2 text-[11px] text-text-dim hover:text-red-500"
+                        </button>
+                        <button
+                          type="button"
+                          className="h-6.5 px-2 text-[10.5px] font-mono text-[#71717a] hover:text-red-600 transition cursor-pointer"
                           onClick={() =>
                             updateRegistrationStatus(
                               reg.id,
@@ -447,10 +543,10 @@ export default function ChapterEventsPage({
                           }
                         >
                           Decline
-                        </Button>
+                        </button>
                       </>
                     ) : (
-                      <span className="text-[11px] text-text-dim">
+                      <span className="text-[11px] font-mono text-[#71717a]">
                         In queue
                       </span>
                     )}
@@ -462,27 +558,26 @@ export default function ChapterEventsPage({
         </div>
       )}
 
-      {/* Main Events Workspace */}
+      {/* ─── 04. SEARCH & STATUS FILTER BAR ─────────────────────────── */}
       <div className="space-y-5">
-        {/* Search & Filter Bar */}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" size={15} />
-            <Input
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#71717a]" size={14} />
+            <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by title, category, or venue..."
-              className="pl-9 pr-8 h-9.5 rounded-[var(--radius-sm)] bg-bg border-border/70 text-xs sm:text-sm"
+              className="w-full pl-8.5 pr-8 h-9 rounded-[8px] bg-white border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34] font-mono text-xs text-[#2d2d34] placeholder:text-[#9ca3af] focus:outline-none focus:border-[#f26430]"
               aria-label="Search events"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-1"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#2d2d34] p-1"
                 aria-label="Clear search"
               >
-                <X size={14} />
+                <X size={13} />
               </button>
             )}
           </div>
@@ -504,19 +599,19 @@ export default function ChapterEventsPage({
                   type="button"
                   onClick={() => setStatusChip(chip.key)}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+                    "flex items-center gap-1.5 rounded-[7px] px-3 py-1.5 font-mono text-[11px] font-bold uppercase transition-all cursor-pointer",
                     isActive
-                      ? "bg-text text-bg shadow-sm"
-                      : "bg-bg border border-border/70 text-text-dim hover:text-text hover:border-border",
+                      ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34]"
+                      : "bg-white border border-[#2d2d34]/20 text-[#4b5563] hover:text-[#2d2d34] hover:border-[#2d2d34]/40 shadow-[1px_1px_0px_#2d2d34]/15",
                   )}
                 >
                   <span>{chip.label}</span>
                   <span
                     className={cn(
-                      "rounded-full px-1.5 py-0.2 text-[10px] font-semibold tabular-nums",
+                      "rounded px-1.5 py-0.2 text-[9.5px] font-bold tabular-nums",
                       isActive
-                        ? "bg-bg/20 text-bg"
-                        : "bg-border/60 text-text-dim",
+                        ? "bg-[#f26430] text-white"
+                        : "bg-[#f3f4f6] text-[#4b5563]",
                     )}
                   >
                     {count}
@@ -527,47 +622,47 @@ export default function ChapterEventsPage({
           </div>
         </div>
 
-        {/* Event Cards Grid */}
+        {/* ─── 05. EVENT CARDS GRID (BAUHAUS MINIMAL) ───────────────── */}
         {events.length === 0 ? (
-          <div className="rounded-[var(--radius)] border border-dashed border-border py-14 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-border/40 text-text-dim mb-3">
+          <div className="rounded-[14px] border border-dashed border-[#2d2d34]/25 bg-white py-14 text-center shadow-[2px_2px_0px_#2d2d34]">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#faf9f6] border border-[#2d2d34]/20 text-[#2d2d34] mb-3">
               <Calendar size={22} />
             </div>
-            <h4 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
-              No events scheduled yet
+            <h4 className="font-[family-name:var(--font-display)] text-[16px] font-black text-[#2d2d34]">
+              No programs scheduled yet
             </h4>
-            <p className="mt-1 text-xs text-text-dim max-w-sm mx-auto">
+            <p className="mt-1 text-xs text-[#52525b] max-w-sm mx-auto font-mono">
               {canCreate
-                ? "Create your first workshop, hackathon, or meetup to open registration and engage chapter members."
-                : "Check back soon for new sessions, bootcamps, and technical events from this chapter."}
+                ? "Initiate your chapter's first workshop, hackathon, or symposium to open registrations."
+                : "Check back soon for new technical sessions and bootcamps from this chapter."}
             </p>
             {canCreate && (
-              <Button
-                variant="orange"
-                className="mt-4 gap-1.5 text-xs font-semibold"
+              <button
+                type="button"
                 onClick={() => setShowForm(true)}
+                className="mt-4 h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] transition-all inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Plus size={14} />
                 Create First Event
-              </Button>
+              </button>
             )}
           </div>
         ) : filteredEvents.length === 0 ? (
-          <div className="rounded-[var(--radius)] border border-dashed border-border py-12 text-center">
-            <p className="text-sm font-semibold text-text">No matching events found</p>
-            <p className="mt-1 text-xs text-text-dim">
+          <div className="rounded-[14px] border border-dashed border-[#2d2d34]/25 bg-white py-12 text-center shadow-[2px_2px_0px_#2d2d34]">
+            <p className="text-sm font-bold text-[#2d2d34] font-mono">No matching events found</p>
+            <p className="mt-1 text-xs text-[#52525b] font-mono">
               Try adjusting your search keywords or selecting another status filter.
             </p>
-            <Button
-              variant="ghost"
-              className="mt-3 text-xs border border-border/70 hover:bg-bg"
+            <button
+              type="button"
+              className="mt-3 h-8 px-3 rounded-[7px] bg-white border border-[#2d2d34]/20 text-[#2d2d34] font-mono text-xs font-bold uppercase hover:bg-zinc-100 transition cursor-pointer"
               onClick={() => {
                 setStatusChip("all");
                 setSearch("");
               }}
             >
               Clear Filters & Search
-            </Button>
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -582,11 +677,6 @@ export default function ChapterEventsPage({
                 );
               const canManageThisEvent = canManage || isAssignedVolunteer;
               const regState = getEventRegistrationState(store, ev, session.userId);
-              const regForm = getEventForm(store, ev.id, "registration");
-              const fbForm = getEventForm(store, ev.id, "feedback");
-              const approved = store.registrations.filter(
-                (r) => r.eventId === ev.id && r.status === "approved",
-              ).length;
               const myReg = store.registrations.find(
                 (r) =>
                   r.eventId === ev.id &&
@@ -595,211 +685,21 @@ export default function ChapterEventsPage({
                   r.status !== "rejected",
               );
 
-              let secondary: { href: string; label: string } | null = null;
-              if (canManageThisEvent && regForm) {
-                secondary = {
-                  href: `/chapter/${slug}/forms/${regForm.id}`,
-                  label: "Forms",
-                };
-              } else if (
-                ev.status === "completed" &&
-                fbForm &&
-                fbForm.status === "open"
-              ) {
-                secondary = {
-                  href: `/chapter/${slug}/forms/${fbForm.id}/fill`,
-                  label: "Feedback",
-                };
-              }
-
-              const isOngoing = isEventOngoing(ev) || ev.status === "ongoing";
-              const isEnded = isEventEnded(ev) || ev.status === "completed";
-
               return (
-                <TicketCard
+                <BauhausEventCard
                   key={ev.id}
                   event={ev}
-                  href={`/chapter/${slug}/events/${ev.id}`}
-                  className="bg-white border border-border/60 hover:border-border transition-all shadow-[var(--shadow-sm)]"
-                  hideStatus={!canManageThisEvent}
-                  meta={`${approved}/${ev.capacity} approved · closes ${new Date(ev.registrationEnd).toLocaleDateString()}`}
-                  footer={
-                    <div className="w-full pt-3 mt-2 border-t border-border/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
-                      {/* Left: Attendee Status / Primary CTA */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {isFacultyRole(session.roleKey) ? (
-                          <div className="flex items-center gap-2">
-                            <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-hover">
-                                View Details
-                              </Button>
-                            </Link>
-                            <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 hover:bg-bg-hover">
-                                Attendance
-                              </Button>
-                            </Link>
-                          </div>
-                        ) : myReg ? (
-                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                            <Button
-                              variant={myReg.status === "approved" ? "green" : "secondary"}
-                              className={cn(
-                                "h-8 px-3 text-xs font-semibold gap-1.5 shadow-2xs",
-                                myReg.status === "waitlisted" && "border-amber-500/40 text-amber-600 dark:text-amber-400",
-                              )}
-                            >
-                              <CheckCircle2 size={13} />
-                              {myReg.status === "approved"
-                                ? "Pass Confirmed"
-                                : myReg.status === "waitlisted"
-                                  ? "Waitlisted Pass"
-                                  : "Registered"}
-                            </Button>
-                          </Link>
-                        ) : isOngoing ? (
-                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                            <Button variant="green" className="h-8 px-3 text-xs font-bold shadow-2xs flex items-center gap-1.5">
-                              <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
-                              </span>
-                              Live Session Ongoing
-                            </Button>
-                          </Link>
-                        ) : isEnded ? (
-                          <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                            <Button variant="ghost" className="h-8 px-3 text-xs border border-border/70 text-text-dim hover:text-text hover:bg-bg-hover">
-                              View Details
-                            </Button>
-                          </Link>
-                        ) : regState.status === "upcoming" || regState.isUpcoming ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg rounded border border-border/60">
-                              <Clock size={11} />
-                              Opens {new Date(ev.registrationStart).toLocaleDateString()}
-                            </span>
-                            <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-2 text-xs text-text-dim hover:text-text">
-                                Details
-                              </Button>
-                            </Link>
-                          </div>
-                        ) : regState.isClosed ? (
-                          <div className="flex items-center gap-1.5">
-                            <span className="px-2.5 py-1 text-[11px] font-medium text-text-dim bg-bg rounded border border-border/60">
-                              {ev.status === "registration_closed" ? "Reg. Stopped" : "Reg. Closed"}
-                            </span>
-                            <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                              <Button variant="ghost" className="h-8 px-2 text-xs text-text-dim hover:text-text">
-                                Details
-                              </Button>
-                            </Link>
-                          </div>
-                        ) : regState.isWaitlist ? (
-                          <Button
-                            variant="secondary"
-                            className="h-8 px-3.5 text-xs border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 font-semibold"
-                            onClick={() => setSelectedEventForReg(ev)}
-                          >
-                            Join Waitlist
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="orange"
-                            className="h-8 px-4 text-xs font-bold shadow-2xs"
-                            onClick={() => setSelectedEventForReg(ev)}
-                          >
-                            Register
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Right: Management Controls */}
-                      {(canPublishEvent(session.roleKey, ev, session.userId) ||
-                        canManageThisEvent ||
-                        session.roleKey === "campus_lead" ||
-                        session.roleKey === "chairman" ||
-                        session.roleKey === "elevates_coordinator" ||
-                        session.roleKey === "hq_admin" ||
-                        hasEventDelegation ||
-                        ev.organizerId === session.userId) && (
-                        <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
-                          {isOngoing ? (
-                            <Button
-                              variant="danger"
-                              className="h-8 px-2.5 text-xs flex items-center gap-1 font-semibold shadow-2xs"
-                              onClick={() => endEvent(ev.id, session.userId)}
-                              title="End this event now and close attendance"
-                            >
-                              <CheckCircle2 size={12} />
-                              End Event
-                            </Button>
-                          ) : isEnded ? (
-                            <span className="text-[11px] font-medium text-text-dim px-2 py-0.5 rounded bg-bg border border-border/50">
-                              Completed
-                            </span>
-                          ) : (
-                            <>
-                              {ev.status !== "cancelled" && (
-                                <Button
-                                  variant="green"
-                                  className="h-8 px-2.5 text-xs flex items-center gap-1 font-bold shadow-2xs"
-                                  onClick={() => startEvent(ev.id, session.userId)}
-                                  title="Start event and open attendance"
-                                >
-                                  <Play size={11} className="fill-current" />
-                                  Start
-                                </Button>
-                              )}
-
-                              {(canPublishEvent(session.roleKey, ev, session.userId) || canManageThisEvent) && (
-                                ev.status === "registration_open" ? (
-                                  <Button
-                                    variant="ghost"
-                                    className="h-8 px-2.5 text-xs text-red-500 border border-red-200 dark:border-red-900/50 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                    onClick={() => stopEventFromList(ev)}
-                                    title="Stop registration"
-                                  >
-                                    Stop Reg
-                                  </Button>
-                                ) : ev.status !== "cancelled" ? (
-                                  <Button
-                                    variant="ghost"
-                                    className="h-8 px-2.5 text-xs text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-900/50 hover:bg-orange-50 dark:hover:bg-orange-950/30"
-                                    onClick={() => publishEventFromList(ev)}
-                                    title="Open registration"
-                                  >
-                                    Open Reg
-                                  </Button>
-                                ) : null
-                              )}
-                            </>
-                          )}
-
-                          {isAssignedVolunteer && !isFacultyRole(session.roleKey) && (
-                            <Link href={`/chapter/${slug}/attendance?eventId=${ev.id}`}>
-                              <Button
-                                variant="ghost"
-                                className="h-8 px-2.5 text-xs border border-border/80 hover:bg-bg-hover font-medium"
-                              >
-                                Attendance
-                              </Button>
-                            </Link>
-                          )}
-
-                          {secondary && !isFacultyRole(session.roleKey) && (
-                            <Link
-                              href={secondary.href}
-                              className="text-[11px] font-medium text-text-dim hover:text-[var(--accent)] px-1.5 py-1 transition-colors"
-                            >
-                              {secondary.label}
-                            </Link>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  }
+                  chapter={chapter}
+                  userId={session.userId}
+                  roleKey={session.roleKey}
+                  regState={regState}
+                  myReg={myReg}
+                  onRegister={(eventItem) => setSelectedEventForReg(eventItem)}
+                  onStart={(eventId) => startEvent(eventId, session.userId)}
+                  onEnd={(eventId) => endEvent(eventId, session.userId)}
+                  onPublish={(eventItem) => publishEventFromList(eventItem)}
+                  onStop={(eventItem) => stopEventFromList(eventItem)}
+                  canManage={canManageThisEvent}
                 />
               );
             })}

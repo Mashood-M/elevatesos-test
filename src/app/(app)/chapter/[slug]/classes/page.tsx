@@ -7,11 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import { isFacultyRole } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { cohortLabel, cohortRepIds } from "@/lib/forms/helpers";
 import { canManageClasses, hasPermission } from "@/lib/permissions";
@@ -24,7 +22,6 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  Filter,
   GraduationCap,
   Layers,
   Lock,
@@ -36,7 +33,6 @@ import {
   Sparkles,
   Trash2,
   UserCheck,
-  UserMinus,
   Users,
   X,
 } from "lucide-react";
@@ -393,8 +389,8 @@ export default function ChapterClassesPage({
       setFlash(`✓ Appointed ${student.fullName} as Class Rep for ${assignModalDept} (${assignModalYear})!`);
       window.setTimeout(() => setFlash(""), 2800);
       setAssignModalOpen(false);
-    } catch (err: any) {
-      setAssignModalError(err?.message || "Failed to assign Class Representative.");
+    } catch (err: unknown) {
+      setAssignModalError(err instanceof Error ? err.message : "Failed to assign Class Representative.");
     } finally {
       setIsAssigning(false);
     }
@@ -435,7 +431,7 @@ export default function ChapterClassesPage({
 
       setFlash(`✓ Removed ${student.fullName} from Class Representative role.`);
       window.setTimeout(() => setFlash(""), 2800);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to remove class rep:", err);
       setFlash("Failed to remove Class Representative role.");
       window.setTimeout(() => setFlash(""), 3000);
@@ -443,7 +439,7 @@ export default function ChapterClassesPage({
   }
 
   if (!chapter) {
-    return <p className="text-[var(--accent)]">// Chapter not found</p>;
+    return <p className="text-[#f26430] font-mono">{"// Chapter not found"}</p>;
   }
 
   function startCreate() {
@@ -655,110 +651,140 @@ export default function ChapterClassesPage({
   if (session.roleKey === "class_representative" || isFacultyRole(session.roleKey)) {
     return (
       <div className="space-y-6">
-        <PageHeader
-          eyebrow={chapterEyebrow(session.roleKey, "programs")}
-          title="Classes & Departments"
-          description="Class cohort and department management is restricted to Campus Leads."
-        />
-        <TerminalPanel title="access.restricted" accent="orange">
-          <p className="text-sm text-text-dim">
+        <div className="bauhaus-grid-bg rounded-[20px] border border-[#2d2d34]/20 p-6 md:p-8 relative overflow-hidden shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-mono text-xs font-bold text-[#f26430] uppercase tracking-wider">
+              {"01 // RESTRICTED DESK"} · {(chapter.shortCode || chapter.slug).toUpperCase()}
+            </span>
+          </div>
+          <h1 className="font-['Syne'] text-2xl md:text-3xl font-extrabold text-[#2d2d34] tracking-tight">
+            Classes & Academic Departments
+          </h1>
+          <p className="font-['Plus_Jakarta_Sans'] text-sm text-[#2d2d34]/70 mt-1 max-w-2xl">
             {isFacultyRole(session.roleKey)
-              ? "Faculty members do not manage class sections or cohorts."
-              : "Class Representatives do not have permission to view or manage classes and departments."}
+              ? "Faculty members do not manage class sections or cohorts directly. Access is reserved for Campus Leads."
+              : "Class Representatives do not have permission to configure classes or departments. Access is reserved for Campus Leads."}
           </p>
-          <Link
-            href={`/chapter/${slug}`}
-            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
-          >
-            ← Back to chapter
-          </Link>
-        </TerminalPanel>
+          <div className="mt-4">
+            <Link
+              href={`/chapter/${slug}`}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-white text-[#2d2d34] border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#f3f4f6] cursor-pointer"
+            >
+              ← Back to chapter
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Classes & Academic Departments"
-        description="Configure campus academic faculties, class division cohorts, appointed representatives, and student directorys."
-        actions={
+      {/* 1. Architectural Hero Banner */}
+      <div className="bauhaus-grid-bg rounded-[20px] border border-[#2d2d34]/20 p-6 md:p-8 relative overflow-hidden shadow-[2px_2px_0px_#2d2d34]">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs font-bold text-[#f26430] uppercase tracking-wider">
+                {"01 // ACADEMIC INFRASTRUCTURE"} · {(chapter.shortCode || chapter.slug).toUpperCase()}
+              </span>
+            </div>
+            <h1 className="font-['Syne'] text-2xl md:text-3xl font-extrabold text-[#2d2d34] tracking-tight">
+              Classes & Academic Departments
+            </h1>
+            <p className="font-['Plus_Jakarta_Sans'] text-sm text-[#2d2d34]/70 mt-1 max-w-2xl">
+              Configure campus academic faculties, class division cohorts, appointed representatives, and student directories.
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {flash ? (
-              <span className="self-center rounded-full bg-[var(--accent)]/10 px-3 py-1 text-xs font-semibold text-[var(--accent)] border border-[var(--accent)]/20 animate-pulse">
+              <span className="self-center rounded-xl bg-[#f26430]/10 px-3 py-1 font-mono text-xs font-bold text-[#f26430] border border-[#f26430]/30 animate-pulse">
                 {flash}
               </span>
             ) : null}
             {canManage && activeTab === "classes" ? (
-              <Button
-                variant="orange"
+              <button
+                type="button"
                 onClick={startCreate}
                 disabled={!departments.length}
-                className="gap-1.5 shadow-xs text-xs sm:text-sm font-semibold"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 <Plus size={14} />
                 <span>{showForm && !editingId ? "Close Form" : "New Class"}</span>
-              </Button>
+              </button>
             ) : null}
             {canManage && activeTab === "departments" ? (
-              <Button
-                variant="secondary"
-                size="sm"
+              <button
+                type="button"
                 onClick={handleAddAllStandardDepts}
-                className="text-xs gap-1.5 border border-border/80"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-white text-[#2d2d34] border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#f3f4f6] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
-                <Sparkles size={13} className="text-[var(--accent)]" />
-                <span>Add All Standard Depts</span>
-              </Button>
+                <Sparkles size={14} className="text-[#f26430]" />
+                <span>Add Standard Depts</span>
+              </button>
             ) : null}
           </div>
-        }
-      />
-
-      {/* 4-Stat Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Departments"
-          value={departments.length}
-          hint="Academic faculties"
-          accent="orange"
-        />
-        <Stat
-          label="Classes & Cohorts"
-          value={cohorts.length}
-          hint="Configured year/sections"
-        />
-        <Stat
-          label="Appointed Class Reps"
-          value={totalRepsCount}
-          hint="Active representatives"
-        />
-        <Stat
-          label="Enrolled Students"
-          value={chapterStudents.length}
-          hint="Total member directory"
-        />
+        </div>
       </div>
 
-      {/* Unified Segmented Tab Bar */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/80 pb-3">
+      {/* 2. Architectural Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"01 // DEPARTMENTS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#f26430] mt-1">
+            {departments.length}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Academic faculties</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"02 // CLASSES & COHORTS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {cohorts.length}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Configured year/sections</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"03 // CLASS REPS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {totalRepsCount}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Active representatives</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"04 // ENROLLED STUDENTS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {chapterStudents.length}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Total member directory</div>
+        </div>
+      </div>
+
+      {/* 3. Unified Segmented Tab Bar */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-[#2d2d34]/20 pb-3">
         <button
           type="button"
           onClick={() => setActiveTab("departments")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "flex items-center gap-2 rounded-xl px-3.5 py-1.5 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
             activeTab === "departments"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+              : "bg-white border border-[#2d2d34]/20 text-[#2d2d34]/70 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
           )}
         >
           <Building2 size={13} />
           <span>Departments</span>
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
-              activeTab === "departments" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold font-mono tabular-nums",
+              activeTab === "departments" ? "bg-white/20 text-white" : "bg-[#2d2d34]/10 text-[#2d2d34]",
             )}
           >
             {departments.length}
@@ -769,18 +795,18 @@ export default function ChapterClassesPage({
           type="button"
           onClick={() => setActiveTab("classes")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "flex items-center gap-2 rounded-xl px-3.5 py-1.5 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
             activeTab === "classes"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+              : "bg-white border border-[#2d2d34]/20 text-[#2d2d34]/70 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
           )}
         >
           <GraduationCap size={13} />
           <span>Classes & Divisions</span>
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
-              activeTab === "classes" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold font-mono tabular-nums",
+              activeTab === "classes" ? "bg-white/20 text-white" : "bg-[#2d2d34]/10 text-[#2d2d34]",
             )}
           >
             {cohorts.length}
@@ -791,20 +817,20 @@ export default function ChapterClassesPage({
           type="button"
           onClick={() => setActiveTab("assign")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "flex items-center gap-2 rounded-xl px-3.5 py-1.5 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
             activeTab === "assign" || activeTab === "students"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+              : "bg-white border border-[#2d2d34]/20 text-[#2d2d34]/70 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
           )}
         >
           <UserCheck size={13} />
           <span>Assign Class Reps</span>
           <span
             className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold font-mono tabular-nums",
               activeTab === "assign" || activeTab === "students"
-                ? "bg-bg/20 text-bg"
-                : "bg-border/60 text-text-dim",
+                ? "bg-white/20 text-white"
+                : "bg-[#2d2d34]/10 text-[#2d2d34]",
             )}
           >
             {totalRepsCount}

@@ -1,10 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
-  BookOpen,
   CheckCircle2,
   Edit2,
   Globe,
@@ -16,6 +12,7 @@ import {
   Ticket,
   Trash2,
   Users,
+  ArrowUpRight,
 } from "lucide-react";
 import type { PeerLabSeriesItem } from "@/components/domain/peer-lab-manager-dialog";
 
@@ -44,197 +41,273 @@ export function PeerLabCard({
   const lessonCount = lab.lessons?.length || 0;
   const resourceCount = lab.resources?.length || 0;
 
+  // Determine theme color accent
+  const trackLower = (lab.track || "").toLowerCase();
+  let themeColor: "flame" | "slate" | "amber" | "emerald" = "flame";
+  if (lab.status === "Active") {
+    themeColor = "emerald";
+  } else if (trackLower.includes("ai") || trackLower.includes("code") || trackLower.includes("dev")) {
+    themeColor = "slate";
+  } else if (trackLower.includes("design") || trackLower.includes("product")) {
+    themeColor = "amber";
+  }
+
   return (
-    <div className="group relative flex flex-col rounded-[22px] bg-surface border border-border/70 shadow-[var(--shadow)] overflow-hidden transition-all duration-200 hover:border-border hover:shadow-md">
-      {/* Top Banner / Image Area */}
-      <div
-        className="relative h-44 w-full bg-gradient-to-br from-[#1e1e24] via-[#2d2d34] to-[#141416] overflow-hidden cursor-pointer"
-        onClick={() => onSelect(lab)}
-      >
+    <article
+      onClick={() => onSelect(lab)}
+      className="group relative flex flex-col sm:flex-row bg-white border border-[#2d2d34]/20 rounded-[12px] overflow-hidden shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+    >
+      {/* ─── LEFT: MEDIA / POSTER PILLAR ─────────────────────────────── */}
+      <div className="relative w-full sm:w-[135px] md:w-[150px] shrink-0 border-b sm:border-b-0 sm:border-r border-[#2d2d34]/20 bg-zinc-900 overflow-hidden min-h-[115px] sm:min-h-0 select-none">
         {imageSrc ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={imageSrc}
             alt={lab.title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 opacity-80"
+            className="w-full h-32 sm:h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="h-full w-full flex items-center justify-center bg-black/10">
-            <BookOpen size={40} className="text-white/20" />
+          <div className="w-full h-32 sm:h-full bg-[#faf9f6] flex flex-col items-center justify-center p-3 text-center select-none relative bauhaus-grid-bg">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="h-4.5 w-4.5 rounded-full bg-[#f26430] border border-[#2d2d34] flex items-center justify-center text-white font-mono text-[8px] font-black">
+                P
+              </span>
+              <span className="h-4.5 w-4.5 rounded-[2px] bg-[#414066] border border-[#2d2d34] flex items-center justify-center text-white font-mono text-[8px] font-black">
+                L
+              </span>
+              <span className="h-4.5 w-4.5 bg-[#f59e0b] border border-[#2d2d34] rotate-45 flex items-center justify-center text-[#2d2d34] font-mono text-[8px] font-black">
+                B
+              </span>
+            </div>
+            <span className="font-mono text-[9px] font-bold text-[#71717a] uppercase tracking-wider">
+              {isOpenToAll ? "GLOBAL LAB" : chapterName || "CAMPUS"}
+            </span>
           </div>
         )}
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent pointer-events-none" />
+        {/* Overlaid Sessions Stamp on Top-Left */}
+        <div className="absolute top-2 left-2 z-20 flex flex-col items-center justify-center bg-[#2d2d34] text-white border border-[#2d2d34] px-1.5 py-0.5 rounded-[5px] shadow-[1px_1px_0px_#f26430] font-mono pointer-events-none">
+          <span className="text-[12px] font-black leading-none">{lessonCount > 0 ? String(lessonCount).padStart(2, "0") : "01"}</span>
+          <span className="text-[7.5px] font-bold uppercase tracking-wider leading-none mt-0.5 text-zinc-300">
+            {lessonCount === 1 ? "PART" : "PARTS"}
+          </span>
+        </div>
 
-        {/* Top Floating Badges */}
-        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 z-10">
-          <div className="flex flex-wrap gap-1.5">
-            {isOpenToAll ? (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent)] text-white shadow-sm">
-                <Globe size={11} /> Open to All
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-white text-zinc-900 shadow-sm">
-                <Shield size={11} className="text-[var(--accent)]" /> {chapterName || "Campus Lab"}
-              </span>
-            )}
-            {lab.track && (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-black/40 text-white backdrop-blur-md">
-                {lab.track}
-              </span>
-            )}
-          </div>
-
+        {/* Status Pill on Top-Right */}
+        <div className="absolute top-2 right-2 z-20">
           <span
-            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold backdrop-blur-md shadow-sm ${
+            className={`inline-flex items-center font-mono text-[8px] font-black px-1.5 py-0.5 rounded border shadow-[1px_1px_0px_#2d2d34] uppercase tracking-wider pointer-events-none ${
               lab.status === "Active"
-                ? "bg-emerald-500 text-white"
+                ? "bg-[#5f7560] text-white border-white/40 animate-pulse"
                 : lab.status === "Completed"
-                  ? "bg-zinc-600 text-white"
-                  : lab.status === "Draft"
-                    ? "bg-amber-500 text-white"
-                    : "bg-blue-500 text-white"
+                ? "bg-zinc-800 text-zinc-300 border-zinc-600"
+                : lab.status === "Draft"
+                ? "bg-[#f59e0b] text-[#2d2d34] border-[#2d2d34]"
+                : "bg-[#414066] text-white border-white/30"
             }`}
           >
             {lab.status}
           </span>
         </div>
-
-        {/* Bottom Title on Image */}
-        <div className="absolute bottom-3 left-3 right-3 z-10 pointer-events-none">
-          <h3 className="font-[family-name:var(--font-display)] italic font-bold text-white text-lg leading-snug line-clamp-1">
-            {lab.title}
-          </h3>
-        </div>
       </div>
 
-      {/* Card Body */}
-      <div className="p-4 flex-1 flex flex-col justify-between space-y-4">
-        <div className="space-y-2">
-          {lab.subtitle && (
-            <p className="text-xs text-text-mute font-medium line-clamp-2">
+      {/* ─── RIGHT: COMPACT CONTENT & METRICS ───────────────────────── */}
+      <div className="flex-1 flex flex-col justify-between p-3 sm:p-3.5 min-w-0 bg-[#faf9f6]/30">
+        <div className="min-w-0">
+          {/* Top Metadata Row */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
+            <div className="flex flex-wrap items-center gap-1">
+              {/* Track Badge with geometric dot */}
+              <span className="inline-flex items-center gap-1 font-mono text-[9px] font-bold uppercase px-2 py-0.5 rounded bg-white text-[#2d2d34] border border-[#2d2d34]/20 shadow-[1px_1px_0px_rgba(45,45,52,0.1)]">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    themeColor === "flame"
+                      ? "bg-[#f26430]"
+                      : themeColor === "amber"
+                      ? "bg-[#f59e0b]"
+                      : themeColor === "emerald"
+                      ? "bg-[#5f7560]"
+                      : "bg-[#414066]"
+                  }`}
+                />
+                {lab.track || "TRACK"}
+              </span>
+
+              {/* Campus Scope Tag */}
+              <span className="inline-flex items-center font-mono text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+                {isOpenToAll ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Globe size={9} /> ALL CAMPUSES
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Shield size={9} className="text-[#f26430]" /> {chapterName || "CAMPUS"}
+                  </span>
+                )}
+              </span>
+
+              {/* Pass Ready tag if enrolled */}
+              {isEnrolled && (
+                <span className="inline-flex items-center gap-1 font-mono text-[8.5px] font-bold text-[#5f7560] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded uppercase">
+                  <CheckCircle2 size={10} /> PASS ACTIVE
+                </span>
+              )}
+            </div>
+
+            {/* Enrolled Count Chip */}
+            <div className="shrink-0 font-mono text-[9.5px] font-bold text-[#52525b]">
+              <span className="inline-flex items-center gap-1">
+                <Users size={11} className="text-[#414066]" />
+                {lab.joinedCount} ENROLLED
+              </span>
+            </div>
+          </div>
+
+          {/* Title */}
+          <h3 className="font-[family-name:var(--font-display)] text-[14.5px] sm:text-[15.5px] font-black text-[#2d2d34] tracking-tight leading-snug line-clamp-1 group-hover:text-[#f26430] transition-colors">
+            {lab.title}
+          </h3>
+
+          {/* Subtitle / Description */}
+          {lab.subtitle ? (
+            <p className="mt-0.5 text-[11px] text-[#52525b] line-clamp-1 leading-relaxed">
               {lab.subtitle}
             </p>
-          )}
+          ) : lab.description ? (
+            <p className="mt-0.5 text-[11px] text-[#52525b] line-clamp-1 leading-relaxed">
+              {lab.description}
+            </p>
+          ) : null}
 
-          {/* Facilitator info */}
-          {lab.facilitators?.length > 0 && (
-            <div className="flex items-center gap-1.5 pt-1 text-[11px] text-text-mute">
-              <span className="font-semibold text-text">Mentors:</span>
-              <span className="truncate">
-                {lab.facilitators.map((f) => f.name).join(", ")}
-              </span>
+          {/* Facilitators row */}
+          {lab.facilitators && lab.facilitators.length > 0 && (
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] font-mono text-[#71717a] truncate">
+              <span className="font-bold text-[#2d2d34]">MENTORS //</span>
+              <span className="truncate">{lab.facilitators.map((f) => f.name).join(", ")}</span>
             </div>
           )}
 
-          {/* Highlights Row */}
-          <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] text-text-mute border-t border-border/40">
+          {/* Highlights Row: Sessions, Seats, Materials */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-[#52525b]">
             {lessonCount > 0 && (
               <span className="inline-flex items-center gap-1">
-                <Layers size={12} className="text-[var(--accent)]" />
-                {lessonCount} session{lessonCount === 1 ? "" : "s"}
+                <Layers size={11} className="text-[#f26430]" />
+                {lessonCount} {lessonCount === 1 ? "SESSION" : "SESSIONS"}
               </span>
             )}
-            <span className="inline-flex items-center gap-1">
-              <Users size={12} />
-              {lab.joinedCount} enrolled
-            </span>
             {resourceCount > 0 && (
               <span className="inline-flex items-center gap-1">
                 {isEnrolled ? (
-                  <LockOpen size={12} className="text-emerald-600" />
+                  <LockOpen size={11} className="text-[#5f7560]" />
                 ) : (
-                  <Lock size={12} className="text-amber-500" />
+                  <Lock size={11} className="text-[#f59e0b]" />
                 )}
-                {resourceCount} material{resourceCount === 1 ? "" : "s"}
+                {resourceCount} {resourceCount === 1 ? "RESOURCE" : "RESOURCES"}
               </span>
             )}
+            <span className="text-[#71717a]">
+              {lab.applicationsOpen ? "OPEN ADMISSIONS" : "SEATS CLOSED"}
+            </span>
           </div>
         </div>
 
-        {/* Action Footer */}
-        <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+        {/* ─── ACTION FOOTER ───────────────────────────────────────────── */}
+        <div className="mt-2.5 pt-2 border-t border-[#2d2d34]/10 flex flex-wrap items-center justify-between gap-1.5">
           {canManage ? (
-            <div className="flex items-center gap-1 w-full justify-between">
+            <div className="flex items-center justify-between w-full gap-2">
               <div className="flex items-center gap-1">
                 {onPublish && lab.status === "Draft" && (
-                  <Button
-                    size="sm"
-                    variant="orange"
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onPublish(lab);
                     }}
-                    className="h-8 px-2.5 text-xs gap-1 shadow-xs"
-                    title="Publish this Peer Lab so students can register"
+                    className="h-7 px-2 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1"
+                    title="Publish peer lab"
                   >
-                    <Send size={12} /> Publish
-                  </Button>
+                    <Send size={10} /> Publish
+                  </button>
                 )}
                 {onEdit && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => onEdit(lab)}
-                    className="h-8 px-2.5 text-xs gap-1"
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(lab);
+                    }}
+                    className="h-7 px-2 rounded-[6px] bg-white hover:bg-zinc-100 text-[#2d2d34] font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34]/30 shadow-[1px_1px_0px_rgba(45,45,52,0.15)] transition-all cursor-pointer flex items-center gap-1"
                   >
-                    <Edit2 size={12} /> Edit
-                  </Button>
+                    <Edit2 size={10} /> Edit
+                  </button>
                 )}
                 {onDelete && (
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => onDelete(lab)}
-                    className="h-8 px-2.5 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(lab);
+                    }}
+                    className="h-7 px-2 rounded-[6px] bg-white hover:bg-red-50 text-red-600 font-mono text-[10.5px] font-bold uppercase tracking-wider border border-red-300 shadow-[1px_1px_0px_rgba(45,45,52,0.15)] transition-all cursor-pointer flex items-center gap-1"
                   >
-                    <Trash2 size={12} />
-                  </Button>
+                    <Trash2 size={10} />
+                  </button>
                 )}
               </div>
-              <Button
-                size="sm"
-                variant="orange"
-                onClick={() => onSelect(lab)}
-                className="h-8 px-3 text-xs font-semibold rounded-full"
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(lab);
+                }}
+                className="h-7 px-3 rounded-[6px] bg-[#2d2d34] hover:bg-[#1a1a1e] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1"
               >
-                View
-              </Button>
+                Syllabus <ArrowUpRight size={11} />
+              </button>
             </div>
           ) : (
             <div className="flex items-center justify-between w-full">
-              {isEnrolled ? (
-                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
-                  <CheckCircle2 size={14} className="text-emerald-500" /> Pass Ready
-                </span>
-              ) : (
-                <span className="text-[11px] text-text-mute">
-                  {lab.applicationsOpen ? "Free enrollment" : "Registrations closed"}
-                </span>
-              )}
-              <Button
-                size="sm"
-                variant="orange"
-                onClick={() => onSelect(lab)}
-                className={cn(
-                  "h-8 px-3.5 text-xs font-bold rounded-full gap-1.5 shadow-xs transition-all",
-                  isEnrolled
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white"
+              <span className="font-mono text-[10px] text-[#71717a]">
+                {isEnrolled ? (
+                  <span className="font-bold text-[#5f7560] flex items-center gap-1">
+                    <CheckCircle2 size={11} /> PASS CONFERRED
+                  </span>
+                ) : lab.applicationsOpen ? (
+                  "FREE ADMISSION"
+                ) : (
+                  "REGISTRATION CLOSED"
                 )}
+              </span>
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(lab);
+                }}
+                className={`h-7 px-3 rounded-[6px] font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:shadow-[1.5px_1.5px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5 ${
+                  isEnrolled
+                    ? "bg-[#5f7560] hover:bg-[#4d614e] text-white"
+                    : "bg-[#f26430] hover:bg-[#e05320] text-white"
+                }`}
               >
                 {isEnrolled ? (
                   <>
-                    <Ticket size={12} />
+                    <Ticket size={11} />
                     <span>View Pass</span>
                   </>
                 ) : (
-                  <span>View &amp; Enroll</span>
+                  <>
+                    <span>Syllabus &amp; Enroll</span>
+                    <ArrowUpRight size={11} />
+                  </>
                 )}
-              </Button>
+              </button>
             </div>
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 }

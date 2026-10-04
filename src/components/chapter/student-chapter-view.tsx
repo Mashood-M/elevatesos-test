@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import QRCode from "react-qr-code";
-import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
 import { useStore, showToast } from "@/context/store-context";
@@ -38,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Award,
+  ArrowUpRight,
 } from "lucide-react";
 
 const DEFAULT_CHAPTER_IMAGES: Record<string, string> = {
@@ -113,35 +113,35 @@ function getClusterTheme(name: string, slug: string) {
   if (text.includes("ai") || text.includes("machine") || text.includes("ml") || text.includes("deep") || text.includes("data")) {
     return {
       category: "Artificial Intelligence",
-      badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
-      accentBg: "bg-purple-600",
+      badgeColor: "bg-[#2d2d34] text-white border-[#2d2d34]",
+      accentBg: "bg-[#414066]",
     };
   }
   if (text.includes("web") || text.includes("frontend") || text.includes("fullstack") || text.includes("dev") || text.includes("software")) {
     return {
       category: "Web & Software",
-      badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
-      accentBg: "bg-blue-600",
+      badgeColor: "bg-[#414066] text-white border-[#414066]",
+      accentBg: "bg-[#414066]",
     };
   }
   if (text.includes("cloud") || text.includes("devops") || text.includes("linux") || text.includes("security") || text.includes("cyber")) {
     return {
       category: "Cloud & Security",
-      badgeColor: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      accentBg: "bg-emerald-600",
+      badgeColor: "bg-[#5f7560] text-white border-[#5f7560]",
+      accentBg: "bg-[#5f7560]",
     };
   }
   if (text.includes("design") || text.includes("ui") || text.includes("ux") || text.includes("product") || text.includes("creative")) {
     return {
       category: "Product & UI/UX",
-      badgeColor: "bg-pink-50 text-pink-700 border-pink-200",
-      accentBg: "bg-pink-600",
+      badgeColor: "bg-[#f26430] text-white border-[#f26430]",
+      accentBg: "bg-[#f26430]",
     };
   }
   return {
     category: "Specialized Track",
-    badgeColor: "bg-orange-50 text-[var(--accent)] border-orange-200",
-    accentBg: "bg-[var(--accent)]",
+    badgeColor: "bg-[#2d2d34] text-white border-[#2d2d34]",
+    accentBg: "bg-[#f26430]",
   };
 }
 
@@ -307,13 +307,10 @@ export function StudentChapterView({
 
   const eventsToDisplay = useMemo(() => {
     if (upcomingEvents.length > 0) return upcomingEvents;
-    // Fallback: show only this chapter's events OR open-to-all events from other chapters
     const openEvents = store.events
       .filter((e) => {
         if (isEventEnded(e)) return false;
-        // Allow events from the student's own chapter
         if (e.chapterId === chapter.id) return true;
-        // Allow events explicitly marked open to all
         if (isOpenToAllEvent(e)) return true;
         return false;
       })
@@ -395,13 +392,11 @@ export function StudentChapterView({
         const maxScroll = el.scrollWidth - el.clientWidth;
         if (maxScroll <= 1) return;
 
-        // Allow natural page scroll if already at the boundary
         if (delta < 0 && el.scrollLeft <= 2) return;
         if (delta > 0 && el.scrollLeft >= maxScroll - 2) return;
 
         e.preventDefault();
 
-        // Normalize delta across mice drivers & line modes
         const step = e.deltaMode === 1 ? delta * 35 : delta;
         el.scrollLeft += step;
         updateState();
@@ -434,186 +429,235 @@ export function StudentChapterView({
   }, [eventsToDisplay.length, chapterClusters.length, networkChapters.length]);
 
   return (
-    <div className="space-y-7">
-      {/* ── 1. STUDENT IDENTITY HERO ───────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-[24px] border border-border/70 bg-gradient-to-br from-white via-[#faf9f6] to-[#f4f1ea] p-6 sm:p-8 md:p-10 shadow-xs">
-        {/* Background Campus Photo with seamless blend from right to left */}
+    <div className="space-y-6 pb-12">
+      {/* ── 1. STUDENT IDENTITY ARCHITECTURAL HERO ───────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
         <div
-          className="absolute top-0 right-0 bottom-0 w-full sm:w-3/5 lg:w-[55%] pointer-events-none overflow-hidden select-none z-0"
-          style={{
-            maskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
-            WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
-          }}
-        >
-          <img
-            src={getChapterCover(chapter)}
-            alt={chapter.name}
-            className="w-full h-full object-cover object-center"
-          />
-          {/* Subtle gradient overlays to match hero card canvas */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#faf9f6] via-transparent to-black/15" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent hidden sm:block" />
-          <div className="absolute bottom-4 right-6 text-right hidden sm:block">
-            <p className="text-xs font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] tracking-wide">{chapter.college || chapter.name}</p>
-            <p className="text-[10px] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] font-medium">{chapter.city ? `${chapter.city} Campus` : "Innovation Hub"}</p>
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-2 right-36 h-16 w-16 bg-[#f59e0b] opacity-12 rounded-full pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                STUDENT PASS // {studentElevatesId}
+              </span>
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {chapterElevatesId} · {chapter.college || chapter.name}
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl md:text-4xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              {greeting} {firstName}.
+              <span className="block text-[#f26430] text-xl sm:text-2xl md:text-3xl font-bold mt-0.5">
+                LEARN, BUILD, GROW
+              </span>
+            </h1>
+
+          
+
+            {/* Identity Tags */}
+            <div className="mt-3.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPassModal(true)}
+                className="group inline-flex items-center gap-1.5 rounded-[6px] border border-[#2d2d34] bg-white px-2.5 py-1 text-xs font-mono font-bold text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:shadow-[1.5px_1.5px_0px_#2d2d34] hover:bg-[#faf9f6] transition cursor-pointer"
+              >
+                <QrCode className="w-3.5 h-3.5 text-[#f26430]" />
+                <span>Pass:</span>
+                <span className="text-[#f26430]">{studentElevatesId}</span>
+              </button>
+
+              <span className="inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-xs font-mono text-[#52525b] bg-[#faf9f6] border border-[#2d2d34]/15">
+                <Building2 className="w-3.5 h-3.5 text-[#414066]" />
+                <span>{chapter.college || chapter.name}</span>
+              </span>
+
+              {compactStudentTag && (
+                <span className="inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-xs font-mono text-[#52525b] bg-[#faf9f6] border border-[#2d2d34]/15">
+                  <Award className="w-3.5 h-3.5 text-[#5f7560]" />
+                  <span>{compactStudentTag}</span>
+                </span>
+              )}
+            </div>
           </div>
-        </div>
 
-
-
-        {/* Left Column Content: Greeting, Headline, Subtitle, Actions */}
-        <div className="relative z-10 space-y-4 max-w-xl">
-          <div>
-            <p className="text-sm font-medium text-text-dim">{greeting}</p>
-            <h2 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-              {firstName} 👋
-            </h2>
-          </div>
-
-          <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-text leading-[1.08]">
-            Same campus. <br />
-            Bigger <span className="italic font-serif text-[var(--accent)]">possibilities.</span>
-          </h1>
-
-          <p className="text-sm sm:text-base text-text-dim font-medium">
-             Learning.  Building.  Growing.
-          </p>
-
-          {/* Quick Identity Pills */}
-          <div className="pt-2 flex flex-wrap items-center gap-2.5">
+          {/* Quick Actions */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
             <button
               type="button"
               onClick={() => setShowPassModal(true)}
-              className="group inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/30 bg-white px-3.5 py-1.5 text-xs font-semibold text-text shadow-2xs hover:bg-[var(--accent-soft)]/50 hover:border-[var(--accent)] transition cursor-pointer"
+              className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <QrCode className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <QrCode className="w-4 h-4" />
               <span>Digital Pass</span>
-              <span className="font-mono text-[11px] font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-1.5 py-0.5 rounded">
-                {studentElevatesId}
-              </span>
             </button>
-
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-white border border-border/80 text-text-dim shadow-2xs">
-              <Building2 className="w-3.5 h-3.5 text-text-mute" />
-              <span>{chapter.college || chapter.name}</span>
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }}
+              className="h-9 px-3.5 rounded-[8px] bg-[#2d2d34] hover:bg-[#1f1f24] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#f26430]" />
+              <span>Events</span>
+            </button>
+            <Link href={`/chapter/${slug}/clusters`}>
+              <button
+                type="button"
+                className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Layers className="w-3.5 h-3.5 text-[#414066]" />
+                <span>Clusters</span>
+              </button>
+            </Link>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── 2. STUDENT STATUS & SHORTCUTS ───────────────────────────────── */}
-      <div className="rounded-2xl border border-border/80 bg-white shadow-2xs overflow-hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60">
-          {/* Segment 1: Digital Pass */}
-          <button
-            type="button"
-            onClick={() => setShowPassModal(true)}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-[var(--accent)]/10 group-hover:text-[var(--accent)] transition-colors">
-              <QrCode className="w-4 h-4" />
+      {/* ── 2. STUDENT STATUS & SHORTCUTS (4 TACTILE BLOCKS) ───────────── */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Shortcut 01: Digital Pass */}
+        <button
+          type="button"
+          onClick={() => setShowPassModal(true)}
+          className="group text-left relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider flex items-center gap-1">
+              01 // DIGITAL PASS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <QrCode className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim flex items-center gap-1.5 leading-none mb-1">
-                <span>Digital Pass</span>
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" title="Active pass" />
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-[var(--accent)] transition-colors font-mono">
-                {studentElevatesId} <span className="font-sans font-normal text-text-mute text-[11px]">· View pass</span>
-              </p>
-            </div>
-          </button>
+          </div>
+          <p className="mt-2 font-mono text-sm font-bold text-[#2d2d34] truncate">
+            {studentElevatesId}
+          </p>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span>Active pass · View QR</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </button>
 
-          {/* Segment 2: Active Project */}
-          <Link
-            href={`/chapter/${slug}/projects`}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
-              <Layers className="w-4 h-4" />
+        {/* Shortcut 02: Active Project */}
+        <Link
+          href={`/chapter/${slug}/projects`}
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              02 // PROJECTS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Layers className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                {activeProject ? "Active Project" : "Campus Projects"}
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
-                {activeProject ? (
-                  <span>
-                    {activeProject.title}{" "}
-                    <span className="text-[11px] font-normal text-text-mute capitalize">({activeProject.stage})</span>
-                  </span>
-                ) : (
-                  <span>{chapter.projectCount || 4} projects · Browse</span>
-                )}
-              </p>
-            </div>
-          </Link>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {activeProject ? activeProject.title : `${chapter.projectCount || 4} Active Labs`}
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>{activeProject ? `Stage: ${activeProject.stage}` : "Browse campus repos"}</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </Link>
 
-          {/* Segment 3: Events & Passes */}
-          <button
-            type="button"
-            onClick={() => {
-              if (myRegistrations.length > 0) {
-                setShowPassModal(true);
-              } else {
-                eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-              }
-            }}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
-              <Ticket className="w-4 h-4" />
+        {/* Shortcut 03: Events & Passes */}
+        <button
+          type="button"
+          onClick={() => {
+            if (myRegistrations.length > 0) {
+              setShowPassModal(true);
+            } else {
+              eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+          }}
+          className="group text-left relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              03 // MY PASSES
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Ticket className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                {myRegistrations.length > 0 ? "My Passes" : "Events"}
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
-                {nextRegisteredEvent ? (
-                  <span>{nextRegisteredEvent.title} · Registered</span>
-                ) : myRegistrations.length > 0 ? (
-                  <span>{myRegistrations.length} pass{myRegistrations.length > 1 ? "es" : ""} ready</span>
-                ) : (
-                  <span>{upcomingEvents.length} upcoming events</span>
-                )}
-              </p>
-            </div>
-          </button>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {nextRegisteredEvent ? nextRegisteredEvent.title : `${myRegistrations.length} Passes Ready`}
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>{nextRegisteredEvent ? "Registered pass ready" : `${upcomingEvents.length} events open`}</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </button>
 
-          {/* Segment 4: Campus Standing */}
-          <Link
-            href={`/chapter/${slug}/clusters`}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
-              <Award className="w-4 h-4" />
+        {/* Shortcut 04: Verified Student Standing */}
+        <Link
+          href={`/chapter/${slug}/clusters`}
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              04 // VERIFIED STATUS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Award className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1 flex items-center gap-1">
-                <span>Verified Student</span>
-                <Check className="w-3 h-3 text-emerald-600 stroke-[2.5]" />
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
-                {myClusters.length > 0 ? `${myClusters[0].name} · ${compactStudentTag}` : compactStudentTag}
-              </p>
-            </div>
-          </Link>
-        </div>
-      </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {myClusters.length > 0 ? myClusters[0].name : "Student Member"}
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <Check className="w-3 h-3 text-[#5f7560] stroke-[2.5]" />
+            <span className="truncate">{compactStudentTag}</span>
+          </div>
+        </Link>
+      </section>
 
-      {/* ── 3. UPCOMING EVENTS (HORIZONTAL SIDE-SCROLL) ──────────────────────── */}
-      <section className="space-y-3.5">
+      {/* ── 3. UPCOMING SESSIONS & LABS (SIDE-SCROLL) ────────────────────────── */}
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-            Upcoming Events
-          </h2>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#f26430]" />
+              01 // UPCOMING SESSIONS & LABS
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {eventsToDisplay.length}
+            </span>
+          </div>
+          <Link
+            href={`/chapter/${slug}/events`}
+            className="font-mono text-[11px] font-bold text-[#f26430] hover:underline flex items-center gap-1 uppercase tracking-wider"
+          >
+            <span>View all</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
         {eventsToDisplay.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-8 text-center bg-white">
-            <Calendar className="w-8 h-8 mx-auto text-text-mute mb-2" />
-            <p className="text-sm font-semibold text-text">No upcoming events scheduled right now</p>
-            <p className="text-xs text-text-dim mt-1">Check back soon for workshops, hackathons, and tech talks!</p>
+          <div className="rounded-[14px] border border-dashed border-[#2d2d34]/20 p-8 text-center bg-white shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <Calendar className="w-8 h-8 mx-auto text-[#71717a] mb-2 opacity-60" />
+            <p className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+              NO UPCOMING SESSIONS SCHEDULED
+            </p>
+            <p className="text-xs text-[#71717a] mt-1">
+              Check back soon for workshops, hackathons, and symposiums!
+            </p>
           </div>
         ) : (
           <div className="relative group/carousel">
@@ -621,132 +665,161 @@ export function StudentChapterView({
               <button
                 type="button"
                 onClick={() => scrollSection(eventsScrollRef, "left")}
-                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Previous events"
               >
-                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             {eventsScrollState.canRight && (
               <button
                 type="button"
                 onClick={() => scrollSection(eventsScrollRef, "right")}
-                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Next events"
               >
-                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             )}
 
             <div
               ref={eventsScrollRef}
-              className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              className="flex gap-4 overflow-x-auto pt-1 pb-4 px-0.5 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
-            {eventsToDisplay.map((ev) => {
-              const isRegistered = myRegisteredEventIds.has(ev.id);
-              const ongoing = isEventOngoing(ev);
-              const coverImg = getEventCover(ev);
+              {eventsToDisplay.map((ev) => {
+                const isRegistered = myRegisteredEventIds.has(ev.id);
+                const ongoing = isEventOngoing(ev);
+                const coverImg = getEventCover(ev);
+                const eventDate = new Date(ev.startsAt);
+                const month = !isNaN(eventDate.getTime())
+                  ? eventDate.toLocaleString("en-US", { month: "short" }).toUpperCase()
+                  : "DATE";
+                const day = !isNaN(eventDate.getTime()) ? eventDate.getDate() : "--";
+                const time = !isNaN(eventDate.getTime())
+                  ? eventDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+                  : "";
 
-              return (
-                <div
-                  key={ev.id}
-                  className="w-[295px] sm:w-[325px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group"
-                >
-                  <div>
-                    {/* Event Cover / Visual Banner */}
-                    <div className="relative aspect-[16/9] w-full bg-neutral-900 overflow-hidden">
-                      <img
-                        src={coverImg}
-                        alt={ev.title}
-                        className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+                return (
+                  <div
+                    key={ev.id}
+                    className="w-[305px] sm:w-[330px] shrink-0 rounded-[12px] border border-[#2d2d34]/20 bg-white overflow-hidden shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex flex-col justify-between group"
+                  >
+                    <div>
+                      {/* Left-Right Split Event Card */}
+                      <div className="flex h-[135px]">
+                        {/* Poster Column */}
+                        <div className="w-[105px] sm:w-[115px] shrink-0 relative overflow-hidden bg-[#faf9f6] border-r border-[#2d2d34]/15">
+                          <img
+                            src={coverImg}
+                            alt={ev.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
 
-                      {/* Overlaid Badges */}
-                      <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full bg-white/95 text-text backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-white/60">
-                          {ev.category || "Workshop"}
-                        </span>
-                        {ongoing ? (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white animate-pulse shadow-[0_4px_12px_rgba(242,100,48,0.4)]">
-                            Happening Now
-                          </span>
-                        ) : isRegistered ? (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500 text-white shadow-[0_4px_12px_rgba(16,185,129,0.35)]">
-                            Registered
-                          </span>
-                        ) : null}
-                      </div>
+                          {/* Date stamp in poster */}
+                          <div className="absolute top-2 left-2 bg-[#2d2d34] text-white px-1.5 py-0.5 rounded-[4px] font-mono text-[9px] font-bold text-center border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]">
+                            <div>{month}</div>
+                            <div className="text-xs font-black leading-none">{day}</div>
+                          </div>
 
-                      {/* Overlaid Title on bottom of cover */}
-                      <div className="absolute bottom-3 left-3 right-3">
-                        <p className="font-[family-name:var(--font-display)] text-base font-bold text-white line-clamp-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                          {ev.title}
-                        </p>
+                          {ongoing ? (
+                            <span className="absolute bottom-2 left-2 right-2 text-center text-[8.5px] font-mono font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-[#f26430] text-white">
+                              LIVE NOW
+                            </span>
+                          ) : isRegistered ? (
+                            <span className="absolute bottom-2 left-2 right-2 text-center text-[8.5px] font-mono font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-[#5f7560] text-white">
+                              REGISTERED
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Content Column */}
+                        <div className="p-3 flex-1 flex flex-col justify-between min-w-0">
+                          <div>
+                            <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 inline-block">
+                              {ev.category || "Workshop"}
+                            </span>
+
+                            <Link href={`/chapter/${slug}/events/${ev.id}`} className="block mt-1 group/title">
+                              <h3 className="font-[family-name:var(--font-display)] text-xs sm:text-[13px] font-bold text-[#2d2d34] tracking-tight leading-snug line-clamp-2 group-hover/title:text-[#f26430] transition-colors">
+                                {ev.title}
+                              </h3>
+                            </Link>
+                          </div>
+
+                          <div className="space-y-1 text-[10px] font-mono text-[#71717a] pt-1">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-[#f26430] shrink-0" />
+                              <span className="truncate">{time || formatDateTime(ev.startsAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-[#414066] shrink-0" />
+                              <span className="truncate max-w-[130px]">{ev.venue || chapter.college || chapter.name}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Event Meta Details */}
-                    <div className="p-4 space-y-2">
-                      <div className="flex items-center gap-2 text-xs text-text-dim">
-                        <Clock className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                        <span className="truncate">{formatDateTime(ev.startsAt)}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-text-dim">
-                        <MapPin className="w-3.5 h-3.5 text-text-mute shrink-0" />
-                        <span className="truncate">{ev.venue || chapter.college || chapter.name}</span>
-                      </div>
+                    {/* Bottom Action Footer */}
+                    <div className="p-2 border-t border-[#2d2d34]/15 bg-[#faf9f6] flex items-center justify-between gap-2">
+                      {isRegistered ? (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEventForModal(ev)}
+                          className="h-7 px-2.5 rounded-[6px] bg-[#5f7560] hover:bg-[#4d604e] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex-1 flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <QrCode className="w-3 h-3" />
+                          <span>Show Pass</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEventForModal(ev)}
+                          className="h-7 px-2.5 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex-1 flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Ticket className="w-3 h-3" />
+                          <span>Register</span>
+                        </button>
+                      )}
+                      <Link href={`/chapter/${slug}/events/${ev.id}`}>
+                        <button
+                          type="button"
+                          className="h-7 px-2.5 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Details</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </Link>
                     </div>
                   </div>
-
-                  {/* Action Bar */}
-                  <div className="px-4 pb-4 pt-2 flex items-center justify-between gap-2 border-t border-border/60 bg-gradient-to-b from-white to-neutral-50/50">
-                    {isRegistered ? (
-                      <Button
-                        size="sm"
-                        variant="orange"
-                        className="h-8.5 text-xs font-semibold flex-1 flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(242,100,48,0.3)] hover:shadow-[0_6px_18px_rgba(242,100,48,0.45)] active:translate-y-0.5 transition-all cursor-pointer"
-                        onClick={() => setSelectedEventForModal(ev)}
-                      >
-                        <QrCode className="w-3.5 h-3.5" />
-                        <span>Show Pass</span>
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="orange"
-                        className="h-8.5 text-xs font-semibold flex-1 flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(242,100,48,0.3)] hover:shadow-[0_6px_18px_rgba(242,100,48,0.45)] active:translate-y-0.5 transition-all cursor-pointer"
-                        onClick={() => setSelectedEventForModal(ev)}
-                      >
-                        <Ticket className="w-3.5 h-3.5" />
-                        <span>Register</span>
-                      </Button>
-                    )}
-                    <Link href={`/chapter/${slug}/events/${ev.id}`}>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8.5 text-xs font-semibold px-3.5 bg-white border border-border/80 hover:bg-neutral-50 hover:border-neutral-300 shadow-2xs active:translate-y-0.5 transition-all cursor-pointer"
-                      >
-                        Details
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </section>
 
-      {/* ── 4. YOUR LEARNING / CLUSTERS (HORIZONTAL SIDE-SCROLL, HIDDEN IF NO CLUSTERS) ─ */}
+      {/* ── 4. INTEREST CLUSTERS / DOMAIN TRACKS (SIDE-SCROLL) ─────────────── */}
       {chapterClusters.length > 0 && (
-        <section className="space-y-3.5">
+        <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-              Your Learning
-            </h2>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-[#414066]" />
+                02 // DOMAIN INTEREST CLUSTERS
+              </span>
+              <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+                {chapterClusters.length}
+              </span>
+            </div>
+            <Link
+              href={`/chapter/${slug}/clusters`}
+              className="font-mono text-[11px] font-bold text-[#414066] hover:underline flex items-center gap-1 uppercase tracking-wider"
+            >
+              <span>View all</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
 
           <div className="relative group/carousel">
@@ -754,119 +827,119 @@ export function StudentChapterView({
               <button
                 type="button"
                 onClick={() => scrollSection(clustersScrollRef, "left")}
-                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Previous clusters"
               >
-                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             {clustersScrollState.canRight && (
               <button
                 type="button"
                 onClick={() => scrollSection(clustersScrollRef, "right")}
-                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Next clusters"
               >
-                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             )}
 
             <div
               ref={clustersScrollRef}
-              className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              className="flex gap-4 overflow-x-auto pt-1 pb-4 px-0.5 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
-            {chapterClusters.map((cluster) => {
-              const theme = getClusterTheme(cluster.name, cluster.slug);
-              const isJoined = cluster.memberIds.includes(session.userId) || cluster.leaderId === session.userId;
+              {chapterClusters.map((cluster) => {
+                const theme = getClusterTheme(cluster.name, cluster.slug);
+                const isJoined = cluster.memberIds.includes(session.userId) || cluster.leaderId === session.userId;
 
-              return (
-                <div
-                  key={cluster.id}
-                  className="w-[270px] sm:w-[300px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white p-5 shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={cn(
-                          "text-[10px] font-bold px-2.5 py-1 rounded-md border tracking-wide",
-                          theme.badgeColor,
-                        )}
-                      >
-                        {theme.category}
-                      </span>
-                      {isJoined && (
-                        <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <Check className="w-3 h-3" />
-                          Enrolled
+                return (
+                  <div
+                    key={cluster.id}
+                    className="w-[270px] sm:w-[295px] shrink-0 rounded-[12px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex flex-col justify-between group"
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span
+                          className={cn(
+                            "font-mono text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border",
+                            theme.badgeColor,
+                          )}
+                        >
+                          {theme.category}
                         </span>
+                        {isJoined && (
+                          <span className="flex items-center gap-1 font-mono text-[9px] font-bold text-[#5f7560] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 uppercase">
+                            <Check className="w-2.5 h-2.5" />
+                            Enrolled
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h3 className="font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] group-hover:text-[#f26430] transition-colors">
+                          {cluster.name}
+                        </h3>
+                        <p className="text-xs text-[#71717a] mt-1 line-clamp-2 leading-relaxed">
+                          {cluster.description || `${cluster.memberIds.length} campus builders collaborating on open source & domain projects.`}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 font-mono text-[10.5px] text-[#71717a]">
+                        <Users className="w-3.5 h-3.5 text-[#414066]" />
+                        <span>{cluster.memberIds.length} builders enrolled</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3.5 mt-3 border-t border-[#2d2d34]/15 flex items-center justify-between">
+                      {isJoined ? (
+                        <Link
+                          href={`/chapter/${slug}/clusters`}
+                          className="font-mono text-xs font-bold text-[#f26430] hover:underline inline-flex items-center justify-between w-full uppercase tracking-wider"
+                        >
+                          <span>Open Track</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={joiningClusterId === cluster.id}
+                          onClick={() => handleJoinCluster(cluster)}
+                          className="w-full h-8 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:shadow-[1.5px_1.5px_0px_#2d2d34] transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                        >
+                          {!isDiscordConnected ? (
+                            <>
+                              <DiscordIcon className="w-3.5 h-3.5 text-[#5865F2]" />
+                              <span>Link Discord to Join</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="w-3.5 h-3.5 text-[#f26430]" />
+                              <span>Join Track</span>
+                            </>
+                          )}
+                        </button>
                       )}
                     </div>
-
-                    <div>
-                      <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-text group-hover:text-[var(--accent)] transition-colors">
-                        {cluster.name}
-                      </h3>
-                      <p className="text-xs text-text-dim mt-1 line-clamp-2 leading-relaxed">
-                        {cluster.description || `${cluster.memberIds.length} campus builders collaborating on open source & domain projects.`}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-[11px] text-text-mute">
-                      <Users className="w-3.5 h-3.5" />
-                      <span>{cluster.memberIds.length} builders enrolled</span>
-                    </div>
                   </div>
-
-                  <div className="pt-4 border-t border-border/50 flex items-center justify-between">
-                    {isJoined ? (
-                      <Link
-                        href={`/chapter/${slug}/clusters`}
-                        className="text-xs font-semibold text-[var(--accent)] hover:underline inline-flex items-center gap-1 w-full justify-between"
-                      >
-                        <span>Open Track</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className={cn(
-                          "h-8 text-xs font-semibold w-full",
-                          !isDiscordConnected
-                            ? "text-[#5865F2] hover:bg-[#5865F2]/10"
-                            : "text-[var(--accent)] hover:bg-[var(--accent-soft)]",
-                        )}
-                        disabled={joiningClusterId === cluster.id}
-                        onClick={() => handleJoinCluster(cluster)}
-                      >
-                        {!isDiscordConnected ? (
-                          <>
-                            <DiscordIcon className="w-3.5 h-3.5 mr-1" />
-                            Link to Join
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="w-3.5 h-3.5 mr-1" />
-                            Join Track
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
         </section>
       )}
 
-      {/* ── 5. EXPLORE CHAPTERS (CURRENT CHAPTERS NETWORK) ────────────────────── */}
-      <section className="space-y-3.5">
+      {/* ── 5. CAMPUS NETWORK (OTHER CHAPTERS) ─────────────────────────────── */}
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-            Explore Chapters
-          </h2>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-[#2d2d34]" />
+              03 // CAMPUS NETWORK
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {networkChapters.length}
+            </span>
+          </div>
         </div>
 
         <div className="relative group/carousel">
@@ -874,129 +947,129 @@ export function StudentChapterView({
             <button
               type="button"
               onClick={() => scrollSection(chaptersScrollRef, "left")}
-              className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
               aria-label="Previous chapters"
             >
-              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
           )}
           {chaptersScrollState.canRight && (
             <button
               type="button"
               onClick={() => scrollSection(chaptersScrollRef, "right")}
-              className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
               aria-label="Next chapters"
             >
-              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           )}
 
           <div
             ref={chaptersScrollRef}
-            className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            className="flex gap-4 overflow-x-auto pt-1 pb-4 px-0.5 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
-          {networkChapters.map((ch) => {
-            const cover = getChapterCover(ch);
-            const isCurrentChapter = ch.slug === slug || ch.id === chapter.id;
-            const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
+            {networkChapters.map((ch) => {
+              const cover = getChapterCover(ch);
+              const isCurrentChapter = ch.slug === slug || ch.id === chapter.id;
+              const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
 
-            const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
-            const targetChapterId = realCh?.id || ch.id;
+              const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+              const targetChapterId = realCh?.id || ch.id;
 
-            const chOpenEvents = store.events.filter((e: EventItem) => {
-              const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
-              if (!isMatch) return false;
-              const isNotEnded = !isEventEnded(e);
-              const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
-              const isPublished = e.status !== "draft" && e.status !== "cancelled";
-              return isNotEnded && isOngoingOrUpcoming && isPublished;
-            });
+              const chOpenEvents = store.events.filter((e: EventItem) => {
+                const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+                if (!isMatch) return false;
+                const isNotEnded = !isEventEnded(e);
+                const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+                const isPublished = e.status !== "draft" && e.status !== "cancelled";
+                return isNotEnded && isOngoingOrUpcoming && isPublished;
+              });
 
-            return (
-              <div
-                key={ch.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleChapterClick(ch)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleChapterClick(ch);
-                  }
-                }}
-                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer text-left select-none"
-              >
-                {/* Top Campus Photo */}
-                <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
-                  <img
-                    src={cover}
-                    alt={ch.name}
-                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                  {isCurrentChapter && (
-                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white shadow-[0_4px_12px_rgba(242,100,48,0.4)]">
-                      Your Campus
-                    </span>
-                  )}
-                  {chOpenEvents.length > 0 && !isCurrentChapter && (
-                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
-                      {chOpenEvents.length} open
-                    </span>
-                  )}
-                </div>
-
-                {/* Chapter Details & Arrow */}
-                <div className="p-4 flex items-center justify-between gap-2 border-t border-border/50 bg-gradient-to-b from-white to-neutral-50/40">
-                  <div className="min-w-0">
-                    <h3 className="font-[family-name:var(--font-display)] text-sm font-bold text-text truncate group-hover:text-[var(--accent)] transition-colors">
-                      {ch.name}
-                    </h3>
-                    <p className="text-[11px] text-text-dim mt-0.5">
-                      {memCount} members {chOpenEvents.length === 0 ? "· No open events" : ""}
-                    </p>
+              return (
+                <div
+                  key={ch.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleChapterClick(ch)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleChapterClick(ch);
+                    }
+                  }}
+                  className="w-[250px] sm:w-[275px] shrink-0 rounded-[12px] border border-[#2d2d34]/20 bg-white overflow-hidden shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex flex-col justify-between group cursor-pointer text-left select-none"
+                >
+                  {/* Campus Cover Photo */}
+                  <div className="relative h-28 w-full bg-neutral-900 overflow-hidden">
+                    <img
+                      src={cover}
+                      alt={ch.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    {isCurrentChapter && (
+                      <span className="absolute top-2 right-2 font-mono text-[9px] font-bold px-2 py-0.5 rounded bg-[#f26430] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34]">
+                        YOUR CAMPUS
+                      </span>
+                    )}
+                    {chOpenEvents.length > 0 && !isCurrentChapter && (
+                      <span className="absolute top-2 right-2 font-mono text-[9px] font-bold px-2 py-0.5 rounded bg-[#5f7560] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34]">
+                        {chOpenEvents.length} OPEN SESSIONS
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-border/80 shadow-xs text-text-mute group-hover:bg-[var(--accent)] group-hover:text-white group-hover:border-[var(--accent)] group-hover:shadow-[0_4px_12px_rgba(242,100,48,0.35)] transition-all">
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  {/* Campus Details */}
+                  <div className="p-3 border-t border-[#2d2d34]/15 bg-[#faf9f6] flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-[family-name:var(--font-display)] text-xs font-bold text-[#2d2d34] truncate group-hover:text-[#f26430] transition-colors">
+                        {ch.name}
+                      </h3>
+                      <p className="font-mono text-[10px] text-[#71717a] mt-0.5 truncate">
+                        {memCount} members {chOpenEvents.length === 0 ? "· No open sessions" : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-white border border-[#2d2d34]/20 shadow-[1px_1px_0px_#2d2d34] text-[#2d2d34] group-hover:bg-[#f26430] group-hover:text-white transition-all">
+                      <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
       </section>
 
-      {/* ── 5. STUDENT DIGITAL PASS MODAL ───────────────────────────────────── */}
+      {/* ── 6. STUDENT DIGITAL PASS MODAL ───────────────────────────────────── */}
       <Dialog
         open={showPassModal}
         onClose={() => setShowPassModal(false)}
         title="Elevates Campus Digital Pass"
-        className="max-w-md p-0 overflow-hidden"
+        className="max-w-md p-0 overflow-hidden rounded-[16px] border border-[#2d2d34] shadow-[4px_4px_0px_#2d2d34]"
       >
-        <div className="bg-gradient-to-b from-neutral-900 to-neutral-950 text-white p-6 rounded-t-xl text-center relative overflow-hidden">
+        <div className="bg-[#2d2d34] text-white p-5 text-center relative overflow-hidden border-b border-[#2d2d34]">
           {/* Subtle background glow */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 -mt-12 h-32 w-32 rounded-full bg-[var(--accent)]/30 blur-2xl pointer-events-none" />
+          <div className="absolute top-0 right-0 h-32 w-32 rounded-full bg-[#f26430]/15 blur-2xl pointer-events-none" />
 
           {/* Close button */}
           <button
             type="button"
             onClick={() => setShowPassModal(false)}
-            className="absolute top-4 right-4 text-white/60 hover:text-white transition"
+            className="absolute top-3.5 right-3.5 text-white/60 hover:text-white transition p-1 cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
 
           <div className="relative">
-            <span className="font-mono text-[10px] font-bold tracking-widest text-[var(--accent)] uppercase bg-[var(--accent)]/15 px-2.5 py-0.5 rounded-full border border-[var(--accent)]/30">
+            <span className="font-mono text-[9px] font-bold tracking-widest text-white uppercase bg-[#f26430] px-2.5 py-0.5 rounded border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]">
               {chapterElevatesId} · CAMPUS MEMBER
             </span>
 
-            <h3 className="font-[family-name:var(--font-display)] text-xl font-extrabold mt-3 tracking-tight">
+            <h3 className="font-[family-name:var(--font-display)] text-lg font-black mt-2.5 tracking-tight">
               {studentName}
             </h3>
-            <p className="text-xs text-white/70 mt-0.5">
+            <p className="font-mono text-[11px] text-white/70 mt-0.5">
               {studentTagline}
             </p>
             <p className="text-[11px] text-white/50 mt-0.5">
@@ -1007,10 +1080,10 @@ export function StudentChapterView({
 
         {/* QR Code Presentation Box */}
         <div className="p-6 bg-white text-center space-y-4">
-          <div className="inline-block p-4 rounded-2xl bg-white border border-border shadow-xs">
+          <div className="inline-block p-4 rounded-[12px] bg-white border border-[#2d2d34]/20 shadow-[2px_2px_0px_#2d2d34]">
             <QRCode
               value={studentElevatesId}
-              size={180}
+              size={170}
               bgColor="#ffffff"
               fgColor="#2d2d34"
               level="H"
@@ -1019,51 +1092,51 @@ export function StudentChapterView({
 
           <div>
             <div className="flex items-center justify-center gap-2">
-              <span className="font-mono text-base font-extrabold text-text">
+              <span className="font-mono text-base font-black text-[#2d2d34]">
                 {studentElevatesId}
               </span>
               <button
                 type="button"
                 onClick={handleCopyId}
-                className="text-text-mute hover:text-text transition p-1"
+                className="text-[#71717a] hover:text-[#2d2d34] transition p-1 cursor-pointer"
                 title="Copy ID"
               >
                 {copiedId ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-xs text-text-dim mt-1.5 max-w-xs mx-auto leading-relaxed">
-              Show this QR code to chapter volunteers or coordinators at event entrances for instant attendance verification.
+            <p className="text-xs text-[#71717a] mt-1 max-w-xs mx-auto leading-relaxed">
+              Show this QR code at campus check-in desks for instant attendance verification.
             </p>
           </div>
 
-          <div className="pt-2 flex items-center justify-center gap-3">
+          <div className="pt-2 flex items-center justify-center gap-2.5">
             <Link href="/my-qr" onClick={() => setShowPassModal(false)}>
-              <Button variant="secondary" size="sm" className="text-xs font-semibold">
-                Event Passes & Tickets
-              </Button>
+              <button
+                type="button"
+                className="h-8 px-3.5 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] cursor-pointer"
+              >
+                Passes & Tickets
+              </button>
             </Link>
-            <Button
-              variant="orange"
-              size="sm"
-              className="text-xs font-semibold"
+            <button
+              type="button"
+              className="h-8 px-4 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] cursor-pointer"
               onClick={() => setShowPassModal(false)}
             >
               Done
-            </Button>
+            </button>
           </div>
         </div>
       </Dialog>
 
-      {/* ── 6. EVENT REGISTRATION / TICKET DIALOG ───────────────────────────── */}
+      {/* ── 7. EVENT REGISTRATION / TICKET DIALOG ───────────────────────────── */}
       {selectedEventForModal && (
         <EventRegistrationDialog
-          open={!!selectedEventForModal}
+          open={Boolean(selectedEventForModal)}
           onClose={() => setSelectedEventForModal(null)}
           event={selectedEventForModal}
         />
       )}
-
-
     </div>
   );
 }

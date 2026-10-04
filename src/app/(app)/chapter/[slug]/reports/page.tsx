@@ -9,19 +9,17 @@ import {
   FileText,
   MessageSquare,
   Sparkles,
-  Star,
-  ThumbsDown,
   ThumbsUp,
   Users,
+  Plus,
+  Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isFacultyRole, resolveChapter } from "@/lib/access";
+import { isFacultyRole, resolveChapter } from "@/lib/access";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import { compressImageFile, downloadReportDocx } from "@/lib/reports/docx-export";
@@ -306,75 +304,216 @@ export default function ChapterReportsPage({
     flashMsg(forCollege ? "Downloaded for college" : "Downloaded .docx");
   }
 
+  const chapterCode = (chapter.shortCode || chapter.slug).toUpperCase();
+
   return (
-    <div>
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title="Reports"
-        description={
-          isFaculty
-            ? "Review submissions, approve chapter reports, and download formatted Word documents for college administration."
-            : "Write Word-like reports, auto-generate from events with attendance ratios and reviews, submit to Faculty Coordinator, and download .docx."
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {flash ? (
-              <span className="self-center text-[12px] text-[var(--accent)] font-medium">
+    <div className="space-y-6 pb-12">
+      {/* ── 1. ARCHITECTURAL HERO BANNER ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                DOCUMENT DISPATCH // {chapterCode}
+              </span>
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {chapter.name}
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl md:text-4xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              Official Chapter Reports
+            </h1>
+
+            <p className="mt-2 text-sm text-[#71717a] leading-relaxed max-w-xl">
+              {isFaculty
+                ? "Review submissions, approve chapter reports, and download formatted Word documents for college administration."
+                : "Rich-text authoring, auto-generate from events with attendance ratios and reviews, submit to Faculty Coordinator, and export .docx."}
+            </p>
+          </div>
+
+          {/* Quick Header Actions */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
+            {flash && (
+              <span className="font-mono text-xs font-bold text-[#f26430] self-center">
                 {flash}
               </span>
-            ) : null}
-            {canCreateReport && !isFaculty ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {isExecOrHq ? (
-                  <Button variant="ghost" onClick={handleNewManual}>
-                    Blank manual report
-                  </Button>
-                ) : null}
-                <Button variant="orange" onClick={() => setWizardOpen(true)}>
-                  New report
-                </Button>
-              </div>
-            ) : null}
+            )}
+            {canCreateReport && !isFaculty && (
+              <>
+                {isExecOrHq && (
+                  <button
+                    type="button"
+                    onClick={handleNewManual}
+                    className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer"
+                  >
+                    Blank Report
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setWizardOpen(true)}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>New Report</span>
+                </button>
+              </>
+            )}
           </div>
-        }
-      />
+        </div>
+      </section>
 
-      <TerminalPanel
-        title="report.library"
-        meta={`${reports.length} report${reports.length === 1 ? "" : "s"}`}
-      >
-        {isFaculty ? (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5 border-b border-border pb-3">
-            <Button
-              variant={facultyFilter === "all" ? "primary" : "ghost"}
-              className="h-7 text-[12px]"
-              onClick={() => setFacultyFilter("all")}
-            >
-              All Submissions
-            </Button>
-            <Button
-              variant={facultyFilter === "pending" ? "primary" : "ghost"}
-              className="h-7 text-[12px]"
-              onClick={() => setFacultyFilter("pending")}
-            >
-              Pending Review {pendingCount > 0 ? `(${pendingCount})` : ""}
-            </Button>
-            <Button
-              variant={facultyFilter === "approved" ? "primary" : "ghost"}
-              className="h-7 text-[12px]"
-              onClick={() => setFacultyFilter("approved")}
-            >
-              Approved {approvedCount > 0 ? `(${approvedCount})` : ""}
-            </Button>
-            <Button
-              variant={facultyFilter === "rejected" ? "primary" : "ghost"}
-              className="h-7 text-[12px]"
-              onClick={() => setFacultyFilter("rejected")}
-            >
-              Rejected
-            </Button>
+      {/* ── 2. 4-METRIC STRIP ───────────────────────────────────────────── */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Metric 01: Total Reports */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              01 // TOTAL REPORTS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#2d2d34] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <FileText className="w-3.5 h-3.5" />
+            </div>
           </div>
-        ) : null}
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {reports.length}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Archived document filings
+          </p>
+        </div>
+
+        {/* Metric 02: Pending Review */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              02 // PENDING AUDIT
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Sparkles className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {pendingCount}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Awaiting coordinator sign-off
+          </p>
+        </div>
+
+        {/* Metric 03: Approved Archives */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              03 // APPROVED ARCHIVES
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#5f7560]">
+            {approvedCount}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Institutionally certified
+          </p>
+        </div>
+
+        {/* Metric 04: Format Export */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              04 // EXPORT FORMAT
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Download className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            DOCX
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Standard Word package
+          </p>
+        </div>
+      </section>
+
+      {/* ── 3. REPORT LIBRARY PANEL ────────────────────────────────────── */}
+      <section className="rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 shadow-[2px_2px_0px_#2d2d34]">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#2d2d34]/15 pb-4 mb-4">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#f26430]" />
+            <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+              DOCUMENT ARCHIVE & LOGS
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {reports.length}
+            </span>
+          </div>
+
+          {isFaculty && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                className={`h-7 px-2.5 rounded-[5px] font-mono text-[11px] font-bold uppercase tracking-wider border cursor-pointer ${
+                  facultyFilter === "all"
+                    ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                    : "bg-white text-[#2d2d34] border-[#2d2d34]/20 hover:bg-[#faf9f6]"
+                }`}
+                onClick={() => setFacultyFilter("all")}
+              >
+                All Submissions
+              </button>
+              <button
+                type="button"
+                className={`h-7 px-2.5 rounded-[5px] font-mono text-[11px] font-bold uppercase tracking-wider border cursor-pointer ${
+                  facultyFilter === "pending"
+                    ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                    : "bg-white text-[#2d2d34] border-[#2d2d34]/20 hover:bg-[#faf9f6]"
+                }`}
+                onClick={() => setFacultyFilter("pending")}
+              >
+                Pending {pendingCount > 0 ? `(${pendingCount})` : ""}
+              </button>
+              <button
+                type="button"
+                className={`h-7 px-2.5 rounded-[5px] font-mono text-[11px] font-bold uppercase tracking-wider border cursor-pointer ${
+                  facultyFilter === "approved"
+                    ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                    : "bg-white text-[#2d2d34] border-[#2d2d34]/20 hover:bg-[#faf9f6]"
+                }`}
+                onClick={() => setFacultyFilter("approved")}
+              >
+                Approved {approvedCount > 0 ? `(${approvedCount})` : ""}
+              </button>
+              <button
+                type="button"
+                className={`h-7 px-2.5 rounded-[5px] font-mono text-[11px] font-bold uppercase tracking-wider border cursor-pointer ${
+                  facultyFilter === "rejected"
+                    ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                    : "bg-white text-[#2d2d34] border-[#2d2d34]/20 hover:bg-[#faf9f6]"
+                }`}
+                onClick={() => setFacultyFilter("rejected")}
+              >
+                Rejected
+              </button>
+            </div>
+          )}
+        </div>
         {!reports.length ? (
           <div className="py-8 text-center">
             <p className="text-[13px] text-text-dim">
@@ -499,7 +638,7 @@ export default function ChapterReportsPage({
             })}
           </ul>
         )}
-      </TerminalPanel>
+      </section>
 
       {/* Interactive Event Selection & Report Generation Modal */}
       <Dialog

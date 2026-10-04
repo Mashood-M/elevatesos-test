@@ -3,7 +3,6 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus, UserPlus, Users, Search, Check } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,17 +41,14 @@ export default function ClusterDetailPage({
   const [inviteUserId, setInviteUserId] = useState("");
   const [flash, setFlash] = useState("");
   const [discordGateOpen, setDiscordGateOpen] = useState(false);
-  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-  const [studentModalSearch, setStudentModalSearch] = useState("");
-
-  useEffect(() => {
+  const [showAddMemberModal, setShowAddMemberModal] = useState(() => {
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get("addMember") === "true" || urlParams.get("addStudent") === "true") {
-        setShowAddMemberModal(true);
-      }
+      return urlParams.get("addMember") === "true" || urlParams.get("addStudent") === "true";
     }
-  }, []);
+    return false;
+  });
+  const [studentModalSearch, setStudentModalSearch] = useState("");
 
   const currentUserProfile = store.profiles.find((p) => p.id === session.userId);
   const isDiscordConnected = Boolean(
@@ -83,7 +79,7 @@ export default function ClusterDetailPage({
         .filter((ur) => ur.chapterId === chapter?.id || (chapter?.slug && ur.chapterId === chapter.slug))
         .map((ur) => ur.userId)
     );
-  }, [store.userRoles, chapter?.id, chapter?.slug]);
+  }, [store.userRoles, chapter]);
 
   const chapterStudents = useMemo(() => {
     if (!chapter) return [];
@@ -181,35 +177,117 @@ export default function ClusterDetailPage({
   const projects = store.projects.filter((p) => p.clusterId === cluster.id);
 
   return (
-    <div>
-      <PageHeader
-        title={cluster.name}
-        description={cluster.description}
-        actions={
-          <div className="flex flex-wrap gap-2">
+    <div className="space-y-6">
+      {/* ARCHITECTURAL HERO BANNER */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} {cluster.slug.toUpperCase()}
+              </span>
+              <span className="font-mono text-[10.5px] font-bold text-[#71717a] uppercase tracking-wider">
+                TECHNICAL GUILD SPEC
+              </span>
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+              {cluster.name}
+            </h1>
+            <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+              {cluster.description || "Specialized learning and build track for campus builders."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link href={`/chapter/${slug}/clusters`}>
-              <Button variant="ghost">All clusters</Button>
+              <button
+                type="button"
+                className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-[#faf9f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer"
+              >
+                ← All Tracks
+              </button>
             </Link>
+
             {!isMember ? (
               (cluster.accessMode ?? "invite") === "open" ? (
-                <Button
-                  variant="orange"
+                <button
+                  type="button"
                   onClick={handleJoinCluster}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] transition-all cursor-pointer"
                 >
-                  Join cluster
-                </Button>
+                  Join Track
+                </button>
               ) : null
             ) : (
-              <Button
-                variant="ghost"
+              <button
+                type="button"
                 onClick={() => leaveCluster(cluster.id, session.userId)}
+                className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-rose-50 text-rose-600 font-mono text-[11px] font-bold uppercase tracking-wider border border-rose-200 shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer"
               >
-                Leave
-              </Button>
+                Leave Track
+              </button>
             )}
           </div>
-        }
-      />
+        </div>
+      </section>
+
+      {/* 4-METRIC STRIP */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>01 // ENROLLED BUILDERS</span>
+            <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {cluster.memberIds.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Active Guild Cohort</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>02 // ACCESS PROTOCOL</span>
+            <span className="h-2 w-2 rounded-full bg-[#414066]" />
+          </div>
+          <p className="mt-1 font-mono text-lg font-black text-[#2d2d34] uppercase">
+            {cluster.accessMode ?? "invite"}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Enrollment Mode</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>03 // TRACK PROJECTS</span>
+            <span className="h-2 w-2 rounded-full bg-[#5f7560]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {projects.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Incubating Initiatives</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>04 // TRACK LEAD</span>
+            <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
+          </div>
+          <p className="mt-1 font-mono text-xs font-bold text-[#2d2d34] truncate">
+            {store.profiles.find((p) => p.id === cluster.leaderId)?.fullName || "Vacant / Open"}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Technical Director</p>
+        </div>
+      </section>
 
       {flash ? (
         <div

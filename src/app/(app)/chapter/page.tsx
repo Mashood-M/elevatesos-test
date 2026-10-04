@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Dialog } from "@/components/ui/dialog";
 import { useCurrentUser, useStore, showToast } from "@/context/store-context";
 import { isOpenToAllEvent, isEventVisibleToUser, isEventOngoing, isEventEnded } from "@/lib/events";
 import { isHqRole } from "@/lib/permissions";
@@ -25,6 +23,7 @@ import {
   Key,
   ChevronLeft,
   ChevronRight,
+  ArrowUpRight,
 } from "lucide-react";
 
 const DEFAULT_CHAPTER_IMAGES: Record<string, string> = {
@@ -129,7 +128,6 @@ export default function ChapterIndexPage() {
       showToast(`No open events currently at ${ch.name}`, "info");
     }
   };
-
 
   useEffect(() => {
     if (!hydrated) return;
@@ -256,165 +254,219 @@ export default function ChapterIndexPage() {
   }
 
   return (
-    <div className="space-y-7">
-      {/* ── 1. STUDENT IDENTITY HERO ───────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-[24px] border border-border/70 bg-gradient-to-br from-white via-[#faf9f6] to-[#f4f1ea] p-6 sm:p-8 md:p-10 shadow-xs">
-        {/* Background Campus Photo with seamless blend from right to left */}
+    <div className="space-y-6 pb-12">
+      {/* ── 1. STUDENT IDENTITY ARCHITECTURAL HERO ───────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
         <div
-          className="absolute top-0 right-0 bottom-0 w-full sm:w-3/5 lg:w-[55%] pointer-events-none overflow-hidden select-none z-0"
-          style={{
-            maskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
-            WebkitMaskImage: "linear-gradient(to left, rgba(0,0,0,1) 25%, rgba(0,0,0,0.45) 70%, rgba(0,0,0,0) 100%)",
-          }}
-        >
-          <img
-            src="https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop&q=80"
-            alt="Campus Architecture"
-            className="w-full h-full object-cover object-center"
-          />
-          {/* Subtle gradient overlays to match hero card canvas */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#faf9f6] via-transparent to-black/15" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent hidden sm:block" />
-          <div className="absolute bottom-4 right-6 text-right hidden sm:block">
-            <p className="text-xs font-bold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] tracking-wide">Elevates Network</p>
-            <p className="text-[10px] text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] font-medium">Campus Innovation Ecosystem</p>
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-2 right-36 h-16 w-16 bg-[#f59e0b] opacity-12 rounded-full pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS NETWORK // INDEPENDENT HUB
+              </span>
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {networkChapters.length} University Chapters
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl md:text-4xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              {greeting} {firstName}.
+              <span className="block text-[#f26430] text-xl sm:text-2xl md:text-3xl font-bold mt-0.5">
+                Same Campus. Exponential Reach.
+              </span>
+            </h1>
+
+            {/* Subtitle */}
+            <p className="mt-2 text-xs sm:text-[13px] font-medium text-[#52525b] leading-relaxed max-w-xl">
+              Connect to your university innovation chapter, join peer tracks, or register for open-to-all cross-campus hackathons and symposiums.
+            </p>
+
+            {/* Status Pills */}
+            <div className="mt-3.5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsJoinModalOpen(true)}
+                className="group inline-flex items-center gap-1.5 rounded-[6px] border border-[#2d2d34] bg-white px-2.5 py-1 text-xs font-mono font-bold text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:shadow-[1.5px_1.5px_0px_#2d2d34] hover:bg-[#faf9f6] transition cursor-pointer"
+              >
+                <Key className="w-3.5 h-3.5 text-[#f26430]" />
+                <span>Join with Code</span>
+              </button>
+
+              <span className="inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 text-xs font-mono text-[#52525b] bg-[#faf9f6] border border-[#2d2d34]/15">
+                <Building2 className="w-3.5 h-3.5 text-[#414066]" />
+                <span>Independent Explorer</span>
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Top Floating Quote Pill */}
-        <div className="relative z-10 flex justify-end mb-2 sm:mb-1">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border/80 bg-white/90 backdrop-blur-md px-3.5 py-1.5 shadow-2xs text-xs text-text-dim max-w-sm">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)] font-bold text-[10px]">
-              💡
-            </span>
-            <span className="truncate">Ideas turn into impact when you find the right people.</span>
-            <ArrowRight className="w-3 h-3 text-text-mute shrink-0" />
-          </div>
-        </div>
-
-        {/* Left Column Content: Greeting, Headline, Subtitle, Actions */}
-        <div className="relative z-10 space-y-4 max-w-xl">
-          <div>
-            <p className="text-sm font-medium text-text-dim">{greeting}</p>
-            <h2 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-              {firstName} 👋
-            </h2>
-          </div>
-
-          <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-text leading-[1.08]">
-            Same campus. <br />
-            Bigger <span className="italic font-serif text-[var(--accent)]">possibilities.</span>
-          </h1>
-
-          <p className="text-sm sm:text-base text-text-dim font-medium">
-            Keep learning. Keep building. Keep growing.
-          </p>
-
-          {/* Quick Actions & Independent Badge */}
-          <div className="pt-2 flex flex-wrap items-center gap-2.5">
-            <Button
-              variant="orange"
-              size="sm"
-              className="rounded-full px-4 h-9 text-xs font-semibold shadow-2xs flex items-center gap-2 cursor-pointer"
+          {/* Quick Actions */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
+            <button
+              type="button"
               onClick={() => setIsJoinModalOpen(true)}
+              className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <Key className="w-3.5 h-3.5" />
-              <span>Join Chapter with Code</span>
-            </Button>
-
-            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium bg-white border border-border/80 text-text-dim shadow-2xs">
-              <Building2 className="w-3.5 h-3.5 text-text-mute" />
-              <span>Independent Student</span>
-            </span>
+              <Key className="w-4 h-4" />
+              <span>Join Chapter</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }}
+              className="h-9 px-3.5 rounded-[8px] bg-[#2d2d34] hover:bg-[#1f1f24] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Calendar className="w-3.5 h-3.5 text-[#f26430]" />
+              <span>Browse Events</span>
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── 2. STUDENT STATUS & SHORTCUTS ───────────────────────────────── */}
-      <div className="rounded-2xl border border-border/80 bg-white shadow-2xs overflow-hidden">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-border/60">
-          {/* Segment 1: Join Chapter / Access */}
-          <button
-            type="button"
-            onClick={() => setIsJoinModalOpen(true)}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
-          >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-[var(--accent)]/10 group-hover:text-[var(--accent)] transition-colors">
-              <Key className="w-4 h-4" />
+      {/* ── 2. STUDENT STATUS & SHORTCUTS (4 TACTILE BLOCKS) ───────────── */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* Shortcut 01: Join Chapter */}
+        <button
+          type="button"
+          onClick={() => setIsJoinModalOpen(true)}
+          className="group text-left relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              01 // CHAPTER ACCESS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Key className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                Campus Chapter
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-[var(--accent)] transition-colors">
-                Join with invite code <span className="text-[11px] font-normal text-text-mute">· Enter</span>
-              </p>
-            </div>
-          </button>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            Join Campus Chapter
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>Enter invite code</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </button>
 
-          {/* Segment 2: Active Projects */}
+        {/* Shortcut 02: Projects */}
+        <Link
+          href="/events"
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              02 // PROJECTS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Layers className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {store.projects.length || 12} Projects Active
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>Explore open source repos</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </Link>
+
+        {/* Shortcut 03: Open Events */}
+        <button
+          type="button"
+          onClick={() => {
+            eventsScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }}
+          className="group text-left relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              03 // OPEN SESSIONS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Calendar className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {openEvents.length} Sessions Open
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>Open-to-all registrations</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </button>
+
+        {/* Shortcut 04: Campus Network */}
+        <button
+          type="button"
+          onClick={() => {
+            chaptersScrollRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }}
+          className="group text-left relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all cursor-pointer"
+        >
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              04 // CAMPUS NETWORK
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Compass className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-sm font-bold text-[#2d2d34] truncate">
+            {networkChapters.length} Chapters
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
+            <span>Explore ecosystem</span>
+            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+          </div>
+        </button>
+      </section>
+
+      {/* ── 3. UPCOMING OPEN EVENTS (SIDE-SCROLL) ─────────────────────────── */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-[#f26430]" />
+              01 // UPCOMING OPEN SESSIONS
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {openEvents.length}
+            </span>
+          </div>
           <Link
             href="/events"
-            className="flex items-center gap-3 px-4 py-3 hover:bg-neutral-50/70 transition text-left cursor-pointer group"
+            className="font-mono text-[11px] font-bold text-[#f26430] hover:underline flex items-center gap-1 uppercase tracking-wider"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 group-hover:bg-neutral-200/80 transition-colors">
-              <Layers className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                Active Projects
-              </p>
-              <p className="text-xs font-semibold text-text truncate group-hover:text-text-dim transition-colors">
-                {store.projects.length || 12} projects active <span className="text-[11px] font-normal text-text-mute">· Browse</span>
-              </p>
-            </div>
+            <span>View all</span>
+            <ChevronRight className="w-3.5 h-3.5" />
           </Link>
-
-          {/* Segment 3: Open Events */}
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
-              <Calendar className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                Upcoming Events
-              </p>
-              <p className="text-xs font-semibold text-text truncate">
-                {openEvents.length} open for registration
-              </p>
-            </div>
-          </div>
-
-          {/* Segment 4: Campus Network */}
-          <div className="flex items-center gap-3 px-4 py-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
-              <Compass className="w-4 h-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-medium text-text-dim leading-none mb-1">
-                Campus Network
-              </p>
-              <p className="text-xs font-semibold text-text truncate">
-                {networkChapters.length} college chapters
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 3. UPCOMING OPEN EVENTS (HORIZONTAL SIDE-SCROLL) ─────────────────── */}
-      <section className="space-y-3.5">
-        <div className="flex items-center justify-between">
-          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-            Upcoming Events
-          </h2>
         </div>
 
         {openEvents.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-8 text-center bg-white">
-            <Calendar className="w-8 h-8 mx-auto text-text-mute mb-2" />
-            <p className="text-sm font-semibold text-text">No open-to-all events scheduled right now</p>
-            <p className="text-xs text-text-dim mt-1">Check back soon for workshops, hackathons, and tech talks!</p>
+          <div className="rounded-[14px] border border-dashed border-[#2d2d34]/20 p-8 text-center bg-white shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <Calendar className="w-8 h-8 mx-auto text-[#71717a] mb-2 opacity-60" />
+            <p className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+              NO OPEN SESSIONS SCHEDULED RIGHT NOW
+            </p>
+            <p className="text-xs text-[#71717a] mt-1">
+              Check back soon for cross-campus hackathons, workshops, and tech talks!
+            </p>
           </div>
         ) : (
           <div className="relative group/carousel">
@@ -422,99 +474,119 @@ export default function ChapterIndexPage() {
               <button
                 type="button"
                 onClick={() => scrollSection(eventsScrollRef, "left")}
-                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Previous events"
               >
-                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             {eventsScrollState.canRight && (
               <button
                 type="button"
                 onClick={() => scrollSection(eventsScrollRef, "right")}
-                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+                className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
                 aria-label="Next events"
               >
-                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             )}
 
             <div
               ref={eventsScrollRef}
-              className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+              className="flex gap-4 overflow-x-auto pt-1 pb-4 px-0.5 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             >
               {openEvents.map((ev) => {
                 const ongoing = isEventOngoing(ev);
                 const coverImg = getEventCover(ev);
                 const evChapter = store.chapters.find((c) => c.id === ev.chapterId);
+                const eventDate = new Date(ev.startsAt);
+                const month = !isNaN(eventDate.getTime())
+                  ? eventDate.toLocaleString("en-US", { month: "short" }).toUpperCase()
+                  : "DATE";
+                const day = !isNaN(eventDate.getTime()) ? eventDate.getDate() : "--";
+                const time = !isNaN(eventDate.getTime())
+                  ? eventDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })
+                  : "";
 
                 return (
                   <div
                     key={ev.id}
-                    className="w-[295px] sm:w-[325px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group"
+                    className="w-[305px] sm:w-[330px] shrink-0 rounded-[12px] border border-[#2d2d34]/20 bg-white overflow-hidden shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex flex-col justify-between group"
                   >
                     <div>
-                      {/* Event Cover / Visual Banner */}
-                      <div className="relative aspect-[16/9] w-full bg-neutral-900 overflow-hidden">
-                        <img
-                          src={coverImg}
-                          alt={ev.title}
-                          className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
+                      {/* Left-Right Split Event Card */}
+                      <div className="flex h-[135px]">
+                        {/* Poster Column */}
+                        <div className="w-[105px] sm:w-[115px] shrink-0 relative overflow-hidden bg-[#faf9f6] border-r border-[#2d2d34]/15">
+                          <img
+                            src={coverImg}
+                            alt={ev.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
 
-                        {/* Overlaid Badges */}
-                        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold tracking-wider uppercase px-2.5 py-1 rounded-full bg-white/95 text-text backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.15)] border border-white/60">
-                            {ev.category || "Open Session"}
-                          </span>
+                          {/* Date stamp */}
+                          <div className="absolute top-2 left-2 bg-[#2d2d34] text-white px-1.5 py-0.5 rounded-[4px] font-mono text-[9px] font-bold text-center border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]">
+                            <div>{month}</div>
+                            <div className="text-xs font-black leading-none">{day}</div>
+                          </div>
+
                           {ongoing && (
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-[var(--accent)] text-white animate-pulse shadow-[0_4px_12px_rgba(242,100,48,0.4)]">
-                              Happening Now
+                            <span className="absolute bottom-2 left-2 right-2 text-center text-[8.5px] font-mono font-bold uppercase tracking-wider px-1 py-0.5 rounded bg-[#f26430] text-white">
+                              LIVE NOW
                             </span>
                           )}
                         </div>
 
-                        {/* Overlaid Title on bottom of cover */}
-                        <div className="absolute bottom-3 left-3 right-3">
-                          <p className="font-[family-name:var(--font-display)] text-base font-bold text-white line-clamp-1 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
-                            {ev.title}
-                          </p>
-                        </div>
-                      </div>
+                        {/* Content Column */}
+                        <div className="p-3 flex-1 flex flex-col justify-between min-w-0">
+                          <div>
+                            <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 inline-block">
+                              {ev.category || "Open Session"}
+                            </span>
 
-                      {/* Event Meta Details */}
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-center gap-2 text-xs text-text-dim">
-                          <Clock className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
-                          <span className="truncate">{formatDateTime(ev.startsAt)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-text-dim">
-                          <MapPin className="w-3.5 h-3.5 text-text-mute shrink-0" />
-                          <span className="truncate">{ev.venue || evChapter?.name || "Campus Venue"}</span>
+                            <Link
+                              href={evChapter ? `/chapter/${evChapter.slug}/events/${ev.id}` : `/events`}
+                              className="block mt-1 group/title"
+                            >
+                              <h3 className="font-[family-name:var(--font-display)] text-xs sm:text-[13px] font-bold text-[#2d2d34] tracking-tight leading-snug line-clamp-2 group-hover/title:text-[#f26430] transition-colors">
+                                {ev.title}
+                              </h3>
+                            </Link>
+                          </div>
+
+                          <div className="space-y-1 text-[10px] font-mono text-[#71717a] pt-1">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-[#f26430] shrink-0" />
+                              <span className="truncate">{time || formatDateTime(ev.startsAt)}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-[#414066] shrink-0" />
+                              <span className="truncate max-w-[130px]">{ev.venue || evChapter?.name || "Campus Venue"}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Action Bar */}
-                    <div className="px-4 pb-4 pt-2 flex items-center justify-between gap-2 border-t border-border/60 bg-gradient-to-b from-white to-neutral-50/50">
-                      <Button
-                        size="sm"
-                        variant="orange"
-                        className="h-8.5 text-xs font-semibold flex-1 flex items-center justify-center gap-1.5 shadow-[0_4px_12px_rgba(242,100,48,0.3)] hover:shadow-[0_6px_18px_rgba(242,100,48,0.45)] active:translate-y-0.5 transition-all cursor-pointer"
+                    {/* Bottom Action Footer */}
+                    <div className="p-2 border-t border-[#2d2d34]/15 bg-[#faf9f6] flex items-center justify-between gap-2">
+                      <button
+                        type="button"
                         onClick={() => setSelectedEventForReg(ev)}
+                        className="h-7 px-2.5 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex-1 flex items-center justify-center gap-1 cursor-pointer"
                       >
-                        <Ticket className="w-3.5 h-3.5" />
+                        <Ticket className="w-3 h-3" />
                         <span>Register</span>
-                      </Button>
+                      </button>
                       <Link href={evChapter ? `/chapter/${evChapter.slug}/events/${ev.id}` : `/events`}>
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-8.5 text-xs font-semibold px-3.5 bg-white border border-border/80 hover:bg-neutral-50 hover:border-neutral-300 shadow-2xs active:translate-y-0.5 transition-all cursor-pointer"
+                        <button
+                          type="button"
+                          className="h-7 px-2.5 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex items-center gap-1 cursor-pointer"
                         >
-                          Details
-                        </Button>
+                          <span>Details</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
                       </Link>
                     </div>
                   </div>
@@ -526,18 +598,24 @@ export default function ChapterIndexPage() {
       </section>
 
       {/* ── 4. EXPLORE CHAPTERS (CURRENT CHAPTERS NETWORK) ────────────────────── */}
-      <section className="space-y-3.5">
+      <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-            Explore Chapters
-          </h2>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+              <Building2 className="w-3.5 h-3.5 text-[#2d2d34]" />
+              02 // CAMPUS NETWORK
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {networkChapters.length}
+            </span>
+          </div>
           <button
             type="button"
             onClick={() => setIsJoinModalOpen(true)}
-            className="text-xs font-semibold text-[var(--accent)] hover:underline inline-flex items-center gap-1 group"
+            className="font-mono text-[11px] font-bold text-[#f26430] hover:underline inline-flex items-center gap-1 uppercase tracking-wider cursor-pointer"
           >
             <span>Join with Code</span>
-            <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -546,91 +624,91 @@ export default function ChapterIndexPage() {
             <button
               type="button"
               onClick={() => scrollSection(chaptersScrollRef, "left")}
-              className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              className="absolute left-0 sm:-left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
               aria-label="Previous chapters"
             >
-              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
           )}
           {chaptersScrollState.canRight && (
             <button
               type="button"
               onClick={() => scrollSection(chaptersScrollRef, "right")}
-              className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-black/10 bg-white/95 backdrop-blur-md hover:bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.15)] flex items-center justify-center transition-all hover:scale-110 active:scale-95 hover:border-[var(--accent)] cursor-pointer"
+              className="absolute right-0 sm:-right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-[8px] border border-[#2d2d34] bg-white text-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:translate-x-0.5 flex items-center justify-center transition-all cursor-pointer"
               aria-label="Next chapters"
             >
-              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-text" />
+              <ChevronRight className="w-4 h-4" />
             </button>
           )}
 
           <div
             ref={chaptersScrollRef}
-            className="flex gap-4 sm:gap-5 overflow-x-auto pt-2 pb-6 px-1 sm:px-2 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            className="flex gap-4 overflow-x-auto pt-1 pb-4 px-0.5 no-scrollbar [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
           >
-          {networkChapters.map((ch) => {
-            const cover = getChapterCover(ch);
-            const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
+            {networkChapters.map((ch) => {
+              const cover = getChapterCover(ch);
+              const memCount = store.profiles.filter((p) => p.chapterId === ch.id).length || ch.memberCount || 240;
 
-            const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
-            const targetChapterId = realCh?.id || ch.id;
+              const realCh = store.chapters.find((c) => c.slug === ch.slug || c.id === ch.id);
+              const targetChapterId = realCh?.id || ch.id;
 
-            const chOpenEvents = store.events.filter((e: EventItem) => {
-              const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
-              if (!isMatch) return false;
-              const isNotEnded = !isEventEnded(e);
-              const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
-              const isPublished = e.status !== "draft" && e.status !== "cancelled";
-              return isNotEnded && isOngoingOrUpcoming && isPublished;
-            });
+              const chOpenEvents = store.events.filter((e: EventItem) => {
+                const isMatch = e.chapterId === targetChapterId || e.chapterId === ch.id;
+                if (!isMatch) return false;
+                const isNotEnded = !isEventEnded(e);
+                const isOngoingOrUpcoming = isEventOngoing(e) || new Date(e.startsAt).getTime() >= Date.now();
+                const isPublished = e.status !== "draft" && e.status !== "cancelled";
+                return isNotEnded && isOngoingOrUpcoming && isPublished;
+              });
 
-            return (
-              <div
-                key={ch.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => handleChapterClick(ch)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleChapterClick(ch);
-                  }
-                }}
-                className="w-[250px] sm:w-[280px] shrink-0 rounded-[22px] border border-black/[0.08] bg-white overflow-hidden shadow-[0_10px_25px_-5px_rgba(0,0,0,0.06),0_8px_10px_-6px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.16),0_10px_20px_-8px_rgba(242,100,48,0.18)] hover:-translate-y-2 hover:border-[var(--accent)]/35 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] flex flex-col justify-between group cursor-pointer text-left select-none"
-              >
-                {/* Top Campus Photo */}
-                <div className="relative h-32 w-full bg-neutral-900 overflow-hidden">
-                  <img
-                    src={cover}
-                    alt={ch.name}
-                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                  {chOpenEvents.length > 0 && (
-                    <span className="absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
-                      {chOpenEvents.length} open
-                    </span>
-                  )}
-                </div>
-
-                {/* Chapter Details & Arrow */}
-                <div className="p-4 flex items-center justify-between gap-2 border-t border-border/50 bg-gradient-to-b from-white to-neutral-50/40">
-                  <div className="min-w-0">
-                    <h3 className="font-[family-name:var(--font-display)] text-sm font-bold text-text truncate group-hover:text-[var(--accent)] transition-colors">
-                      {ch.name}
-                    </h3>
-                    <p className="text-[11px] text-text-dim mt-0.5">
-                      {memCount} members {chOpenEvents.length === 0 ? "· No open events" : ""}
-                    </p>
+              return (
+                <div
+                  key={ch.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleChapterClick(ch)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleChapterClick(ch);
+                    }
+                  }}
+                  className="w-[250px] sm:w-[275px] shrink-0 rounded-[12px] border border-[#2d2d34]/20 bg-white overflow-hidden shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all flex flex-col justify-between group cursor-pointer text-left select-none"
+                >
+                  {/* Campus Photo */}
+                  <div className="relative h-28 w-full bg-neutral-900 overflow-hidden">
+                    <img
+                      src={cover}
+                      alt={ch.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    {chOpenEvents.length > 0 && (
+                      <span className="absolute top-2 right-2 font-mono text-[9px] font-bold px-2 py-0.5 rounded bg-[#5f7560] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34]">
+                        {chOpenEvents.length} OPEN SESSIONS
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white border border-border/80 shadow-xs text-text-mute group-hover:bg-[var(--accent)] group-hover:text-white group-hover:border-[var(--accent)] group-hover:shadow-[0_4px_12px_rgba(242,100,48,0.35)] transition-all">
-                    <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                  {/* Chapter Details */}
+                  <div className="p-3 border-t border-[#2d2d34]/15 bg-[#faf9f6] flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-[family-name:var(--font-display)] text-xs font-bold text-[#2d2d34] truncate group-hover:text-[#f26430] transition-colors">
+                        {ch.name}
+                      </h3>
+                      <p className="font-mono text-[10px] text-[#71717a] mt-0.5 truncate">
+                        {memCount} members {chOpenEvents.length === 0 ? "· No open sessions" : ""}
+                      </p>
+                    </div>
+
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] bg-white border border-[#2d2d34]/20 shadow-[1px_1px_0px_#2d2d34] text-[#2d2d34] group-hover:bg-[#f26430] group-hover:text-white transition-all">
+                      <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -645,8 +723,6 @@ export default function ChapterIndexPage() {
         onClose={() => setSelectedEventForReg(null)}
         event={selectedEventForReg}
       />
-
-
     </div>
   );
 }

@@ -1,38 +1,24 @@
 "use client";
 
-import { use, useState, useMemo, useEffect } from "react";
-import Link from "next/link";
+import { use, useState, useMemo, useSyncExternalStore } from "react";
 import {
   Plus,
   Edit3,
-  ExternalLink,
   Trash2,
   Search,
-  Code2,
-  CheckCircle2,
   Folder,
-  Kanban,
   List,
-  Check,
   X,
   ArrowRight,
   ArrowLeft,
-  CircleDot,
-  Play,
-  CheckCheck,
-  GripVertical,
-  Users,
   LayoutGrid,
   Sparkles,
   ChevronDown,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow, isExecutiveRole } from "@/lib/access";
+import { isExecutiveRole } from "@/lib/access";
 import { isCampusLead, isSuperAdmin } from "@/lib/permissions";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
@@ -132,12 +118,12 @@ export default function ChapterProjectsPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const { slug } = use(params);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   const { store, createProject, updateProject, deleteProject } = useStore();
   const { session } = useCurrentUser();
   const chapter = findChapterBySlugOrId(store.chapters, slug);
@@ -181,7 +167,7 @@ export default function ChapterProjectsPage({
   const chapterProjects = useMemo(() => {
     if (!chapter) return [];
     return (store.projects || []).filter((p) => p.chapterId === chapter.id);
-  }, [store.projects, chapter?.id]);
+  }, [store.projects, chapter]);
 
   const chapterClusters = useMemo(() => {
     if (!chapter) return [];
@@ -197,7 +183,7 @@ export default function ChapterProjectsPage({
         }
         return true;
       });
-  }, [store.clusters, chapter?.id]);
+  }, [store.clusters, chapter]);
 
   // Partition into Projects and Tasks
   // A task has "project_id:..." in awards. A project is a top-level folder/project.
@@ -350,7 +336,7 @@ export default function ChapterProjectsPage({
         title,
         description: projectDescription.trim(),
         clusterId: projectClusterId || undefined,
-        priority: projectPriority.toLowerCase() as any,
+        priority: projectPriority.toLowerCase() as Project["priority"],
         repositoryUrl: projectRepoUrl.trim() || undefined,
         demoUrl: projectDemoUrl.trim() || undefined,
       });
@@ -368,7 +354,7 @@ export default function ChapterProjectsPage({
         teamIds: session.userId ? [session.userId] : [],
         progress: 0,
         awards: [`priority:${projectPriority}`],
-        priority: projectPriority.toLowerCase() as any,
+        priority: projectPriority.toLowerCase() as Project["priority"],
         repositoryUrl: projectRepoUrl.trim() || undefined,
         demoUrl: projectDemoUrl.trim() || undefined,
         isShowcased: true,
@@ -411,7 +397,7 @@ export default function ChapterProjectsPage({
         `priority:${taskPriority}`,
         `code:${prefix}-${num}`,
       ],
-      priority: taskPriority.toLowerCase() as any,
+      priority: taskPriority.toLowerCase() as Project["priority"],
       isShowcased: true,
       createdAt: new Date().toISOString(),
     };
@@ -480,61 +466,52 @@ export default function ChapterProjectsPage({
 
   return (
     <div className="space-y-6">
-      {/* 1. CANONICAL PAGE HEADER */}
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title={activeProject ? activeProject.title : "Projects & Sprints"}
-        description={
-          activeProject
-            ? activeProject.description
-            : "Manage chapter software development, student hackathon projects, and sprint milestones."
-        }
-        badge={
-          activeProject ? (
-            <div className="flex items-center gap-2">
-              <Badge tone="cyan">
-                {chapterClusters.find((c) => c.id === activeProject.clusterId)?.name || "Engineering"}
-              </Badge>
-              <span className={cn("text-[10px] font-bold px-2.5 py-0.5 rounded-full border", priorityStyles[getPriority(activeProject)].bg, priorityStyles[getPriority(activeProject)].border)}>
-                {getPriority(activeProject)} Priority
-              </span>
+      {/* 1. ARCHITECTURAL HERO BANNER */}
+      {!activeProject ? (
+        <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+          <div
+            className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+            aria-hidden="true"
+          />
+
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+            <div className="max-w-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                  CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} PROJECT PIPELINE
+                </span>
+                <span className="font-mono text-[10.5px] font-bold text-[#71717a] uppercase tracking-wider">
+                  INCUBATION &amp; SPRINTS
+                </span>
+              </div>
+
+              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+                Software Projects &amp; Sprints.
+              </h1>
+              <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+                Campus software initiatives, hackathon prototypes, open source engineering tooling, and agile sprint milestones.
+              </p>
             </div>
-          ) : undefined
-        }
-        actions={
-          activeProject ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => setSelectedProjectId(null)}
-                className="gap-1.5 border border-border/70 hover:bg-bg-panel text-xs sm:text-sm"
-              >
-                <ArrowLeft size={14} /> All Projects
-              </Button>
-              {canManage && (
-                <Button
-                  variant="orange"
-                  onClick={() => setIsNewTaskOpen(true)}
-                  className="gap-1.5 text-xs sm:text-sm shadow-sm font-semibold"
-                >
-                  <Plus size={14} /> Add Task
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
+
+            <div className="flex flex-wrap items-center gap-2.5">
               {canManage && topLevelProjects.length === 0 && (
-                <Button
-                  variant="ghost"
+                <button
+                  type="button"
                   onClick={handleSeedSamples}
-                  className="gap-1.5 border border-border/70 hover:bg-bg-panel text-xs sm:text-sm"
+                  className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <Sparkles size={14} className="text-[var(--accent)]" /> Add Sample Projects
-                </Button>
+                  <Sparkles size={13} className="text-[#f26430]" />
+                  Add Sample Projects
+                </button>
               )}
               {canManage && (
-                <Button
-                  variant="orange"
+                <button
+                  type="button"
                   onClick={() => {
                     setEditingProject(null);
                     setProjectTitle("");
@@ -545,63 +522,167 @@ export default function ChapterProjectsPage({
                     setProjectDemoUrl("");
                     setIsNewProjectOpen(true);
                   }}
-                  className="gap-1.5 text-xs sm:text-sm shadow-sm font-bold"
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <Plus size={14} /> New Project
-                </Button>
+                  <Plus size={14} />
+                  New Project
+                </button>
               )}
             </div>
-          )
-        }
-      />
+          </div>
+        </section>
+      ) : (
+        /* SPRINT BOARD HERO */
+        <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+            <div className="max-w-xl">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                  SPRINT BOARD {"//"} {getCodeTag(activeProject)}
+                </span>
+                <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-[4px] bg-[#414066]/10 text-[#414066] border border-[#414066]/30">
+                  {chapterClusters.find((c) => c.id === activeProject.clusterId)?.name || "Engineering"}
+                </span>
+                <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-[4px] bg-[#f59e0b]/10 text-[#b45309] border border-[#f59e0b]/40">
+                  {getPriority(activeProject)} Priority
+                </span>
+              </div>
+
+              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+                {activeProject.title}
+              </h1>
+              <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+                {activeProject.description || "Active engineering sprint roadmap and task board."}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedProjectId(null)}
+                className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <ArrowLeft size={13} />
+                All Projects
+              </button>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setIsNewTaskOpen(true)}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Plus size={14} />
+                  Add Task
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* 2. STATS SUMMARY STRIP */}
       {!activeProject ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat
-            label="Total Projects"
-            value={topLevelProjects.length}
-            hint="Active chapter initiatives"
-          />
-          <Stat
-            label="Sprint Tasks"
-            value={totalTasksCount}
-            hint="Milestones being tracked"
-          />
-          <Stat
-            label="Completion"
-            value={`${overallRate}%`}
-            hint={`${completedTasksCount} tasks delivered`}
-          />
-          <Stat
-            label="Contributors"
-            value={contributorIds.size}
-            hint="Students & chapter leads"
-          />
-        </div>
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>01 // TOTAL PROJECTS</span>
+              <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {topLevelProjects.length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Active Initiatives</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>02 // SPRINT TASKS</span>
+              <span className="h-2 w-2 rounded-[2px] bg-[#414066]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#414066]">
+              {totalTasksCount}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Tracked Milestones</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>03 // COMPLETION RATE</span>
+              <span className="h-2 w-2 bg-[#5f7560] rotate-45" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#5f7560]">
+              {overallRate}%
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">{completedTasksCount} Delivered</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>04 // CONTRIBUTORS</span>
+              <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {contributorIds.size}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Active Builders</p>
+          </div>
+        </section>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat
-            label="Total Tasks"
-            value={activeProjectTasks.length}
-            hint="Milestones in sprint"
-          />
-          <Stat
-            label="In Progress"
-            value={activeProjectTasks.filter((t) => t.stage === "building").length}
-            hint="Currently being built"
-          />
-          <Stat
-            label="Delivered"
-            value={activeProjectTasks.filter((t) => t.stage === "showcase" || t.stage === "demo").length}
-            hint="Shipped to campus"
-          />
-          <Stat
-            label="Completion"
-            value={`${activeProjectTasks.length > 0 ? Math.round((activeProjectTasks.filter((t) => t.stage === "showcase" || t.stage === "demo").length / activeProjectTasks.length) * 100) : 0}%`}
-            hint="Board progress rate"
-          />
-        </div>
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>01 // SPRINT TASKS</span>
+              <span className="h-2 w-2 rounded-full bg-[#2d2d34]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {activeProjectTasks.length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Board Items</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>02 // IN PROGRESS</span>
+              <span className="h-2 w-2 rounded-[2px] bg-[#f59e0b]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#b45309]">
+              {activeProjectTasks.filter((t) => t.stage === "building").length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Currently Building</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>03 // SHIPPED</span>
+              <span className="h-2 w-2 bg-[#5f7560] rotate-45" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#5f7560]">
+              {activeProjectTasks.filter((t) => t.stage === "showcase" || t.stage === "demo").length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Done &amp; Delivered</p>
+          </div>
+
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>04 // VELOCITY</span>
+              <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#f26430]">
+              {activeProjectTasks.length > 0
+                ? Math.round(
+                    (activeProjectTasks.filter(
+                      (t) => t.stage === "showcase" || t.stage === "demo",
+                    ).length /
+                      activeProjectTasks.length) *
+                      100,
+                  )
+                : 0}
+              %
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Completion Rate</p>
+          </div>
+        </section>
       )}
 
       {/* ===================================================================== */}
@@ -609,84 +690,95 @@ export default function ChapterProjectsPage({
       {/* ===================================================================== */}
       {!activeProject ? (
         <div className="space-y-4">
-          {/* Toolbar: Search and View Switcher aligned together on the Right */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5">
-            {/* Search Box */}
-            <div className="relative w-full sm:w-72 lg:w-80">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-dim" size={15} />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search projects..."
-                className="w-full h-9.5 pl-9 pr-8 rounded-full border border-border/80 bg-white text-xs sm:text-sm text-text placeholder:text-text-mute shadow-2xs focus:border-[var(--accent)] focus:bg-white focus:ring-2 focus:ring-[var(--accent)]/15 focus:outline-none transition-all"
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => setSearch("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-1"
-                >
-                  <X size={14} />
-                </button>
-              )}
+          {/* Toolbar: Search and View Switcher */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-[12px] border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-[#2d2d34]">
+                CATALOG VIEW
+              </span>
+              <span className="font-mono text-[10px] text-[#71717a]">
+                {"//"} {filteredProjects.length} INITIATIVES
+              </span>
             </div>
 
-            {/* View Switcher */}
-            <div className="flex items-center rounded-xl border border-border/80 bg-neutral-100/70 p-0.5 shrink-0 self-end sm:self-auto shadow-2xs">
-              <button
-                type="button"
-                onClick={() => setViewMode("grid")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all font-semibold",
-                  viewMode === "grid"
-                    ? "bg-white text-text shadow-2xs font-bold"
-                    : "text-text-dim hover:text-text",
+            <div className="flex items-center gap-2.5">
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#71717a]" size={13} />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search projects..."
+                  className="w-full h-8 pl-8 pr-7 rounded-[6px] bg-[#faf9f6] border border-[#2d2d34]/20 font-mono text-[11px] text-[#2d2d34] focus:outline-none focus:border-[#f26430]"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#2d2d34]"
+                  >
+                    <X size={12} />
+                  </button>
                 )}
-                title="Grid view"
-              >
-                <LayoutGrid size={14} />
-                <span className="hidden sm:inline text-[11px]">Grid</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("list")}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all font-semibold",
-                  viewMode === "list"
-                    ? "bg-white text-text shadow-2xs font-bold"
-                    : "text-text-dim hover:text-text",
-                )}
-                title="List view"
-              >
-                <List size={14} />
-                <span className="hidden sm:inline text-[11px]">List</span>
-              </button>
+              </div>
+
+              {/* View Switcher */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  className={cn(
+                    "flex items-center gap-1.5 h-8 px-2.5 rounded-[6px] font-mono text-[10.5px] font-bold uppercase tracking-wider border transition-all cursor-pointer",
+                    viewMode === "grid"
+                      ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                      : "bg-[#faf9f6] text-[#52525b] border-[#2d2d34]/20 hover:border-[#2d2d34]",
+                  )}
+                  title="Grid view"
+                >
+                  <LayoutGrid size={13} />
+                  <span>Grid</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "flex items-center gap-1.5 h-8 px-2.5 rounded-[6px] font-mono text-[10.5px] font-bold uppercase tracking-wider border transition-all cursor-pointer",
+                    viewMode === "list"
+                      ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                      : "bg-[#faf9f6] text-[#52525b] border-[#2d2d34]/20 hover:border-[#2d2d34]",
+                  )}
+                  title="List view"
+                >
+                  <List size={13} />
+                  <span>List</span>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Empty State */}
           {filteredProjects.length === 0 && (
-            <div className="rounded-[var(--radius)] border border-dashed border-border/80 bg-bg-panel p-10 text-center space-y-3">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent)]/10 text-[var(--accent)]">
-                <Folder size={24} />
+            <div className="rounded-[16px] border border-dashed border-[#2d2d34]/30 bg-white p-12 text-center shadow-[1.5px_1.5px_0px_rgba(45,45,52,0.05)] space-y-3">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#faf9f6] border border-[#2d2d34]/20 text-[#f26430] shadow-[1.5px_1.5px_0px_#2d2d34]">
+                <Folder size={22} />
               </div>
               <div>
-                <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-text">
+                <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-[#2d2d34]">
                   {topLevelProjects.length === 0 ? "No Projects Created Yet" : "No Matching Projects"}
                 </h3>
-                <p className="mt-1 text-xs text-text-dim max-w-md mx-auto">
+                <p className="mt-1 text-xs text-[#71717a] max-w-md mx-auto">
                   {topLevelProjects.length === 0
-                    ? "Start your chapter's development journey by creating a project or loading sample initiatives."
+                    ? "Start your chapter's development journey by creating an engineering project or loading sample initiatives."
                     : "Try adjusting your search terms or cluster filter."}
                 </p>
               </div>
               {canManage && topLevelProjects.length === 0 && (
                 <div className="pt-2 flex items-center justify-center gap-2">
-                  <Button variant="orange" onClick={() => setIsNewProjectOpen(true)} className="gap-1.5 text-xs font-bold">
+                  <Button variant="orange" onClick={() => setIsNewProjectOpen(true)} className="gap-1.5 text-xs font-bold shadow-[1.5px_1.5px_0px_#2d2d34]">
                     <Plus size={14} /> Create First Project
                   </Button>
-                  <Button variant="ghost" onClick={handleSeedSamples} className="gap-1.5 text-xs border border-border">
-                    <Sparkles size={14} /> Add Samples
+                  <Button variant="ghost" onClick={handleSeedSamples} className="gap-1.5 text-xs border border-[#2d2d34]/30">
+                    <Sparkles size={14} className="text-[#f26430]" /> Add Samples
                   </Button>
                 </div>
               )}
@@ -707,16 +799,16 @@ export default function ChapterProjectsPage({
                   <div
                     key={project.id}
                     onClick={() => setSelectedProjectId(project.id)}
-                    className="group rounded-[var(--radius)] bg-bg-panel border border-border/80 p-5 shadow-[var(--shadow-sm)] hover:shadow-md hover:border-border transition-all duration-180 flex flex-col justify-between cursor-pointer space-y-4"
+                    className="group rounded-[14px] bg-white border border-[#2d2d34]/20 p-5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3.5px_3.5px_0px_#2d2d34] transition-all flex flex-col justify-between cursor-pointer space-y-4"
                   >
                     <div>
                       {/* Top Meta: Cluster + Priority + Edit */}
                       <div className="flex items-center justify-between gap-2 mb-2.5">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <Badge tone="cyan" className="text-[10px] truncate max-w-[120px]">
+                          <span className="font-mono text-[9.5px] font-bold uppercase px-2 py-0.5 rounded-[4px] bg-[#414066]/10 text-[#414066] border border-[#414066]/30 truncate max-w-[120px]">
                             {cluster?.name || "Platform"}
-                          </Badge>
-                          <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-md border", priorityStyles[priority].bg, priorityStyles[priority].border)}>
+                          </span>
+                          <span className={cn("font-mono text-[9.5px] font-bold uppercase px-2 py-0.5 rounded-[4px] border", priorityStyles[priority].bg, priorityStyles[priority].border)}>
                             {priority}
                           </span>
                         </div>
@@ -735,7 +827,7 @@ export default function ChapterProjectsPage({
                                 setProjectDemoUrl(project.demoUrl || "");
                                 setIsNewProjectOpen(true);
                               }}
-                              className="p-1 text-text-dim hover:text-text rounded hover:bg-bg transition-colors"
+                              className="p-1 text-[#71717a] hover:text-[#2d2d34] rounded hover:bg-[#faf9f6] transition-colors"
                               title="Edit Project"
                             >
                               <Edit3 size={13} />
@@ -743,7 +835,7 @@ export default function ChapterProjectsPage({
                             <button
                               type="button"
                               onClick={() => deleteProject(project.id)}
-                              className="p-1 text-text-dim hover:text-red-500 rounded hover:bg-bg transition-colors"
+                              className="p-1 text-[#71717a] hover:text-red-500 rounded hover:bg-[#faf9f6] transition-colors"
                               title="Delete Project"
                             >
                               <Trash2 size={13} />
@@ -753,24 +845,24 @@ export default function ChapterProjectsPage({
                       </div>
 
                       {/* Project Title */}
-                      <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-text group-hover:text-[var(--accent)] transition-colors line-clamp-1 leading-snug">
+                      <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-[#2d2d34] group-hover:text-[#f26430] transition-colors line-clamp-1 leading-snug">
                         {project.title}
                       </h3>
 
                       {/* Description */}
-                      <p className="mt-1 text-xs text-text-dim line-clamp-2 leading-relaxed">
+                      <p className="mt-1 text-xs text-[#52525b] line-clamp-2 leading-relaxed">
                         {project.description || "Campus software milestone initiative."}
                       </p>
 
                       {/* Progress Line */}
                       <div className="mt-4 space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px] text-text-dim">
-                          <span>{tasks.length} task{tasks.length === 1 ? "" : "s"}</span>
-                          <span className="font-mono font-semibold text-text">{progress}%</span>
+                        <div className="flex items-center justify-between font-mono text-[10px] text-[#71717a]">
+                          <span>{tasks.length} TASK{tasks.length === 1 ? "" : "S"}</span>
+                          <span className="font-bold text-[#2d2d34]">{progress}% DELIVERED</span>
                         </div>
-                        <div className="h-1.5 w-full rounded-full bg-neutral-150 overflow-hidden">
+                        <div className="h-2 w-full rounded-[3px] bg-[#faf9f6] border border-[#2d2d34]/20 overflow-hidden">
                           <div
-                            className="h-full bg-[var(--accent)] rounded-full transition-all duration-300"
+                            className="h-full bg-[#f26430] transition-all duration-300"
                             style={{ width: `${Math.max(progress, tasks.length > 0 ? 5 : 0)}%` }}
                           />
                         </div>
@@ -778,7 +870,7 @@ export default function ChapterProjectsPage({
                     </div>
 
                     {/* Footer */}
-                    <div className="pt-3 border-t border-border/60 flex items-center justify-between">
+                    <div className="pt-3 border-t border-[#2d2d34]/15 flex items-center justify-between">
                       <div className="flex items-center -space-x-1.5">
                         {(project.teamIds || [session.userId || "usr"]).slice(0, 3).map((id, idx) => {
                           const prof = store.profiles.find((p) => p.id === id);
@@ -787,7 +879,7 @@ export default function ChapterProjectsPage({
                               key={idx}
                               title={prof?.fullName || "Contributor"}
                               className={cn(
-                                "h-5.5 w-5.5 rounded-full ring-2 ring-white dark:ring-neutral-800 text-white font-bold text-[8.5px] flex items-center justify-center uppercase shadow-2xs",
+                                "h-6 w-6 rounded-full border border-[#2d2d34] text-white font-mono font-bold text-[8.5px] flex items-center justify-center uppercase shadow-[1px_1px_0px_#2d2d34]",
                                 getAvatarColor(prof?.fullName || "Contributor"),
                               )}
                             >
@@ -797,7 +889,7 @@ export default function ChapterProjectsPage({
                         })}
                       </div>
 
-                      <span className="text-xs font-semibold text-[var(--accent)] flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                      <span className="font-mono text-[11px] font-bold text-[#f26430] flex items-center gap-1 group-hover:translate-x-0.5 transition-transform uppercase tracking-wider">
                         Open Board <ArrowRight size={12} />
                       </span>
                     </div>
@@ -809,7 +901,7 @@ export default function ChapterProjectsPage({
 
           {/* Projects List View */}
           {viewMode === "list" && filteredProjects.length > 0 && (
-            <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel divide-y divide-border/60 overflow-hidden shadow-[var(--shadow-sm)]">
+            <div className="rounded-[14px] border border-[#2d2d34]/20 bg-white divide-y divide-[#2d2d34]/15 overflow-hidden shadow-[2px_2px_0px_#2d2d34]">
               {filteredProjects.map((project) => {
                 const cluster = chapterClusters.find((c) => c.id === project.clusterId);
                 const tasks = projectTasksMap.get(project.id) || [];
@@ -820,18 +912,22 @@ export default function ChapterProjectsPage({
                   <div
                     key={project.id}
                     onClick={() => setSelectedProjectId(project.id)}
-                    className="p-4 flex items-center justify-between gap-4 hover:bg-bg/50 transition-colors cursor-pointer"
+                    className="p-4 flex items-center justify-between gap-4 hover:bg-[#faf9f6] transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
-                      <div className="h-9 w-9 rounded-xl bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center shrink-0">
-                        <Folder size={18} />
+                      <div className="h-9 w-9 rounded-[8px] bg-[#2d2d34] text-white flex items-center justify-center shrink-0 border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]">
+                        <Folder size={16} />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-sm text-text truncate">{project.title}</h4>
-                          {cluster && <Badge tone="cyan" className="text-[10px]">{cluster.name}</Badge>}
+                          <h4 className="font-[family-name:var(--font-display)] font-bold text-sm text-[#2d2d34] truncate">{project.title}</h4>
+                          {cluster && (
+                            <span className="font-mono text-[9px] font-bold uppercase px-1.5 py-0.2 rounded bg-[#414066]/10 text-[#414066] border border-[#414066]/30">
+                              {cluster.name}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-text-dim truncate max-w-md mt-0.5">
+                        <p className="text-xs text-[#52525b] truncate max-w-md mt-0.5">
                           {project.description}
                         </p>
                       </div>
@@ -839,12 +935,12 @@ export default function ChapterProjectsPage({
 
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="text-right hidden sm:block">
-                        <div className="text-xs font-semibold text-text">{tasks.length} tasks</div>
-                        <div className="text-[11px] font-mono text-emerald-600">{progress}% done</div>
+                        <div className="font-mono text-xs font-bold text-[#2d2d34]">{tasks.length} tasks</div>
+                        <div className="font-mono text-[10.5px] font-bold text-[#5f7560]">{progress}% done</div>
                       </div>
-                      <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                      <span className="font-mono text-[11px] font-bold text-[#f26430] flex items-center gap-1 uppercase">
                         Open <ArrowRight size={12} />
-                      </Button>
+                      </span>
                     </div>
                   </div>
                 );
@@ -859,7 +955,9 @@ export default function ChapterProjectsPage({
         <div className="space-y-4">
           {/* Quick Project Switcher Pills */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <span className="text-xs font-semibold text-text-dim shrink-0">Projects:</span>
+            <span className="font-mono text-[10.5px] font-bold uppercase tracking-wider text-[#71717a] shrink-0">
+              SPRINT TARGET:
+            </span>
             {topLevelProjects.map((p) => {
               const isSelected = p.id === selectedProjectId;
               return (
@@ -868,13 +966,13 @@ export default function ChapterProjectsPage({
                   type="button"
                   onClick={() => setSelectedProjectId(p.id)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all shrink-0",
+                    "flex items-center gap-1.5 h-7.5 px-3 rounded-[6px] font-mono text-[10.5px] font-bold uppercase tracking-wider border transition-all shrink-0 cursor-pointer",
                     isSelected
-                      ? "bg-text text-bg shadow-sm"
-                      : "bg-bg border border-border/70 text-text-dim hover:text-text",
+                      ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1.5px_1.5px_0px_#f26430]"
+                      : "bg-white border-[#2d2d34]/20 text-[#52525b] hover:border-[#2d2d34] hover:text-[#2d2d34]",
                   )}
                 >
-                  <Folder size={12} />
+                  <Folder size={12} className={isSelected ? "text-[#f26430]" : "text-[#71717a]"} />
                   <span>{p.title}</span>
                 </button>
               );
@@ -893,18 +991,20 @@ export default function ChapterProjectsPage({
                   onDragOver={(e) => handleDragOver(e, col.stage)}
                   onDrop={(e) => handleDrop(e, col.stage)}
                   className={cn(
-                    "w-[270px] min-w-[270px] shrink-0 rounded-[var(--radius)] border transition-all duration-150 flex flex-col",
+                    "w-[275px] min-w-[275px] shrink-0 rounded-[12px] border transition-all duration-150 flex flex-col shadow-[1.5px_1.5px_0px_#2d2d34]",
                     isOver
-                      ? "border-[var(--accent)] bg-[var(--accent)]/[0.04] ring-2 ring-[var(--accent)]/15"
-                      : "bg-bg/60 border-border/70",
+                      ? "border-[#f26430] bg-[#f26430]/[0.05] ring-2 ring-[#f26430]/20"
+                      : "bg-[#faf9f6] border-[#2d2d34]/20",
                   )}
                 >
                   {/* Column Header */}
-                  <div className="p-3.5 pb-2.5 flex items-center justify-between select-none">
+                  <div className="p-3.5 pb-2.5 flex items-center justify-between select-none border-b border-[#2d2d34]/10 bg-white rounded-t-[12px]">
                     <div className="flex items-center gap-2">
-                      <span className={cn("h-2.5 w-2.5 rounded-full", col.dotColor)} />
-                      <h4 className="font-semibold text-xs text-text">{col.label}</h4>
-                      <span className="text-[11px] font-mono text-text-dim">
+                      <span className={cn("h-2.5 w-2.5 rounded-full border border-[#2d2d34]/20", col.dotColor)} />
+                      <h4 className="font-mono text-[11px] font-bold uppercase tracking-wider text-[#2d2d34]">
+                        {col.label}
+                      </h4>
+                      <span className="font-mono text-[10px] font-bold text-[#71717a] px-1.5 py-0.2 bg-[#faf9f6] border border-[#2d2d34]/20 rounded-[4px]">
                         {tasks.length}
                       </span>
                     </div>
@@ -916,7 +1016,7 @@ export default function ChapterProjectsPage({
                           setNewTaskStage(col.stage);
                           setIsNewTaskOpen(true);
                         }}
-                        className="p-1 text-text-dim hover:text-text rounded hover:bg-bg transition-colors"
+                        className="p-1 text-[#71717a] hover:text-[#2d2d34] rounded hover:bg-[#faf9f6] transition-colors cursor-pointer"
                         title={`Add task to ${col.label}`}
                       >
                         <Plus size={14} />
@@ -937,27 +1037,27 @@ export default function ChapterProjectsPage({
                           onDragStart={(e) => handleDragStart(e, task.id)}
                           onClick={() => setViewingTask(task)}
                           className={cn(
-                            "rounded-[var(--radius-sm)] border bg-bg-panel p-3 shadow-2xs hover:shadow-xs transition-all duration-150 select-none cursor-pointer",
+                            "rounded-[10px] border bg-white p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all select-none cursor-pointer",
                             isDragged
-                              ? "opacity-30 border-dashed border-[var(--accent)]"
-                              : "border-border/70 hover:border-border",
+                              ? "opacity-30 border-dashed border-[#f26430]"
+                              : "border-[#2d2d34]/20 hover:border-[#2d2d34]",
                           )}
                         >
                           <div className="flex items-center justify-between gap-1 mb-1.5">
-                            <span className="font-mono text-[10px] font-bold text-text-dim">
+                            <span className="font-mono text-[10px] font-bold text-[#2d2d34] bg-[#faf9f6] px-1.5 py-0.5 rounded-[4px] border border-[#2d2d34]/20">
                               {getCodeTag(task)}
                             </span>
-                            <span className={cn("text-[9.5px] font-bold px-1.5 py-0.2 rounded border", priorityStyles[priority].bg, priorityStyles[priority].border)}>
+                            <span className={cn("font-mono text-[9px] font-bold uppercase px-1.5 py-0.2 rounded border", priorityStyles[priority].bg, priorityStyles[priority].border)}>
                               {priority}
                             </span>
                           </div>
 
-                          <h5 className="font-medium text-xs text-text leading-snug">
+                          <h5 className="font-[family-name:var(--font-display)] font-bold text-[12.5px] text-[#2d2d34] leading-snug">
                             {task.title}
                           </h5>
 
-                          <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-between">
-                            <div className="h-5 w-5 rounded-full bg-neutral-200 text-text-dim text-[8.5px] font-bold flex items-center justify-center">
+                          <div className="mt-2.5 pt-2 border-t border-[#2d2d34]/10 flex items-center justify-between">
+                            <div className="h-5.5 w-5.5 rounded-full bg-[#2d2d34] text-white font-mono text-[8.5px] font-bold flex items-center justify-center border border-[#2d2d34]">
                               {initials(task.title)}
                             </div>
 
@@ -965,7 +1065,7 @@ export default function ChapterProjectsPage({
                               <button
                                 type="button"
                                 onClick={(e) => handleAdvanceTask(task, e)}
-                                className="flex items-center gap-0.5 text-[10.5px] font-semibold text-[var(--accent)] hover:underline"
+                                className="font-mono text-[10px] font-bold uppercase tracking-wider text-[#f26430] hover:text-[#d85322] flex items-center gap-1 cursor-pointer"
                                 title="Move to next stage"
                               >
                                 <span>Advance</span>
@@ -985,11 +1085,11 @@ export default function ChapterProjectsPage({
                             setIsNewTaskOpen(true);
                           }
                         }}
-                        className="rounded-[var(--radius-sm)] border border-dashed border-border/70 p-4 text-center text-xs text-text-dim hover:border-border hover:bg-bg-panel transition-all cursor-pointer"
+                        className="rounded-[10px] border border-dashed border-[#2d2d34]/25 p-4 text-center text-xs text-[#71717a] hover:border-[#2d2d34] hover:bg-white transition-all cursor-pointer"
                       >
-                        <span className="text-[11px]">No tasks</span>
+                        <span className="font-mono text-[10.5px]">No tasks</span>
                         {canManage && (
-                          <div className="text-[10px] text-[var(--accent)] font-semibold mt-1">
+                          <div className="font-mono text-[10px] text-[#f26430] font-bold mt-1 uppercase">
                             + Add task
                           </div>
                         )}
@@ -1257,8 +1357,8 @@ export default function ChapterProjectsPage({
                     value={getPriority(viewingTask)}
                     onChange={(e) => {
                       const next = e.target.value as Priority;
-                      updateProject(viewingTask.id, { priority: next.toLowerCase() as any });
-                      setViewingTask({ ...viewingTask, priority: next.toLowerCase() as any });
+                      updateProject(viewingTask.id, { priority: next.toLowerCase() as Project["priority"] });
+                      setViewingTask({ ...viewingTask, priority: next.toLowerCase() as Project["priority"] });
                     }}
                     className="w-full h-10 appearance-none rounded-xl border border-border/80 bg-neutral-50/70 pl-3.5 pr-8 text-xs sm:text-sm text-text font-medium focus:border-[var(--accent)] focus:bg-white focus:ring-2 focus:ring-[var(--accent)]/15 focus:outline-none transition-all cursor-pointer shadow-2xs"
                   >

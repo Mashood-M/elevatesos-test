@@ -5,9 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   CAMPUS_LEAD_DELEGATION_OPTIONS,
@@ -449,13 +447,38 @@ export default function ChapterLeadershipPage({
     },
   ];
 
+  const chapterCode = (chapter.shortCode || chapter.slug).toUpperCase();
+
   return (
     <div className="space-y-5 pb-12">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title="Chapter Leadership"
-        description={`Governance structure, executive appointments, and term history for ${chapter.name}.`}
-      />
+      {/* ─── ARCHITECTURAL HERO ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[3px_3px_0px_#2d2d34] bauhaus-grid-bg">
+        <div className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none" aria-hidden="true" />
+        <div className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-10 rotate-45 pointer-events-none select-none" aria-hidden="true" />
+        <div className="absolute bottom-2 right-36 h-16 w-16 bg-[#f59e0b] opacity-15 rounded-full pointer-events-none select-none" aria-hidden="true" />
+
+        <div className="relative z-10 max-w-2xl">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+              CAMPUS · {chapterCode} {"//"} LEADERSHIP
+            </span>
+            <span className="hidden sm:inline-block font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+              {chapter.name}
+            </span>
+          </div>
+
+          <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight leading-snug">
+            Governance Structure &
+            <span className="block text-[#f26430] text-xl sm:text-2xl font-bold mt-0.5">
+              CHAPTER LEADERSHIP
+            </span>
+          </h1>
+          <p className="mt-2 text-sm text-[#71717a] leading-relaxed max-w-xl">
+            Executive appointments, term history, and delegation matrix for <span className="font-semibold text-[#2d2d34]">{chapter.name}</span>.
+          </p>
+        </div>
+      </section>
 
       {/* Flash Toast */}
       {flashMsg && (

@@ -2,21 +2,20 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { TicketCard } from "@/components/ui/ticket-card";
-import { ProgressBar } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
-import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
-import { isEventVisibleToUser, isEventOngoing, isEventEnded } from "@/lib/events";
-import { hasPermission, isHqRole } from "@/lib/permissions";
+import { use, useEffect, useState, useSyncExternalStore } from "react";
+import { useCurrentUser, useStore, showToast } from "@/context/store-context";
+import { isExecutiveRole, isFacultyRole, resolveChapter } from "@/lib/access";
+import { isEventVisibleToUser, isEventOngoing, isEventEnded, getEventRegistrationState } from "@/lib/events";
 import { calculateChapterActivityScore } from "@/lib/analytics";
 import { formatDate, formatDateTime, initials } from "@/lib/utils";
 import { generateElevatesId } from "@/lib/forms/helpers";
 import { getChapterElevatesId } from "@/lib/chapters";
 import { ChapterNotFound } from "@/components/chapter/chapter-not-found";
 import { ContentSkeleton } from "@/components/layout/workspace-skeleton";
+import { ArchitecturalEventCard } from "@/components/domain/bauhaus-event-card";
+import { EventRegistrationDialog } from "@/components/domain/event-registration-dialog";
+import { StudentChapterView } from "@/components/chapter/student-chapter-view";
+import type { EventItem } from "@/types";
 import {
   Users,
   Calendar,
@@ -30,16 +29,13 @@ import {
   GraduationCap,
   CheckCircle2,
   Clock,
-  Sparkles,
   Shield,
   CheckSquare,
   ChevronRight,
-  UserCheck,
-  Compass,
-  FileText,
   Eye,
 } from "lucide-react";
-import { StudentChapterView } from "@/components/chapter/student-chapter-view";
+
+const emptySubscribe = () => () => {};
 
 export default function ChapterDashboardPage({
   params,
@@ -47,10 +43,12 @@ export default function ChapterDashboardPage({
   params: Promise<{ slug: string }>;
 }) {
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false
+  );
+  const [selectedEventForReg, setSelectedEventForReg] = useState<EventItem | null>(null);
 
   const { slug } = use(params);
 
@@ -78,7 +76,7 @@ export default function ChapterDashboardPage({
   const showOps =
     isExecutiveRole(session.roleKey) ||
     isFacultyRole(session.roleKey) ||
-    isHqRole(session.roleKey);
+    Boolean(session.authRoleKey && (session.authRoleKey === "founder" || session.authRoleKey === "hq_admin"));
   const isStudent = session.roleKey === "student";
 
   const members = store.profiles.filter((p) => p.chapterId === chapter.id);
@@ -149,20 +147,21 @@ export default function ChapterDashboardPage({
     return (
       <div className="space-y-4">
         {showOps && (
-          <div className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-900 shadow-2xs">
+          <div className="flex items-center justify-between rounded-[10px] bg-[#fffbeb] border border-[#2d2d34]/20 px-4 py-2 text-xs text-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34]">
             <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4 text-amber-700 shrink-0" />
-              <span className="font-semibold">Executive Preview:</span>
-              <span>You are previewing this chapter through a student's eyes.</span>
+              <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#f59e0b] text-[#2d2d34] border border-[#2d2d34]">
+                PREVIEW MODE
+              </span>
+              <span className="font-medium text-xs">Viewing campus portal through student lens.</span>
             </div>
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-7 text-xs font-semibold bg-white hover:bg-amber-100/80 border-amber-200"
+            <button
+              type="button"
               onClick={() => setViewMode("ops")}
+              className="h-7 px-3 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] active:translate-x-0 active:translate-y-0 transition cursor-pointer flex items-center gap-1.5"
             >
-              Back to Executive View
-            </Button>
+              <Eye size={12} />
+              Return to Executive Desk
+            </button>
           </div>
         )}
         <StudentChapterView
@@ -180,41 +179,60 @@ export default function ChapterDashboardPage({
   }
 
   return (
-    <div className="space-y-6">
-      {/* ── 1. CHAPTER HERO & IDENTITY CARD ─────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-6 sm:p-8 shadow-xs">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="font-mono text-xs font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2.5 py-1 rounded-md border border-[var(--accent)]/20 shadow-2xs">
-                {chapterElevatesId}
+    <div className="space-y-6 pb-12">
+      {/* ── 1. CHAPTER ARCHITECTURAL HERO ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-2 right-36 h-16 w-16 bg-[#f59e0b] opacity-12 rounded-full pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {chapterElevatesId} {"//"} EXECUTIVE DESK
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-bg text-text-dim border border-border/80">
-                <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                {chapter.status.replaceAll("_", " ")}
-              </span>
-              <span className="text-xs text-text-mute flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" />
-                Est. {chapter.createdAt ? formatDate(chapter.createdAt) : formatDate(chapter.foundedAt)}
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {chapter.status.replaceAll("_", " ")} · EST. {chapter.createdAt ? formatDate(chapter.createdAt) : formatDate(chapter.foundedAt)}
               </span>
             </div>
 
-            <div>
-              <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
-                {chapter.name}
-              </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-text-dim">
-                <span className="flex items-center gap-1 font-medium text-text">
-                  <Building2 className="w-4 h-4 text-text-mute" />
-                  {chapter.college}
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              {chapter.name}
+              <span className="block text-[#f26430] text-xl sm:text-2xl font-bold mt-0.5">
+                {chapter.college}
+              </span>
+            </h1>
+
+            {/* Subtitle & Location */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-[13px] font-medium text-[#52525b]">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-[#414066]" />
+                {chapter.college}
+              </span>
+              {chapter.city && (
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#f26430]" />
+                  {chapter.city} Campus
                 </span>
-                {chapter.city && (
-                  <span className="flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-text-mute" />
-                    {chapter.city}
-                  </span>
-                )}
-              </div>
+              )}
+              <span className="flex items-center gap-1.5 font-mono text-[11px] text-[#71717a]">
+                <Clock className="w-3.5 h-3.5 text-[#71717a]" />
+                {members.length} Registered Students
+              </span>
             </div>
           </div>
 
@@ -222,160 +240,187 @@ export default function ChapterDashboardPage({
           <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
             {showOps && (
               <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex items-center gap-1.5 font-semibold text-text-dim hover:text-text"
+                <button
+                  type="button"
                   onClick={() => setViewMode("student")}
+                  className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <Eye className="w-4 h-4" />
-                  Preview Student View
-                </Button>
+                  <Eye className="w-3.5 h-3.5 text-[#414066]" />
+                  <span>Student View</span>
+                </button>
                 <Link href={`/chapter/${slug}/attendance`}>
-                  <Button variant="orange" size="sm" className="shadow-xs flex items-center gap-1.5 font-semibold">
+                  <button
+                    type="button"
+                    className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
                     <QrCode className="w-4 h-4" />
-                    Scan Attendance
-                  </Button>
+                    <span>Scan Attendance</span>
+                  </button>
                 </Link>
                 <Link href={`/chapter/${slug}/events`}>
-                  <Button variant="secondary" size="sm" className="flex items-center gap-1.5 font-semibold">
-                    <Plus className="w-4 h-4" />
-                    New Event
-                  </Button>
+                  <button
+                    type="button"
+                    className="h-9 px-3.5 rounded-[8px] bg-[#2d2d34] hover:bg-[#1f1f24] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4 text-[#f26430]" strokeWidth={2.5} />
+                    <span>New Event</span>
+                  </button>
                 </Link>
                 <Link href={`/chapter/${slug}/classes`}>
-                  <Button variant="secondary" size="sm" className="flex items-center gap-1.5">
-                    <GraduationCap className="w-4 h-4" />
-                    Cohorts
-                  </Button>
+                  <button
+                    type="button"
+                    className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5 text-[#414066]" />
+                    <span>Cohorts</span>
+                  </button>
                 </Link>
               </>
             )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── 2. METRICS OVERVIEW CARDS ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
-        {/* Members */}
+      {/* ── 2. METRICS OVERVIEW STRIP ───────────────────────────────────────── */}
+      <section className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+        {/* Metric 01: Members */}
         <Link
           href={`/chapter/${slug}/students`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Registered Members</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent)]">
-              <Users className="w-4 h-4" />
+            <span className="font-mono text-[10px] sm:text-[11px] font-bold text-[#71717a] uppercase tracking-wider">
+              01 // MEMBERS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Users className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="mt-3 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+          <p className="mt-2.5 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black tracking-tight text-[#2d2d34]">
             {members.length}
           </p>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
+          <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
             <span>Student directory</span>
             <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
           </div>
         </Link>
 
-        {/* Events */}
+        {/* Metric 02: Events */}
         <Link
           href={`/chapter/${slug}/events`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Events & Sessions</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
-              <Calendar className="w-4 h-4" />
+            <span className="font-mono text-[10px] sm:text-[11px] font-bold text-[#71717a] uppercase tracking-wider">
+              02 // SESSIONS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Calendar className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="mt-3 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+          <p className="mt-2.5 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black tracking-tight text-[#2d2d34]">
             {events.length}
           </p>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
+          <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
             <span>{upcoming.length} upcoming or ongoing</span>
             <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
           </div>
         </Link>
 
-        {/* Clusters */}
+        {/* Metric 03: Clusters */}
         <Link
           href={`/chapter/${slug}/clusters`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Active Clusters</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
-              <Layers className="w-4 h-4" />
+            <span className="font-mono text-[10px] sm:text-[11px] font-bold text-[#71717a] uppercase tracking-wider">
+              03 // CLUSTERS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Layers className="w-3.5 h-3.5" />
             </div>
           </div>
-          <p className="mt-3 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+          <p className="mt-2.5 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black tracking-tight text-[#2d2d34]">
             {clusters.length}
           </p>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
+          <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
             <span>Domain tracks</span>
             <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
           </div>
         </Link>
 
-        {/* Activity Score */}
+        {/* Metric 04: Health / Activity Score */}
         <Link
           href={showOps ? `/chapter/${slug}/analytics` : `#`}
-          className="group relative overflow-hidden rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs transition hover:border-[var(--accent)]/40 hover:shadow-sm"
+          className="group relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
         >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Chapter Health</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition">
-              <Activity className="w-4 h-4" />
+            <span className="font-mono text-[10px] sm:text-[11px] font-bold text-[#71717a] uppercase tracking-wider">
+              04 // HEALTH
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] group-hover:bg-[#fef0eb] group-hover:text-[#f26430] transition">
+              <Activity className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div className="mt-3 flex items-baseline gap-2">
-            <span className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+          <div className="mt-2.5 flex items-baseline gap-2">
+            <span className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black tracking-tight text-[#2d2d34]">
               {activityScore}%
             </span>
-            <Badge tone={activityScore >= 75 ? "orange" : "mute"} className="text-[10px]">
-              {activityScore >= 75 ? "Excellent" : activityScore >= 40 ? "Good" : "Building"}
-            </Badge>
+            <span className="font-mono text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+              {activityScore >= 75 ? "Optimal" : activityScore >= 40 ? "Active" : "Building"}
+            </span>
           </div>
-          <div className="mt-2 flex items-center gap-1 text-[11px] font-medium text-text-dim group-hover:text-[var(--accent)] transition">
+          <div className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-[#71717a] group-hover:text-[#f26430] transition">
             <span>{showOps ? "View analytics →" : "Operational index"}</span>
           </div>
         </Link>
-      </div>
+      </section>
 
       {/* ── 3. ONGOING EVENT ALERT BANNER (If Active) ───────────────────────── */}
       {ongoingEvents.length > 0 && (
-        <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--accent)]/30 bg-white p-4 sm:p-5 shadow-xs">
+        <section className="relative overflow-hidden rounded-[14px] border border-[#f26430] bg-[#fffaf8] p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--accent)] opacity-75" />
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-[var(--accent)]" />
+              <span className="relative flex h-3.5 w-3.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#f26430] opacity-75" />
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-[#f26430]" />
               </span>
               <div>
-                <p className="text-[13px] font-bold text-text">
-                  {ongoingEvents[0].title} is live right now
-                </p>
-                <p className="text-[12px] text-text-dim">
-                  Venue: {ongoingEvents[0].venue || "Campus Venue"} · Check-in and attendance verification is active.
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#f26430] text-white">
+                    LIVE NOW
+                  </span>
+                  <p className="text-[13px] font-bold text-[#2d2d34]">
+                    {ongoingEvents[0].title}
+                  </p>
+                </div>
+                <p className="text-xs text-[#52525b] mt-0.5">
+                  Venue: {ongoingEvents[0].venue || "Campus Venue"} · Live attendance check-in active.
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Link href={`/chapter/${slug}/events/${ongoingEvents[0].id}`}>
-                <Button size="sm" variant="orange" className="font-semibold text-xs h-8">
-                  View Live Event
-                </Button>
+                <button
+                  type="button"
+                  className="h-8 px-3.5 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] cursor-pointer"
+                >
+                  View Event
+                </button>
               </Link>
               {showOps && (
                 <Link href={`/chapter/${slug}/attendance`}>
-                  <Button size="sm" variant="secondary" className="font-semibold text-xs h-8">
+                  <button
+                    type="button"
+                    className="h-8 px-3.5 rounded-[6px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] cursor-pointer"
+                  >
                     Scan Passes
-                  </Button>
+                  </button>
                 </Link>
               )}
             </div>
           </div>
-        </div>
+        </section>
       )}
 
       {/* ── 4. TWO-COLUMN WORKSPACE GRID ────────────────────────────────────── */}
@@ -383,56 +428,78 @@ export default function ChapterDashboardPage({
         {/* LEFT COLUMN: Events & Core Activities */}
         <div className="space-y-6">
           {/* Upcoming & Scheduled Events Card */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+          <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white shadow-[2px_2px_0px_#2d2d34] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#2d2d34]/15 px-5 py-3.5 bg-[#faf9f6]">
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-[var(--accent)]" />
-                <h2 className="font-bold text-[14px] text-text">Upcoming Events</h2>
-                <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-[#f26430]" />
+                  CALENDAR // UPCOMING SESSIONS
+                </span>
+                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
                   {upcoming.length}
                 </span>
               </div>
               <Link
                 href={`/chapter/${slug}/events`}
-                className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                className="font-mono text-[11px] font-bold text-[#f26430] hover:underline flex items-center gap-1 uppercase tracking-wider"
               >
                 <span>View all</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               {upcoming.length === 0 ? (
-                <div className="py-8 text-center">
-                  <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-bg text-text-mute mb-2">
-                    <Calendar className="w-5 h-5" />
-                  </div>
-                  <p className="text-[13px] font-medium text-text">No upcoming events scheduled</p>
-                  <p className="text-[12px] text-text-dim mt-0.5">Stay tuned for hackathons, workshops, and meetups.</p>
+                <div className="py-8 text-center border border-dashed border-[#2d2d34]/20 rounded-[12px] bg-[#faf9f6]">
+                  <Calendar className="w-7 h-7 mx-auto text-[#71717a] mb-2 opacity-60" />
+                  <p className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                    NO UPCOMING SESSIONS SCHEDULED
+                  </p>
+                  <p className="text-xs text-[#71717a] mt-1">
+                    Stay tuned for hackathons, workshops, and symposiums.
+                  </p>
                   {showOps && (
                     <Link href={`/chapter/${slug}/events`} className="mt-3 inline-block">
-                      <Button size="sm" variant="orange" className="text-xs h-8">
+                      <button
+                        type="button"
+                        className="h-8 px-3 rounded-[6px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] cursor-pointer"
+                      >
                         Schedule First Event
-                      </Button>
+                      </button>
                     </Link>
                   )}
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {upcoming.slice(0, 3).map((event) => (
-                    <TicketCard
-                      key={event.id}
-                      event={event}
-                      href={`/chapter/${slug}/events/${event.id}`}
-                      hideStatus={isStudent}
-                    />
-                  ))}
+                <div className="space-y-3.5">
+                  {upcoming.slice(0, 3).map((event) => {
+                    const regState = getEventRegistrationState(
+                      store,
+                      event,
+                      session.userId,
+                    );
+                    const myReg = store.registrations.find(
+                      (r) => r.eventId === event.id && r.userId === session.userId,
+                    );
+
+                    return (
+                      <ArchitecturalEventCard
+                        key={event.id}
+                        event={event}
+                        chapter={chapter}
+                        roleKey={session.roleKey}
+                        regState={regState}
+                        myReg={myReg}
+                        onRegister={(ev) => setSelectedEventForReg(ev)}
+                        canManage={showOps}
+                      />
+                    );
+                  })}
                   {upcoming.length > 3 && (
                     <Link
                       href={`/chapter/${slug}/events`}
-                      className="block text-center text-[12px] font-semibold text-[var(--accent)] hover:underline pt-2"
+                      className="block text-center font-mono text-xs font-bold text-[#f26430] hover:underline pt-2 uppercase tracking-wider"
                     >
-                      + {upcoming.length - 3} more upcoming events →
+                      + {upcoming.length - 3} more upcoming sessions →
                     </Link>
                   )}
                 </div>
@@ -440,110 +507,53 @@ export default function ChapterDashboardPage({
             </div>
           </div>
 
-          {/* Student Journey Pathway (Clean & User-Friendly, replaces outdated text) */}
-          {isStudent && (
-            <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs">
-              <div className="flex items-center gap-2 mb-3">
-                <Compass className="w-4 h-4 text-[var(--accent)]" />
-                <h3 className="font-bold text-[14px] text-text">Explore Your Campus Chapter</h3>
-              </div>
-              <p className="text-[12px] text-text-dim mb-4">
-                Elevates connects you with domain workshops, peer builders, and portfolio-worthy tech projects.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Link
-                  href={`/chapter/${slug}/events`}
-                  className="rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition group"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent)] font-bold text-xs mb-2">
-                    01
-                  </div>
-                  <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                    Workshops & Labs
-                  </p>
-                  <p className="text-[11px] text-text-dim mt-0.5">
-                    Attend hands-on developer events and earn verified certificates.
-                  </p>
-                </Link>
-
-                <Link
-                  href={`/chapter/${slug}/clusters`}
-                  className="rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition group"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition font-bold text-xs mb-2">
-                    02
-                  </div>
-                  <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                    Interest Clusters
-                  </p>
-                  <p className="text-[11px] text-text-dim mt-0.5">
-                    Collaborate with peers in AI, Web3, UI/UX, or Open Source.
-                  </p>
-                </Link>
-
-                <Link
-                  href={`/chapter/${slug}/projects`}
-                  className="rounded-xl border border-border/70 p-3.5 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition group"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-bg text-text-dim group-hover:bg-[var(--accent-soft)] group-hover:text-[var(--accent)] transition font-bold text-xs mb-2">
-                    03
-                  </div>
-                  <p className="font-semibold text-[13px] text-text group-hover:text-[var(--accent)]">
-                    Build & Ship
-                  </p>
-                  <p className="text-[11px] text-text-dim mt-0.5">
-                    Contribute to student-led projects and launch to the public.
-                  </p>
-                </Link>
-              </div>
-            </div>
-          )}
-
           {/* Operational Tasks (For Leads & Executive Team) */}
           {showOps && (
-            <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-              <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+            <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white shadow-[2px_2px_0px_#2d2d34] overflow-hidden">
+              <div className="flex items-center justify-between border-b border-[#2d2d34]/15 px-5 py-3.5 bg-[#faf9f6]">
                 <div className="flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4 text-[var(--accent)]" />
-                  <h2 className="font-bold text-[14px] text-text">Operational Tasks</h2>
-                  <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                  <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider flex items-center gap-1.5">
+                    <CheckSquare className="w-3.5 h-3.5 text-[#414066]" />
+                    OPERATIONS // SPRINT TASKS
+                  </span>
+                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
                     {openTasks.length} active
                   </span>
                 </div>
                 <Link
                   href={`/chapter/${slug}/tasks`}
-                  className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                  className="font-mono text-[11px] font-bold text-[#414066] hover:underline flex items-center gap-1 uppercase tracking-wider"
                 >
                   <span>Task board</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
 
-              <div className="p-5">
+              <div className="p-4 sm:p-5">
                 {openTasks.length === 0 ? (
-                  <div className="py-6 text-center text-text-dim text-[13px]">
-                    <CheckCircle2 className="w-5 h-5 text-text-mute mx-auto mb-1.5 opacity-80" />
-                    All operational tasks completed. Inbox zero!
+                  <div className="py-6 text-center text-xs font-medium text-[#71717a]">
+                    <CheckCircle2 className="w-5 h-5 text-[#5f7560] mx-auto mb-1.5" />
+                    All operational sprints completed. Inbox zero!
                   </div>
                 ) : (
-                  <ul className="divide-y divide-border/60">
+                  <ul className="divide-y divide-[#2d2d34]/10">
                     {openTasks.slice(0, 5).map((task) => (
                       <li key={task.id}>
                         <Link
                           href={`/chapter/${slug}/tasks`}
-                          className="flex items-center justify-between gap-3 py-3 hover:text-[var(--accent)] transition"
+                          className="flex items-center justify-between gap-3 py-3 hover:text-[#f26430] transition group"
                         >
                           <div className="min-w-0">
-                            <p className="truncate text-[13px] font-semibold text-text">
+                            <p className="truncate text-xs font-bold text-[#2d2d34] group-hover:text-[#f26430] transition-colors">
                               {task.title}
                             </p>
-                            <p className="text-[11px] text-text-dim">
+                            <p className="text-[11px] font-mono text-[#71717a] mt-0.5">
                               Due {formatDate(task.dueDate)}
                             </p>
                           </div>
-                          <Badge tone="mute" className="text-[10px] shrink-0">
+                          <span className="font-mono text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200 shrink-0">
                             {task.category.replaceAll("_", " ")}
-                          </Badge>
+                          </span>
                         </Link>
                       </li>
                     ))}
@@ -552,101 +562,165 @@ export default function ChapterDashboardPage({
               </div>
             </div>
           )}
+
+          {/* Student Journey Pathway (If Student) */}
+          {isStudent && (
+            <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                  PATHWAY // CAMPUS JOURNEY
+                </span>
+              </div>
+              <p className="text-xs text-[#52525b] mb-4">
+                Elevates connects you with domain workshops, peer builders, and portfolio-worthy tech projects.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Link
+                  href={`/chapter/${slug}/events`}
+                  className="rounded-[10px] border border-[#2d2d34]/15 p-3 hover:border-[#f26430] hover:bg-[#fffaf8] transition-all group shadow-[1px_1px_0px_#2d2d34]"
+                >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-[#fef0eb] text-[#f26430] font-mono font-bold text-[11px] mb-2 border border-[#f26430]/30">
+                    01
+                  </div>
+                  <p className="font-bold text-xs text-[#2d2d34] group-hover:text-[#f26430]">
+                    Workshops & Labs
+                  </p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">
+                    Attend hands-on developer events and earn verified certificates.
+                  </p>
+                </Link>
+
+                <Link
+                  href={`/chapter/${slug}/clusters`}
+                  className="rounded-[10px] border border-[#2d2d34]/15 p-3 hover:border-[#f26430] hover:bg-[#fffaf8] transition-all group shadow-[1px_1px_0px_#2d2d34]"
+                >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-zinc-100 text-zinc-700 font-mono font-bold text-[11px] mb-2 border border-zinc-200">
+                    02
+                  </div>
+                  <p className="font-bold text-xs text-[#2d2d34] group-hover:text-[#f26430]">
+                    Interest Clusters
+                  </p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">
+                    Collaborate with peers in AI, Web3, UI/UX, or Open Source.
+                  </p>
+                </Link>
+
+                <Link
+                  href={`/chapter/${slug}/projects`}
+                  className="rounded-[10px] border border-[#2d2d34]/15 p-3 hover:border-[#f26430] hover:bg-[#fffaf8] transition-all group shadow-[1px_1px_0px_#2d2d34]"
+                >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-[4px] bg-zinc-100 text-zinc-700 font-mono font-bold text-[11px] mb-2 border border-zinc-200">
+                    03
+                  </div>
+                  <p className="font-bold text-xs text-[#2d2d34] group-hover:text-[#f26430]">
+                    Build & Ship
+                  </p>
+                  <p className="text-[11px] text-[#71717a] mt-0.5">
+                    Contribute to student-led projects and launch to the public.
+                  </p>
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Leadership, Clusters & Members */}
         <div className="space-y-6">
           {/* Chapter Leadership Card */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs">
+          <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 shadow-[2px_2px_0px_#2d2d34]">
             <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-4 h-4 text-[var(--accent)]" />
-              <h3 className="font-bold text-[14px] text-text">Chapter Leadership</h3>
+              <Shield className="w-3.5 h-3.5 text-[#f26430]" />
+              <h3 className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                LEADERSHIP // APPOINTED OFFICERS
+              </h3>
             </div>
 
-            <div className="space-y-3.5">
+            <div className="space-y-3">
               {/* Campus Lead */}
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-bg/60 border border-border/60">
+              <div className="flex items-center justify-between gap-3 p-3 rounded-[10px] bg-[#faf9f6] border border-[#2d2d34]/15">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[12px] font-bold text-[var(--accent)]">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-[#2d2d34] text-white font-mono text-xs font-bold shadow-[1px_1px_0px_#f26430]">
                     {campusLead ? initials(campusLead.fullName) : "CL"}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-text truncate">
+                    <p className="text-xs font-bold text-[#2d2d34] truncate">
                       {campusLead?.fullName || "Unappointed"}
                     </p>
-                    <p className="text-[11px] text-text-dim truncate">
+                    <p className="text-[11px] font-mono text-[#71717a] truncate">
                       {campusLead?.email || "Campus Lead"}
                     </p>
                   </div>
                 </div>
-                <Badge tone={campusLead ? "orange" : "mute"} className="text-[10px] shrink-0">
+                <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#f26430] text-white shrink-0">
                   Campus Lead
-                </Badge>
+                </span>
               </div>
 
               {/* Faculty Coordinator */}
-              <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-bg/60 border border-border/60">
+              <div className="flex items-center justify-between gap-3 p-3 rounded-[10px] bg-[#faf9f6] border border-[#2d2d34]/15">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-bg border border-border text-[12px] font-bold text-text-dim">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[6px] bg-[#414066] text-white font-mono text-xs font-bold shadow-[1px_1px_0px_#2d2d34]">
                     {faculty ? initials(faculty.fullName) : "FC"}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[13px] font-semibold text-text truncate">
+                    <p className="text-xs font-bold text-[#2d2d34] truncate">
                       {faculty?.fullName || "Faculty Advisor"}
                     </p>
-                    <p className="text-[11px] text-text-dim truncate">
+                    <p className="text-[11px] font-mono text-[#71717a] truncate">
                       {faculty?.department || "Institutional Coordinator"}
                     </p>
                   </div>
                 </div>
-                <Badge tone="mute" className="text-[10px] shrink-0">
+                <span className="font-mono text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#414066] text-white shrink-0">
                   Faculty
-                </Badge>
+                </span>
               </div>
             </div>
           </div>
 
           {/* Active Clusters Card */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+          <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white shadow-[2px_2px_0px_#2d2d34] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#2d2d34]/15 px-5 py-3.5 bg-[#faf9f6]">
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-text-mute" />
-                <h3 className="font-bold text-[14px] text-text">Clusters</h3>
-                <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                <Layers className="w-3.5 h-3.5 text-[#414066]" />
+                <h3 className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                  CLUSTERS // DOMAINS
+                </h3>
+                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
                   {clusters.length}
                 </span>
               </div>
               <Link
                 href={`/chapter/${slug}/clusters`}
-                className="text-[12px] font-semibold text-text-dim hover:text-[var(--accent)] hover:underline flex items-center gap-1 transition"
+                className="font-mono text-[11px] font-bold text-[#414066] hover:underline flex items-center gap-1 uppercase tracking-wider"
               >
                 <span>View all</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               {clusters.length === 0 ? (
-                <p className="py-4 text-center text-[13px] text-text-dim">
-                  No clusters created yet.
+                <p className="py-4 text-center font-mono text-xs text-[#71717a]">
+                  No domain clusters created yet.
                 </p>
               ) : (
-                <div className="space-y-2.5">
+                <div className="space-y-2">
                   {clusters.slice(0, 5).map((cl) => (
                     <Link
                       key={cl.id}
                       href={`/chapter/${slug}/clusters`}
-                      className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 hover:border-[var(--accent)]/40 hover:bg-bg/40 transition group"
+                      className="flex items-center justify-between p-2.5 rounded-[8px] border border-[#2d2d34]/15 hover:border-[#f26430] hover:bg-[#fffaf8] transition-all group"
                     >
                       <div className="min-w-0">
-                        <p className="text-[13px] font-semibold text-text group-hover:text-[var(--accent)] truncate">
+                        <p className="text-xs font-bold text-[#2d2d34] group-hover:text-[#f26430] truncate">
                           {cl.name}
                         </p>
-                        <p className="text-[11px] text-text-dim line-clamp-1">
+                        <p className="text-[10.5px] text-[#71717a] line-clamp-1">
                           {cl.description || "Domain community"}
                         </p>
                       </div>
-                      <span className="font-mono text-[11px] font-semibold text-text-dim bg-bg px-2 py-0.5 rounded border border-border/70 shrink-0">
+                      <span className="font-mono text-[10px] font-bold text-[#2d2d34] bg-white px-2 py-0.5 rounded border border-[#2d2d34]/20 shrink-0">
                         {cl.memberIds.length} builders
                       </span>
                     </Link>
@@ -657,50 +731,52 @@ export default function ChapterDashboardPage({
           </div>
 
           {/* Members Preview Card */}
-          <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white shadow-xs">
-            <div className="flex items-center justify-between border-b border-border/70 px-5 py-4">
+          <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white shadow-[2px_2px_0px_#2d2d34] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#2d2d34]/15 px-5 py-3.5 bg-[#faf9f6]">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[var(--accent)]" />
-                <h3 className="font-bold text-[14px] text-text">Members</h3>
-                <span className="rounded-full bg-bg px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                <Users className="w-3.5 h-3.5 text-[#f26430]" />
+                <h3 className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                  MEMBERS // DIRECTORY
+                </h3>
+                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
                   {members.length}
                 </span>
               </div>
               <Link
                 href={`/chapter/${slug}/students`}
-                className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                className="font-mono text-[11px] font-bold text-[#f26430] hover:underline flex items-center gap-1 uppercase tracking-wider"
               >
                 <span>Directory</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
-            <div className="p-5">
+            <div className="p-4 sm:p-5">
               {members.length === 0 ? (
-                <p className="py-4 text-center text-[13px] text-text-dim">
+                <p className="py-4 text-center font-mono text-xs text-[#71717a]">
                   No members registered yet.
                 </p>
               ) : (
                 <div className="space-y-3">
-                  <ul className="divide-y divide-border/60">
+                  <ul className="divide-y divide-[#2d2d34]/10">
                     {members.slice(0, 5).map((m) => {
                       const uId = m.elevatesId || generateElevatesId(m.id);
                       return (
                         <li key={m.id} className="py-2.5 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[11px] font-bold text-[var(--accent)]">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[5px] bg-[#2d2d34] text-white font-mono text-[10px] font-bold shadow-[1px_1px_0px_#f26430]">
                               {initials(m.fullName)}
                             </span>
                             <div className="min-w-0">
-                              <p className="text-[12px] font-semibold text-text truncate">
+                              <p className="text-xs font-bold text-[#2d2d34] truncate">
                                 {m.fullName}
                               </p>
-                              <p className="text-[10px] text-text-dim truncate">
+                              <p className="text-[10px] font-mono text-[#71717a] truncate">
                                 {m.department ? `${m.department} · ` : ""}{m.year || "Student"}
                               </p>
                             </div>
                           </div>
-                          <span className="font-mono text-[9px] font-semibold px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 shrink-0">
+                          <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#faf9f6] text-[#2d2d34] border border-[#2d2d34]/20 shrink-0">
                             {uId}
                           </span>
                         </li>
@@ -710,7 +786,7 @@ export default function ChapterDashboardPage({
                   {members.length > 5 && (
                     <Link
                       href={`/chapter/${slug}/students`}
-                      className="block text-center text-[12px] font-semibold text-[var(--accent)] hover:underline pt-1"
+                      className="block text-center font-mono text-xs font-bold text-[#f26430] hover:underline pt-1 uppercase tracking-wider"
                     >
                       View all {members.length} members →
                     </Link>
@@ -722,25 +798,27 @@ export default function ChapterDashboardPage({
 
           {/* Recent Activity Timeline */}
           {chapterLogs.length > 0 && (
-            <div className="rounded-[var(--radius-lg)] border border-border/80 bg-white p-5 shadow-xs">
+            <div className="rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 shadow-[2px_2px_0px_#2d2d34]">
               <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-text-mute" />
-                <h3 className="font-bold text-[14px] text-text">Recent Activity</h3>
+                <Clock className="w-3.5 h-3.5 text-[#71717a]" />
+                <h3 className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                  CHRONICLE // ACTIVITY LOG
+                </h3>
               </div>
-              <ul className="divide-y divide-border/60 text-[12px]">
+              <ul className="divide-y divide-[#2d2d34]/10 text-xs">
                 {chapterLogs.map((log) => {
                   const actor = store.profiles.find((p) => p.id === log.actorId);
                   return (
                     <li key={log.id} className="py-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-text truncate">
+                        <span className="font-bold text-[#2d2d34] truncate">
                           {actor?.fullName ?? "System"}
                         </span>
-                        <span className="font-mono text-[10px] text-text-mute shrink-0">
+                        <span className="font-mono text-[10px] text-[#71717a] shrink-0">
                           {formatDateTime(log.createdAt)}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[11px] text-text-dim truncate">
+                      <p className="mt-0.5 text-[11px] text-[#52525b] truncate">
                         {log.action.replaceAll("_", " ")}
                         {log.meta ? ` · ${log.meta}` : ""}
                       </p>
@@ -752,6 +830,17 @@ export default function ChapterDashboardPage({
           )}
         </div>
       </div>
+
+      {/* Event Registration Dialog (for instant modal registration) */}
+      <EventRegistrationDialog
+        open={Boolean(selectedEventForReg)}
+        onClose={() => setSelectedEventForReg(null)}
+        event={selectedEventForReg}
+        onSuccess={() => {
+          showToast("Registration saved successfully", "success");
+          setSelectedEventForReg(null);
+        }}
+      />
     </div>
   );
 }

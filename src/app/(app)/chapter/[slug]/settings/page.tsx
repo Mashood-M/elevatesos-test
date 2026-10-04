@@ -12,7 +12,6 @@ import {
   History,
   Copy,
   Check,
-  MapPin,
   Users,
   Calendar,
   Sparkles,
@@ -27,15 +26,13 @@ import {
   X,
   Loader2,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, useCurrentUser } from "@/context/store-context";
 import { hasPermission, isHqRole } from "@/lib/permissions";
-import { chapterEyebrow, isExecutiveRole, isFacultyRole } from "@/lib/access";
+import { isExecutiveRole, isFacultyRole } from "@/lib/access";
 import { formatDate, formatDateTime, cn } from "@/lib/utils";
 import { formatSlugInput, finalizeSlug } from "@/lib/slug";
 import { deriveChapterShortCode, findChapterBySlugOrId } from "@/lib/chapters";
@@ -434,82 +431,97 @@ export default function ChapterSettingsPage({
         <button
           type="button"
           onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border/80 bg-bg-panel px-3 py-1.5 text-[12px] font-medium text-text-dim transition-colors hover:bg-bg hover:text-text shadow-2xs group cursor-pointer"
+          className="h-8 px-3 rounded-[6px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
         >
-          <ArrowLeft size={13} className="transition-transform group-hover:-translate-x-0.5" />
+          <ArrowLeft size={12} />
           <span>Back</span>
         </button>
-        <span className="text-border">/</span>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
         <Link
           href={`/chapter/${slug}`}
-          className="text-[12px] font-medium text-text-mute transition-colors hover:text-[var(--accent)]"
+          className="font-mono text-xs text-[#71717a] hover:text-[#f26430] transition-colors"
         >
           {chapter.name}
         </Link>
-        <span className="text-border">/</span>
-        <span className="text-[12px] font-semibold text-text">Settings</span>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
+        <span className="font-mono text-xs font-bold text-[#2d2d34]">Settings</span>
       </div>
 
-      {/* 2. PageHeader with Status Badge and Actions */}
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title="Chapter Settings"
-        badge={
-          <div className="flex items-center gap-1.5">
-            <Badge tone={isChapterActive ? "green" : ch.status === "onboarding" ? "orange" : "mute"}>
-              {ch.status}
-            </Badge>
-            {isEditing && (
-              <Badge tone="orange" className="font-semibold animate-pulse">
-                Editing
-              </Badge>
-            )}
+      {/* 2. ARCHITECTURAL HERO BANNER */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} SETTINGS
+              </span>
+              <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-[4px] border border-[#2d2d34]/30 bg-white text-[#2d2d34]">
+                {ch.status}
+              </span>
+              {isEditing && (
+                <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-[4px] bg-[#f26430] text-white animate-pulse">
+                  Editing
+                </span>
+              )}
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+              Campus Settings &amp; Infrastructure.
+            </h1>
+            <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+              {isEditing
+                ? `Editing ${chapter.name} configuration. Click "Save Changes" when finished or "Discard" to cancel.`
+                : `${chapter.name} · Campus details, access codes, departments, and launch configuration.`}
+            </p>
           </div>
-        }
-        description={
-          isEditing
-            ? `Editing ${chapter.name} settings. Click "Save Changes" when finished or "Discard" to cancel.`
-            : `${chapter.name} · Campus details, access codes, departments, and launch configuration.`
-        }
-        actions={
-          canManage ? (
-            isEditing ? (
-              <div className="flex items-center gap-2 animate-in fade-in duration-150">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDiscard}
-                  disabled={isSaving}
-                  className="gap-1.5 border border-border/80 text-text-dim hover:text-text cursor-pointer"
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {canManage ? (
+              isEditing ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDiscard}
+                    disabled={isSaving}
+                    className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <X size={13} />
+                    <span>Discard</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span>{isSaving ? "Saving..." : "Save Changes"}</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartEdit}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <X size={13} />
-                  <span>Discard</span>
-                </Button>
-                <Button
-                  variant="orange"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="gap-1.5 font-bold shadow-xs cursor-pointer"
-                >
-                  {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                  <span>{isSaving ? "Saving..." : "Save Changes"}</span>
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant="orange"
-                size="sm"
-                onClick={handleStartEdit}
-                className="gap-1.5 font-bold shadow-xs cursor-pointer"
-              >
-                <Pencil size={13} />
-                <span>Edit Settings</span>
-              </Button>
-            )
-          ) : null
-        }
-      />
+                  <Pencil size={13} />
+                  <span>Edit Settings</span>
+                </button>
+              )
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       {/* 3. Flash Notification */}
       {flash ? (
@@ -520,59 +532,92 @@ export default function ChapterSettingsPage({
       ) : null}
 
       {!canManage ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
-          View only mode — switch to Campus Lead, Secretary, Faculty coordinator, or HQ admin to edit chapter configuration.
+        <div className="rounded-[10px] border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-900 font-mono">
+          VIEW ONLY MODE — Switch to Campus Lead, Secretary, Faculty coordinator, or HQ admin to edit chapter configuration.
         </div>
       ) : null}
 
       {/* 4. High-Level 4-Metric Overview Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Link href={`/chapter/${slug}/students`} className="block transition hover:opacity-90">
-          <Stat label="Total Members" value={members.length} hint="Verified directory →" />
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>01 {"//"} TOTAL MEMBERS</span>
+              <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {members.length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Verified directory →</p>
+          </div>
         </Link>
         <Link href={`/chapter/${slug}/leadership`} className="block transition hover:opacity-90">
-          <Stat label="Executives" value={executives.length} hint="Leadership cycle →" />
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>02 {"//"} EXECUTIVES</span>
+              <span className="h-2 w-2 rounded-full bg-[#414066]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {executives.length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Leadership cycle →</p>
+          </div>
         </Link>
         <Link href={`/chapter/${slug}/clusters`} className="block transition hover:opacity-90">
-          <Stat label="Clusters" value={clusters.length} hint="Domain tracks →" />
+          <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+              <span>03 {"//"} CLUSTERS</span>
+              <span className="h-2 w-2 rounded-full bg-[#10b981]" />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+              {clusters.length}
+            </p>
+            <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Domain tracks →</p>
+          </div>
         </Link>
-        <Stat
-          label="Launch Readiness"
-          value={`${checklistDone}/${checklist.length}`}
-          hint={isChapterActive ? "Active & operational" : `${checklist.length - checklistDone} steps pending`}
-          accent={isChapterActive ? "green" : "orange"}
-        />
-      </div>
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>04 {"//"} READINESS</span>
+            <span className={cn("h-2 w-2 rounded-full", isChapterActive ? "bg-[#10b981]" : "bg-[#f59e0b]")} />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {checklistDone}/{checklist.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">
+            {isChapterActive ? "Active & operational" : `${checklist.length - checklistDone} steps pending`}
+          </p>
+        </div>
+      </section>
 
-      {/* 5. Modern Tabbed Navigation */}
-      <div className="flex border-b border-border/80 gap-1 overflow-x-auto pb-px">
+      {/* 5. Tactile Segmented Tab Navigation */}
+      <div className="flex items-center gap-1.5 border-b border-[#2d2d34]/20 pb-2 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab("general")}
           className={cn(
-            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "general"
-              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
-              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
-          <Building2 size={14} />
-          <span>General & Location</span>
+          <Building2 size={13} />
+          <span>General &amp; Location</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab("access")}
           className={cn(
-            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "access"
-              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
-              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
-          <KeyRound size={14} />
-          <span>Access & Departments</span>
-          <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+          <KeyRound size={13} />
+          <span>Access &amp; Departments</span>
+          <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
             {(store.departments ?? []).filter((d) => d.chapterId === ch.id).length}
           </span>
         </button>
@@ -581,15 +626,15 @@ export default function ChapterSettingsPage({
           type="button"
           onClick={() => setActiveTab("onboarding")}
           className={cn(
-            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "onboarding"
-              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
-              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
-          <CheckCircle2 size={14} />
-          <span>Onboarding & Ops</span>
-          <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+          <CheckCircle2 size={13} />
+          <span>Onboarding &amp; Ops</span>
+          <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
             {checklistDone}/{checklist.length}
           </span>
         </button>
@@ -598,16 +643,16 @@ export default function ChapterSettingsPage({
           type="button"
           onClick={() => setActiveTab("activity")}
           className={cn(
-            "flex items-center gap-2 px-4 py-2.5 text-xs font-semibold transition-all border-b-2 cursor-pointer whitespace-nowrap",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "activity"
-              ? "border-[var(--accent)] text-[var(--accent)] bg-[var(--accent-soft)]/50 rounded-t-lg font-bold"
-              : "border-transparent text-text-dim hover:text-text hover:bg-bg/60 rounded-t-lg"
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
-          <History size={14} />
+          <History size={13} />
           <span>Activity Logs</span>
           {chapterLogs.length > 0 && (
-            <span className="rounded-full bg-bg px-1.5 py-0.2 text-[10px] font-mono font-bold text-text-muted border border-border/60">
+            <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
               {chapterLogs.length}
             </span>
           )}

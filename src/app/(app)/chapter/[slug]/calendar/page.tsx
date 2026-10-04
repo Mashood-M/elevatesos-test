@@ -20,10 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   dateKeyInTz,
@@ -138,53 +135,78 @@ export default function ChapterCalendarPage({
 
   if (!chapter) {
     return (
-      <div className="py-12 text-center">
-        <p className="text-[var(--accent)] font-semibold">Chapter not found</p>
+      <div className="rounded-[14px] border border-[#2d2d34]/20 bg-white p-8 text-center shadow-[2px_2px_0px_#2d2d34]">
+        <p className="font-mono text-sm text-[#f26430] uppercase font-bold">{"// CHAPTER NOT FOUND"}</p>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Top Page Header */}
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title={`${chapter.name} Calendar`}
-        description={`Upcoming events, workshops, and milestones for ${chapter.name}.`}
-        actions={
-          <Link href={`/chapter/${slug}/events`}>
-            <Button variant="secondary" className="gap-1.5 text-[13px]">
-              <List size={14} />
-              <span>Events List</span>
-            </Button>
-          </Link>
-        }
-      />
+  const chapterCode = (chapter.shortCode || chapter.slug).toUpperCase();
 
-      {/* 1. Chapter Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <Stat
-          label="Chapter Events"
-          value={stats.totalEvents}
-          hint="All-time scheduled"
-        />
-        <Stat
-          label="Open Registrations"
-          value={stats.registrationOpen}
-          accent="orange"
-          hint="Active student signups"
-        />
-        <Stat
-          label="Happening This Week"
-          value={stats.thisWeekCount}
-          hint="Next 7 days on campus"
-        />
-        <Stat
-          label="Completed"
-          value={stats.completedCount}
-          hint="Delivered sessions"
-        />
-      </div>
+  const calMetrics = [
+    { num: "01", label: "EVENTS", value: stats.totalEvents, sub: "All-time scheduled", color: "#2d2d34" },
+    { num: "02", label: "OPEN", value: stats.registrationOpen, sub: "Active signups", color: "#f26430" },
+    { num: "03", label: "THIS WEEK", value: stats.thisWeekCount, sub: "Next 7 days", color: "#414066" },
+    { num: "04", label: "COMPLETED", value: stats.completedCount, sub: "Delivered sessions", color: "#5f7560" },
+  ];
+
+  return (
+    <div className="space-y-6 pb-12">
+      {/* ─── ARCHITECTURAL HERO ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[3px_3px_0px_#2d2d34] bauhaus-grid-bg">
+        <div className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none" aria-hidden="true" />
+        <div className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-10 rotate-45 pointer-events-none select-none" aria-hidden="true" />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="max-w-2xl">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {chapterCode} {"//"} CALENDAR
+              </span>
+              <span className="hidden sm:inline-block font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {chapter.name}
+              </span>
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              Event Calendar &
+              <span className="block text-[#f26430] text-xl sm:text-2xl font-bold mt-0.5">
+                MILESTONES
+              </span>
+            </h1>
+            <p className="mt-2 text-sm text-[#71717a] leading-relaxed max-w-xl">
+              Upcoming events, workshops, and milestones for <span className="font-semibold text-[#2d2d34]">{chapter.name}</span>.
+            </p>
+          </div>
+
+          <Link href={`/chapter/${slug}/events`}>
+            <button
+              type="button"
+              className="h-9 px-3.5 rounded-[8px] bg-white text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34] hover:bg-[#2d2d34] hover:text-white transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <List size={13} />
+              Events List
+            </button>
+          </Link>
+        </div>
+      </section>
+
+      {/* ─── METRIC STRIP ──────────────────────────────────────── */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {calMetrics.map((m) => (
+          <div key={m.num} className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all">
+            <div className="flex items-center justify-between font-mono text-[9.5px] uppercase font-bold" style={{ color: m.color }}>
+              <span>{m.num} {"//"} {m.label}</span>
+              <span className="h-1.5 w-1.5" style={{ backgroundColor: m.color }} />
+            </div>
+            <p className="mt-1 font-[family-name:var(--font-display)] font-black text-2xl sm:text-3xl text-[#2d2d34] tracking-tight">
+              {m.value}
+            </p>
+            <p className="text-[10.5px] font-mono text-[#52525b] mt-0.5 uppercase">{m.sub}</p>
+          </div>
+        ))}
+      </section>
 
       {/* 2. Unified Search & Filter Toolbar */}
       <div className="rounded-[var(--radius)] bg-bg-panel p-3.5 sm:p-4 shadow-[var(--shadow)] border border-border/70 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">

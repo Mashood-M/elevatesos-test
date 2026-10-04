@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Layers,
@@ -11,21 +11,17 @@ import {
   Cpu,
   Globe,
   Database,
-  Users,
   CheckCircle2,
-  Circle,
   Plus,
   Rocket,
   Lock,
   Unlock,
-  Trophy,
   Search,
   SlidersHorizontal,
   ArrowRight,
   UserCheck,
   UserPlus,
   GraduationCap,
-  Calendar,
   X,
   Compass,
   Copy,
@@ -34,14 +30,10 @@ import {
   Timer,
   Loader2,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ProgressBar } from "@/components/ui/progress";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
 import { useStore, showToast } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { hasPermission } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
@@ -149,11 +141,6 @@ export default function ChapterClustersPage({
     currentUserProfile?.discordUserId ||
     (currentUserProfile as Record<string, unknown> | undefined)?.discord_user_id
   );
-  const profileHref = currentUserProfile?.elevatesId
-    ? `/profile/${currentUserProfile.elevatesId}`
-    : currentUserId
-    ? `/profile/${currentUserId}`
-    : "/profile";
   const chapter = findChapterBySlugOrId(store.chapters, slug);
 
   // Search & Filter state
@@ -237,25 +224,20 @@ export default function ChapterClustersPage({
 
   const clusters = store.clusters.filter((c) => c.chapterId === chapter.id);
 
-  const chapterUserRoleIds = useMemo(() => {
-    return new Set(
-      (store.userRoles ?? [])
-        .filter((ur) => ur.chapterId === chapter.id || (chapter.slug && ur.chapterId === chapter.slug))
-        .map((ur) => ur.userId)
-    );
-  }, [store.userRoles, chapter.id, chapter.slug]);
+  const chapterUserRoleIds = new Set(
+    (store.userRoles ?? [])
+      .filter((ur) => ur.chapterId === chapter.id || (chapter.slug && ur.chapterId === chapter.slug))
+      .map((ur) => ur.userId)
+  );
 
-  const members = useMemo(() => {
-    const list = (store.profiles ?? []).filter(
-      (p) =>
-        p.chapterId === chapter.id ||
-        (p as unknown as Record<string, unknown>).chapter_id === chapter.id ||
-        (chapter.slug && p.chapterId === chapter.slug) ||
-        chapterUserRoleIds.has(p.id)
-    );
-    if (list.length > 0) return list;
-    return store.profiles ?? [];
-  }, [store.profiles, chapter.id, chapter.slug, chapterUserRoleIds]);
+  const memberList = (store.profiles ?? []).filter(
+    (p) =>
+      p.chapterId === chapter.id ||
+      (p as unknown as Record<string, unknown>).chapter_id === chapter.id ||
+      (chapter.slug && p.chapterId === chapter.slug) ||
+      chapterUserRoleIds.has(p.id)
+  );
+  const members = memberList.length > 0 ? memberList : (store.profiles ?? []);
 
   const projects = store.projects.filter((p) => p.chapterId === chapter.id);
 
@@ -278,44 +260,42 @@ export default function ChapterClustersPage({
   const totalEnrolled = uniqueEnrolledIds.size;
   const clusterProjectsCount = projects.filter((p) => p.clusterId).length;
 
-  // Filtered & sorted clusters
-  const filteredClusters = useMemo(() => {
-    return clusters
-      .filter((c) => {
-        // Search filter
-        if (searchQuery.trim()) {
-          const q = searchQuery.toLowerCase().trim();
-          const leader = store.profiles.find((p) => p.id === c.leaderId);
-          const matchName = c.name.toLowerCase().includes(q);
-          const matchSlug = c.slug.toLowerCase().includes(q);
-          const matchDesc = (c.description || "").toLowerCase().includes(q);
-          const matchLead = leader ? leader.fullName.toLowerCase().includes(q) : false;
-          if (!matchName && !matchSlug && !matchDesc && !matchLead) return false;
-        }
+  // Filtered & sorted clusters computed directly inline
+  const filteredClusters = clusters
+    .filter((c) => {
+      // Search filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const leader = store.profiles.find((p) => p.id === c.leaderId);
+        const matchName = c.name.toLowerCase().includes(q);
+        const matchSlug = c.slug.toLowerCase().includes(q);
+        const matchDesc = (c.description || "").toLowerCase().includes(q);
+        const matchLead = leader ? leader.fullName.toLowerCase().includes(q) : false;
+        if (!matchName && !matchSlug && !matchDesc && !matchLead) return false;
+      }
 
-        // Access/Membership filter
-        if (filterMode === "mine") {
-          const isMember = c.memberIds.includes(currentUserId);
-          const isLead = c.leaderId === currentUserId;
-          if (!isMember && !isLead) return false;
-        } else if (filterMode === "open") {
-          if ((c.accessMode ?? "invite") !== "open") return false;
-        } else if (filterMode === "invite") {
-          if ((c.accessMode ?? "invite") !== "invite") return false;
-        }
+      // Access/Membership filter
+      if (filterMode === "mine") {
+        const isMember = c.memberIds.includes(currentUserId);
+        const isLead = c.leaderId === currentUserId;
+        if (!isMember && !isLead) return false;
+      } else if (filterMode === "open") {
+        if ((c.accessMode ?? "invite") !== "open") return false;
+      } else if (filterMode === "invite") {
+        if ((c.accessMode ?? "invite") !== "invite") return false;
+      }
 
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortBy === "name") {
-          return a.name.localeCompare(b.name);
-        }
-        if (sortBy === "members") {
-          return b.memberIds.length - a.memberIds.length;
-        }
-        return 0;
-      });
-  }, [clusters, searchQuery, filterMode, sortBy, currentUserId, store.profiles]);
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "name") {
+        return a.name.localeCompare(b.name);
+      }
+      if (sortBy === "members") {
+        return b.memberIds.length - a.memberIds.length;
+      }
+      return 0;
+    });
 
   function handleCreate() {
     if (!name.trim()) {
@@ -351,8 +331,8 @@ export default function ChapterClustersPage({
       setOpenModal(false);
       setFlash("");
       showToast(`Cluster "${cluster.name}" created successfully!`, "success");
-    } catch (err: any) {
-      setFlash(err?.message || "Failed to create cluster.");
+    } catch (err: unknown) {
+      setFlash(err instanceof Error ? err.message : "Failed to create cluster.");
     } finally {
       setIsSubmitting(false);
     }
@@ -376,55 +356,79 @@ export default function ChapterClustersPage({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* 1. Header with Finexy typography & actions */}
-      <PageHeader
-        eyebrow={chapterEyebrow(roleKey, "programs")}
-        title="Learning Clusters & Tracks"
-        description="Specialized chapter incubators where students deep-dive into high-impact fields, complete weekly roadmaps, and build showcase projects."
-        actions={
-          canCreate ? (
-            <Button
-              variant="orange"
-              className="gap-2 shadow-sm"
-              onClick={() => {
-                setFlash("");
-                setOpenModal(true);
-              }}
-            >
-              <Plus size={16} />
-              <span>Create Track</span>
-            </Button>
-          ) : null
-        }
-      />
+      {/* 1. ARCHITECTURAL HERO BANNER */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} TECHNICAL GUILDS
+              </span>
+              <span className="font-mono text-[10.5px] font-bold text-[#71717a] uppercase tracking-wider">
+                SPECIALIZED TRACKS
+              </span>
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+              Interest Clusters &amp; Tracks.
+            </h1>
+            <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+              Specialized campus incubators where builders deep-dive into high-impact fields, complete weekly roadmaps, and ship showcase projects.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {canCreate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFlash("");
+                  setOpenModal(true);
+                }}
+                className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>Create Cluster</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* Inline Discord Account Linking Guide (Shown when user is not connected) */}
       {!isDiscordConnected && (
         <div
           id="discord-connect-card"
-          className="relative overflow-hidden rounded-[24px] bg-white p-6 sm:p-7 shadow-[var(--shadow)] border border-[#5865F2]/25"
+          className="relative overflow-hidden rounded-[14px] bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 bauhaus-grid-bg"
         >
-          {/* Subtle decorative glow */}
-          <div className="absolute top-0 right-0 -mr-16 -mt-16 h-56 w-56 rounded-full bg-[#5865F2]/10 blur-3xl pointer-events-none" />
-
-          <div className="relative space-y-5">
+          <div className="relative space-y-4">
             {/* Top Banner Row */}
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
               <div className="flex items-start gap-3.5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#5865F2] text-white shadow-sm shadow-[#5865F2]/20">
-                  <DiscordIcon className="w-6 h-6" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-[#5865F2] text-white border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34]">
+                  <DiscordIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <h3 className="font-[family-name:var(--font-display)] text-[17px] font-bold text-text">
-                      Connect Discord to Join Learning Clusters
+                    <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-[#2d2d34]">
+                      Connect Discord to Unlock Cluster Membership
                     </h3>
-                    <span className="rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-700 text-[11px] font-bold px-2.5 py-0.5">
-                      Discord Link Required
+                    <span className="font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded-[4px] bg-amber-500/10 border border-amber-500/30 text-amber-800">
+                      Link Required
                     </span>
                   </div>
-                  <p className="text-[13px] text-text-dim max-w-2xl leading-relaxed">
-                    Elevates clusters are specialized builder tracks where cohort discussions, weekly roadmaps, and project reviews take place directly in our Discord server. Link your Discord account below to unlock cluster memberships.
+                  <p className="text-xs text-[#52525b] max-w-2xl leading-relaxed">
+                    Elevates clusters are specialized builder tracks where discussions, roadmaps, and sprint standups take place directly in Discord. Link your account to verify track enrollment.
                   </p>
                 </div>
               </div>
@@ -434,26 +438,26 @@ export default function ChapterClustersPage({
                 href="https://discord.gg/elevates"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#5865F2]/10 hover:bg-[#5865F2]/15 text-[#5865F2] text-[12px] font-bold border border-[#5865F2]/20 transition"
+                className="shrink-0 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-[6px] bg-white hover:bg-[#faf9f6] text-[#5865F2] font-mono text-[11px] font-bold uppercase border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition cursor-pointer"
               >
                 <DiscordIcon className="w-4 h-4" />
-                <span>Join Server</span>
-                <ExternalLink size={13} />
+                <span>Join Discord</span>
+                <ExternalLink size={12} />
               </a>
             </div>
 
             {/* 3 Step Interactive Card */}
-            <div className="grid gap-3 sm:grid-cols-3 pt-2">
+            <div className="grid gap-3 sm:grid-cols-3 pt-1">
               {/* Step 1 */}
-              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+              <div className="rounded-[10px] bg-[#faf9f6] border border-[#2d2d34]/20 p-3.5 flex flex-col justify-between shadow-[1px_1px_0px_#2d2d34]">
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--charcoal-900)] text-white text-[11px] font-bold">
-                      1
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="font-mono text-[10px] font-bold text-white bg-[#2d2d34] px-1.5 py-0.5 rounded-[3px]">
+                      01
                     </span>
-                    <span className="text-[13px] font-bold text-text">Join Discord</span>
+                    <span className="font-mono text-[11px] font-bold text-[#2d2d34] uppercase tracking-wider">Join Discord</span>
                   </div>
-                  <p className="text-[12px] text-text-mute leading-relaxed">
+                  <p className="text-[11.5px] text-[#71717a] leading-relaxed">
                     Join the official Elevates Discord server with your active Discord account.
                   </p>
                 </div>
@@ -462,7 +466,7 @@ export default function ChapterClustersPage({
                     href="https://discord.gg/elevates"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11.5px] font-semibold text-[#5865F2] hover:underline inline-flex items-center gap-1"
+                    className="font-mono text-[11px] font-bold text-[#5865F2] hover:underline inline-flex items-center gap-1 uppercase"
                   >
                     <span>discord.gg/elevates</span>
                     <ExternalLink size={11} />
@@ -471,28 +475,26 @@ export default function ChapterClustersPage({
               </div>
 
               {/* Step 2: Code Generator */}
-              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+              <div className="rounded-[10px] bg-[#faf9f6] border border-[#2d2d34]/20 p-3.5 flex flex-col justify-between shadow-[1px_1px_0px_#2d2d34]">
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#5865F2] text-white text-[11px] font-bold">
-                      2
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="font-mono text-[10px] font-bold text-white bg-[#2d2d34] px-1.5 py-0.5 rounded-[3px]">
+                      02
                     </span>
-                    <span className="text-[13px] font-bold text-text">Generate Code</span>
+                    <span className="font-mono text-[11px] font-bold text-[#2d2d34] uppercase tracking-wider">Generate Code</span>
                   </div>
-                  <p className="text-[12px] text-text-mute leading-relaxed">
+                  <p className="text-[11.5px] text-[#71717a] leading-relaxed">
                     Generate a unique 6-character code linked to your student Elevates ID.
                   </p>
                 </div>
 
                 <div className="mt-3">
                   {!discordCode || discordCodeExpired ? (
-                    <Button
+                    <button
                       type="button"
-                      variant="orange"
-                      size="sm"
                       disabled={isGeneratingCode}
                       onClick={handleGenerateDiscordCode}
-                      className="w-full h-8 text-[11px] font-bold gap-1.5"
+                      className="w-full h-8 rounded-[6px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition flex items-center justify-center gap-1.5 disabled:opacity-60 cursor-pointer"
                     >
                       {isGeneratingCode ? (
                         <>
@@ -502,16 +504,16 @@ export default function ChapterClustersPage({
                       ) : (
                         <span>{discordCodeExpired ? "Generate New Code" : "Get Linking Code"}</span>
                       )}
-                    </Button>
+                    </button>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 rounded-lg border border-[#5865F2]/40 bg-[#5865F2]/10 px-2.5 py-1 text-center font-mono text-[15px] font-black text-text tracking-wider">
+                      <div className="flex-1 h-8 rounded-[6px] border border-[#2d2d34]/30 bg-white px-2.5 flex items-center justify-center font-mono text-[14px] font-bold text-[#2d2d34] tracking-widest">
                         {discordCode}
                       </div>
                       <button
                         type="button"
                         onClick={handleCopyDiscordCode}
-                        className="h-8 px-2.5 rounded-lg border border-border bg-white text-[11px] font-bold text-text hover:bg-bg transition flex items-center gap-1"
+                        className="h-8 px-2.5 rounded-[6px] border border-[#2d2d34]/30 bg-white text-[11px] font-mono font-bold text-[#2d2d34] hover:bg-[#faf9f6] transition flex items-center gap-1 cursor-pointer"
                       >
                         {discordCodeCopied ? (
                           <>
@@ -528,32 +530,32 @@ export default function ChapterClustersPage({
                     </div>
                   )}
                   {discordCode && !discordCodeExpired && (
-                    <p className="mt-1.5 text-[10px] text-text-mute flex items-center gap-1">
+                    <p className="mt-1.5 text-[10px] text-[#71717a] font-mono flex items-center gap-1">
                       <Timer size={11} className="text-[#5865F2]" />
-                      <span>Expires in <span className="font-mono font-bold text-[#5865F2]">{countdown}</span></span>
+                      <span>Expires in <span className="font-bold text-[#5865F2]">{countdown}</span></span>
                     </p>
                   )}
                   {generateCodeError && (
-                    <p className="mt-1 text-[11px] text-rose-600">{generateCodeError}</p>
+                    <p className="mt-1 text-[11px] text-rose-600 font-mono">{generateCodeError}</p>
                   )}
                 </div>
               </div>
 
               {/* Step 3 */}
-              <div className="rounded-2xl bg-bg/80 border border-border/80 p-4 flex flex-col justify-between">
+              <div className="rounded-[10px] bg-[#faf9f6] border border-[#2d2d34]/20 p-3.5 flex flex-col justify-between shadow-[1px_1px_0px_#2d2d34]">
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--charcoal-900)] text-white text-[11px] font-bold">
-                      3
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="font-mono text-[10px] font-bold text-white bg-[#2d2d34] px-1.5 py-0.5 rounded-[3px]">
+                      03
                     </span>
-                    <span className="text-[13px] font-bold text-text">Verify in Discord</span>
+                    <span className="font-mono text-[11px] font-bold text-[#2d2d34] uppercase tracking-wider">Verify in Discord</span>
                   </div>
-                  <p className="text-[12px] text-text-mute leading-relaxed">
-                    Go to the <span className="font-bold text-text">#link-server</span> channel and paste your code:
+                  <p className="text-[11.5px] text-[#71717a] leading-relaxed">
+                    Go to the <span className="font-bold text-[#2d2d34]">#link-server</span> channel and paste your code:
                   </p>
                 </div>
                 <div className="mt-3">
-                  <div className="rounded-lg bg-black/5 dark:bg-white/5 border border-border/70 px-2.5 py-1.5 font-mono text-[11px] font-bold text-text select-all">
+                  <div className="rounded-[6px] bg-white border border-[#2d2d34]/30 px-2.5 py-1.5 font-mono text-[11px] font-bold text-[#2d2d34] select-all">
                     /link {discordCode || "<code>"}
                   </div>
                 </div>
@@ -563,152 +565,137 @@ export default function ChapterClustersPage({
         </div>
       )}
 
-      {/* 2. Sleek Metrics / Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Active Clusters</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-[var(--accent)]">
-              <Layers size={17} />
-            </div>
+      {/* 2. 4-METRIC ARCHITECTURAL TECHNICAL STRIP */}
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>01 // ACTIVE TRACKS</span>
+            <span className="h-2 w-2 rounded-full bg-[#f26430]" />
           </div>
-          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text tabular-nums">
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
             {totalClusters}
           </p>
-          <p className="mt-1 text-[11px] text-text-mute">Talent incubators</p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Talent Incubators</p>
         </div>
 
-        <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Enrolled Students</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
-              <Users size={17} />
-            </div>
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>02 // ENROLLED BUILDERS</span>
+            <span className="h-2 w-2 rounded-full bg-[#414066]" />
           </div>
-          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text tabular-nums">
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
             {totalEnrolled}
           </p>
-          <p className="mt-1 text-[11px] text-text-mute">Across all tracks</p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Across All Guilds</p>
         </div>
 
-        <div className="rounded-[20px] bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow)] border border-border/40">
-          <div className="flex items-center justify-between">
-            <span className="text-[12px] font-medium text-text-mute">Incubating Projects</span>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
-              <Rocket size={17} />
-            </div>
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>03 // INCUBATING PROJECTS</span>
+            <span className="h-2 w-2 rounded-full bg-[#5f7560]" />
           </div>
-          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text tabular-nums">
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
             {clusterProjectsCount}
           </p>
-          <p className="mt-1 text-[11px] text-text-mute">Building in tracks</p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Under Development</p>
         </div>
-      </div>
 
-      {/* 3. Search & Filter Bar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-[20px] bg-bg-panel p-3.5 sm:p-4 shadow-[var(--shadow)] border border-border/40">
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>04 // DISCIPLINE DOMAINS</span>
+            <span className="h-2 w-2 rounded-full bg-[#f59e0b]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#f26430]">
+            {new Set(clusters.map((c) => getClusterTheme(c.name, c.slug).category)).size}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Core Specializations</p>
+        </div>
+      </section>
+
+      {/* 3. TACTILE SEARCH & FILTER BAR */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-[12px] border border-[#2d2d34]/20 shadow-[1.5px_1.5px_0px_#2d2d34]">
         {/* Search Input */}
-        <div className="relative flex-1 max-w-md">
-          <Search
-            size={16}
-            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-mute pointer-events-none"
-          />
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#71717a]" size={13} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tracks by name, lead, or discipline..."
-            className="w-full h-10 pl-10 pr-9 rounded-full bg-bg border border-border text-[13px] text-text placeholder:text-text-mute focus:outline-none focus:border-[var(--accent)] transition"
+            placeholder="Search tracks, leads, domains..."
+            className="w-full h-8 pl-8 pr-7 rounded-[6px] bg-[#faf9f6] border border-[#2d2d34]/20 font-mono text-[11px] text-[#2d2d34] focus:outline-none focus:border-[#f26430]"
           />
-          {searchQuery ? (
+          {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-mute hover:text-text"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#71717a] hover:text-[#2d2d34]"
             >
-              <X size={15} />
+              <X size={12} />
             </button>
-          ) : null}
+          )}
         </div>
 
         {/* Filter Pills */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <button
-            onClick={() => setFilterMode("all")}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[12px] font-medium transition",
-              filterMode === "all"
-                ? "bg-[var(--charcoal-900)] text-white shadow-sm"
-                : "bg-bg text-text-mute hover:text-text hover:bg-bg-hover"
-            )}
-          >
-            All Tracks ({clusters.length})
-          </button>
-          <button
-            onClick={() => setFilterMode("mine")}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[12px] font-medium transition",
-              filterMode === "mine"
-                ? "bg-[var(--charcoal-900)] text-white shadow-sm"
-                : "bg-bg text-text-mute hover:text-text hover:bg-bg-hover"
-            )}
-          >
-            My Tracks
-          </button>
-          <button
-            onClick={() => setFilterMode("open")}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[12px] font-medium transition",
-              filterMode === "open"
-                ? "bg-[var(--charcoal-900)] text-white shadow-sm"
-                : "bg-bg text-text-mute hover:text-text hover:bg-bg-hover"
-            )}
-          >
-            Open to Join
-          </button>
-          <button
-            onClick={() => setFilterMode("invite")}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[12px] font-medium transition",
-              filterMode === "invite"
-                ? "bg-[var(--charcoal-900)] text-white shadow-sm"
-                : "bg-bg text-text-mute hover:text-text hover:bg-bg-hover"
-            )}
-          >
-            Invite Only
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { key: "all", label: `ALL (${clusters.length})` },
+              { key: "mine", label: "MY TRACKS" },
+              { key: "open", label: "OPEN TO JOIN" },
+              { key: "invite", label: "INVITE ONLY" },
+            ] as const
+          ).map((tab) => {
+            const active = filterMode === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setFilterMode(tab.key)}
+                className={cn(
+                  "h-7 px-2.5 rounded-[5px] font-mono text-[10px] font-bold uppercase tracking-wider border transition-all cursor-pointer",
+                  active
+                    ? "bg-[#2d2d34] text-white border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                    : "bg-[#faf9f6] text-[#52525b] border-[#2d2d34]/20 hover:border-[#2d2d34] hover:text-[#2d2d34]",
+                )}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
 
           {/* Sort Dropdown */}
-          <div className="ml-auto sm:ml-2 flex items-center gap-1 pl-2 border-l border-border/70">
-            <SlidersHorizontal size={14} className="text-text-mute" />
+          <div className="flex items-center gap-1 pl-2 border-l border-[#2d2d34]/20">
+            <SlidersHorizontal size={12} className="text-[#71717a]" />
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="bg-transparent text-[12px] font-medium text-text focus:outline-none cursor-pointer"
+              onChange={(e) => setSortBy(e.target.value as "name" | "members")}
+              className="bg-transparent font-mono text-[10.5px] font-bold text-[#2d2d34] uppercase focus:outline-none cursor-pointer"
             >
-              <option value="name">Name (A-Z)</option>
-              <option value="members">Most Members</option>
+              <option value="name">NAME (A-Z)</option>
+              <option value="members">MOST MEMBERS</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* 4. Clusters Grid or Empty State */}
+      {/* 4. CLUSTERS GRID OR EMPTY STATE */}
       {filteredClusters.length === 0 ? (
-        <div className="rounded-[22px] bg-bg-panel p-10 sm:p-14 text-center shadow-[var(--shadow)] border border-border/50">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-[var(--accent)] mb-4">
-            <Compass size={28} />
+        <div className="rounded-[16px] border border-dashed border-[#2d2d34]/30 bg-white p-12 text-center shadow-[1.5px_1.5px_0px_rgba(45,45,52,0.05)] space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#faf9f6] border border-[#2d2d34]/20 text-[#f26430] shadow-[1.5px_1.5px_0px_#2d2d34]">
+            <Compass size={22} />
           </div>
-          <h3 className="font-[family-name:var(--font-display)] text-lg sm:text-xl font-bold text-text">
-            {searchQuery || filterMode !== "all"
-              ? "No matching tracks found"
-              : "No learning clusters yet"}
-          </h3>
-          <p className="mx-auto mt-2 max-w-md text-[13px] text-text-mute leading-relaxed">
-            {searchQuery || filterMode !== "all"
-              ? "Try adjusting your search keywords or switching filters to see other tracks."
-              : "Clusters are invite-first talent incubators where students specialize, follow weekly build roadmaps, and showcase projects."}
-          </p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          <div>
+            <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-[#2d2d34]">
+              {searchQuery || filterMode !== "all"
+                ? "No Matching Tracks Found"
+                : "No Learning Clusters Yet"}
+            </h3>
+            <p className="mt-1 text-xs text-[#71717a] max-w-md mx-auto leading-relaxed">
+              {searchQuery || filterMode !== "all"
+                ? "Try adjusting your search keywords or switching filters to see other tracks."
+                : "Clusters are talent incubators where students specialize, follow weekly build roadmaps, and showcase projects."}
+            </p>
+          </div>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
             {searchQuery || filterMode !== "all" ? (
               <Button
                 variant="secondary"
@@ -717,6 +704,7 @@ export default function ChapterClustersPage({
                   setSearchQuery("");
                   setFilterMode("all");
                 }}
+                className="font-mono text-xs uppercase"
               >
                 Clear Filters
               </Button>
@@ -727,6 +715,7 @@ export default function ChapterClustersPage({
                   setFlash("");
                   setOpenModal(true);
                 }}
+                className="font-mono text-xs uppercase shadow-[1.5px_1.5px_0px_#2d2d34]"
               >
                 Create First Track
               </Button>
@@ -734,7 +723,7 @@ export default function ChapterClustersPage({
           </div>
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredClusters.map((cluster) => {
             const theme = getClusterTheme(cluster.name, cluster.slug);
             const ThemeIcon = theme.icon;
@@ -745,33 +734,27 @@ export default function ChapterClustersPage({
             const clusterProjects = projects.filter((p) => p.clusterId === cluster.id);
             const mode = cluster.accessMode ?? "invite";
 
-            // Member profiles for avatar display
             const memberProfiles = cluster.memberIds
               .map((id) => store.profiles.find((p) => p.id === id))
-              .filter(Boolean);
+              .filter(Boolean) as (typeof store.profiles)[number][];
 
             return (
               <div
                 key={cluster.id}
-                className="group flex flex-col justify-between rounded-[22px] bg-bg-panel p-5 sm:p-6 shadow-[var(--shadow)] border border-border/60 hover:border-[var(--accent)]/30 hover:shadow-md transition-all duration-200"
+                className="group flex flex-col justify-between rounded-[14px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 hover:shadow-[3.5px_3.5px_0px_#2d2d34] hover:border-[#2d2d34] transition-all"
               >
                 <div>
-                  {/* Top Row: Icon + Badges */}
+                  {/* Top Row: Track Icon & Access Badge */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          "flex h-11 w-11 items-center justify-center rounded-2xl border transition group-hover:scale-105",
-                          theme.colorClass
-                        )}
-                      >
-                        <ThemeIcon size={20} />
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#faf9f6] border border-[#2d2d34] text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34]">
+                        <ThemeIcon size={18} className="text-[#f26430]" />
                       </div>
                       <div>
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-mute block">
+                        <span className="font-mono text-[9.5px] font-bold uppercase tracking-wider text-[#71717a] block">
                           {theme.category}
                         </span>
-                        <span className="font-[family-name:var(--font-mono)] text-[11px] text-text-dim">
+                        <span className="font-mono text-[10.5px] font-bold text-[#2d2d34]">
                           @{cluster.slug}
                         </span>
                       </div>
@@ -779,65 +762,65 @@ export default function ChapterClustersPage({
 
                     <div className="flex flex-col items-end gap-1">
                       {mode === "open" ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700 border border-emerald-100">
-                          <Unlock size={11} /> Open
+                        <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#5f7560]/10 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-[#5f7560] border border-[#5f7560]/30">
+                          <Unlock size={10} /> OPEN
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-100">
-                          <Lock size={11} /> Invite Only
+                        <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#f59e0b]/10 px-2 py-0.5 font-mono text-[9px] font-bold uppercase text-[#b45309] border border-[#f59e0b]/30">
+                          <Lock size={10} /> INVITE ONLY
                         </span>
                       )}
 
                       {isLead ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
-                          You Lead This
+                        <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#f26430]/10 px-1.5 py-0.2 font-mono text-[8.5px] font-bold uppercase text-[#f26430] border border-[#f26430]/30">
+                          LEAD
                         </span>
                       ) : isMember ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                          <CheckCircle2 size={10} /> Enrolled
+                        <span className="inline-flex items-center gap-1 rounded-[4px] bg-[#5f7560]/10 px-1.5 py-0.2 font-mono text-[8.5px] font-bold uppercase text-[#5f7560] border border-[#5f7560]/30">
+                          <CheckCircle2 size={9} /> ENROLLED
                         </span>
                       ) : null}
                     </div>
                   </div>
 
                   {/* Title & Description */}
-                  <div className="mt-4">
+                  <div className="mt-3.5">
                     <Link
                       href={`/chapter/${slug}/clusters/${cluster.id}`}
                       className="block group/link"
                     >
-                      <h3 className="font-[family-name:var(--font-display)] text-[18px] sm:text-[19px] font-bold text-text group-hover/link:text-[var(--accent)] transition line-clamp-1">
+                      <h3 className="font-[family-name:var(--font-display)] text-base font-bold text-[#2d2d34] group-hover/link:text-[#f26430] transition line-clamp-1">
                         {cluster.name}
                       </h3>
                     </Link>
-                    <p className="mt-1.5 text-[12.5px] text-text-dim leading-relaxed line-clamp-2">
-                      {cluster.description || "Specialized learning and build track for student builders."}
+                    <p className="mt-1 text-xs text-[#52525b] leading-relaxed line-clamp-2">
+                      {cluster.description || "Specialized learning and build track for campus builders."}
                     </p>
                   </div>
 
                   {/* Leadership Cardlets */}
-                  <div className="mt-4 flex flex-wrap gap-2 text-[11.5px]">
+                  <div className="mt-3.5 flex flex-wrap gap-1.5">
                     {leader ? (
-                      <div className="flex items-center gap-2 rounded-full bg-bg px-3 py-1 border border-border/60">
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-100 text-[10px] font-bold text-purple-700 uppercase">
+                      <div className="flex items-center gap-1.5 rounded-[4px] bg-[#faf9f6] px-2 py-0.5 border border-[#2d2d34]/20">
+                        <div className="flex h-4 w-4 items-center justify-center rounded-full bg-[#2d2d34] text-[8px] font-mono font-bold text-white uppercase">
                           {leader.fullName[0]}
                         </div>
-                        <span className="text-text font-medium truncate max-w-[140px]">
+                        <span className="font-mono text-[10px] font-bold text-[#2d2d34] truncate max-w-[120px]">
                           {leader.fullName}
                         </span>
-                        <span className="text-[10px] text-text-mute">Lead</span>
+                        <span className="font-mono text-[9px] text-[#71717a]">LEAD</span>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 rounded-full bg-bg/50 px-3 py-1 text-text-mute text-[11px] border border-dashed border-border">
-                        <UserCheck size={12} />
-                        <span>Lead unassigned</span>
+                      <div className="flex items-center gap-1 rounded-[4px] bg-[#faf9f6] px-2 py-0.5 font-mono text-[#71717a] text-[10px] border border-dashed border-[#2d2d34]/20">
+                        <UserCheck size={11} />
+                        <span>LEAD UNASSIGNED</span>
                       </div>
                     )}
 
                     {faculty ? (
-                      <div className="flex items-center gap-2 rounded-full bg-bg px-3 py-1 border border-border/60">
-                        <GraduationCap size={13} className="text-emerald-600" />
-                        <span className="text-text font-medium truncate max-w-[130px]">
+                      <div className="flex items-center gap-1.5 rounded-[4px] bg-[#faf9f6] px-2 py-0.5 border border-[#2d2d34]/20">
+                        <GraduationCap size={11} className="text-[#5f7560]" />
+                        <span className="font-mono text-[10px] font-bold text-[#2d2d34] truncate max-w-[110px]">
                           {faculty.fullName}
                         </span>
                       </div>
@@ -845,36 +828,34 @@ export default function ChapterClustersPage({
                   </div>
                 </div>
 
-                {/* Card Footer: Members, Projects & Action */}
-                <div className="mt-5 pt-4 border-t border-border/50">
-                  <div className="flex items-center justify-between gap-2 mb-3.5">
+                {/* Card Footer */}
+                <div className="mt-4 pt-3 border-t border-[#2d2d34]/15">
+                  <div className="flex items-center justify-between gap-2 mb-3">
                     {/* Stacked Member Avatars */}
                     <div className="flex items-center gap-1.5">
                       <div className="flex -space-x-1.5 overflow-hidden">
-                        {memberProfiles.slice(0, 3).map((m: any) => (
+                        {memberProfiles.slice(0, 3).map((m) => (
                           <div
                             key={m.id}
                             title={m.fullName}
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 border-2 border-bg-panel text-[9px] font-bold text-slate-700"
+                            className="inline-flex h-5.5 w-5.5 items-center justify-center rounded-full bg-[#2d2d34] text-white border border-white font-mono text-[8.5px] font-bold uppercase"
                           >
                             {m.fullName[0]}
                           </div>
                         ))}
                       </div>
-                      <span className="text-[11.5px] font-medium text-text-mute">
-                        {cluster.memberIds.length}{" "}
-                        {cluster.memberIds.length === 1 ? "member" : "members"}
+                      <span className="font-mono text-[10.5px] font-bold text-[#71717a]">
+                        {cluster.memberIds.length} {cluster.memberIds.length === 1 ? "MEMBER" : "MEMBERS"}
                       </span>
                     </div>
 
                     {/* Incubating Projects Count */}
-                    {clusterProjects.length > 0 ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-text-mute">
-                        <Rocket size={12} className="text-sky-600" />
-                        {clusterProjects.length}{" "}
-                        {clusterProjects.length === 1 ? "project" : "projects"}
+                    {clusterProjects.length > 0 && (
+                      <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-[#f26430]">
+                        <Rocket size={11} />
+                        {clusterProjects.length} {clusterProjects.length === 1 ? "PROJ" : "PROJS"}
                       </span>
-                    ) : null}
+                    )}
                   </div>
 
                   {/* Actions Buttons */}
@@ -883,52 +864,51 @@ export default function ChapterClustersPage({
                       href={`/chapter/${slug}/clusters/${cluster.id}`}
                       className="flex-1"
                     >
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="w-full justify-between gap-1 group/btn text-[12px]"
+                      <button
+                        type="button"
+                        className="w-full h-8 px-3 rounded-[6px] bg-[#faf9f6] hover:bg-[#2d2d34] text-[#2d2d34] hover:text-white font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all flex items-center justify-between group/btn cursor-pointer"
                       >
                         <span>{isLead || canManage ? "Manage Track" : "Explore Track"}</span>
                         <ArrowRight
-                          size={13}
-                          className="transition-transform group-hover/btn:translate-x-0.5 text-text-mute"
+                          size={12}
+                          className="transition-transform group-hover/btn:translate-x-0.5 text-[#f26430]"
                         />
-                      </Button>
+                      </button>
                     </Link>
 
                     {canManage || isLead ? (
                       <Link href={`/chapter/${slug}/clusters/${cluster.id}?addMember=true`}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-[12px] h-8 px-2.5 text-[var(--accent)] hover:bg-orange-50 shrink-0 gap-1 border border-[var(--accent)]/30"
+                        <button
+                          type="button"
+                          className="h-8 px-2.5 rounded-[6px] bg-white hover:bg-[#faf9f6] text-[#f26430] font-mono text-[10px] font-bold uppercase tracking-wider border border-[#2d2d34]/30 shadow-[1px_1px_0px_#2d2d34] transition flex items-center gap-1 cursor-pointer shrink-0"
                           title="Add students to cluster"
                         >
                           <UserPlus size={12} />
-                          <span>Add Students</span>
-                        </Button>
+                          <span className="hidden sm:inline">Add</span>
+                        </button>
                       </Link>
                     ) : null}
 
                     {!isMember && mode === "open" ? (
-                      <Button
-                        variant={isDiscordConnected ? "orange" : "secondary"}
-                        size="sm"
+                      <button
+                        type="button"
                         onClick={() => handleQuickJoin(cluster)}
                         className={cn(
-                          "text-[12px] px-3.5 shrink-0",
-                          !isDiscordConnected && "text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10"
+                          "h-8 px-3 rounded-[6px] font-mono text-[10.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition shrink-0 cursor-pointer",
+                          !isDiscordConnected
+                            ? "bg-white hover:bg-[#faf9f6] text-[#5865F2]"
+                            : "bg-[#f26430] hover:bg-[#d85322] text-white",
                         )}
                       >
                         {!isDiscordConnected ? (
                           <span className="flex items-center gap-1.5">
                             <DiscordIcon className="w-3.5 h-3.5" />
-                            <span>Link to Join</span>
+                            <span>Link</span>
                           </span>
                         ) : (
                           "Join"
                         )}
-                      </Button>
+                      </button>
                     ) : null}
                   </div>
                 </div>

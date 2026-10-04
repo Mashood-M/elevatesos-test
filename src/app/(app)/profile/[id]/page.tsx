@@ -12,15 +12,11 @@ import {
   Edit3,
   Globe,
   GraduationCap,
-  KeyRound,
-  Layers,
   Link2,
   Loader2,
   Lock,
   Mail,
-  MapPin,
   Phone,
-  Plus,
   QrCode,
   ShieldCheck,
   Timer,
@@ -28,22 +24,18 @@ import {
   Trash2,
   Unlink,
   User,
-  Users,
   X,
   ExternalLink,
   Award,
   CalendarCheck2,
   FolderGit2,
 } from "lucide-react";
-import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { TypeConfirmModal } from "@/components/ui/type-confirm-modal";
 import { FieldLabel, Input, Select, TextArea } from "@/components/ui/input";
-import { Stat } from "@/components/ui/stat";
 import { ProgressBar } from "@/components/ui/progress";
-import { PageHeader } from "@/components/ui/page-header";
 import { useCurrentUser, useStore } from "@/context/store-context";
 import {
   cohortLabel,
@@ -157,11 +149,14 @@ export default function ProfilePage({
       const url = new URL(window.location.href);
       if (url.searchParams.get("verified") === "true" && profile?.email) {
         markEmailVerified(profile.email, profile.id);
-        setEmailVerifyStatus("success");
-        setEmailVerifyMessage("Your email address has been verified successfully!");
-        setEmailVerifyModalOpen(true);
         url.searchParams.delete("verified");
         window.history.replaceState({}, "", url.pathname + (url.search ? `?${url.searchParams}` : ""));
+        const timer = setTimeout(() => {
+          setEmailVerifyStatus("success");
+          setEmailVerifyMessage("Your email address has been verified successfully!");
+          setEmailVerifyModalOpen(true);
+        }, 0);
+        return () => clearTimeout(timer);
       }
     }
   }, [profile?.email, profile?.id, markEmailVerified]);
@@ -250,12 +245,11 @@ export default function ProfilePage({
   const [generateCodeError, setGenerateCodeError] = useState<string | null>(null);
   const [discordCodeExpired, setDiscordCodeExpired] = useState(false);
   const [unlinkConfirmOpen, setUnlinkConfirmOpen] = useState(false);
-  const [isUnlinking, setIsUnlinking] = useState(false);
 
   // Live countdown ticker
   const [countdown, setCountdown] = useState<string>("");
   useEffect(() => {
-    if (!discordCodeExpiresAt) { setCountdown(""); return; }
+    if (!discordCodeExpiresAt) return;
     const tick = () => {
       const diffMs = discordCodeExpiresAt.getTime() - Date.now();
       if (diffMs <= 0) {
@@ -310,20 +304,18 @@ export default function ProfilePage({
 
   async function handleUnlinkDiscord() {
     if (!profile) return;
-    setIsUnlinking(true);
     try {
       await unlinkDiscord(profile.id);
       setUnlinkConfirmOpen(false);
       // Reset discord code state on unlink
       setDiscordCode(null);
       setDiscordCodeExpiresAt(null);
+      setCountdown("");
       setDiscordCodeExpired(false);
       setDiscordCodeCopied(false);
       setGenerateCodeError(null);
     } catch (err) {
       console.warn("Failed to unlink discord:", err);
-    } finally {
-      setIsUnlinking(false);
     }
   }
 
@@ -434,9 +426,7 @@ export default function ProfilePage({
     return chapterCohorts.find((c) => c.id === cohortId);
   }, [chapterCohorts, cohortId]);
 
-  const assignedReps = useMemo(() => {
-    return listStudentRepresentatives(store, profile);
-  }, [store, profile]);
+  const assignedReps = listStudentRepresentatives(store, profile);
 
   const chapter = store.chapters.find((c) => c.id === profile?.chapterId);
 
@@ -494,62 +484,77 @@ export default function ProfilePage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Member Portfolio"
-        title={profile.fullName}
-        description={
-          isOwn
-            ? "Official member profile, verified credentials, and active projects."
-            : `Verified member portfolio${chapter ? ` · ${chapter.name}` : ""}.`
-        }
-        actions={
+      {/* 1. Architectural Hero Banner */}
+      <div className="bauhaus-grid-bg rounded-[20px] border border-[#2d2d34]/20 p-6 md:p-8 relative overflow-hidden shadow-[2px_2px_0px_#2d2d34]">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs font-bold text-[#f26430] uppercase tracking-wider">
+                {"01 // MEMBER PASSPORT"} {chapter ? `· ${(chapter.shortCode || chapter.slug).toUpperCase()}` : "· GLOBAL"}
+              </span>
+            </div>
+            <h1 className="font-['Syne'] text-2xl md:text-3xl font-extrabold text-[#2d2d34] tracking-tight">
+              {profile.fullName}
+            </h1>
+            <p className="font-['Plus_Jakarta_Sans'] text-sm text-[#2d2d34]/70 mt-1 max-w-2xl">
+              {isOwn
+                ? "Official member profile, verified credentials, and active projects."
+                : `Verified member portfolio${chapter ? ` · ${chapter.name}` : ""}.`}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {isOwn && (isVolunteer || session.roleKey === "volunteer" || hasPermission(store, session.roleKey, "attendance.verify")) && chapter && (
               <Link href={`/chapter/${chapter.slug}/attendance`}>
-                <Button variant="orange" className="gap-2 font-bold shadow-xs">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                >
                   <QrCode size={14} />
                   <span>Take Attendance</span>
-                </Button>
+                </button>
               </Link>
             )}
             {isOwn && (
               <Link href="/referrals">
-                <Button variant="secondary" className="gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-white text-[#2d2d34] border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#f3f4f6] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                >
                   <Link2 size={14} />
                   <span>Referrals</span>
-                </Button>
+                </button>
               </Link>
             )}
             {canEdit && (
-              <Button
-                variant="orange"
+              <button
+                type="button"
                 onClick={handleOpenEdit}
-                className="gap-2 font-bold"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
                 <Edit3 size={14} />
                 <span>Edit Profile</span>
-              </Button>
+              </button>
             )}
             {isFounder(session.roleKey) && profile.id !== session.userId && (
-              <Button
-                variant="danger"
+              <button
+                type="button"
                 onClick={() => setDeleteConfirmOpen(true)}
-                className="gap-1.5"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-rose-500 text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-rose-600 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
                 <Trash2 size={14} />
                 <span>Delete User</span>
-              </Button>
+              </button>
             )}
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {/* 2. Modern Profile Identity Hero Card */}
-      <div className="rounded-[var(--radius-lg)] bg-bg-panel p-5 sm:p-7 shadow-[var(--shadow)] border border-border/70">
+      <div className="rounded-[18px] bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20">
         <div className="flex flex-col md:flex-row md:items-start gap-6">
           {/* Avatar Area */}
           <div className="relative shrink-0">
-            <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-2xl bg-[var(--accent-soft)] text-3xl font-extrabold text-[var(--accent)] shadow-sm border border-border/60">
+            <div className="flex h-24 w-24 sm:h-28 sm:w-28 items-center justify-center overflow-hidden rounded-2xl bg-[#f26430]/10 text-3xl font-extrabold text-[#f26430] shadow-[2px_2px_0px_#2d2d34] border-2 border-[#2d2d34]">
               {profile.avatarUrl ? (
                 <img
                   src={resolveMediaUrl(profile.avatarUrl)}
@@ -562,7 +567,7 @@ export default function ProfilePage({
             </div>
             {isDiscordConnected && (
               <div
-                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#5865F2] text-white shadow-xs"
+                className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#5865F2] text-white shadow-xs border-2 border-white"
                 title="Discord Bot Connected"
               >
                 <DiscordIcon className="w-3.5 h-3.5" />
@@ -573,7 +578,7 @@ export default function ProfilePage({
           {/* Identity Information Details */}
           <div className="flex-1 space-y-3">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-extrabold tracking-tight text-text">
+              <h2 className="font-['Syne'] text-2xl sm:text-3xl font-extrabold tracking-tight text-[#2d2d34]">
                 {profile.fullName}
               </h2>
 
@@ -582,7 +587,7 @@ export default function ProfilePage({
                 <button
                   type="button"
                   onClick={handleCopyElevatesId}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-bg border border-border px-2.5 py-1 text-xs font-mono font-bold text-text hover:border-[var(--accent)] hover:text-[var(--accent)] transition shadow-2xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#f3f4f6] border border-[#2d2d34]/30 px-2.5 py-1 text-xs font-mono font-bold text-[#2d2d34] hover:border-[#f26430] hover:text-[#f26430] transition shadow-[1px_1px_0px_#2d2d34] cursor-pointer"
                   title="Click to copy Elevates ID"
                 >
                   <span>{profile.elevatesId}</span>
@@ -596,12 +601,12 @@ export default function ProfilePage({
 
               {/* Discord sync indicator */}
               {isDiscordConnected ? (
-                <span className="inline-flex items-center gap-1 rounded-md bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/20 px-2 py-0.5 text-[11px] font-bold">
+                <span className="inline-flex items-center gap-1 rounded-md bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/20 px-2 py-0.5 font-mono text-[11px] font-bold">
                   <DiscordIcon className="w-3 h-3" />
                   Bot Synced
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2 py-0.5 text-[11px] font-medium">
+                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 text-amber-700 border border-amber-500/20 px-2 py-0.5 font-mono text-[11px] font-medium">
                   <DiscordIcon className="w-3 h-3 opacity-70" />
                   Bot Unlinked
                 </span>
@@ -609,7 +614,7 @@ export default function ProfilePage({
 
               {/* Volunteer tag */}
               {isVolunteer && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 text-[11px] font-bold tracking-wide">
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 text-emerald-700 border border-emerald-500/30 px-2 py-0.5 font-mono text-[11px] font-bold tracking-wide">
                   Volunteer
                 </span>
               )}
@@ -621,7 +626,7 @@ export default function ProfilePage({
               {chapter ? (
                 <Link
                   href={`/chapter/${chapter.slug}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-soft)] px-2.5 py-1 font-semibold text-[var(--accent)] hover:underline"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#f26430]/10 px-2.5 py-1 font-semibold text-[#f26430] hover:underline border border-[#f26430]/20"
                 >
                   <Building2 size={13} />
                   <span>{chapter.name}</span>
@@ -632,18 +637,18 @@ export default function ProfilePage({
                   )}
                 </Link>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-2.5 py-1 text-text-dim">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-500/10 px-2.5 py-1 text-[#2d2d34]/70 border border-zinc-200">
                   <Building2 size={13} />
                   Independent Member
                 </span>
               )}
 
               {/* Academic Year & Dept Pill */}
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-bg border border-border px-2.5 py-1 text-text font-medium">
-                <GraduationCap size={13} className="text-[var(--accent)]" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white border border-[#2d2d34]/20 px-2.5 py-1 text-[#2d2d34] font-medium">
+                <GraduationCap size={13} className="text-[#f26430]" />
                 <span>{academicYearDisplay}</span>
                 {(profile.department || profile.section) && (
-                  <span className="text-text-mute">
+                  <span className="text-[#2d2d34]/60">
                     · {profile.department || "General"}
                     {profile.section ? ` (${profile.section})` : ""}
                   </span>
@@ -656,8 +661,8 @@ export default function ProfilePage({
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-[11px]",
                     profile.emailVerified
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold"
-                      : "border-border bg-bg text-text-dim",
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 font-semibold"
+                      : "border-[#2d2d34]/20 bg-white text-[#2d2d34]/70",
                   )}
                 >
                   <Mail size={12} className="opacity-75" />
@@ -668,7 +673,7 @@ export default function ProfilePage({
                     <button
                       type="button"
                       onClick={handleOpenEmailVerifyModal}
-                      className="ml-1 text-[10px] text-[var(--accent)] font-bold hover:underline cursor-pointer"
+                      className="ml-1 text-[10px] text-[#f26430] font-bold hover:underline cursor-pointer"
                     >
                       Verify
                     </button>
@@ -679,7 +684,7 @@ export default function ProfilePage({
 
             {/* Member Bio */}
             {profile.bio && (
-              <p className="max-w-2xl text-[13px] leading-relaxed text-text-dim pt-1">
+              <p className="max-w-2xl text-[13px] leading-relaxed text-[#2d2d34]/80 pt-1">
                 {profile.bio}
               </p>
             )}
@@ -698,7 +703,7 @@ export default function ProfilePage({
                     s.key === derived.journeyStage || s.stage === derived.journeyStage,
                 )?.label ?? "Awareness"}
               </Badge>
-              {rolesWithUr.map(({ role, createdAt }) => (
+              {rolesWithUr.map(({ role }) => (
                 <Badge key={role.id} tone="magenta">
                   {role.name}
                 </Badge>
@@ -715,16 +720,16 @@ export default function ProfilePage({
 
       {/* 3. Volunteer Quick Bar (if volunteer) */}
       {isVolunteer && chapter && (
-        <div className="rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/10 p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="rounded-[16px] border border-emerald-500/30 bg-emerald-50/60 p-4 shadow-[2px_2px_0px_#2d2d34] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-700 border border-emerald-500/30">
               <QrCode size={18} />
             </div>
             <div>
-              <p className="font-bold text-[13px] text-text">
+              <p className="font-bold text-[13px] text-[#2d2d34]">
                 Volunteer Status: {volunteerTeamName ? `${volunteerTeamName} Member` : "Volunteer"}
               </p>
-              <p className="text-[12px] text-text-dim">
+              <p className="text-[12px] text-[#2d2d34]/70">
                 {volunteerAssignedEvent
                   ? `Assigned to manage "${volunteerAssignedEvent.title}".`
                   : `Member of volunteer team for ${chapter.name}. Awaiting event assignment.`}
@@ -733,10 +738,13 @@ export default function ProfilePage({
           </div>
           {volunteerAssignedEvent && (
             <Link href={`/chapter/${chapter.slug}/attendance?eventId=${volunteerAssignedEvent.id}`}>
-              <Button variant="orange" size="sm" className="font-bold shrink-0 gap-1.5">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              >
                 <QrCode size={13} />
                 <span>Take Attendance</span>
-              </Button>
+              </button>
             </Link>
           )}
         </div>
@@ -744,23 +752,51 @@ export default function ProfilePage({
 
       {/* 4. Executive Metric Cards Strip */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-        <Stat label="Points" value={profile.points} accent="cyan" />
-        <Stat label="Executive Score" value={score} accent="magenta" />
-        <Stat label="Certificates" value={certs.length} accent="green" />
-        <Stat label="Events Attended" value={eventsAttended.length} accent="orange" />
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"01 // POINTS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {profile.points}
+          </div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"02 // EXECUTIVE SCORE"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {score}
+          </div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"03 // CERTIFICATES"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {certs.length}
+          </div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"04 // SESSIONS ATTENDED"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {eventsAttended.length}
+          </div>
+        </div>
       </div>
 
       {/* 5. Modern Tabbed Navigation */}
-      <div className="flex items-center justify-between border-b border-border/80 pb-1">
+      <div className="flex items-center justify-between border-b border-[#2d2d34]/20 pb-2">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveTab("overview")}
             className={cn(
-              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
               activeTab === "overview"
-                ? "bg-bg-panel text-text border border-border shadow-xs"
-                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
+                ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#f26430]"
+                : "bg-white text-[#2d2d34]/70 border border-[#2d2d34]/20 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
             )}
           >
             <User size={14} />
@@ -771,15 +807,18 @@ export default function ProfilePage({
             type="button"
             onClick={() => setActiveTab("credentials")}
             className={cn(
-              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
               activeTab === "credentials"
-                ? "bg-bg-panel text-text border border-border shadow-xs"
-                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
+                ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#f26430]"
+                : "bg-white text-[#2d2d34]/70 border border-[#2d2d34]/20 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
             )}
           >
             <Award size={14} />
             <span>Certificates & Credentials</span>
-            <span className="rounded-full bg-border px-1.5 py-0.2 text-[10px] font-bold">
+            <span className={cn(
+              "rounded-full px-1.5 py-0.2 text-[10px] font-bold font-mono",
+              activeTab === "credentials" ? "bg-white/20 text-white" : "bg-[#2d2d34]/10 text-[#2d2d34]"
+            )}>
               {certs.length}
             </span>
           </button>
@@ -788,10 +827,10 @@ export default function ProfilePage({
             type="button"
             onClick={() => setActiveTab("journey")}
             className={cn(
-              "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
               activeTab === "journey"
-                ? "bg-bg-panel text-text border border-border shadow-xs"
-                : "text-text-mute hover:text-text hover:bg-bg-panel/50",
+                ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#f26430]"
+                : "bg-white text-[#2d2d34]/70 border border-[#2d2d34]/20 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
             )}
           >
             <Sparkles size={14} />
@@ -803,10 +842,10 @@ export default function ProfilePage({
               type="button"
               onClick={() => setActiveTab("settings")}
               className={cn(
-                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-semibold transition cursor-pointer",
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
                 activeTab === "settings"
-                  ? "bg-bg-panel text-text border border-border shadow-xs"
-                  : "text-text-mute hover:text-text hover:bg-bg-panel/50",
+                  ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#f26430]"
+                  : "bg-white text-[#2d2d34]/70 border border-[#2d2d34]/20 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
               )}
             >
               <DiscordIcon className="w-3.5 h-3.5" />
@@ -824,16 +863,16 @@ export default function ProfilePage({
           {/* Main Column (8-cols): Skills, Projects, Recent Events */}
           <div className="xl:col-span-8 space-y-6">
             {/* Technical Skills & Interests Card */}
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/60 pb-3">
-                <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#2d2d34]/10 pb-3">
+                <h3 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34]">
                   Technical Skills & Interests
                 </h3>
                 {canEdit && (
                   <button
                     type="button"
                     onClick={handleOpenEdit}
-                    className="text-[12px] font-semibold text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-[12px] font-semibold text-[#f26430] hover:underline flex items-center gap-1 cursor-pointer font-mono"
                   >
                     <Edit3 size={12} />
                     <span>Edit Skills</span>
@@ -842,18 +881,18 @@ export default function ProfilePage({
               </div>
 
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#2d2d34]/60 mb-2 font-mono">
                   Skills ({profile.skills.length})
                 </p>
                 {profile.skills.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border p-4 text-center">
-                    <p className="text-[12px] text-text-mute">No skills added yet.</p>
+                  <div className="rounded-xl border border-dashed border-[#2d2d34]/30 p-4 text-center">
+                    <p className="text-[12px] text-[#2d2d34]/60">No skills added yet.</p>
                     {canEdit && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleOpenEdit}
-                        className="mt-2 text-xs text-[var(--accent)]"
+                        className="mt-2 text-xs text-[#f26430]"
                       >
                         + Add technical skills
                       </Button>
@@ -864,7 +903,7 @@ export default function ProfilePage({
                     {profile.skills.map((s) => (
                       <span
                         key={s}
-                        className="rounded-lg bg-bg border border-border px-3 py-1 text-[12px] font-semibold text-text shadow-2xs"
+                        className="rounded-lg bg-[#f3f4f6] border border-[#2d2d34]/20 px-3 py-1 text-[12px] font-semibold font-mono text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34]"
                       >
                         {s}
                       </span>
@@ -873,18 +912,18 @@ export default function ProfilePage({
                 )}
               </div>
 
-              <div className="border-t border-border/60 pt-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-text-mute mb-2">
+              <div className="border-t border-[#2d2d34]/10 pt-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#2d2d34]/60 mb-2 font-mono">
                   Interests
                 </p>
                 {profile.interests.length === 0 ? (
-                  <p className="text-[12px] text-text-mute">No interests specified.</p>
+                  <p className="text-[12px] text-[#2d2d34]/60">No interests specified.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {profile.interests.map((i) => (
                       <span
                         key={i}
-                        className="rounded-lg bg-bg/60 border border-border/60 px-2.5 py-1 text-[12px] font-medium text-text-dim"
+                        className="rounded-lg bg-white border border-[#2d2d34]/20 px-2.5 py-1 text-[12px] font-medium text-[#2d2d34]"
                       >
                         {i}
                       </span>
@@ -895,21 +934,21 @@ export default function ProfilePage({
             </div>
 
             {/* Projects Card */}
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#2d2d34]/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <FolderGit2 size={16} className="text-[var(--accent)]" />
-                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  <FolderGit2 size={16} className="text-[#f26430]" />
+                  <h3 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34]">
                     Active Projects
                   </h3>
                 </div>
-                <span className="rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-semibold text-text-mute">
+                <span className="rounded-full bg-[#f3f4f6] border border-[#2d2d34]/20 px-2.5 py-0.5 text-[11px] font-bold font-mono text-[#2d2d34]">
                   {projects.length}
                 </span>
               </div>
 
               {projects.length === 0 ? (
-                <div className="py-6 text-center text-text-mute text-[13px]">
+                <div className="py-6 text-center text-[#2d2d34]/60 text-[13px]">
                   No active projects associated with this profile.
                 </div>
               ) : (
@@ -917,21 +956,21 @@ export default function ProfilePage({
                   {projects.map((p) => (
                     <div
                       key={p.id}
-                      className="rounded-xl border border-border/80 bg-bg/50 p-3.5 space-y-2 hover:bg-bg transition shadow-2xs"
+                      className="rounded-xl border border-[#2d2d34]/20 bg-white p-3.5 space-y-2 hover:border-[#f26430] transition shadow-[1px_1px_0px_#2d2d34]"
                     >
                       <div className="flex items-center justify-between gap-1">
                         <Badge tone="cyan">{p.stage}</Badge>
                         {p.projectType && (
-                          <span className="text-[10px] text-text-mute font-mono">
+                          <span className="text-[10px] text-[#2d2d34]/60 font-mono">
                             {p.projectType}
                           </span>
                         )}
                       </div>
-                      <h4 className="font-bold text-[13px] text-text">
+                      <h4 className="font-bold text-[13px] text-[#2d2d34]">
                         {p.title}
                       </h4>
                       {p.description && (
-                        <p className="text-[11px] text-text-dim line-clamp-2">
+                        <p className="text-[11px] text-[#2d2d34]/70 line-clamp-2">
                           {p.description}
                         </p>
                       )}
@@ -942,34 +981,34 @@ export default function ProfilePage({
             </div>
 
             {/* Event Attendance History Card */}
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-              <div className="flex items-center justify-between border-b border-border/60 pb-3">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+              <div className="flex items-center justify-between border-b border-[#2d2d34]/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <CalendarCheck2 size={16} className="text-[var(--accent)]" />
-                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  <CalendarCheck2 size={16} className="text-[#f26430]" />
+                  <h3 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34]">
                     Event History
                   </h3>
                 </div>
-                <span className="rounded-full bg-bg border border-border px-2.5 py-0.5 text-[11px] font-semibold text-text-mute">
+                <span className="rounded-full bg-[#f3f4f6] border border-[#2d2d34]/20 px-2.5 py-0.5 text-[11px] font-bold font-mono text-[#2d2d34]">
                   {eventsAttended.length} attended
                 </span>
               </div>
 
               {eventsAttended.length === 0 ? (
-                <div className="py-6 text-center text-text-mute text-[13px]">
+                <div className="py-6 text-center text-[#2d2d34]/60 text-[13px]">
                   No event attendance recorded yet.
                 </div>
               ) : (
-                <ul className="divide-y divide-border/60">
+                <ul className="divide-y divide-[#2d2d34]/10">
                   {eventsAttended.slice(0, 5).map((a) => {
                     const ev = store.events.find((e) => e.id === a.eventId);
                     return (
                       <li key={a.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-[13px] font-bold text-text truncate">
+                          <p className="text-[13px] font-bold text-[#2d2d34] truncate">
                             {ev?.title ?? "Community Event"}
                           </p>
-                          <p className="text-[11px] text-text-mute">
+                          <p className="text-[11px] text-[#2d2d34]/60">
                             {ev?.venue ? `${ev.venue} · ` : ""}
                             {formatDateTime(a.checkedInAt)}
                           </p>
@@ -986,16 +1025,16 @@ export default function ProfilePage({
           {/* Sidebar Column (4-cols): Contact, Campus, Class Details */}
           <div className="xl:col-span-4 space-y-5">
             {/* Contact & Social Links Card */}
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-3">
-              <h3 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text border-b border-border/60 pb-2.5">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-3">
+              <h3 className="font-['Syne'] text-[14px] font-bold text-[#2d2d34] border-b border-[#2d2d34]/10 pb-2.5">
                 Contact & Profiles
               </h3>
 
               <ul className="space-y-2.5 text-[12px]">
                 {profile.email && (
-                  <li className="flex items-center justify-between gap-2 text-text-dim">
+                  <li className="flex items-center justify-between gap-2 text-[#2d2d34]/80">
                     <span className="flex items-center gap-1.5 font-mono">
-                      <Mail size={13} className="text-text-mute" />
+                      <Mail size={13} className="text-[#2d2d34]/60" />
                       <span className="truncate max-w-[180px]">{profile.email}</span>
                     </span>
                     {profile.emailVerified ? (
@@ -1007,8 +1046,8 @@ export default function ProfilePage({
                 )}
 
                 {profile.phone && (
-                  <li className="flex items-center gap-2 text-text-dim">
-                    <Phone size={13} className="text-text-mute" />
+                  <li className="flex items-center gap-2 text-[#2d2d34]/80">
+                    <Phone size={13} className="text-[#2d2d34]/60" />
                     <span>{profile.phone}</span>
                   </li>
                 )}
@@ -1019,13 +1058,13 @@ export default function ProfilePage({
                       href={profile.githubUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between text-text hover:text-[var(--accent)] font-medium"
+                      className="flex items-center justify-between text-[#2d2d34] hover:text-[#f26430] font-medium"
                     >
                       <span className="flex items-center gap-1.5">
-                        <Link2 size={13} className="text-text-mute" />
+                        <Link2 size={13} className="text-[#2d2d34]/60" />
                         <span>GitHub</span>
                       </span>
-                      <ExternalLink size={12} className="text-text-mute" />
+                      <ExternalLink size={12} className="text-[#2d2d34]/60" />
                     </a>
                   </li>
                 )}
@@ -1039,10 +1078,10 @@ export default function ProfilePage({
                       className="flex items-center justify-between text-[#0a66c2] hover:underline font-medium"
                     >
                       <span className="flex items-center gap-1.5">
-                        <Link2 size={13} className="text-text-mute" />
+                        <Link2 size={13} className="text-[#2d2d34]/60" />
                         <span>LinkedIn</span>
                       </span>
-                      <ExternalLink size={12} className="text-text-mute" />
+                      <ExternalLink size={12} className="text-[#2d2d34]/60" />
                     </a>
                   </li>
                 )}
@@ -1053,13 +1092,13 @@ export default function ProfilePage({
                       href={profile.portfolioUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between text-[var(--accent)] hover:underline font-medium"
+                      className="flex items-center justify-between text-[#f26430] hover:underline font-medium"
                     >
                       <span className="flex items-center gap-1.5">
-                        <Globe size={13} className="text-text-mute" />
+                        <Globe size={13} className="text-[#2d2d34]/60" />
                         <span>Portfolio</span>
                       </span>
-                      <ExternalLink size={12} className="text-text-mute" />
+                      <ExternalLink size={12} className="text-[#2d2d34]/60" />
                     </a>
                   </li>
                 )}
@@ -1067,37 +1106,37 @@ export default function ProfilePage({
             </div>
 
             {/* Campus & Class Information Card */}
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-3">
-              <h3 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text border-b border-border/60 pb-2.5">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-3">
+              <h3 className="font-['Syne'] text-[14px] font-bold text-[#2d2d34] border-b border-[#2d2d34]/10 pb-2.5">
                 Campus & Division
               </h3>
 
               <div className="space-y-2 text-[12px]">
                 <div>
-                  <span className="text-text-mute block text-[10px] uppercase font-bold">Chapter</span>
-                  <p className="font-semibold text-text mt-0.5">
+                  <span className="text-[#2d2d34]/60 block text-[10px] uppercase font-bold font-mono">Chapter</span>
+                  <p className="font-semibold text-[#2d2d34] mt-0.5">
                     {chapter?.name ?? "Independent Member"}
                   </p>
                   {chapter?.college && (
-                    <p className="text-[11px] text-text-dim">{chapter.college}</p>
+                    <p className="text-[11px] text-[#2d2d34]/70">{chapter.college}</p>
                   )}
                 </div>
 
-                <div className="border-t border-border/50 pt-2">
-                  <span className="text-text-mute block text-[10px] uppercase font-bold">Class</span>
-                  <p className="font-semibold text-text mt-0.5">
+                <div className="border-t border-[#2d2d34]/10 pt-2">
+                  <span className="text-[#2d2d34]/60 block text-[10px] uppercase font-bold font-mono">Class</span>
+                  <p className="font-semibold text-[#2d2d34] mt-0.5">
                     {selectedCohort ? cohortLabel(selectedCohort) : "No division assigned"}
                   </p>
                 </div>
 
                 {assignedReps.length > 0 && (
-                  <div className="border-t border-border/50 pt-2">
-                    <span className="text-text-mute block text-[10px] uppercase font-bold mb-1">Class Representatives</span>
+                  <div className="border-t border-[#2d2d34]/10 pt-2">
+                    <span className="text-[#2d2d34]/60 block text-[10px] uppercase font-bold font-mono mb-1">Class Representatives</span>
                     <ul className="space-y-1">
                       {assignedReps.map((r, i) => (
-                        <li key={r.id} className="flex items-center justify-between rounded-lg bg-bg px-2.5 py-1 text-[11px]">
+                        <li key={r.id} className="flex items-center justify-between rounded-lg bg-[#f3f4f6] px-2.5 py-1 text-[11px]">
                           <span className="font-semibold">{r.label}</span>
-                          <span className="text-text-mute text-[10px]">Rep {i + 1}</span>
+                          <span className="text-[#2d2d34]/60 text-[10px] font-mono">Rep {i + 1}</span>
                         </li>
                       ))}
                     </ul>
@@ -1111,28 +1150,28 @@ export default function ProfilePage({
 
       {/* TAB 2: CREDENTIALS & CERTIFICATES */}
       {activeTab === "credentials" && (
-        <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-          <div className="flex items-center justify-between border-b border-border/60 pb-3">
+        <div className="rounded-[18px] bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+          <div className="flex items-center justify-between border-b border-[#2d2d34]/10 pb-3">
             <div>
-              <h3 className="font-[family-name:var(--font-display)] text-[16px] font-bold text-text">
+              <h3 className="font-['Syne'] text-[16px] font-bold text-[#2d2d34]">
                 Verified Credentials & Certificates
               </h3>
-              <p className="text-[12px] text-text-mute mt-0.5">
+              <p className="text-[12px] text-[#2d2d34]/70 mt-0.5">
                 Cryptographically verifiable event participation and completion credentials.
               </p>
             </div>
-            <span className="rounded-full bg-bg border border-border px-3 py-0.5 text-xs font-bold text-[var(--accent)]">
+            <span className="rounded-full bg-[#f3f4f6] border border-[#2d2d34]/20 px-3 py-0.5 text-xs font-bold font-mono text-[#f26430]">
               {certs.length} Issued
             </span>
           </div>
 
           {certs.length === 0 ? (
             <div className="py-12 text-center">
-              <Award size={36} className="mx-auto mb-2 text-text-mute opacity-40" />
-              <p className="text-[14px] font-semibold text-text">
+              <Award size={36} className="mx-auto mb-2 text-[#2d2d34]/40" />
+              <p className="text-[14px] font-semibold text-[#2d2d34]">
                 No certificates issued yet
               </p>
-              <p className="mt-1 text-[12px] text-text-mute max-w-sm mx-auto">
+              <p className="mt-1 text-[12px] text-[#2d2d34]/60 max-w-sm mx-auto">
                 Certificates are automatically generated and verified upon attending workshops and hackathons.
               </p>
             </div>
@@ -1143,32 +1182,32 @@ export default function ProfilePage({
                 return (
                   <div
                     key={c.id}
-                    className="flex flex-col justify-between rounded-xl border border-border/80 bg-bg/60 p-4 transition hover:bg-bg hover:shadow-xs hover:border-[var(--accent)]/50"
+                    className="flex flex-col justify-between rounded-xl border border-[#2d2d34]/20 bg-white p-4 transition shadow-[2px_2px_0px_#2d2d34] hover:border-[#f26430]"
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="font-[family-name:var(--font-mono)] text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                        <span className="font-mono text-[11px] font-bold text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
                           {c.certificateId}
                         </span>
                         <Badge tone="green">Verified</Badge>
                       </div>
 
-                      <h4 className="font-[family-name:var(--font-display)] text-[14px] font-bold text-text line-clamp-2">
+                      <h4 className="font-['Syne'] text-[14px] font-bold text-[#2d2d34] line-clamp-2">
                         {ev?.title ?? "Official Event Certificate"}
                       </h4>
 
-                      <p className="text-[11px] text-text-mute">
+                      <p className="text-[11px] text-[#2d2d34]/60">
                         Issued on {formatDateTime(c.issuedAt)}
                       </p>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-bold text-text-dim">
+                    <div className="mt-4 pt-3 border-t border-[#2d2d34]/10 flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold font-mono text-[#2d2d34]/60">
                         Public Verification
                       </span>
                       <Link
                         href={`/verify/certificate/${c.certificateId}`}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[var(--accent)] hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[#f26430] hover:underline font-mono"
                       >
                         <span>Verify</span>
                         <ExternalLink size={12} />
@@ -1186,18 +1225,18 @@ export default function ProfilePage({
       {activeTab === "journey" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7 space-y-6">
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-              <h3 className="font-[family-name:var(--font-display)] text-[16px] font-bold text-text border-b border-border/60 pb-3">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+              <h3 className="font-['Syne'] text-[16px] font-bold text-[#2d2d34] border-b border-[#2d2d34]/10 pb-3">
                 EOS Community Progression
               </h3>
-              <p className="text-[13px] text-text-dim leading-relaxed">
+              <p className="text-[13px] text-[#2d2d34]/70 leading-relaxed">
                 Progression is earned through active participation in peer labs, workshops, and student innovation clusters.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <div className="rounded-xl border border-border bg-bg/50 p-3.5 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-text-mute">Community Tier</span>
-                  <p className="text-[16px] font-bold text-text">
+                <div className="rounded-xl border border-[#2d2d34]/20 bg-[#f3f4f6] p-3.5 space-y-1">
+                  <span className="text-[10px] uppercase font-bold font-mono text-[#2d2d34]/60">Community Tier</span>
+                  <p className="text-[16px] font-bold text-[#2d2d34]">
                     {communityTiers.find(
                       (t: { key?: string; tier?: string; label?: string }) =>
                         t.key === derived.engagementTier || t.tier === derived.engagementTier,
@@ -1205,9 +1244,9 @@ export default function ProfilePage({
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-border bg-bg/50 p-3.5 space-y-1">
-                  <span className="text-[10px] uppercase font-bold text-text-mute">Journey Stage</span>
-                  <p className="text-[16px] font-bold text-text">
+                <div className="rounded-xl border border-[#2d2d34]/20 bg-[#f3f4f6] p-3.5 space-y-1">
+                  <span className="text-[10px] uppercase font-bold font-mono text-[#2d2d34]/60">Journey Stage</span>
+                  <p className="text-[16px] font-bold text-[#2d2d34]">
                     {journeyStages.find(
                       (s: { key?: string; stage?: string; label?: string }) =>
                         s.key === derived.journeyStage || s.stage === derived.journeyStage,
@@ -1216,7 +1255,7 @@ export default function ProfilePage({
                 </div>
               </div>
 
-              <div className="pt-2 text-[12px] text-text-mute space-y-1">
+              <div className="pt-2 text-[12px] text-[#2d2d34]/70 space-y-1">
                 <p>• <strong>Workshop check-in:</strong> Participant</p>
                 <p>• <strong>Consistent activity:</strong> Active</p>
                 <p>• <strong>Cluster invite accepted:</strong> Cluster Member</p>
@@ -1226,8 +1265,8 @@ export default function ProfilePage({
           </div>
 
           <div className="lg:col-span-5 space-y-6">
-            <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-              <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text border-b border-border/60 pb-3">
+            <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+              <h3 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34] border-b border-[#2d2d34]/10 pb-3">
                 Executive Activity Index
               </h3>
 
@@ -1237,7 +1276,7 @@ export default function ProfilePage({
                 accent="green"
               />
 
-              <div className="rounded-xl bg-bg border border-border p-3 space-y-1 text-[11px] text-text-dim font-mono">
+              <div className="rounded-xl bg-[#f3f4f6] border border-[#2d2d34]/20 p-3 space-y-1 text-[11px] text-[#2d2d34]/70 font-mono">
                 <p>Score = tasks × 12 + events × 18 + reports × 15 + attendance × 10</p>
               </div>
             </div>
@@ -1249,44 +1288,44 @@ export default function ProfilePage({
       {activeTab === "settings" && canEdit && (
         <div className="space-y-6">
           {/* Discord Bot Integration Card */}
-          <div className="rounded-[var(--radius)] bg-bg-panel p-5 shadow-[var(--shadow)] border border-border/80 space-y-4">
-            <div className="flex items-center justify-between border-b border-border/60 pb-3">
+          <div className="rounded-[18px] bg-white p-5 shadow-[2px_2px_0px_#2d2d34] border border-[#2d2d34]/20 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#2d2d34]/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5865F2]/10 text-[#5865F2]">
                   <DiscordIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+                  <h3 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34]">
                     Discord Account Linking
                   </h3>
-                  <p className="text-[12px] text-text-mute">
+                  <p className="text-[12px] text-[#2d2d34]/70">
                     Generate a code here and paste it in the Elevates Discord server to link your account.
                   </p>
                 </div>
               </div>
               {isDiscordConnected ? (
-                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-2.5 py-0.5 text-xs font-bold">
+                <span className="rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 px-2.5 py-0.5 text-xs font-bold font-mono">
                   Connected
                 </span>
               ) : (
-                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 px-2.5 py-0.5 text-xs font-bold">
+                <span className="rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-700 px-2.5 py-0.5 text-xs font-bold font-mono">
                   Action Required
                 </span>
               )}
             </div>
 
             {isDiscordConnected ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl bg-bg p-4 border border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl bg-[#f3f4f6] p-4 border border-[#2d2d34]/20">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5865F2] text-white">
                     <DiscordIcon className="w-5 h-5" />
                   </div>
                   <div>
-                    <p className="font-bold text-[14px] text-text">
+                    <p className="font-bold text-[14px] text-[#2d2d34]">
                       @{profile.discordUsername?.replace(/^@/, "") || "member"}
                     </p>
                     {profile.discordUserId && (
-                      <p className="font-mono text-[11px] text-text-mute">
+                      <p className="font-mono text-[11px] text-[#2d2d34]/60">
                         ID: {profile.discordUserId}
                       </p>
                     )}

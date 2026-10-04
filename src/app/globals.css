@@ -64,6 +64,19 @@
   --radius-pill: 999px;
   --shadow: 0 4px 24px rgba(45, 45, 52, 0.06);
   --shadow-sm: 0 1px 3px rgba(45, 45, 52, 0.05);
+
+  /* Bauhaus Minimal UI Design System (Harmonized with Elevates UI/UX) */
+  --bauhaus-accent: #f26430;
+  --bauhaus-accent-dark: #e05522;
+  --bauhaus-accent-soft: #fef0eb;
+  --bauhaus-secondary: #414066;
+  --bauhaus-success: #5f7560;
+  --bauhaus-amber: #f59e0b;
+  --bauhaus-ink: #2d2d34;
+  --bauhaus-border: #2d2d34;
+  --bauhaus-border-light: rgba(45, 45, 52, 0.15);
+  --bauhaus-canvas: #f3f4f6;
+  --bauhaus-panel: #ffffff;
   --rail-width: 248px;
   --rail-width-mobile: 280px;
   --sidebar-pad: 0.875rem;
@@ -245,4 +258,73 @@ textarea:focus-visible {
 .animate-indeterminate {
   animation: indeterminate-bar 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/* Bauhaus UI Design System Utility Classes (Weimar / Dessau Modernism)       */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/* Architectural drafting millimeter grid */
+.bauhaus-grid-bg {
+  background-size: 24px 24px;
+  background-image: 
+    linear-gradient(to right, rgba(24, 24, 27, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 27, 0.06) 1px, transparent 1px);
+}
+
+/* Bauhaus dot-matrix pattern */
+.bauhaus-dots-bg {
+  background-size: 16px 16px;
+  background-image: radial-gradient(rgba(24, 24, 27, 0.15) 1.2px, transparent 1.2px);
+}
+
+/* Bauhaus diagonal architectural hatching */
+.bauhaus-hatch-bg {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(24, 24, 27, 0.04),
+    rgba(24, 24, 27, 0.04) 6px,
+    transparent 6px,
+    transparent 12px
+  );
+}
+
+/* Minimalist Bauhaus hard-edge shadows (Form follows function) */
+.bauhaus-shadow-xs {
+  box-shadow: 1px 1px 0px rgba(45, 45, 52, 0.2);
+}
+.bauhaus-shadow-sm {
+  box-shadow: 1.5px 1.5px 0px #2d2d34;
+}
+.bauhaus-shadow {
+  box-shadow: 2.5px 2.5px 0px #2d2d34;
+}
+.bauhaus-shadow-lg {
+  box-shadow: 4px 4px 0px #2d2d34;
+}
+.bauhaus-shadow-accent {
+  box-shadow: 2px 2px 0px #f26430;
+}
+.bauhaus-shadow-secondary {
+  box-shadow: 2px 2px 0px #414066;
+}
+
+/* Minimalist Bauhaus structural architectural borders */
+.bauhaus-border {
+  border: 1.5px solid #2d2d34;
+}
+.bauhaus-border-subtle {
+  border: 1px solid rgba(45, 45, 52, 0.16);
+}
+
+/* Bauhaus tactile interactive hover transitions */
+.bauhaus-btn-press {
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 150ms ease;
+}
+.bauhaus-btn-press:hover {
+  transform: translate(-1px, -1px);
+}
+.bauhaus-btn-press:active {
+  transform: translate(0.5px, 0.5px);
+}
+
 

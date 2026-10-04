@@ -10,11 +10,7 @@ import {
   X,
   FileText,
   Calendar,
-  CheckCircle2,
-  Copy,
-  ExternalLink,
   Sparkles,
-  Layers,
   BarChart2,
 } from "lucide-react";
 import { useAppDialogs } from "@/components/ui/app-dialogs";
@@ -22,14 +18,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, isExecutiveRole } from "@/lib/access";
+import { isExecutiveRole } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   createFormFromTemplate,
-  FORM_TEMPLATES,
   type FormTemplateId,
 } from "@/lib/forms/templates";
 import { isHqRole } from "@/lib/permissions";
@@ -166,72 +159,99 @@ export default function ChapterFormsPage({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Forms Hub"
-        description="Dynamic forms for registrations, surveys, attendance check-in, and feedback packs linked directly to your events."
-        actions={
-          canManage ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="ghost"
-                onClick={openPicker}
-                className="border border-border/70 hover:bg-bg-panel text-xs sm:text-sm"
-              >
-                Template Gallery
-              </Button>
-              <Button
-                variant="orange"
-                onClick={handleBlank}
-                className="gap-1.5 shadow-sm text-xs sm:text-sm"
-              >
-                <Plus size={15} />
-                Create Form
-              </Button>
+      {/* 1. Architectural Hero Banner */}
+      <div className="bauhaus-grid-bg rounded-[20px] border border-[#2d2d34]/20 p-6 md:p-8 relative overflow-hidden shadow-[2px_2px_0px_#2d2d34]">
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="font-mono text-xs font-bold text-[#f26430] uppercase tracking-wider">
+                {"01 // FORMS DISPATCH"} · {(chapter?.shortCode || slug).toUpperCase()}
+              </span>
             </div>
-          ) : null
-        }
-      />
-
-      {/* High-Level Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Total Forms"
-          value={chapterForms.length}
-          hint="Created forms in chapter"
-        />
-        <Stat
-          label="Open Submissions"
-          value={counts.open}
-          hint="Active & accepting"
-          accent="orange"
-        />
-        <Stat
-          label="Responses Logged"
-          value={totalResponses}
-          hint="Student submissions"
-        />
-        <Stat
-          label="Linked Events"
-          value={linkedEventsCount}
-          hint="Integrated with programs"
-        />
+            <h1 className="font-['Syne'] text-2xl md:text-3xl font-extrabold text-[#2d2d34] tracking-tight">
+              Forms Hub
+            </h1>
+            <p className="font-['Plus_Jakarta_Sans'] text-sm text-[#2d2d34]/70 mt-1 max-w-2xl">
+              Dynamic forms for registrations, surveys, attendance check-in, and feedback packs linked directly to your events.
+            </p>
+          </div>
+          {canManage && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={openPicker}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-white text-[#2d2d34] border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#f3f4f6] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              >
+                <Sparkles size={14} />
+                <span>Template Gallery</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleBlank}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              >
+                <Plus size={14} />
+                <span>Create Form</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Quick Template Strip */}
+      {/* 2. Architectural Metric Strip */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"01 // TOTAL FORMS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {chapterForms.length}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Created forms in chapter</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"02 // OPEN SUBMISSIONS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#f26430] mt-1">
+            {counts.open}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Active & accepting</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"03 // RESPONSES LOGGED"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {totalResponses}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Student submissions</div>
+        </div>
+        <div className="border border-[#2d2d34]/20 bg-white p-4 rounded-[14px] shadow-[2px_2px_0px_#2d2d34]">
+          <div className="font-mono text-[10px] uppercase font-bold text-[#2d2d34]/60 tracking-wider">
+            {"04 // LINKED EVENTS"}
+          </div>
+          <div className="font-['Syne'] text-2xl font-black text-[#2d2d34] mt-1">
+            {linkedEventsCount}
+          </div>
+          <div className="text-[11px] text-[#2d2d34]/60 mt-0.5">Integrated with programs</div>
+        </div>
+      </div>
+
+      {/* 3. Quick Template Strip */}
       {canManage && (
-        <section className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow-sm)]">
+        <section className="rounded-[18px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34]">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-[var(--accent)]" />
-              <h2 className="font-[family-name:var(--font-display)] text-sm sm:text-[15px] font-bold tracking-[-0.02em] text-text">
+              <Sparkles size={16} className="text-[#f26430]" />
+              <h2 className="font-['Syne'] text-sm sm:text-[15px] font-bold tracking-tight text-[#2d2d34]">
                 Start a New Form
               </h2>
             </div>
             <button
               type="button"
               onClick={openPicker}
-              className="text-xs font-semibold text-[var(--accent)] hover:underline"
+              className="text-xs font-semibold text-[#f26430] hover:underline font-mono"
             >
               Browse all templates →
             </button>
@@ -242,13 +262,13 @@ export default function ChapterFormsPage({
             <button
               type="button"
               onClick={handleBlank}
-              className="group flex flex-col items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-border/90 bg-bg/50 p-4 text-center transition-all hover:border-[var(--accent)] hover:bg-bg-panel hover:shadow-xs"
+              className="group flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#2d2d34]/30 bg-[#f3f4f6]/50 p-4 text-center transition-all hover:border-[#f26430] hover:bg-white hover:shadow-[2px_2px_0px_#2d2d34] cursor-pointer"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] group-hover:scale-110 transition-transform">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f26430]/10 text-[#f26430] group-hover:scale-110 transition-transform">
                 <Plus size={20} />
               </div>
-              <p className="mt-2.5 text-xs font-bold text-text">Blank Form</p>
-              <p className="mt-0.5 text-[10px] text-text-dim">Create custom questions</p>
+              <p className="mt-2.5 text-xs font-bold text-[#2d2d34]">Blank Form</p>
+              <p className="mt-0.5 text-[10px] text-[#2d2d34]/60">Create custom questions</p>
             </button>
 
             {/* Template Presets */}
@@ -257,23 +277,23 @@ export default function ChapterFormsPage({
                 key={t.id}
                 type="button"
                 onClick={() => createAndOpen(t.id)}
-                className="group flex flex-col justify-between rounded-[var(--radius-sm)] border border-border/70 bg-bg/70 p-3.5 text-left transition-all hover:border-border hover:bg-bg hover:shadow-xs"
+                className="group flex flex-col justify-between rounded-xl border border-[#2d2d34]/20 bg-[#f3f4f6]/40 p-3.5 text-left transition-all hover:border-[#f26430] hover:bg-white hover:shadow-[2px_2px_0px_#2d2d34] cursor-pointer"
               >
                 <div>
                   <div className="flex items-center justify-between gap-1.5">
-                    <span className="flex h-6 w-6 items-center justify-center rounded bg-border/40 text-text-dim group-hover:text-[var(--accent)] transition-colors">
+                    <span className="flex h-6 w-6 items-center justify-center rounded bg-[#2d2d34]/10 text-[#2d2d34] group-hover:text-[#f26430] transition-colors">
                       <FileText size={13} />
                     </span>
-                    <Badge tone="mute" className="text-[9px] px-1.5 py-0">
+                    <Badge tone="mute" className="text-[9px] px-1.5 py-0 font-mono">
                       {t.purpose}
                     </Badge>
                   </div>
-                  <p className="mt-2 text-xs font-bold text-text truncate">{t.name}</p>
-                  <p className="mt-0.5 text-[11px] text-text-dim line-clamp-2">
+                  <p className="mt-2 text-xs font-bold text-[#2d2d34] truncate">{t.name}</p>
+                  <p className="mt-0.5 text-[11px] text-[#2d2d34]/60 line-clamp-2">
                     {t.description}
                   </p>
                 </div>
-                <span className="mt-3 text-[10px] font-semibold text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="mt-3 text-[10px] font-semibold text-[#f26430] opacity-0 group-hover:opacity-100 transition-opacity font-mono">
                   Use template →
                 </span>
               </button>
@@ -282,24 +302,24 @@ export default function ChapterFormsPage({
         </section>
       )}
 
-      {/* Main Forms Workspace */}
-      <section className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow-sm)]">
+      {/* 4. Main Forms Workspace */}
+      <section className="rounded-[18px] border border-[#2d2d34]/20 bg-white p-4 sm:p-5 shadow-[2px_2px_0px_#2d2d34]">
         {/* Search and Filters Bar */}
         <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-dim" size={15} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#2d2d34]/40" size={15} />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search forms by title or purpose..."
-              className="pl-9 pr-8 h-9.5 rounded-[var(--radius-sm)] bg-bg border-border/70 text-xs sm:text-sm"
+              className="pl-9 pr-8 h-9.5 rounded-xl bg-white border-[#2d2d34]/20 text-xs sm:text-sm focus:border-[#f26430]"
               aria-label="Search forms"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-text p-1"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#2d2d34]/40 hover:text-[#2d2d34] p-1 cursor-pointer"
                 aria-label="Clear search"
               >
                 <X size={14} />
@@ -332,19 +352,19 @@ export default function ChapterFormsPage({
                     type="button"
                     onClick={() => setStatus(key)}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+                      "flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-mono text-xs uppercase tracking-wider font-bold transition-all cursor-pointer",
                       isActive
-                        ? "bg-text text-bg shadow-sm"
-                        : "bg-bg border border-border/70 text-text-dim hover:text-text hover:border-border",
+                        ? "bg-[#2d2d34] text-white border border-[#2d2d34] shadow-[1px_1px_0px_#f26430]"
+                        : "bg-white border border-[#2d2d34]/20 text-[#2d2d34]/70 hover:text-[#2d2d34] hover:bg-[#f3f4f6]",
                     )}
                   >
                     <span>{label}</span>
                     <span
                       className={cn(
-                        "rounded-full px-1.5 py-0.2 text-[10px] font-semibold tabular-nums",
+                        "rounded-full px-1.5 py-0.2 text-[10px] font-bold font-mono tabular-nums",
                         isActive
-                          ? "bg-bg/20 text-bg"
-                          : "bg-border/60 text-text-dim",
+                          ? "bg-white/20 text-white"
+                          : "bg-[#2d2d34]/10 text-[#2d2d34]",
                       )}
                     >
                       {count}
@@ -357,45 +377,45 @@ export default function ChapterFormsPage({
 
         {/* Forms Grid */}
         {chapterForms.length === 0 ? (
-          <div className="rounded-[var(--radius)] border border-dashed border-border py-14 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-border/40 text-text-dim mb-3">
+          <div className="rounded-xl border border-dashed border-[#2d2d34]/30 py-14 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#2d2d34]/10 text-[#2d2d34]/60 mb-3">
               <FileText size={22} />
             </div>
-            <h4 className="font-[family-name:var(--font-display)] text-[15px] font-bold text-text">
+            <h4 className="font-['Syne'] text-[15px] font-bold text-[#2d2d34]">
               No forms created yet
             </h4>
-            <p className="mt-1 text-xs text-text-dim max-w-sm mx-auto">
+            <p className="mt-1 text-xs text-[#2d2d34]/60 max-w-sm mx-auto">
               {canManage
                 ? "Start by selecting a template or create a custom registration form for your upcoming chapter events."
                 : "No forms currently active for your chapter."}
             </p>
             {canManage && (
-              <Button
-                variant="orange"
-                className="mt-4 gap-1.5 text-xs font-semibold"
+              <button
+                type="button"
+                className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold font-mono uppercase tracking-wider bg-[#f26430] text-white border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:bg-[#e05320] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
                 onClick={openPicker}
               >
                 <Plus size={14} />
-                Open Template Gallery
-              </Button>
+                <span>Open Template Gallery</span>
+              </button>
             )}
           </div>
         ) : forms.length === 0 ? (
-          <div className="rounded-[var(--radius)] border border-dashed border-border py-12 text-center">
-            <p className="text-sm font-semibold text-text">No matching forms found</p>
-            <p className="mt-1 text-xs text-text-dim">
+          <div className="rounded-xl border border-dashed border-[#2d2d34]/30 py-12 text-center">
+            <p className="text-sm font-semibold text-[#2d2d34]">No matching forms found</p>
+            <p className="mt-1 text-xs text-[#2d2d34]/60">
               Try adjusting your search query or selecting a different status filter.
             </p>
-            <Button
-              variant="ghost"
-              className="mt-3 text-xs border border-border/70 hover:bg-bg"
+            <button
+              type="button"
+              className="mt-3 inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-mono font-bold uppercase tracking-wider border border-[#2d2d34]/30 hover:bg-[#f3f4f6] cursor-pointer"
               onClick={() => {
                 setStatus("all");
                 setSearch("");
               }}
             >
               Clear Filters & Search
-            </Button>
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -414,7 +434,7 @@ export default function ChapterFormsPage({
               return (
                 <article
                   key={form.id}
-                  className="group relative flex flex-col justify-between rounded-[var(--radius)] border border-border/70 bg-bg p-4 shadow-[var(--shadow-sm)] hover:border-border hover:shadow-[var(--shadow)] transition-all"
+                  className="group relative flex flex-col justify-between rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34] hover:border-[#f26430] transition-all"
                 >
                   <div>
                     {/* Card Top Row: Purpose & Status */}
@@ -427,45 +447,45 @@ export default function ChapterFormsPage({
                               ? "mute"
                               : "orange"
                         }
-                        className="text-[10px] font-semibold"
+                        className="text-[10px] font-semibold font-mono"
                       >
                         {form.status === "open" ? "Active" : form.status}
                       </Badge>
-                      <span className="text-[11px] text-text-dim font-mono">{updated}</span>
+                      <span className="text-[11px] text-[#2d2d34]/60 font-mono">{updated}</span>
                     </div>
 
                     {/* Title */}
                     <Link
                       href={`/chapter/${slug}/forms/${form.id}`}
-                      className="mt-2.5 block group-hover:text-[var(--accent)] transition-colors"
+                      className="mt-2.5 block group-hover:text-[#f26430] transition-colors"
                     >
-                      <h3 className="font-[family-name:var(--font-display)] text-[15px] font-bold tracking-[-0.02em] text-text line-clamp-1">
+                      <h3 className="font-['Syne'] text-[15px] font-bold tracking-tight text-[#2d2d34] line-clamp-1">
                         {form.title}
                       </h3>
                     </Link>
 
                     {/* Metadata: Responses & Event */}
-                    <div className="mt-3 flex flex-col gap-1.5 text-xs text-text-dim">
+                    <div className="mt-3 flex flex-col gap-1.5 text-xs text-[#2d2d34]/70">
                       <div className="flex items-center gap-1.5 font-medium">
-                        <BarChart2 size={13} className="text-text-dim" />
+                        <BarChart2 size={13} className="text-[#2d2d34]/60" />
                         <span>{count} response{count === 1 ? "" : "s"} collected</span>
                       </div>
                       {event ? (
-                        <div className="flex items-center gap-1.5 text-[11px] text-text-dim truncate">
-                          <Calendar size={12} className="text-[var(--accent)] shrink-0" />
-                          <span className="truncate">Linked: {event.title}</span>
+                        <div className="flex items-center gap-1.5 text-[11px] text-[#2d2d34]/70 truncate">
+                          <Calendar size={12} className="text-[#f26430] shrink-0" />
+                          <span className="truncate font-mono">Linked: {event.title}</span>
                         </div>
                       ) : (
-                        <span className="text-[11px] text-text-mute">Standalone form</span>
+                        <span className="text-[11px] text-[#2d2d34]/50 font-mono">Standalone form</span>
                       )}
                     </div>
                   </div>
 
                   {/* Card Bottom Actions */}
-                  <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+                  <div className="mt-4 pt-3 border-t border-[#2d2d34]/10 flex items-center justify-between gap-2">
                     <Link
                       href={`/chapter/${slug}/forms/${form.id}`}
-                      className="text-xs font-semibold text-text hover:text-[var(--accent)] transition-colors"
+                      className="text-xs font-semibold font-mono text-[#2d2d34] hover:text-[#f26430] transition-colors"
                     >
                       Open Editor
                     </Link>

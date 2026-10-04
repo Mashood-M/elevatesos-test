@@ -1,17 +1,14 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/ui/page-header";
-import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Stat } from "@/components/ui/stat";
 import { FieldLabel, Input, Select } from "@/components/ui/input";
 import { QrScanner } from "@/components/domain/qr-scanner";
-import { Check, CheckCircle2, ChevronDown, Play, Plus, Users, X, XCircle, Crown, Mic, Sparkles, Search } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Play, Plus, Users, X, XCircle, Crown, Mic, Sparkles, Search, QrCode, ArrowRight, Activity } from "lucide-react";
 import { useStore, useCurrentUser } from "@/context/store-context";
-import { chapterEyebrow, isFacultyRole } from "@/lib/access";
+import { isFacultyRole } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import {
   isAttendanceTakeable,
@@ -1507,88 +1504,258 @@ export default function ChapterAttendancePage({
   }
 
   if (!chapter) {
-    return <p className="text-[var(--accent)]">Chapter not found</p>;
+    return (
+      <div className="rounded-[14px] border border-[#2d2d34]/20 bg-white p-8 text-center shadow-[2px_2px_0px_#2d2d34]">
+        <p className="font-mono text-sm text-[#f26430] uppercase font-bold">{"// CHAPTER NOT FOUND"}</p>
+      </div>
+    );
   }
 
   if (!canVerify && !isCampusLead && !isFaculty) {
     return (
-      <div>
-        <PageHeader
-          eyebrow={chapterEyebrow(session.roleKey, "programs")}
-          title="Attendance"
-          description="You need attendance.verify permission or faculty status to view attendance."
-        />
-        <p className="text-[13px] text-text-dim">
-          Switch to Faculty Coordinator, Campus Lead, Class Rep, Secretary, or Coordinator.
-        </p>
+      <div className="space-y-4 pb-12">
+        <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-6 sm:p-8 shadow-[3px_3px_0px_#2d2d34] bauhaus-grid-bg">
+          <div className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-red-500 opacity-10 pointer-events-none select-none" aria-hidden="true" />
+          <div className="relative z-10 max-w-2xl">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                ATTENDANCE
+              </span>
+            </div>
+            <h1 className="font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34] tracking-tight">Access Restricted</h1>
+            <p className="mt-2 text-sm text-[#71717a] leading-relaxed">
+              You need attendance.verify permission or faculty status. Switch to Faculty Coordinator, Campus Lead, Class Rep, Secretary, or Coordinator.
+            </p>
+          </div>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title={isReadOnly ? "Attendance Overview & Audit" : "Attendance Desk & QR Scanner"}
-        description={
-          isReadOnly
-            ? "Inspect verified student attendance, session completion checkpoints, and issued certificates."
-            : "High-speed QR check-in, on-spot registration, checkpoint session tracking, and attendance records."
-        }
-        actions={
-          !isReadOnly ? (
-            <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-6 pb-12">
+      {/* ── 1. ARCHITECTURAL HERO BANNER ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CHECK-IN DESK // {(chapter.shortCode || chapter.slug).toUpperCase()}
+              </span>
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {currentEvent ? currentEvent.title : "Select an Event"}
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl md:text-4xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              {isReadOnly ? "Attendance Audit & Records" : "Attendance Desk & QR Scanner"}
+            </h1>
+
+            <p className="mt-2 text-sm text-[#71717a] leading-relaxed max-w-xl">
+              {isReadOnly
+                ? "Inspect verified student attendance, session completion checkpoints, and issued certificates."
+                : "High-speed QR check-in, on-spot registration, checkpoint session tracking, and attendance verification."}
+            </p>
+          </div>
+
+          {/* Quick Header Actions */}
+          {!isReadOnly && (
+            <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
               {volunteerPowers.isVolunteer && !isCampusLead && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Volunteer: {volunteerPowers.effectiveTag}
+                <span className="inline-flex items-center gap-1.5 rounded-[6px] border border-[#2d2d34] bg-[#5f7560] text-white px-2.5 py-1 text-xs font-mono font-bold shadow-[1px_1px_0px_#2d2d34]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  VOLUNTEER: {volunteerPowers.effectiveTag}
                 </span>
               )}
               {(isCampusLead || canRegisterWalkins) && hasEvent && (
-                <Button
-                  variant="orange"
-                  className="text-xs sm:text-sm font-bold gap-1.5 shadow-xs"
+                <button
+                  type="button"
                   disabled={!attendanceTakeable.allowed}
                   title={!attendanceTakeable.allowed ? attendanceTakeable.reason : undefined}
                   onClick={() => setIsOnSpotOpen(true)}
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Plus size={14} />
-                  On-Spot Check-in
-                </Button>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>On-Spot Check-in</span>
+                </button>
               )}
               {hasEvent && isMultiSession && (
-                <Button
-                  variant="ghost"
-                  className="text-xs sm:text-sm border border-border/70 hover:bg-bg-panel gap-1.5"
+                <button
+                  type="button"
                   onClick={handleAddCustomCheckpoint}
+                  className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <Plus size={14} />
-                  Add Checkpoint
-                </Button>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Checkpoint</span>
+                </button>
               )}
             </div>
-          ) : null
-        }
-      />
+          )}
+        </div>
+      </section>
 
-      {/* Top Stats Bar in clean ERP styling */}
-      <div className={cn("mb-4 grid grid-cols-2 gap-3", isMultiSession ? "sm:grid-cols-3 lg:grid-cols-5" : "sm:grid-cols-4")}>
-        <Stat label="Approved Students" value={stats.approved} />
+      {/* ── 2. 4-METRIC STRIP ───────────────────────────────────────────── */}
+      <section className={cn("grid gap-3.5", isMultiSession ? "grid-cols-2 lg:grid-cols-5" : "grid-cols-2 lg:grid-cols-4")}>
+        {/* Metric 01: Approved */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              01 // APPROVED
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#2d2d34] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Users className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {stats.approved}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Registered students
+          </p>
+        </div>
+
         {isMultiSession ? (
           <>
-            <Stat label={`Active: ${activeSessionObj.name}`} value={`${stats.currentSessionCount} / ${stats.approved}`} />
-            <Stat label="All Terms Complete" value={`${stats.fullyAttendedCount} / ${stats.approved}`} />
-            <Stat label="Total Scans Logged" value={stats.checkedIn} />
-            <Stat label="Configured Terms" value={`${attendanceSessions.length} Checkpoints`} />
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  02 // ACTIVE CHECKPOINT
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <QrCode className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {stats.currentSessionCount} / {stats.approved}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a] truncate">
+                {activeSessionObj.name}
+              </p>
+            </div>
+
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  03 // ALL TERMS COMPLETE
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {stats.fullyAttendedCount}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                All checkpoints cleared
+              </p>
+            </div>
+
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  04 // TOTAL SCANS
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <Activity className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {stats.checkedIn}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                Unique attendees
+              </p>
+            </div>
+
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  05 // SESSIONS
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#f59e0b] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <Sparkles className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {attendanceSessions.length}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                Configured checkpoints
+              </p>
+            </div>
           </>
         ) : (
           <>
-            <Stat label="Checked In" value={stats.checkedIn} />
-            <Stat label="Present" value={stats.present} accent="green" />
-            <Stat label="Absent" value={stats.absent} />
+            {/* Checked In */}
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  02 // CHECKED-IN
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <QrCode className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {stats.checkedIn}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                Verified attendees
+              </p>
+            </div>
+
+            {/* Present */}
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  03 // PRESENT
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <Check className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#5f7560]">
+                {stats.present}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                Confirmed at venue
+              </p>
+            </div>
+
+            {/* Absent */}
+            <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+                  04 // ABSENT
+                </span>
+                <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#71717a] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+                  <X className="w-3.5 h-3.5" />
+                </div>
+              </div>
+              <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+                {stats.absent}
+              </p>
+              <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+                Remaining / unscanned
+              </p>
+            </div>
           </>
         )}
-      </div>
+      </section>
 
       {/* Class Representative Scope Banner */}
       {session.roleKey === "class_representative" && myClassCohort && (

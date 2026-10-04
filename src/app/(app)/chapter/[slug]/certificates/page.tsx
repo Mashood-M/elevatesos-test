@@ -2,14 +2,12 @@
 
 import { useState, useMemo, useEffect, useRef, use } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
 import { Input, Select, FieldLabel } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { resolveChapter, chapterEyebrow } from "@/lib/access";
+import { resolveChapter } from "@/lib/access";
 import { isHqRole } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn } from "@/lib/utils";
@@ -24,6 +22,7 @@ import {
   deleteCertificateTemplate,
 } from "@/lib/certificates/templates";
 import {
+  ArrowLeft,
   Award,
   Check,
   Copy,
@@ -81,7 +80,9 @@ export default function ChapterCertificatesPage({
   useEffect(() => {
     if (chapter) {
       const loaded = getCertificateTemplates(chapter.id);
-      setTemplates(loaded);
+      setTimeout(() => {
+        setTemplates(loaded);
+      }, 0);
     }
   }, [chapter]);
 
@@ -291,70 +292,134 @@ export default function ChapterCertificatesPage({
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Certificates & Credentials Center"
-        description={`Official, verifiable Elevates credentials with verified signatures, serial IDs, and template customization for ${chapter.name}.`}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => setActiveTab("designer")}
-              className="text-xs sm:text-sm flex items-center gap-1.5 font-semibold border border-border/80"
-            >
-              <Sparkles size={14} className="text-[#f26430]" />
-              <span>Canva PPTX Studio</span>
-            </Button>
-          </div>
-        }
-      />
-
-      {/* 4-Stat Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Total Issued"
-          value={chapterCertificates.length}
-          hint="All time credentials"
-        />
-        <Stat
-          label="Active & Verifiable"
-          value={chapterCertificates.filter((c) => !c.isRevoked).length}
-          hint="Live cryptographic passes"
-          accent="orange"
-        />
-        <Stat
-          label="Eligible Attendees"
-          value={attendeesList.length}
-          hint="Present in selected event"
-        />
-        <Stat
-          label="Configured Templates"
-          value={templates.length}
-          hint="Available designs"
-        />
+    <div className="space-y-6 pb-12">
+      {/* 1. Breadcrumb */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="h-8 px-3 rounded-[6px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+        >
+          <ArrowLeft size={12} />
+          <span>Back</span>
+        </button>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
+        <Link
+          href={`/chapter/${slug}`}
+          className="font-mono text-xs text-[#71717a] hover:text-[#f26430] transition-colors"
+        >
+          {chapter.name}
+        </Link>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
+        <span className="font-mono text-xs font-bold text-[#2d2d34]">Certificates</span>
       </div>
 
-      {/* Unified Segmented Tab Bar */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-border/80 pb-3">
+      {/* 2. ARCHITECTURAL HERO BANNER */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} CREDENTIALS
+              </span>
+              <span className="font-mono text-[10.5px] font-bold text-[#71717a] uppercase tracking-wider">
+                VERIFIABLE PASSES
+              </span>
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+              Certificates &amp; Credentials Center.
+            </h1>
+            <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+              Official, verifiable Elevates credentials with verified signatures, serial IDs, and template customization for {chapter.name}.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("designer")}
+              className="h-9 px-4 rounded-[8px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles size={13} className="text-[#f26430]" />
+              <span>Canva PPTX Studio</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. 4-METRIC STRIP */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>01 {"//"} TOTAL ISSUED</span>
+            <span className="h-2 w-2 rounded-full bg-[#2d2d34]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {chapterCertificates.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">All-Time Credentials</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>02 {"//"} ACTIVE PASSES</span>
+            <span className="h-2 w-2 rounded-full bg-[#10b981]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#10b981]">
+            {chapterCertificates.filter((c) => !c.isRevoked).length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Live &amp; Verifiable</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>03 {"//"} ELIGIBLE ATTENDEES</span>
+            <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {attendeesList.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Selected Event</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>04 {"//"} TEMPLATES</span>
+            <span className="h-2 w-2 rounded-full bg-[#414066]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {templates.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Ready Designs</p>
+        </div>
+      </section>
+
+      {/* 4. TACTILE SEGMENTED TAB BAR */}
+      <div className="flex items-center gap-1.5 border-b border-[#2d2d34]/20 pb-2 overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab("attendance")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "attendance"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
           <Users size={13} />
           <span>Attendance Issuance</span>
-          <span
-            className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
-              activeTab === "attendance" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
-            )}
-          >
+          <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
             {unissuedAttendees.length} pending
           </span>
         </button>
@@ -363,20 +428,15 @@ export default function ChapterCertificatesPage({
           type="button"
           onClick={() => setActiveTab("ledger")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "ledger"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
           <Layers size={13} />
           <span>Issued Registry</span>
-          <span
-            className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
-              activeTab === "ledger" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
-            )}
-          >
+          <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
             {chapterCertificates.length}
           </span>
         </button>
@@ -385,20 +445,15 @@ export default function ChapterCertificatesPage({
           type="button"
           onClick={() => setActiveTab("designer")}
           className={cn(
-            "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all",
+            "h-8 px-3.5 rounded-[6px] font-mono text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap",
             activeTab === "designer"
-              ? "bg-text text-bg shadow-sm"
-              : "bg-bg-panel border border-border/70 text-text-dim hover:text-text hover:border-border",
+              ? "bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]"
+              : "bg-white text-[#71717a] hover:text-[#2d2d34] border border-[#2d2d34]/20"
           )}
         >
           <Palette size={13} />
           <span>Template Designer</span>
-          <span
-            className={cn(
-              "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
-              activeTab === "designer" ? "bg-bg/20 text-bg" : "bg-border/60 text-text-dim",
-            )}
-          >
+          <span className="rounded-[4px] bg-[#f3f4f6] px-1.5 py-0.2 font-mono text-[9px] font-bold text-[#2d2d34] border border-[#2d2d34]/20">
             {templates.length}
           </span>
         </button>
@@ -695,7 +750,7 @@ export default function ChapterCertificatesPage({
 
               <Select
                 value={filterLedgerStatus}
-                onChange={(e) => setFilterLedgerStatus(e.target.value as any)}
+                onChange={(e) => setFilterLedgerStatus(e.target.value as "all" | "active" | "revoked")}
                 className="text-xs w-32"
               >
                 <option value="all">All Statuses</option>

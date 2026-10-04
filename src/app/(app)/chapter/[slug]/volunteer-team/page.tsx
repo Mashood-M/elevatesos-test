@@ -6,16 +6,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Input, Select } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/page-header";
-import { Stat } from "@/components/ui/stat";
 import { TerminalPanel } from "@/components/ui/terminal-panel";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { hasPermission, isHqRole } from "@/lib/permissions";
 import { hasExecutiveDelegation } from "@/lib/leadership";
 import { cn, formatDate, initials } from "@/lib/utils";
 import {
+  ArrowLeft,
   ArrowLeftRight,
   Calendar,
   Check,
@@ -150,12 +148,16 @@ export default function ChapterVolunteerTeamPage({
   useEffect(() => {
     if (chapterTeams.length > 0) {
       if (!activeTeamId || !chapterTeams.some((t) => t.id === activeTeamId)) {
-        setActiveTeamId(chapterTeams[0].id);
-        setSelectedEventIdForAssign(chapterTeams[0].eventId || "");
+        setTimeout(() => {
+          setActiveTeamId(chapterTeams[0].id);
+          setSelectedEventIdForAssign(chapterTeams[0].eventId || "");
+        }, 0);
       }
     } else {
-      setActiveTeamId("");
-      setSelectedEventIdForAssign("");
+      setTimeout(() => {
+        setActiveTeamId("");
+        setSelectedEventIdForAssign("");
+      }, 0);
     }
   }, [chapterTeams, activeTeamId]);
 
@@ -174,9 +176,12 @@ export default function ChapterVolunteerTeamPage({
   // When active team changes, sync top event selector
   useEffect(() => {
     if (activeTeam) {
-      setSelectedEventIdForAssign(activeTeam.eventId || "");
+      const evId = activeTeam.eventId || "";
+      setTimeout(() => {
+        setSelectedEventIdForAssign(evId);
+      }, 0);
     }
-  }, [activeTeam?.id, activeTeam?.eventId]);
+  }, [activeTeam]);
 
   // Active Team Member IDs
   const activeTeamMemberIds = useMemo(() => {
@@ -220,16 +225,17 @@ export default function ChapterVolunteerTeamPage({
   }, [store.profiles, chapter]);
 
   // Students available for replacement in active team
+  const activeEventId = activeTeam?.eventId;
   const availableStudentsForReplacement = useMemo(() => {
     return chapterStudents.filter((s) => {
       if (activeTeamMemberIds.has(s.id)) return false;
       const conflict = studentEventMap.get(s.id);
-      if (conflict && activeTeam?.eventId && conflict.eventId !== activeTeam.eventId) {
+      if (conflict && activeEventId && conflict.eventId !== activeEventId) {
         return false; // Busy with another event
       }
       return true;
     });
-  }, [chapterStudents, activeTeamMemberIds, studentEventMap, activeTeam?.eventId]);
+  }, [chapterStudents, activeTeamMemberIds, studentEventMap, activeEventId]);
 
   // Filtered students for search
   const filteredStudents = useMemo(() => {
@@ -464,73 +470,149 @@ export default function ChapterVolunteerTeamPage({
   if (session.roleKey === "class_representative") {
     return (
       <div className="space-y-6">
-        <PageHeader
-          eyebrow={chapterEyebrow(session.roleKey, "programs")}
-          title="Volunteer Team"
-        />
-        <TerminalPanel title="access.restricted" accent="orange">
-          <p className="text-sm text-text-dim">
+        <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+              ACCESS RESTRICTED {"//"} VOLUNTEER SQUADS
+            </span>
+          </div>
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            Access Restricted.
+          </h1>
+          <p className="mt-1.5 text-xs text-[#52525b]">
             Class Representatives do not have permission to manage the chapter volunteer team.
           </p>
           <Link
             href={`/chapter/${slug}`}
-            className="mt-3 inline-block text-[var(--accent)] font-semibold text-xs"
+            className="mt-4 inline-block font-mono text-xs font-bold uppercase text-[#f26430] hover:underline"
           >
             ← Back to chapter
           </Link>
-        </TerminalPanel>
+        </section>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Top Page Header */}
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "programs")}
-        title="Volunteer Squads & Teams"
-        description="Organize reusable volunteer squads, designate event check-in crews, and configure attendance permissions."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-6 pb-12">
+      {/* 1. Breadcrumb */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="h-8 px-3 rounded-[6px] bg-white hover:bg-[#f3f4f6] text-[#2d2d34] font-mono text-[11px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+        >
+          <ArrowLeft size={12} />
+          <span>Back</span>
+        </button>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
+        <Link
+          href={`/chapter/${slug}`}
+          className="font-mono text-xs text-[#71717a] hover:text-[#f26430] transition-colors"
+        >
+          {chapter.name}
+        </Link>
+        <span className="font-mono text-xs text-[#71717a]">/</span>
+        <span className="font-mono text-xs font-bold text-[#2d2d34]">Volunteer Squads</span>
+      </div>
+
+      {/* 2. ARCHITECTURAL HERO BANNER */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-6 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-8 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-28 w-28 bg-[#414066] opacity-6 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+          <div className="max-w-xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS · {(chapter.shortCode || chapter.slug).toUpperCase()} {"//"} VOLUNTEER OPS
+              </span>
+              <span className="font-mono text-[10.5px] font-bold text-[#71717a] uppercase tracking-wider">
+                FIELD CREWS
+              </span>
+            </div>
+
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl font-black text-[#2d2d34] tracking-tight">
+              Volunteer Squads &amp; Teams.
+            </h1>
+            <p className="mt-1.5 text-[13px] text-[#52525b] leading-relaxed">
+              Organize reusable volunteer squads, designate event check-in crews, and configure attendance permissions.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
             {flash ? (
-              <span className="self-center text-xs font-semibold text-[var(--accent)] animate-pulse">
+              <span className="self-center font-mono text-xs font-bold text-[#f26430] animate-pulse">
                 {flash}
               </span>
             ) : null}
             <Link href={`/chapter/${slug}/attendance`}>
-              <Button variant="orange" className="flex items-center gap-1.5 font-bold shadow-sm text-xs sm:text-sm">
-                <QrCode size={14} />
-                Attendance Desk
-              </Button>
+              <button
+                type="button"
+                className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#d85322] text-white font-mono text-[11.5px] font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2.5px_2.5px_0px_#2d2d34] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <QrCode size={13} />
+                <span>Attendance Desk</span>
+              </button>
             </Link>
           </div>
-        }
-      />
+        </div>
+      </section>
 
-      {/* 4-Stat Metric Strip */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat
-          label="Active Volunteers"
-          value={new Set(chapterTeams.flatMap((t) => t.memberIds)).size}
-          hint="Appointed in squads"
-          accent="orange"
-        />
-        <Stat
-          label="Volunteer Teams"
-          value={chapterTeams.length}
-          hint="Operational crews"
-        />
-        <Stat
-          label="Assigned Events"
-          value={chapterTeams.filter((t) => t.eventId).length}
-          hint="Active deployments"
-        />
-        <Stat
-          label="Available Students"
-          value={availableStudentsForReplacement.length}
-          hint="Ready for appointment"
-        />
-      </div>
+      {/* 3. 4-METRIC STRIP */}
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>01 {"//"} ACTIVE VOLUNTEERS</span>
+            <span className="h-2 w-2 rounded-full bg-[#f26430]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {new Set(chapterTeams.flatMap((t) => t.memberIds)).size}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Appointed in squads</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>02 {"//"} SQUADS</span>
+            <span className="h-2 w-2 rounded-full bg-[#414066]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {chapterTeams.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Operational crews</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>03 {"//"} ASSIGNED EVENTS</span>
+            <span className="h-2 w-2 rounded-full bg-[#10b981]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {chapterTeams.filter((t) => t.eventId).length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Active deployments</p>
+        </div>
+
+        <div className="bg-white border border-[#2d2d34]/20 rounded-[12px] p-3 sm:p-3.5 shadow-[1.5px_1.5px_0px_#2d2d34]">
+          <div className="flex items-center justify-between font-mono text-[10px] font-bold text-[#71717a] uppercase">
+            <span>04 {"//"} AVAILABLE POOL</span>
+            <span className="h-2 w-2 rounded-full bg-[#2d2d34]" />
+          </div>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {availableStudentsForReplacement.length}
+          </p>
+          <p className="font-mono text-[8.5px] text-[#71717a] uppercase">Ready for appointment</p>
+        </div>
+      </section>
 
       {/* TOP SECTION: Event Selection & Team Assignment Bar */}
       <div className="rounded-[var(--radius)] border border-border/80 bg-bg-panel p-4 sm:p-5 shadow-[var(--shadow-sm)] flex flex-col md:flex-row md:items-center justify-between gap-4">

@@ -27,13 +27,11 @@ import {
   ExternalLink,
   ChevronDown,
 } from "lucide-react";
-import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Stat } from "@/components/ui/stat";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser, useStore } from "@/context/store-context";
-import { chapterEyebrow, resolveChapter } from "@/lib/access";
+import { resolveChapter } from "@/lib/access";
 import { findChapterBySlugOrId } from "@/lib/chapters";
 import { isSuperAdmin } from "@/lib/permissions";
 import { getUserVolunteerPowers } from "@/lib/volunteers";
@@ -505,105 +503,188 @@ export default function ChapterStudentsPage({
   const activeSyncedCount = chapterMembers.filter((m) => m.status === "claimed").length;
   const pendingCount = chapterMembers.filter((m) => m.status !== "claimed").length;
 
+  const chapterCode = (targetChapter.shortCode || targetChapter.slug).toUpperCase();
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow={chapterEyebrow(session.roleKey, "people")}
-        title={`${targetChapter.name} Members directory`}
-        description={`Official student directory and member profiles registered in ${targetChapter.name} (${targetChapter.college}).`}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
+    <div className="space-y-6 pb-12">
+      {/* ── 1. ARCHITECTURAL HERO BANNER ─────────────────────────────────── */}
+      <section className="relative overflow-hidden rounded-[16px] border border-[#2d2d34]/20 bg-white p-5 sm:p-7 shadow-[2px_2px_0px_#2d2d34] bauhaus-grid-bg">
+        {/* Subtle Decorative Geometric Accents */}
+        <div
+          className="absolute -top-10 -right-10 h-36 w-36 rounded-full bg-[#f26430] opacity-10 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute top-1/2 -right-6 h-24 w-24 bg-[#414066] opacity-8 rotate-45 pointer-events-none select-none"
+          aria-hidden="true"
+        />
+
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="max-w-2xl">
+            {/* Monospace Eyebrow Badge */}
+            <div className="flex flex-wrap items-center gap-2 mb-2.5">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-[5px] bg-[#2d2d34] text-white shadow-[1.5px_1.5px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                CAMPUS DIRECTORY // {chapterCode}
+              </span>
+              <span className="font-mono text-[10.5px] font-semibold text-[#71717a] uppercase tracking-wider">
+                {targetChapter.name} · {targetChapter.college}
+              </span>
+            </div>
+
+            {/* Main Headline */}
+            <h1 className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl md:text-4xl font-black text-[#2d2d34] tracking-tight leading-snug">
+              Member Directory & Roster
+            </h1>
+
+            <p className="mt-2 text-sm text-[#71717a] leading-relaxed max-w-xl">
+              Official student membership records, class representative cohorts, claimed profiles, and credential assignments for {targetChapter.name}.
+            </p>
+          </div>
+
+          {/* Quick Header Actions */}
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 lg:pt-0">
+            <button
+              type="button"
               onClick={exportdirectoryToCsv}
-              className="flex items-center gap-1.5 text-xs"
-              title="Download full member directory as CSV spreadsheet"
+              className="h-9 px-3.5 rounded-[8px] bg-white hover:bg-neutral-50 text-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[1.5px_1.5px_0px_#2d2d34] hover:shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
             >
-              <Download size={14} /> Export CSV
-            </Button>
+              <Download className="w-3.5 h-3.5 text-[#414066]" />
+              <span>Export CSV</span>
+            </button>
             {session.roleKey !== "class_representative" && (
               <Link href="/referrals">
-                <Button
-                  variant="secondary"
-                  className="flex items-center gap-1.5 text-xs"
+                <button
+                  type="button"
+                  className="h-9 px-4 rounded-[8px] bg-[#f26430] hover:bg-[#e05320] text-white font-mono text-xs font-bold uppercase tracking-wider border border-[#2d2d34] shadow-[2px_2px_0px_#2d2d34] hover:shadow-[3px_3px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 transition-all cursor-pointer flex items-center gap-1.5"
                 >
-                  <UserPlus size={14} /> Invite Students
-                </Button>
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Invite Students</span>
+                </button>
               </Link>
             )}
           </div>
-        }
-      />
+        </div>
+      </section>
 
+      {/* Class Representative Scope Banner */}
       {session.roleKey === "class_representative" && myClassCohort && (
-        <div className="rounded-[var(--radius-xl)] border border-cyan-500/25 bg-cyan-500/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[var(--shadow-sm)] animate-fade-in">
+        <div className="rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[1.5px_1.5px_0px_#2d2d34]">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-500 shrink-0">
-              <GraduationCap className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34] shrink-0">
+              <GraduationCap className="h-4 w-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-xs font-bold text-text">Class Representative View</p>
-                <span className="rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-bold text-cyan-600 dark:text-cyan-400">
-                  Assigned Cohort
+                <p className="font-mono text-xs font-bold text-[#2d2d34] uppercase tracking-wider">
+                  CLASS REPRESENTATIVE SCOPE
+                </p>
+                <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#2d2d34] text-white">
+                  ASSIGNED COHORT
                 </span>
               </div>
-              <p className="text-[12px] text-text-dim mt-0.5">
+              <p className="text-xs text-[#71717a] mt-0.5">
                 Showing enrolled students in{" "}
-                <strong className="text-text font-semibold">
+                <strong className="text-[#2d2d34] font-semibold">
                   {myClassCohort.department} · {myClassCohort.year}
                   {myClassCohort.section ? ` (Sec ${myClassCohort.section})` : ""}
                 </strong>
               </p>
             </div>
           </div>
-          <Badge tone="cyan">{chapterMembers.length} Students in Class</Badge>
+          <span className="font-mono text-xs font-bold px-2 py-1 rounded bg-[#faf9f6] border border-[#2d2d34]/15 text-[#2d2d34]">
+            {chapterMembers.length} Students in Class
+          </span>
         </div>
       )}
 
       {syncSuccessMsg && (
-        <div className="rounded-[var(--radius-lg)] border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-2 shadow-[var(--shadow-sm)] animate-fade-in">
+        <div className="rounded-[10px] border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-mono font-bold text-emerald-800 flex items-center gap-2">
           <CheckCircle size={15} className="shrink-0" />
           <span>{syncSuccessMsg}</span>
         </div>
       )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label={session.roleKey === "class_representative" ? "Class Members" : "Total Members"}
-          value={chapterMembers.length}
-          hint={session.roleKey === "class_representative" ? "Enrolled in your class" : "Strictly this chapter"}
-          accent="cyan"
-        />
-        <Stat
-          label="Active Accounts"
-          value={activeSyncedCount}
-          hint="Synced Supabase profiles"
-          accent="green"
-        />
-        <Stat
-          label="Pending / Unclaimed"
-          value={pendingCount}
-          hint="Pre-registered members"
-          accent="orange"
-        />
-        {session.roleKey !== "class_representative" ? (
-          <Stat
-            label="Campus Departments"
-            value={chapterDepartments.length}
-            hint={targetChapter.city || targetChapter.college}
-            accent="magenta"
-          />
-        ) : (
-          <Stat
-            label="Assigned Cohort"
-            value={myClassCohort ? `${myClassCohort.year}${myClassCohort.section ? ` · Sec ${myClassCohort.section}` : ""}` : "Class"}
-            hint={myClassCohort?.department || "Your class"}
-            accent="magenta"
-          />
-        )}
-      </div>
+      {/* ── 2. 4-METRIC STRIP ───────────────────────────────────────────── */}
+      <section className="grid grid-cols-2 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Metric 01: Members */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              {session.roleKey === "class_representative" ? "01 // CLASS MEMBERS" : "01 // TOTAL MEMBERS"}
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#2d2d34] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Users className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {chapterMembers.length}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            {session.roleKey === "class_representative" ? "Enrolled in class cohort" : "Campus chapter registry"}
+          </p>
+        </div>
+
+        {/* Metric 02: Active Accounts */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              02 // ACTIVE ACCOUNTS
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#5f7560] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <UserCheck className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#5f7560]">
+            {activeSyncedCount}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Claimed member profiles
+          </p>
+        </div>
+
+        {/* Metric 03: Pending */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              03 // PRE-REGISTERED
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#fef0eb] text-[#f26430] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <Clock className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34]">
+            {pendingCount}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a]">
+            Unclaimed join records
+          </p>
+        </div>
+
+        {/* Metric 04: Departments / Cohort */}
+        <div className="relative overflow-hidden rounded-[14px] border border-[#2d2d34]/20 bg-white p-4 shadow-[2px_2px_0px_#2d2d34]">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold text-[#71717a] uppercase tracking-wider">
+              {session.roleKey !== "class_representative" ? "04 // DEPARTMENTS" : "04 // ASSIGNED COHORT"}
+            </span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-[#faf9f6] text-[#414066] border border-[#2d2d34]/15 shadow-[1px_1px_0px_#2d2d34]">
+              <GraduationCap className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <p className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black text-[#2d2d34] truncate">
+            {session.roleKey !== "class_representative"
+              ? chapterDepartments.length
+              : myClassCohort
+                ? `${myClassCohort.year}`
+                : "Class"}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-[#71717a] truncate">
+            {session.roleKey !== "class_representative"
+              ? targetChapter.city || targetChapter.college || "Campus academic branches"
+              : myClassCohort?.department || "Your class"}
+          </p>
+        </div>
+      </section>
 
       {/* Modern Unified Filter Toolbar */}
       <div className="rounded-[var(--radius-xl)] bg-bg-panel border border-border/70 p-3 sm:p-3.5 shadow-[var(--shadow-sm)]">

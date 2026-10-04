@@ -316,8 +316,8 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label className="text-[11px] font-semibold text-text-dim uppercase tracking-wider block">{label}</label>
-        {hint ? <span className="text-[10px] text-text-mute">{hint}</span> : null}
+        <label className="font-mono text-[10.5px] font-bold text-[#2d2d34] uppercase tracking-wider block">{label}</label>
+        {hint ? <span className="font-mono text-[10px] text-[#71717a]">{hint}</span> : null}
       </div>
       {children}
     </div>
@@ -339,7 +339,7 @@ function TInput({
 }) {
   return (
     <input
-      className={`h-9 w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-xs text-text transition-colors focus:border-[var(--accent)] focus:outline-none ${mono ? "font-mono" : ""}`}
+      className={`h-9 w-full rounded-[6px] border border-[#2d2d34]/30 bg-white px-3 text-xs text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] focus:border-[#2d2d34] focus:outline-none focus:shadow-[2px_2px_0px_#2d2d34] transition-all ${mono ? "font-mono" : ""}`}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onBlur={onBlur}
@@ -362,7 +362,7 @@ function TArea({
   return (
     <textarea
       rows={rows}
-      className="w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-xs text-text resize-none transition-colors focus:border-[var(--accent)] focus:outline-none"
+      className="w-full rounded-[6px] border border-[#2d2d34]/30 bg-white px-3 py-2 text-xs text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] focus:border-[#2d2d34] focus:outline-none focus:shadow-[2px_2px_0px_#2d2d34] transition-all resize-none font-mono"
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
@@ -616,43 +616,44 @@ export function CaseStudyEditor({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
-      <div className="my-8 w-full max-w-4xl rounded-[var(--radius-xl)] bg-bg-panel shadow-2xl border border-border overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-[#2d2d34]/70 p-4 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200">
+      <div className="my-8 w-full max-w-4xl rounded-[16px] bg-white shadow-[6px_6px_0px_#2d2d34] border-2 border-[#2d2d34] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border bg-bg-page/70 px-6 py-4">
+        <div className="flex items-center justify-between border-b-2 border-[#2d2d34] bg-[#f8f9fa] px-6 py-4">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 items-center rounded-full bg-[var(--accent)]/15 px-2 text-[10px] font-bold text-[var(--accent)] uppercase tracking-wider">
-                Flagship Proof
+            <div className="flex items-center gap-2 mb-1">
+              <span className="inline-flex items-center gap-1 font-mono text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-[4px] bg-[#2d2d34] text-white shadow-[1px_1px_0px_#f26430]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#f26430]" />
+                FLAGSHIP PROOF
               </span>
-              <h3 className="font-[family-name:var(--font-display)] text-lg font-bold text-text">
-                {d.title ? `Edit Case Study: ${d.title}` : "New Flagship Case Study"}
-              </h3>
+              <p className="text-[11px] text-[#71717a] font-mono">
+                elevates.live/projects/{d.slug || finalizeSlug(d.title || "slug")}
+              </p>
             </div>
-            <p className="text-[11px] text-text-dim mt-0.5 font-mono">
-              elevates.live/projects/{d.slug || finalizeSlug(d.title || "slug")}
-            </p>
+            <h3 className="font-[family-name:var(--font-display)] text-lg font-black text-[#2d2d34] uppercase tracking-tight">
+              {d.title ? `Edit Case Study: ${d.title}` : "New Flagship Case Study"}
+            </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-text-dim hover:bg-bg-panel hover:text-text transition-colors"
+            className="rounded-[6px] p-2 text-[#2d2d34] border border-[#2d2d34]/30 shadow-[1px_1px_0px_#2d2d34] hover:bg-neutral-100 transition-all cursor-pointer"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex overflow-x-auto gap-1 px-4 pt-2 border-b border-border bg-bg-page/30">
+        <div className="flex overflow-x-auto gap-1.5 px-5 pt-2.5 border-b border-[#2d2d34]/20 bg-[#f8f9fa]">
           {CASE_STUDY_TABS.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`flex items-center gap-1.5 shrink-0 px-3.5 py-2.5 text-[11px] font-semibold border-b-2 transition-all ${
+              className={`flex items-center gap-1.5 shrink-0 px-3.5 py-2 text-[11px] font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
                 tab === t.key
-                  ? "border-[var(--accent)] text-text bg-bg-panel rounded-t-[var(--radius-md)]"
-                  : "border-transparent text-text-dim hover:text-text"
+                  ? "border-[#f26430] text-[#2d2d34] bg-white rounded-t-[6px] shadow-[0px_-1px_0px_#2d2d34]"
+                  : "border-transparent text-[#71717a] hover:text-[#2d2d34]"
               }`}
             >
               {t.icon}
@@ -1035,25 +1036,28 @@ export function CaseStudyEditor({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-border bg-bg-page/50 px-6 py-4">
-          <div className="text-[11px] text-text-dim">
+        <div className="flex items-center justify-between border-t-2 border-[#2d2d34] bg-[#f8f9fa] px-6 py-4">
+          <div className="font-mono text-[11px] text-[#71717a]">
             Saved case studies sync to public proof at{" "}
-            <span className="font-mono text-text font-semibold">/projects/{d.slug || "slug"}</span>
+            <span className="text-[#2d2d34] font-bold">/projects/{d.slug || "slug"}</span>
           </div>
-          <div className="flex gap-3">
-            <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button
+          <div className="flex items-center gap-3">
+            <button
               type="button"
-              variant="orange"
-              size="sm"
+              onClick={onClose}
+              disabled={isSaving}
+              className="px-3.5 py-2 rounded-[6px] border border-[#2d2d34]/30 bg-white font-mono text-xs font-bold text-[#2d2d34] shadow-[1px_1px_0px_#2d2d34] hover:bg-neutral-50 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="gap-1.5"
+              className="px-4 py-2 rounded-[6px] bg-[#f26430] border border-[#2d2d34] font-mono text-xs font-bold uppercase tracking-wider text-white shadow-[2px_2px_0px_#2d2d34] hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[3px_3px_0px_#2d2d34] transition-all cursor-pointer disabled:opacity-50"
             >
               {isSaving ? "Saving..." : "Save Case Study"}
-            </Button>
+            </button>
           </div>
         </div>
       </div>

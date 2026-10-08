@@ -34,7 +34,7 @@ Landing, `/eos`, `/join` keep charcoal brand heroes. Login splits charcoal brand
 
 ## Typography
 
-- Display/headings: Syne (brand display)
+- Display/headings: Pixelify Sans (pixel font for headlines · Silkscreen / Press Start 2P fallbacks)
 - Body/UI: Plus Jakarta Sans (soft product sans for Finexy-light ERP)
 - Mono/meta: IBM Plex Mono (ticket IDs, timestamps, tabular meta)
 - Sentence case headings; `text-wrap: balance`

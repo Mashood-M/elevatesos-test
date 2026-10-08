@@ -33,6 +33,8 @@ export const DOCUMENT_FONT_GROUPS: FontGroup[] = [
   {
     label: "Display",
     fonts: [
+      { name: "Pixelify Sans", stack: '"Pixelify Sans", "Silkscreen", monospace, sans-serif' },
+      { name: "Silkscreen", stack: '"Silkscreen", monospace, sans-serif' },
       { name: "Syne", stack: '"Syne", system-ui, sans-serif' },
       { name: "Space Grotesk", stack: '"Space Grotesk", system-ui, sans-serif' },
     ],

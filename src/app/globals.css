@@ -1,5 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Montserrat:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Montserrat:wght@400;500;600;700;800;900&family=Pixelify+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Press+Start+2P&family=Silkscreen:wght@400;700&family=Syne:wght@600;700;800&display=swap");
 @import "tailwindcss";
+
+/*
+  Display & Headings Font: Pixelify Sans (Pixel Font)
+  Pixel font configured for head/headings only; body & UI remain Plus Jakarta Sans.
+*/
 
 /*
   Elevates OS — Finexy-light ERP tokens
@@ -84,8 +89,10 @@
   --content-pad-x: 1.75rem;
   --content-pad-y: 1.75rem;
   --header-height: 4rem;
-  /* Headlines use the same family as product UI for a consistent system look */
-  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
+  /* Headlines & display headings use Pixelify Sans pixel font (Silkscreen / Press Start 2P fallbacks) */
+  --font-display: "Pixelify Sans", "Silkscreen", "Press Start 2P", monospace, sans-serif;
+  --font-head: "Pixelify Sans", "Silkscreen", "Press Start 2P", monospace, sans-serif;
+  --font-pixel: "Pixelify Sans", "Silkscreen", "Press Start 2P", monospace;
   --font-body: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --z-sticky: 20;
@@ -116,6 +123,10 @@
   --color-orange: var(--orange);
   --color-yellow: var(--yellow);
   --font-sans: var(--font-body);
+  --font-body: var(--font-body);
+  --font-display: var(--font-head);
+  --font-head: var(--font-head);
+  --font-pixel: var(--font-pixel);
   --font-mono: var(--font-mono);
 }
 
@@ -143,9 +154,27 @@ body {
 
 h1,
 h2,
-h3 {
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-head);
   text-wrap: balance;
   font-style: normal;
+  letter-spacing: 0.01em;
+}
+
+/* Head font utilities for custom elements */
+.font-head,
+.font-display,
+.font-pixel {
+  font-family: var(--font-head);
+}
+
+/* Route any legacy Syne heading tokens to the display/head font stack */
+[class*="font-['Syne']"],
+.font-\[\'Syne\'\] {
+  font-family: var(--font-head);
 }
 
 ::selection {
